@@ -194,6 +194,23 @@ def main():
     print(BANNER)
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
+    # ── Access mode ──
+    print("  How do you want to run today?")
+    print()
+    print("    [1] Local only    — control panel on this laptop only (recommended)")
+    print("    [2] Remote access — allow Tailscale / LAN (share with volunteer operators)")
+    print()
+    try:
+        choice = input("  Enter 1 or 2 [1]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        choice = "1"
+    remote_mode = (choice == "2")
+    if remote_mode:
+        log("Remote access mode — server will listen on all network interfaces", "ok")
+    else:
+        log("Local mode — control panel accessible on this machine only", "ok")
+    print()
+
     # ── Load config ──
     log("Loading config.ini...")
     cfg = load_config()
@@ -288,7 +305,9 @@ def main():
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         popen_kwargs["start_new_session"] = True   # new session/group on macOS & Linux
-    proc = subprocess.Popen([sys.executable, server_path], **popen_kwargs)
+    server_env = os.environ.copy()
+    server_env["BBCC_BIND_HOST"] = "0.0.0.0" if remote_mode else "127.0.0.1"
+    proc = subprocess.Popen([sys.executable, server_path], env=server_env, **popen_kwargs)
 
     # ── Pre-load season batting stats (once per day, cached locally) ──
     # PlayCricket has no per-player stats endpoint, so the server pulls each completed
@@ -304,6 +323,19 @@ def main():
     print()
     print("  Control panel: http://localhost:5000/control")
     print("  Overlay:       http://localhost:5000/overlay")
+    if remote_mode:
+        ts_ip = None
+        try:
+            r = subprocess.run(["tailscale", "ip", "-4"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                ts_ip = r.stdout.strip()
+        except Exception:
+            pass
+        if ts_ip:
+            print(f"  Remote panel:  http://{ts_ip}:5000/control  (Tailscale)")
+        else:
+            print("  Remote panel:  http://<tailscale-ip>:5000/control")
     print()
     print("  Keep this window open while streaming.")
     print("  Press Ctrl+C to stop the server.")

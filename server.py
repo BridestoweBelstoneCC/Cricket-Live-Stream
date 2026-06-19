@@ -71,7 +71,8 @@ def _load_auth_config():
         cfg.read(cfg_path, encoding="utf-8")
         _CONTROL_TOKEN = cfg.get("Auth",    "control_token", fallback="").strip()
         _CLUB_PASSWORD = cfg.get("Auth",    "club_password", fallback="").strip()
-        _BIND_HOST     = cfg.get("Network", "bind_host",     fallback="127.0.0.1").strip()
+        _BIND_HOST     = (os.environ.get("BBCC_BIND_HOST","").strip()
+                          or cfg.get("Network", "bind_host", fallback="127.0.0.1").strip())
 
 _load_auth_config()
 
