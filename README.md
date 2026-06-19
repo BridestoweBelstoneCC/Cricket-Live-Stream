@@ -1,9 +1,5 @@
 # CricketStream Overlay
 
-**Professional live stream overlays for grassroots cricket clubs — free, open source, and built for volunteers.**
-
-**Version 2.1** · Works on Windows and macOS · [What's new →](WHATS_NEW_V2.md)
-
 ---
 
 ## Version 2.0 highlights
