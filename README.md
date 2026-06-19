@@ -223,7 +223,7 @@ to the right player.
 
 ## Squad roster (new in v2)
 
-NV Play only sends surnames, so two brothers both show as "Ewen", and a player with two
+NV Play only sends surnames, so two brothers both show as "Smith", and a player with two
 PlayCricket accounts can appear twice in the stats. The squad roster solves both.
 
 In the control panel, open **Squad Roster** and enter one player per line, mapping their
