@@ -32,7 +32,7 @@ PCS Pro setup (scorer's laptop):
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
-import json, os, re, glob, time, hashlib, hmac, threading, base64, datetime, subprocess
+import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess
 
 # Mac SSL fix — use certifi certificates to avoid CERTIFICATE_VERIFY_FAILED errors
 try:
@@ -53,21 +53,57 @@ from urllib.parse import urlparse, urlencode
 
 SERVER_START_TIME = time.time()
 
-# ── Auth token ───────────────────────────────────────────────
-# Loaded from config.ini [Auth] control_token at startup.
-# Empty string means auth is disabled (safe on localhost).
+# ── Auth ─────────────────────────────────────────────────────
+# control_token: signing key for session tokens — never shown to users.
+# club_password:  what operators type in the login form.
+# Auth is disabled when club_password is empty (safe on localhost).
 _CONTROL_TOKEN = ""
+_CLUB_PASSWORD = ""
+_SESSION_HOURS = 12
 
-def _load_control_token():
-    global _CONTROL_TOKEN
+def _load_auth_config():
+    global _CONTROL_TOKEN, _CLUB_PASSWORD
     import configparser as _cp
     cfg = _cp.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
         _CONTROL_TOKEN = cfg.get("Auth", "control_token", fallback="").strip()
+        _CLUB_PASSWORD = cfg.get("Auth", "club_password",  fallback="").strip()
 
-_load_control_token()
+_load_auth_config()
+
+def _make_session_token():
+    """Issue a signed, expiring session token: '{expiry}:{nonce}:{sig}'."""
+    expiry = str(int(time.time()) + _SESSION_HOURS * 3600)
+    nonce  = secrets.token_hex(8)
+    sig    = hmac.new(_CONTROL_TOKEN.encode(), f"{expiry}:{nonce}".encode(),
+                      hashlib.sha256).hexdigest()
+    return f"{expiry}:{nonce}:{sig}"
+
+def _verify_session_token(token):
+    """True if the token has a valid signature and has not expired."""
+    try:
+        expiry, nonce, sig = token.split(":", 2)
+        if int(expiry) < time.time():
+            return False
+        expected = hmac.new(_CONTROL_TOKEN.encode(), f"{expiry}:{nonce}".encode(),
+                            hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, expected)
+    except Exception:
+        return False
+
+# ── Rate limiting (manual AI endpoints only) ─────────────────
+# /commentary/over/generate is NOT here — the overlay fires it automatically at
+# end of each over and for opening-pair player cards; capping it would break the
+# live experience. Only manual button-triggered endpoints are rate-limited.
+_RATE_LIMITS = {
+    "/commentary/test":        60,   # test button — 60 s cooldown
+    "/report/generate":       120,   # AI match report — 2 min
+    "/social/image/generate": 120,   # AI social graphic — 2 min
+}
+_rate_limit_ts   = {}
+_rate_limit_lock = threading.Lock()
 
 # ── Commentary state ──────────────────────────────────────────
 # Stores the latest AI-generated commentary line and triggers
@@ -2890,12 +2926,12 @@ CONTROL_HTML = """<!DOCTYPE html>
     <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
       CONTROL PANEL
     </div>
-    <h2 style="font-size:15px;color:#e8edf2;margin-bottom:6px;">Enter control token</h2>
+    <h2 style="font-size:15px;color:#e8edf2;margin-bottom:6px;">Enter club password</h2>
     <p style="font-size:12px;color:#5b9bd5;margin-bottom:20px;">
-      Set in <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">config.ini</code>
-      under <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">[Auth]</code>
+      Set as <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">club_password</code>
+      in <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">config.ini [Auth]</code>
     </p>
-    <input type="password" id="auth-input" placeholder="control_token value"
+    <input type="password" id="auth-input" placeholder="Club password"
            style="width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:6px;
                   color:#e8edf2;font-size:14px;padding:10px 12px;outline:none;
                   margin-bottom:10px;font-family:monospace;"
@@ -3543,7 +3579,7 @@ async function apiFetch(url, opts) {
   const h = Object.assign({}, baseHeaders);
   if (t) h['Authorization'] = 'Bearer ' + t;
   const r = await fetch(url, Object.assign({}, opts, {headers: h}));
-  if (r.status === 401) showLoginOverlay('Token rejected — enter it again');
+  if (r.status === 401) showLoginOverlay('Session expired — log in again');
   return r;
 }
 
@@ -3555,20 +3591,50 @@ function showLoginOverlay(msg) {
   setTimeout(function(){ const i = document.getElementById('auth-input'); if (i) i.focus(); }, 50);
 }
 
-function doLogin() {
+async function doLogin() {
   const val = (document.getElementById('auth-input').value || '').trim();
   if (!val) {
     const e = document.getElementById('auth-error');
-    if (e) { e.textContent = 'Enter the token first'; e.style.display = 'block'; }
+    if (e) { e.textContent = 'Enter the password first'; e.style.display = 'block'; }
     return;
   }
-  sessionStorage.setItem('bbcc_token', val);
-  document.getElementById('auth-overlay').style.display = 'none';
+  try {
+    const res = await fetch('/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: val})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      document.getElementById('auth-overlay').style.display = 'none';
+    } else {
+      const e = document.getElementById('auth-error');
+      if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
+    }
+  } catch (err) {
+    const e = document.getElementById('auth-error');
+    if (e) { e.textContent = 'Could not reach server'; e.style.display = 'block'; }
+  }
 }
 
-function doSkip() {
-  sessionStorage.setItem('bbcc_token', '');
-  document.getElementById('auth-overlay').style.display = 'none';
+async function doSkip() {
+  try {
+    const res = await fetch('/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: ''})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      document.getElementById('auth-overlay').style.display = 'none';
+    } else {
+      const e = document.getElementById('auth-error');
+      if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
+    }
+  } catch (err) {
+    sessionStorage.setItem('bbcc_token', '');
+    document.getElementById('auth-overlay').style.display = 'none';
+  }
 }
 
 // Show login overlay on first load if no token is stored for this session.
@@ -4633,8 +4699,8 @@ class Handler(BaseHTTPRequestHandler):
             pass  # Client disconnected mid-response (e.g. OBS scene switch) — harmless
 
     def _check_token(self):
-        """Returns True if the request carries a valid control token (or auth is disabled)."""
-        if not _CONTROL_TOKEN:
+        """Returns True if the request carries a valid session token (or auth is disabled)."""
+        if not _CLUB_PASSWORD:
             return True
         auth = self.headers.get("Authorization", "")
         provided = auth[7:] if auth.startswith("Bearer ") else ""
@@ -4644,10 +4710,46 @@ class Handler(BaseHTTPRequestHandler):
                 if k.strip() == "control_token":
                     provided = v.strip()
                     break
-        if provided and hmac.compare_digest(provided.encode(), _CONTROL_TOKEN.encode()):
+        if provided and _verify_session_token(provided):
             return True
+        print(f"  ✗  Auth: 401 {self.path} [{self.address_string()}]")
         self._json({"ok": False, "error": "Unauthorized"}, status=401)
         return False
+
+    def _handle_login(self, body):
+        """POST /login — exchange club password for a signed session token."""
+        if not _CLUB_PASSWORD:
+            # Auth disabled — issue a token so the browser can proceed normally
+            tok = _make_session_token() if _CONTROL_TOKEN else ""
+            self._json({"ok": True, "session_token": tok})
+            return
+        try:
+            pw = json.loads(body).get("password", "")
+        except Exception:
+            pw = ""
+        if pw and hmac.compare_digest(pw.encode(), _CLUB_PASSWORD.encode()):
+            tok = _make_session_token()
+            print(f"  ✓  Login: session issued [{self.address_string()}]")
+            self._json({"ok": True, "session_token": tok})
+        else:
+            print(f"  ✗  Login: bad password [{self.address_string()}]")
+            self._json({"ok": False, "error": "Wrong password"}, status=401)
+
+    def _check_rate_limit(self, path):
+        """Returns True if the call is allowed; sends 429 and returns False if in cooldown."""
+        cooldown = _RATE_LIMITS.get(path)
+        if not cooldown:
+            return True
+        with _rate_limit_lock:
+            last = _rate_limit_ts.get(path, 0)
+            wait = cooldown - (time.time() - last)
+            if wait > 0:
+                self._json({"ok": False,
+                            "error": f"Please wait {int(wait)+1}s before trying again"},
+                           status=429)
+                return False
+            _rate_limit_ts[path] = time.time()
+        return True
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -4799,6 +4901,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/report/generate":
             if not self._check_token(): return
+            if not self._check_rate_limit(path): return
             rtype = "report"
             if "?" in self.path and "type=social" in self.path:
                 rtype = "social"
@@ -4847,6 +4950,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path.startswith("/social/image/generate"):
             if not self._check_token(): return
+            if not self._check_rate_limit("/social/image/generate"): return
             # Build an Instagram result graphic: photo backdrop + AI-distilled match facts.
             # Optional ?photo=<filename> selects a backdrop from the socials folder;
             # otherwise the newest photo there is used (or a plain navy backdrop if none).
@@ -5307,6 +5411,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/commentary/test":
             if not self._check_token(): return
+            if not self._check_rate_limit(path): return
             try:
                 st = load_state()
                 demo_state = {
@@ -5331,11 +5436,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
     def do_POST(self):
-        if not self._check_token():
-            return
         path   = urlparse(self.path).path
         length = int(self.headers.get("Content-Length",0))
         body   = self.rfile.read(length)
+
+        if path == "/login":
+            self._handle_login(body)
+            return
+
+        if not self._check_token():
+            return
 
         if path == "/state":
             try:
@@ -5468,6 +5578,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok":False,"error":str(exc)})
 
         elif path == "/commentary/test":
+            if not self._check_rate_limit(path): return
             try:
                 st = load_state()
                 demo_state = {
