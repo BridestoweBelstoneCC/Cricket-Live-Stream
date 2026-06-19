@@ -209,9 +209,9 @@ In the control panel, open **Squad Roster** and enter one player per line, mappi
 **shirt number** to their **full name**:
 
 ```
-21 = Patrick Ewen
-28 = Peter Ewen
-14 = David Ewen
+21 = John  Smith
+28 = Steve Smith
+14 = Bob Smith
 ```
 
 The PCS Pro template sends each batter's shirt number alongside their name, so the overlay
