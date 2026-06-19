@@ -24,13 +24,13 @@ moment the batter faces a ball, so it never lingers.
 - If no photo is found, the card shows the player's initials instead — it never breaks.
 
 ### Squad roster — brothers and duplicate accounts, solved
-NV Play sends surnames only, so two brothers both read as "Ewen", and a player with more
+NV Play sends surnames only, so two brothers both read as "Smith", and a player with more
 than one PlayCricket account can show up twice. The new **Squad Roster** in the control
 panel maps shirt numbers to full names:
 
 ```
-21 = Patrick Ewen
-28 = Peter Ewen
+21 = Steve Smith
+28 = John Smith
 ```
 
 The template now sends each batter's shirt number, so the overlay uses the number to pick
