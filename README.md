@@ -24,7 +24,7 @@ Professional cricket broadcast graphics cost thousands of pounds a season. Small
 
 CricketStream Overlay changes that. It gives any club — regardless of budget — the same quality of live graphics you see on broadcast cricket, driven by the scoring software your scorer already uses.
 
-**All you need is a camera.**
+**All you need is a camera, a laptop and an internet connection.**
 
 ---
 
