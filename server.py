@@ -32,7 +32,7 @@ PCS Pro setup (scorer's laptop):
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
-import json, os, re, glob, time, hashlib, threading, base64, datetime, subprocess
+import json, os, re, glob, time, hashlib, hmac, threading, base64, datetime, subprocess
 
 # Mac SSL fix — use certifi certificates to avoid CERTIFICATE_VERIFY_FAILED errors
 try:
@@ -52,6 +52,22 @@ import sqlite3
 from urllib.parse import urlparse, urlencode
 
 SERVER_START_TIME = time.time()
+
+# ── Auth token ───────────────────────────────────────────────
+# Loaded from config.ini [Auth] control_token at startup.
+# Empty string means auth is disabled (safe on localhost).
+_CONTROL_TOKEN = ""
+
+def _load_control_token():
+    global _CONTROL_TOKEN
+    import configparser as _cp
+    cfg = _cp.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+        _CONTROL_TOKEN = cfg.get("Auth", "control_token", fallback="").strip()
+
+_load_control_token()
 
 # ── Commentary state ──────────────────────────────────────────
 # Stores the latest AI-generated commentary line and triggers
@@ -2865,6 +2881,39 @@ CONTROL_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+
+<!-- ── Auth overlay — shown on first visit or after token rejection ── -->
+<div id="auth-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.97);
+     z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:32px 28px;
+       width:100%;max-width:380px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      CONTROL PANEL
+    </div>
+    <h2 style="font-size:15px;color:#e8edf2;margin-bottom:6px;">Enter control token</h2>
+    <p style="font-size:12px;color:#5b9bd5;margin-bottom:20px;">
+      Set in <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">config.ini</code>
+      under <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">[Auth]</code>
+    </p>
+    <input type="password" id="auth-input" placeholder="control_token value"
+           style="width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:6px;
+                  color:#e8edf2;font-size:14px;padding:10px 12px;outline:none;
+                  margin-bottom:10px;font-family:monospace;"
+           onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()"
+            style="width:100%;padding:11px;border:none;border-radius:6px;font-size:14px;
+                   font-weight:700;cursor:pointer;background:#1a5fa8;color:#fff;margin-bottom:8px;">
+      Unlock
+    </button>
+    <p id="auth-error" style="font-size:12px;color:#f44336;margin-bottom:10px;display:none;"></p>
+    <button onclick="doSkip()"
+            style="background:none;border:none;font-size:11px;color:#3d5a7a;cursor:pointer;
+                   text-decoration:underline;">
+      No token configured? Click to continue
+    </button>
+  </div>
+</div>
+
 <header>
   <div class="badge">BB</div>
   <h1>Stream Control Panel<span>Bridestowe &amp; Belstone CC</span></h1>
@@ -3481,6 +3530,53 @@ CONTROL_HTML = """<!DOCTYPE html>
 <script>
 const PRESETS = """ + json.dumps(KIT_PRESETS) + """;
 
+// ── Auth helpers ─────────────────────────────────────────────
+// sessionStorage key 'bbcc_token' holds the control token for this tab session.
+// null  = not yet set (show login overlay on load)
+// ''    = user skipped (no auth configured on server)
+// value = token to send as Authorization: Bearer
+function getToken() { return sessionStorage.getItem('bbcc_token'); }
+
+async function apiFetch(url, opts) {
+  const t = getToken();
+  const baseHeaders = (opts && opts.headers) ? opts.headers : {'Content-Type':'application/json'};
+  const h = Object.assign({}, baseHeaders);
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(url, Object.assign({}, opts, {headers: h}));
+  if (r.status === 401) showLoginOverlay('Token rejected — enter it again');
+  return r;
+}
+
+function showLoginOverlay(msg) {
+  const ov  = document.getElementById('auth-overlay');
+  const err = document.getElementById('auth-error');
+  if (ov)  ov.style.display  = 'flex';
+  if (err) { err.textContent = msg || ''; err.style.display = msg ? 'block' : 'none'; }
+  setTimeout(function(){ const i = document.getElementById('auth-input'); if (i) i.focus(); }, 50);
+}
+
+function doLogin() {
+  const val = (document.getElementById('auth-input').value || '').trim();
+  if (!val) {
+    const e = document.getElementById('auth-error');
+    if (e) { e.textContent = 'Enter the token first'; e.style.display = 'block'; }
+    return;
+  }
+  sessionStorage.setItem('bbcc_token', val);
+  document.getElementById('auth-overlay').style.display = 'none';
+}
+
+function doSkip() {
+  sessionStorage.setItem('bbcc_token', '');
+  document.getElementById('auth-overlay').style.display = 'none';
+}
+
+// Show login overlay on first load if no token is stored for this session.
+// Script is at the bottom of <body> so the DOM is ready — no DOMContentLoaded needed.
+if (getToken() === null) {
+  document.getElementById('auth-overlay').style.display = 'flex';
+}
+
 function buildPresets(cId, hexId, swId) {
   const container = document.getElementById(cId);
   const hex       = document.getElementById(hexId);
@@ -3585,7 +3681,7 @@ function rosterToText(r) {
 }
 async function loadRoster() {
   try {
-    var s = await (await fetch('/state')).json();
+    var s = await (await apiFetch('/state')).json();
     var ta = document.getElementById('roster-text');
     if (ta) ta.value = rosterToText(s.roster || {});
   } catch(e){}
@@ -3596,7 +3692,7 @@ async function saveRoster() {
   if (!ta) return;
   var roster = parseRosterText(ta.value);
   try {
-    await fetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
+    await apiFetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
                            body: JSON.stringify({roster: roster})});
     var n = Object.keys(roster).length;
     if (st){ st.textContent = '\u2713 Saved ' + n + ' players'; st.style.color = '#34c759'; }
@@ -3604,7 +3700,7 @@ async function saveRoster() {
 }
 
 async function loadLogoOptions() {  try {
-    const d = await (await fetch('/logos/list')).json();
+    const d = await (await apiFetch('/logos/list')).json();
     const opts = '<option value="">— pick a logo —</option>'
       + (d.logos||[]).map(function(l){ return '<option value="'+l.id+'">'+l.file+'</option>'; }).join('');
     ['home','away'].forEach(function(side){
@@ -3620,16 +3716,16 @@ async function applyBadgePick(side) {
   const field = (side === 'home') ? 'home_club_id' : 'away_club_id';
   try {
     // Partial POST is safe now that /state merges. Preserves everything else.
-    await fetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
+    await apiFetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
                            body: JSON.stringify({[field]: sel.value})});
-    const s = await (await fetch('/state')).json();
+    const s = await (await apiFetch('/state')).json();
     checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
     showStatus((side==='home'?'Home':'Away')+' badge set to '+sel.value, 'ok');
   } catch(e) { showStatus('Could not set badge: '+e.message, 'err'); }
 }
 
 async function loadState() {
-  const s = await (await fetch('/state')).json();
+  const s = await (await apiFetch('/state')).json();
   FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   BOOL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.checked=!!s[id]; });
@@ -3654,7 +3750,7 @@ async function saveState() {
   if (!state.obs_replay_scene) state.obs_replay_scene = 'Replay';
   if (!state.replay_duration)  state.replay_duration  = 18;
   try {
-    const res = await fetch('/state', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    const res = await apiFetch('/state', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
     showStatus(res.ok ? 'Saved — overlay updates on its next poll' : 'Error saving', res.ok?'ok':'err');
     if (res.ok) updatePreview();
   } catch(e) { showStatus('Could not reach server: '+e.message,'err'); }
@@ -3663,7 +3759,7 @@ async function saveState() {
 async function testReplay() {
   showStatus('Triggering test replay...','ok');
   try {
-    const res = await fetch('/replay', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Test'})});
+    const res = await apiFetch('/replay', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Test'})});
     const d = await res.json();
     showStatus(d.ok ? 'Replay triggered — check OBS' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
   } catch(e) { showStatus('Could not reach server','err'); }
@@ -3679,7 +3775,7 @@ async function updateYouTubeTitle() {
   const tmpl = document.getElementById('youtube_title_template').value;
   showStatus('Updating YouTube title...','ok');
   try {
-    const res = await fetch('/youtube/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:tmpl})});
+    const res = await apiFetch('/youtube/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:tmpl})});
     const d = await res.json();
     showStatus(d.ok ? d.title : 'Error: '+(d.error||'unknown'), d.ok?'ok':'err');
   } catch(e) { showStatus('Could not reach server','err'); }
@@ -3689,12 +3785,12 @@ async function showWeather() {
   const prev = document.getElementById('weather-preview');
   prev.textContent = 'Fetching...'; prev.style.color='#5b9bd5';
   try {
-    const res  = await fetch('/weather');
+    const res  = await apiFetch('/weather');
     const data = await res.json();
     if (data.ok) {
       prev.textContent = `${data.icon} ${data.temp}°C · ${data.description} · Wind ${data.wind} · Humidity ${data.humidity}%`;
       prev.style.color = '#4caf50';
-      await fetch('/weather/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      await apiFetch('/weather/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     } else {
       prev.textContent = 'Error: ' + (data.error||'unknown');
       prev.style.color = '#f44336';
@@ -3704,13 +3800,13 @@ async function showWeather() {
 
 async function showScorecard() {
   try {
-    await fetch('/scorecard/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    await apiFetch('/scorecard/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     showStatus('Scorecard showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 async function showPlayerCards() {
   try {
-    await fetch('/cards/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    await apiFetch('/cards/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     showStatus('Player cards showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
@@ -3724,7 +3820,7 @@ async function addCameraToObs() {
   try {
     await saveState();   // make sure the URL/name are persisted before we call OBS
     const name = (document.getElementById('obs_camera_name') || {}).value || '';
-    const d = await (await fetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim(), name:name.trim()})})).json();
+    const d = await (await apiFetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim(), name:name.trim()})})).json();
     if (msg) { msg.textContent = (d.ok ? '\u2713 ' : '\u2717 ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
   } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
 }
@@ -3735,7 +3831,7 @@ async function loadDataStatus() {
   const box = document.getElementById('data-status');
   if (!box) return;
   try {
-    const d = await (await fetch('/data/status')).json();
+    const d = await (await apiFetch('/data/status')).json();
     if (!d.ok) { box.textContent = 'Database error: ' + (d.error || ''); return; }
     _latestMatchId = (d.recent && d.recent[0]) ? d.recent[0].match_id : '';
     let html = '<b>' + (d.balls || 0).toLocaleString() + '</b> balls logged across <b>'
@@ -3757,7 +3853,7 @@ async function reconcileMatch() {
   if (msg) { msg.textContent = 'Reconciling with PlayCricket…'; msg.style.color = '#5b9bd5'; }
   try {
     const body = JSON.stringify(_latestMatchId ? { match_id: _latestMatchId } : {});
-    const d = await (await fetch('/data/reconcile', {method:'POST',headers:{'Content-Type':'application/json'},body:body})).json();
+    const d = await (await apiFetch('/data/reconcile', {method:'POST',headers:{'Content-Type':'application/json'},body:body})).json();
     if (d.ok) { if (msg) { msg.textContent = 'Reconciled \u2713 ' + (d.result || '') + ' (' + d.innings + ' innings)'; msg.style.color = '#3fb950'; } loadDataStatus(); }
     else { if (msg) { msg.textContent = d.error || 'Could not reconcile'; msg.style.color = '#f85149'; } }
   } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
@@ -3768,7 +3864,7 @@ function exportLatestCsv() {
   window.open('/data/export?match_id=' + encodeURIComponent(_latestMatchId), '_blank');
 }
 async function hideWeather() {
-  await fetch('/weather/hide', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await apiFetch('/weather/hide', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   const prev = document.getElementById('weather-preview');
   prev.textContent = 'Weather widget hidden'; prev.style.color='#3d5a7a';
 }
@@ -3777,7 +3873,7 @@ async function compileHighlights() {
   const st = document.getElementById('highlights-status');
   st.textContent = 'Compiling... this may take a minute.'; st.style.color='#5b9bd5';
   try {
-    const res = await fetch('/highlights', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const res = await apiFetch('/highlights', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d = await res.json();
     st.textContent = d.ok ? 'Done — ' + d.output : 'Error: ' + (d.error||'unknown');
     st.style.color = d.ok ? '#4caf50' : '#f44336';
@@ -3791,7 +3887,7 @@ async function generateReport(type) {
   st.textContent = ''; st.style.color = '#3d5a7a';
   try {
     const url = '/report/generate' + (type==='social' ? '?type=social' : '');
-    const d = await (await fetch(url)).json();
+    const d = await (await apiFetch(url)).json();
     if (d.ok) {
       out.value = d.text;
       st.textContent = 'Generated ' + new Date().toLocaleTimeString() + ' · edit before posting';
@@ -3828,7 +3924,7 @@ async function loadSocialPhotos() {
   const box = document.getElementById('social-photos');
   if (!box) return;
   try {
-    const d = await (await fetch('/social/photos')).json();
+    const d = await (await apiFetch('/social/photos')).json();
     if (d.photos && d.photos.length) {
       box.innerHTML = '<p class="hint" style="margin-bottom:6px;">Photos in your socials folder ('
         + d.photos.length + ') — attach one when posting:</p>'
@@ -3845,7 +3941,7 @@ async function loadSocialPhotos() {
   try {
     const sel = document.getElementById('ig-photo');
     if (sel) {
-      const d2 = await (await fetch('/social/photos')).json();
+      const d2 = await (await apiFetch('/social/photos')).json();
       const cur = sel.value;
       sel.innerHTML = '<option value="">Newest photo in socials folder</option>'
         + (d2.photos || []).map(function(p){
@@ -3861,7 +3957,7 @@ async function loadRecentMatches() {
   const status = document.getElementById('ig-status');
   if (status) { status.textContent = 'Loading recent results from PlayCricket…'; status.style.color = '#5b9bd5'; }
   try {
-    const d = await (await fetch('/social/recent')).json();
+    const d = await (await apiFetch('/social/recent')).json();
     if (!d.ok) { if (status) { status.textContent = d.error || 'Could not load results'; status.style.color = '#f85149'; } return; }
     _matchTeams = {};
     (d.matches || []).forEach(function(m){ _matchTeams[m.id] = m.team_key || ''; });
@@ -3883,7 +3979,7 @@ async function onMatchPick() {
   try {
     const sel = document.getElementById('ig-photo');
     if (!sel) return;
-    const d = await (await fetch('/social/photos?team=' + encodeURIComponent(team))).json();
+    const d = await (await apiFetch('/social/photos?team=' + encodeURIComponent(team))).json();
     const label = team ? ('Newest photo in socials/' + team) : 'Newest photo in socials folder';
     sel.innerHTML = '<option value="">' + label + '</option>'
       + (d.photos || []).map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
@@ -3905,7 +4001,7 @@ async function generateIgGraphic() {
     if (matchId) params.push('match_id=' + encodeURIComponent(matchId));
     if (team)    params.push('team='     + encodeURIComponent(team));
     const url = '/social/image/generate' + (params.length ? ('?' + params.join('&')) : '');
-    const res = await fetch(url);   // GET — the endpoint reads ?photo= and ignores any body
+    const res = await apiFetch(url);   // GET — the endpoint reads ?photo= and ignores any body
     // Parse defensively: an empty or non-JSON body should give a readable error,
     // not a cryptic "Unexpected end of JSON input".
     const text = await res.text();
@@ -3952,7 +4048,7 @@ async function refreshSeasonStats() {
   const s = document.getElementById('season-stats-status');
   if (s) { s.textContent = 'Pulling this season\u2019s scorecards from PlayCricket (one-off, please wait)\u2026'; s.style.color = '#8060a0'; }
   try {
-    const res = await fetch('/player/stats/refresh?force=1');   // GET — endpoint lives in do_GET
+    const res = await apiFetch('/player/stats/refresh?force=1');   // GET — endpoint lives in do_GET
     const text = await res.text();
     let d;
     try { d = JSON.parse(text); }
@@ -3976,7 +4072,7 @@ async function testCommentary() {
   const meta = document.getElementById('commentary-meta');
   if (prev) { prev.textContent = 'Generating...'; prev.style.color='#8060a0'; }
   try {
-    const res = await fetch('/commentary/test', {method:'POST',
+    const res = await apiFetch('/commentary/test', {method:'POST',
       headers:{'Content-Type':'application/json'}, body:'{}'});
     const d = await res.json();
     if (d.ok) {
@@ -3990,7 +4086,7 @@ async function testCommentary() {
 
 async function pollCommentary() {
   try {
-    const data = await (await fetch('/commentary/latest')).json();
+    const data = await (await apiFetch('/commentary/latest')).json();
     const prev = document.getElementById('commentary-preview');
     const meta = document.getElementById('commentary-meta');
     if (data.text && prev) {
@@ -4010,7 +4106,7 @@ async function updatePCSMonitor() {
   try {
     const ctrl = new AbortController();
     const tout = setTimeout(() => ctrl.abort(), 8000);
-    const res  = await fetch('/live', {signal: ctrl.signal});
+    const res  = await apiFetch('/live', {signal: ctrl.signal});
     clearTimeout(tout);
     const data = await res.json();
 
@@ -4150,7 +4246,7 @@ async function fetchTodaysMatch() {
   result_el.style.color  = '#5b9bd5';
 
   try {
-    const res  = await fetch('/match/fetch');
+    const res  = await apiFetch('/match/fetch');
     const data = await res.json();
 
     if (!data.ok) {
@@ -4276,7 +4372,7 @@ async function autoCheck() {
   if (!saved['server']) { saved['server'] = true; changed = true; }
 
   try {
-    const s = await (await fetch('/state')).json();
+    const s = await (await apiFetch('/state')).json();
     const hasOpp = !!(s.away_team && s.away_team !== 'Opposition CC');
     const hasPCS = !!(s.pcs_output_folder && s.pcs_output_folder.trim());
     if (hasOpp !== !!saved['opp']) { saved['opp'] = hasOpp; changed = true; }
@@ -4285,7 +4381,7 @@ async function autoCheck() {
 
   // Live data coming in → scorer has started
   try {
-    const live = await (await fetch('/live')).json();
+    const live = await (await apiFetch('/live')).json();
     if (live.state && live.state.score > 0 && !saved['scorer']) {
       saved['scorer'] = true; changed = true;
     }
@@ -4309,14 +4405,14 @@ const src   = document.getElementById('status-source');
 
 async function checkLiveStatus() {
   console.log('[CP] checkLiveStatus called at', new Date().toLocaleTimeString());
-  const s = await (await fetch('/state').catch(()=>null))?.json().catch(()=>null);
+  const s = await (await apiFetch('/state').catch(()=>null))?.json().catch(()=>null);
   if (!s) { console.error('checkLiveStatus: /state fetch failed'); return; }
   console.log('checkLiveStatus: state ok, fetching /live...');
 
   try {
     const ctrl = new AbortController();
     const tout = setTimeout(() => ctrl.abort(), 8000);
-    const res  = await fetch('/live', {signal: ctrl.signal});
+    const res  = await apiFetch('/live', {signal: ctrl.signal});
     clearTimeout(tout);
     const data = await res.json();
     console.log('checkLiveStatus: /live source =', data.source, 'state =', !!data.state);
@@ -4380,7 +4476,7 @@ setInterval(checkLiveStatus, 15000);
 // ── Server status / uptime polling ──────────────────────
 async function checkServerStatus() {
   try {
-    const res  = await fetch('/status');
+    const res  = await apiFetch('/status');
     const data = await res.json();
     document.getElementById('server-uptime').textContent = data.uptime || '—';
     document.getElementById('server-uptime').style.color = '#4caf50';
@@ -4408,7 +4504,7 @@ function hlSet(id, cls, text) {
 }
 async function pollHealth() {
   try {
-    var h = await (await fetch('/health')).json();
+    var h = await (await apiFetch('/health')).json();
     // Feed: green = fresh file, amber = found but stale (or demo), red = missing
     if (h.demo_mode) { hlSet('hl-feed','hl-warn','demo mode'); }
     else if (!h.pcs.folder_set) { hlSet('hl-feed','hl-bad','no folder set'); }
@@ -4535,6 +4631,23 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not found")
         except (BrokenPipeError, ConnectionResetError):
             pass  # Client disconnected mid-response (e.g. OBS scene switch) — harmless
+
+    def _check_token(self):
+        """Returns True if the request carries a valid control token (or auth is disabled)."""
+        if not _CONTROL_TOKEN:
+            return True
+        auth = self.headers.get("Authorization", "")
+        provided = auth[7:] if auth.startswith("Bearer ") else ""
+        if not provided:
+            for part in self.headers.get("Cookie", "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k.strip() == "control_token":
+                    provided = v.strip()
+                    break
+        if provided and hmac.compare_digest(provided.encode(), _CONTROL_TOKEN.encode()):
+            return True
+        self._json({"ok": False, "error": "Unauthorized"}, status=401)
+        return False
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -4685,6 +4798,7 @@ class Handler(BaseHTTPRequestHandler):
                         "keys": sorted(raw.keys()) if isinstance(raw, dict) and "error" not in raw else None})
 
         elif path == "/report/generate":
+            if not self._check_token(): return
             rtype = "report"
             if "?" in self.path and "type=social" in self.path:
                 rtype = "social"
@@ -4732,6 +4846,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": False, "error": str(e), "matches": []})
 
         elif path.startswith("/social/image/generate"):
+            if not self._check_token(): return
             # Build an Instagram result graphic: photo backdrop + AI-distilled match facts.
             # Optional ?photo=<filename> selects a backdrop from the socials folder;
             # otherwise the newest photo there is used (or a plain navy backdrop if none).
@@ -4934,6 +5049,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ready": True, "avg":"—", "hs":"—", "inn":"—"})
 
         elif path == "/player/stats/refresh":
+            if not self._check_token(): return
             # Build/ensure the season stats cache. ?force=1 forces a fresh pull (control-panel
             # button); without it, a same-day cache is reused so restarts don't re-hit the API.
             from urllib.parse import parse_qs
@@ -4949,6 +5065,7 @@ class Handler(BaseHTTPRequestHandler):
                         "error": res.get("error")})
 
         elif path == "/match/fetch":
+            if not self._check_token(): return
             # Fetch today's match from PlayCricket API and optionally auto-fill state
             s      = load_state()
             key    = s.get("playcricket_api_key","").strip()
@@ -4988,6 +5105,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": str(e)})
 
         elif path == "/save/test":
+            if not self._check_token(): return
             # Quick test: write a test value and read it back
             s = load_state()
             s["_save_test"] = "ok"
@@ -5174,6 +5292,7 @@ class Handler(BaseHTTPRequestHandler):
                         self._json({"source":"widget","state":None,"club_id":club_id})
 
         elif path == "/commentary/over/generate":
+            if not self._check_token(): return
             try:
                 d  = json.loads(body)
                 st = load_state()
@@ -5187,6 +5306,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok":False,"error":str(exc)})
 
         elif path == "/commentary/test":
+            if not self._check_token(): return
             try:
                 st = load_state()
                 demo_state = {
@@ -5211,6 +5331,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
     def do_POST(self):
+        if not self._check_token():
+            return
         path   = urlparse(self.path).path
         length = int(self.headers.get("Content-Length",0))
         body   = self.rfile.read(length)
