@@ -1,0 +1,21 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Generated at runtime — rebuilt automatically
+season_stats_cache.json
+*.log
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Ball-by-ball match database (generated locally)
+match_data.db
+match_data.db-*
+
+# Live settings (holds API keys/OBS password once configured) — use match_state.example.json
+match_state.json
+
+# Live club config (holds API keys / OBS password once filled in) — use config.example.ini
+config.ini
