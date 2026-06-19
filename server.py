@@ -60,16 +60,18 @@ SERVER_START_TIME = time.time()
 _CONTROL_TOKEN = ""
 _CLUB_PASSWORD = ""
 _SESSION_HOURS = 12
+_BIND_HOST     = "127.0.0.1"
 
 def _load_auth_config():
-    global _CONTROL_TOKEN, _CLUB_PASSWORD
+    global _CONTROL_TOKEN, _CLUB_PASSWORD, _BIND_HOST
     import configparser as _cp
     cfg = _cp.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
-        _CONTROL_TOKEN = cfg.get("Auth", "control_token", fallback="").strip()
-        _CLUB_PASSWORD = cfg.get("Auth", "club_password",  fallback="").strip()
+        _CONTROL_TOKEN = cfg.get("Auth",    "control_token", fallback="").strip()
+        _CLUB_PASSWORD = cfg.get("Auth",    "club_password", fallback="").strip()
+        _BIND_HOST     = cfg.get("Network", "bind_host",     fallback="127.0.0.1").strip()
 
 _load_auth_config()
 
@@ -4755,7 +4757,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin","*")
         self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers","Content-Type")
+        self.send_header("Access-Control-Allow-Headers","Content-Type,Authorization")
         self.end_headers()
 
     def do_GET(self):
@@ -5623,6 +5625,21 @@ if __name__ == "__main__":
         save_state(DEFAULT_STATE)
         print(f"  Created {STATE_FILE}\n")
 
+    remote_info = ""
+    if _BIND_HOST != "127.0.0.1":
+        ts_ip = None
+        try:
+            r = subprocess.run(["tailscale", "ip", "-4"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                ts_ip = r.stdout.strip()
+        except Exception:
+            pass
+        if ts_ip:
+            remote_info = f"\n  Tailscale remote → http://{ts_ip}:{PORT}/control"
+        else:
+            remote_info = f"\n  Listening on {_BIND_HOST}:{PORT} — use your device IP to connect remotely"
+
     print(f"""
   ╔══════════════════════════════════════════════════════╗
   ║   Bridestowe & Belstone CC — Stream Overlay Server   ║
@@ -5630,7 +5647,7 @@ if __name__ == "__main__":
   ║   Control panel  →  http://localhost:{PORT}/control     ║
   ║   OBS overlay    →  http://localhost:{PORT}/overlay     ║
   ╚══════════════════════════════════════════════════════╝
-
+{remote_info}
   {ws_status}
   {anthropic_status}
   Replay clips capped at {load_state().get('max_clips', MAX_CLIPS)} — oldest auto-deleted.
@@ -5642,7 +5659,7 @@ if __name__ == "__main__":
     # must never block the overlay's /live and /state polling. daemon_threads lets the
     # process exit cleanly without waiting on in-flight requests.
     db_init()   # ensure the ball-by-ball database exists
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    httpd = ThreadingHTTPServer((_BIND_HOST, PORT), Handler)
     httpd.daemon_threads = True
     try:
         httpd.serve_forever()
