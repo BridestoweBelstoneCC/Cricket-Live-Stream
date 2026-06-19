@@ -1,8 +1,9 @@
-# What's New in Version 2.0
+# What's New in Version 2 (2.0 → 2.1)
 
 CricketStream Overlay v2 is a big step up from the first release. The scorebar and
 core graphics are still there, but the broadcast now feels far closer to professional
 cricket coverage — and there are new tools that help you *after* the final ball, too.
+The latest point release, **v2.1**, is summarised first; the full v2.0 detail follows.
 
 Here's everything that's new.
 

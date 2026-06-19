@@ -1,10 +1,23 @@
 # CricketStream Overlay
 
+**Professional live stream overlays for grassroots cricket clubs — free, open source, and built for volunteers.**
+
+**Version 2.1** · Works on Windows and macOS · [What's new →](WHATS_NEW_V2.md)
+
 ---
 
-## Version 2.0 highlights
+## Version 2.1 highlights
 
-Version 2.0 turns the original scorebar into a full broadcast layer:
+Version 2.1 builds on the v2.0 broadcast layer with match intelligence, your own data, and easier setup:
+
+- **Ball-by-ball database** — every delivery is logged to a local SQLite file as you stream, building your own season-long dataset. Resilient to scorer edits, with one-click reconciliation against PlayCricket's published scorecard and CSV export.
+- **Standalone result posts** — generate a polished Instagram result graphic for *any* match, home or away, streamed or not. It works out the result and your top batter and bowler straight from the scorecard. Per-team and youth photo folders, with safeguarding defaults for juniors.
+- **Auto-detected moments** — season-best scores and team milestones fire automatically on the over summary and are woven into the AI commentary.
+- **Innings scorecard, spell tracker, and DLS par pill** — broadcast-style cards at the break, bowler spell figures, and a Duckworth-Lewis par guide when rain is forecast.
+- **One-click camera setup** — enter your camera's RTSP URL and the overlay adds it to OBS for you, so non-technical operators don't have to.
+- **Match-day sponsors** — every logo in your `sponsors/` folder appears on result posts, scaled to fit.
+
+### Version 2.0 foundation
 
 - **Player cards** with photos and **season batting stats** — for your players *and* the opposition, pulled live from PlayCricket.
 - **Squad roster** (shirt numbers) so brothers, same-surname players, and players with duplicate PlayCricket accounts always resolve to the right photo and the right stats.
@@ -24,7 +37,7 @@ Professional cricket broadcast graphics cost thousands of pounds a season. Small
 
 CricketStream Overlay changes that. It gives any club — regardless of budget — the same quality of live graphics you see on broadcast cricket, driven by the scoring software your scorer already uses.
 
-**All you need is a camera, a laptop and an internet connection.**
+**All you need is a camera.**
 
 ---
 
@@ -64,11 +77,19 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Replay transition** — full-screen animated transition before each replay.
 - **Highlights compiler** — stitches all replay clips into a post-match highlights reel automatically with FFmpeg.
 
+### Match data & social posts *(expanded in v2.1)*
+
+- **Ball-by-ball database** *(new in v2.1)* — every delivery is logged to a local SQLite file (`match_data.db`) as you stream: over, ball, batter, bowler, outcome, extras, and running score. The current over is rewritten live so a scorer's edits and deletions are captured, and completed overs freeze. A **Reconcile** button then pulls PlayCricket's published scorecard as the authoritative record, and any match can be **exported to CSV** for analysis. Your own season-long dataset, ready for spreadsheets or a notebook.
+- **Result posts for any match** *(new in v2.1)* — a "Load results" picker pulls your recent PlayCricket results (home or away, streamed or not). Pick one and it builds a polished 1080×1350 Instagram graphic, working out the result and your top batter and bowler directly from the scorecard. Optional AI caption (template fallback when offline).
+- **Per-team and youth photo folders** *(new in v2.1)* — backdrops are pulled from `socials/1st`, `socials/2nd`, `socials/3rd` per team, falling back to the main folder. All age-group sides route to `socials/youth`, which uses club stock photos and a discreet first-name + initial for player names — a safeguarding-conscious default for juniors.
+- **Match-day sponsors** *(new in v2.1)* — every logo in `sponsors/` appears on result posts, scaled to share the width, so adding a one-off match-day sponsor is just dropping in a file.
+
 ### Automation
 
 - **PlayCricket integration** — fetches today's fixture automatically, filling in opposition name, competition, umpires, and ground.
 - **NV Play / PCS Pro integration** — reads the scorer's output file directly, giving ball-by-ball data with batter names, bowler figures, run rate, and dismissal details.
 - **OBS auto-setup** — configures scenes, sources, and the replay buffer automatically on first run.
+- **One-click camera** *(new in v2.1)* — enter your camera's RTSP URL in the control panel and the overlay adds it to OBS as a media source for you, with auto-reconnect if the feed drops.
 - **YouTube title updater** — updates the stream title automatically when the match starts.
 - **Weather widget** — current conditions at the ground on demand or at the drinks break.
 
@@ -163,6 +184,10 @@ It lets you:
 | Highlights compiler | FFmpeg (free) |
 | AI over commentary | Anthropic API key |
 | AI match report & social posts | Anthropic API key |
+| Ball-by-ball database + CSV export | NV Play output file (logs as you stream) |
+| Result post for any past match | PlayCricket API key |
+| Per-team / youth social photo folders | `socials/1st`, `socials/2nd`, `socials/3rd`, `socials/youth` |
+| One-click RTSP camera into OBS | OBS WebSocket |
 | Auto match detection | PlayCricket API key |
 | YouTube title update | Google OAuth |
 | Club badges in scorebar | PNG/SVG files in `logos/` folder |
@@ -205,9 +230,9 @@ In the control panel, open **Squad Roster** and enter one player per line, mappi
 **shirt number** to their **full name**:
 
 ```
-21 = John  Smith
-28 = Steve Smith
-14 = Bob Smith
+21 = Patrick Ewen
+28 = Peter Ewen
+14 = David Ewen
 ```
 
 The PCS Pro template sends each batter's shirt number alongside their name, so the overlay
@@ -271,7 +296,8 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── install.bat / .sh          Package installers
 ├── requirements.txt           Python package list
 ├── config.ini                 Club configuration — edit this
-├── match_state.json           Auto-generated match settings
+├── match_state.example.json   Settings template — copied to match_state.json on first run
+├── match_data.db              Ball-by-ball database (created as you stream; git-ignored)
 ├── bbcc_scoreboard.template   NV Play output template
 ├── README.md                  This file
 ├── WHATS_NEW_V2.md            Version 2 release notes
@@ -279,12 +305,20 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── SETUP_GUIDE_MAC.md         Full Mac setup + troubleshooting
 ├── MAC_VM_SETUP.md            Mac + VMware Fusion guide
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
+├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide
 ├── logos/                     Club badge images (named by PlayCricket club ID)
-├── headshots/                 Player photos (named by surname)
+├── headshots/                 Player photos (named by surname or shirt number)
 ├── socials/                   Match photos for social posts
+│   ├── 1st/ 2nd/ 3rd/         Optional per-team photo folders
+│   └── youth/                 Stock photos for youth posts (safeguarding)
 └── sponsors/                  Sponsor logo images
 ```
+
+> **Note on `match_state.json`:** the live settings file holds your API keys and OBS
+> password once configured, so it is **git-ignored**. The repo ships
+> `match_state.example.json` as a safe template; the server creates `match_state.json`
+> from defaults on first run.
 
 ---
 
@@ -303,12 +337,17 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
-**v2.1** — Broadcast intelligence update. Auto-detected moments (season-best scores, team
-milestones) on the over summary and woven into the AI commentary; second-innings "at this
-stage" comparison; full innings scorecard at the break (requires the v2.1 scoreboard
-template); bowler spell tracker; DLS par score pill when rain is forecast; broadcast
-animation polish (spring entries, sweeping boundary banners, milestone count-ups); a
-control-panel health strip and a quickstart pre-flight check; threaded server; hardened
+**v2.1** — Broadcast intelligence & your own data. A local **ball-by-ball database**
+(SQLite) that logs every delivery as you stream, survives scorer edits, reconciles against
+PlayCricket's published scorecard, and exports to CSV. **Standalone result posts** for any
+match — home or away, streamed or not — with top batter/bowler worked out from the
+scorecard, per-team and youth photo folders (safeguarding defaults for juniors), and an
+all-sponsors strip. **One-click RTSP camera** setup into OBS. Auto-detected moments
+(season-best scores, team milestones) on the over summary and woven into the AI commentary;
+second-innings "at this stage" comparison; full innings scorecard at the break (requires the
+v2.1 scoreboard template); bowler spell tracker; DLS par score pill when rain is forecast;
+broadcast animation polish (spring entries, sweeping boundary banners, milestone count-ups);
+a control-panel health strip and a quickstart pre-flight check; threaded server; hardened
 security (secrets no longer readable from the browser, atomic state writes, escaped names).
 
 **v2.0** — Broadcast layer release. Player cards with photos and live PlayCricket season
@@ -327,9 +366,7 @@ replay via OBS, highlights compiler, PlayCricket fixture detection, and YouTube 
 
 ## Contributing
 
-Contributions welcome. If you add support for additional scoring software, fix bugs, or
-improve the overlay design, please open a pull request. If your club uses this and improves
-it for your own needs, please share the changes so other clubs can benefit.
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to get started. If you add support for additional scoring software, fix bugs, or improve the overlay design, please open a pull request. If your club uses this and improves it for your own needs, please share the changes so other clubs can benefit.
 
 ---
 
@@ -345,4 +382,4 @@ Streaming via OBS Studio.
 
 ## Licence
 
-See the `LICENCE` file in the repository. Free to use, modify, and distribute for your club.
+See the [`LICENSE`](LICENSE) file in the repository. Free to use, modify, and distribute for your club.
