@@ -1,0 +1,6 @@
+config.ini
+match_state.json
+match_data.db
+__pycache__/
+*.pyc
+.DS_Store
