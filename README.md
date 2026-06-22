@@ -1,5 +1,7 @@
 # CricketStream Overlay
 
+<img width="1889" height="1080" alt="Screenshot_20260622-154222~2" src="https://github.com/user-attachments/assets/9477ebc9-37aa-4f9f-ac28-f6baab3fd130" />
+
 **Professional live stream overlays for grassroots cricket clubs — free, open source, and built for volunteers.**
 
 **Version 2.1** · Works on Windows and macOS · [What's new →](WHATS_NEW_V2.md)
