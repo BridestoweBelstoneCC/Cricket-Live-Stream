@@ -4,6 +4,7 @@
 
 **Professional live stream overlays for grassroots cricket clubs — free, open source, and built for volunteers.**
 
+[![CI](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/actions/workflows/ci.yml/badge.svg)](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/actions/workflows/ci.yml)
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)

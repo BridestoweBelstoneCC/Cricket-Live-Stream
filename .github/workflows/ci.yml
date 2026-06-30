@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python compile check
+        run: python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); print('OK')"
+
+      - name: Extract and check control panel JS
+        run: |
+          python3 -c "
+          import re
+          s = open('server.py').read()
+          m = re.search(r'CONTROL_HTML\s*=\s*\"\"\"(.*?)\"\"\"', s, re.S)
+          open('/tmp/panel.js', 'w').write('\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', m.group(1), re.S)))
+          "
+          node --check /tmp/panel.js
