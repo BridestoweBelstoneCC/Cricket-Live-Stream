@@ -1193,6 +1193,65 @@ def save_state(s):
     _last_good_state = dict(s)
 
 
+def _seed_state_from_config():
+    """Copy config.ini values into match_state.json for fields still at empty/default.
+
+    Runs once at startup so operators who filled in config.ini (following the
+    example file) don't have to re-enter everything in the control panel.
+    Panel edits take precedence — once a field has been changed from its default,
+    config.ini no longer overwrites it.
+    """
+    import configparser as _cp
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if not os.path.exists(cfg_path):
+        return
+    cp = _cp.ConfigParser()
+    cp.read(cfg_path, encoding="utf-8")
+
+    # (ini_section, ini_key, state_field, type_cast)
+    MAPPING = [
+        ("Club",    "name",              "home_team",             str),
+        ("Club",    "abbreviation",      "home_abbrev",           str),
+        ("Club",    "home_colour",       "home_colour",           str),
+        ("Club",    "playcricket_id",    "home_club_id",          str),
+        ("Club",    "motto",             "replay_motto",          str),
+        ("API",     "playcricket_key",   "playcricket_api_key",   str),
+        ("API",     "anthropic_key",     "anthropic_api_key",     str),
+        ("Scoring", "pcs_output_folder", "pcs_output_folder",     str),
+        ("Scoring", "logos_folder",      "logos_folder",          str),
+        ("Scoring", "ground_filter",     "ground_filter",         str),
+        ("OBS",     "obs_password",      "obs_password",          str),
+        ("OBS",     "replay_folder",     "replay_folder",         str),
+        ("Stream",  "youtube_title",     "youtube_title_template", str),
+        ("Stream",  "max_overs",         "max_overs",             int),
+    ]
+
+    state = load_state()
+    seeded = []
+    for section, ini_key, field, cast in MAPPING:
+        try:
+            raw = cp.get(section, ini_key).strip()
+        except (_cp.NoSectionError, _cp.NoOptionError):
+            continue
+        if not raw:
+            continue
+        current = state.get(field)
+        default = DEFAULT_STATE.get(field)
+        if current == default or current == "" or current is None:
+            try:
+                state[field] = cast(raw)
+                seeded.append(field)
+            except (ValueError, TypeError):
+                pass
+
+    if seeded:
+        save_state(state)
+        visible   = [f for f in seeded if f not in SECRET_KEYS]
+        n_secrets = len(seeded) - len(visible)
+        parts = visible + ([f"{n_secrets} secret key(s)"] if n_secrets else [])
+        print(f"  ✔  Seeded from config.ini: {', '.join(parts)}")
+
+
 # ── PCS Pro local scoreboard reader ──────────────────────────
 # PCS Pro can output a JSON file locally on every ball.
 # This is far more reliable than any API — instant, no auth needed.
@@ -2836,7 +2895,19 @@ CONTROL_HTML = """<!DOCTYPE html>
   h1{font-size:17px;font-weight:700;color:#fff}
   h1 span{color:#5b9bd5;font-weight:400;font-size:12px;display:block;margin-top:2px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+  .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .side-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+  @media(max-width:768px){
+    body{padding:12px}
+    .grid,.split-grid,.half-grid,.side-grid{grid-template-columns:1fr}
+    .btn{padding:14px;font-size:15px;min-height:48px}
+    .btn-test,.btn-commentary{padding:12px;font-size:14px;min-height:44px;margin-top:6px}
+    .btn-row{flex-direction:column}
+    #live-status-bar{grid-template-columns:1fr !important}
+    h1{font-size:15px}
+  }
   .card{background:#152237;border:1px solid #1e3550;border-radius:9px;padding:16px}
   .pcs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:10px}
   .pcs-cell{background:#0a1628;border:1px solid #1e3550;border-radius:6px;padding:8px 10px}
@@ -3020,7 +3091,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     umpires, competition, and ground coordinates for weather.
     The API only works from your registered laptop.
   </p>
-  <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;margin-bottom:10px;">
+  <div class="split-grid" style="gap:10px;margin-bottom:10px;">
     <div class="field" style="margin-bottom:0">
       <label>PlayCricket API key</label>
       <input type="text" id="playcricket_api_key" placeholder="Paste your API key here">
@@ -3173,7 +3244,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     <!-- Club Badge Status -->
     <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.07);padding-top:16px;">
       <label style="font-size:11px;font-weight:700;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;display:block;margin-bottom:12px;">Club Badges</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="half-grid" style="gap:12px;">
 
         <!-- Home badge -->
         <div style="display:flex;align-items:center;gap:10px;background:#0d1e35;border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
@@ -3204,7 +3275,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       </div>
 
       <!-- Manual badge picker -->
-      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="half-grid" style="margin-top:12px;gap:12px;">
         <div>
           <label style="font-size:11px;color:#3d5a7a;display:block;margin-bottom:4px;">Home badge file</label>
           <select id="home-logo-pick" onchange="applyBadgePick('home')" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:7px;font-size:12px;box-sizing:border-box;">
@@ -3227,7 +3298,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     <label>Squad Roster — tells brothers apart</label>
     <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Ewen</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.ewen.png</code>). Enter it once per season.</p>
     <textarea id="roster-text" rows="8" placeholder="21 = Peter Ewen&#10;7 = James Ewen&#10;14 = Michael Ewen&#10;9 = Karl Burns&#10;23 = Jamie Burns" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
-    <button onclick="saveRoster()" style="margin-top:8px;">Save roster</button>
+    <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
     <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
   </div>
 
@@ -3314,7 +3385,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       <label>OBS WebSocket password</label>
       <input type="text" id="obs_password" placeholder="Set in OBS → Tools → WebSocket Server">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="half-grid">
       <div class="field">
         <label>OBS host</label>
         <input type="text" id="obs_host" placeholder="localhost">
@@ -3324,7 +3395,7 @@ CONTROL_HTML = """<!DOCTYPE html>
         <input type="number" id="obs_port" placeholder="4455" style="width:100%">
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="half-grid">
       <div class="field">
         <label>Main scene name</label>
         <input type="text" id="obs_main_scene" placeholder="Main">
@@ -3386,7 +3457,7 @@ CONTROL_HTML = """<!DOCTYPE html>
   <div class="card">
     <h2>Weather Widget</h2>
     <p class="section-note">Shows current conditions at Bridestowe in the top-left corner of the stream. Use during rain delays.</p>
-    <div style="display:flex;gap:8px;margin-top:4px;">
+    <div class="btn-row" style="margin-top:4px;">
       <button class="btn btn-test" onclick="showWeather()" style="flex:1;">&#9728; Show weather</button>
       <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
       <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
@@ -3399,7 +3470,7 @@ CONTROL_HTML = """<!DOCTYPE html>
   <div class="card" style="grid-column:1/-1;border-color:#2a6496;">
     <h2>&#128221; Match Report &amp; Social Posts</h2>
     <p class="section-note">Generate an AI-written match report or a short social media post from the match so far. Needs an Anthropic API key (set in the AI Commentary card). Best run at the end of the match.</p>
-    <div style="display:flex;gap:8px;margin-top:4px;">
+    <div class="btn-row" style="margin-top:4px;">
       <button class="btn btn-test" onclick="generateReport('report')" style="flex:1;">&#128240; Generate match report</button>
       <button class="btn btn-test" onclick="generateReport('social')" style="flex:1;">&#128241; Generate social post</button>
     </div>
@@ -3416,7 +3487,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       <p class="section-note">Builds a ready-to-post 1080&times;1350 image using a photo from your socials folder as the backdrop, with the result and key match facts laid over it. Needs an Anthropic API key.</p>
       <div class="field" style="margin-top:8px;">
         <label>Match <span style="color:#3d5a7a;font-weight:400;">(pick a past result, or use the streamed match)</span></label>
-        <div style="display:flex;gap:8px;">
+        <div class="split-grid">
           <select id="ig-match" onchange="onMatchPick()" style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:8px;font-size:13px;box-sizing:border-box;">
             <option value="">Streamed match (live data)</option>
           </select>
@@ -3436,7 +3507,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       <span id="ig-status" style="font-size:12px;color:#3d5a7a;display:block;margin-top:8px;"></span>
       <div id="ig-preview-wrap" style="display:none;margin-top:12px;">
         <img id="ig-preview" style="width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.1);" alt="Instagram graphic preview">
-        <div style="display:flex;gap:8px;margin-top:8px;">
+        <div class="btn-row" style="margin-top:8px;">
           <a id="ig-download" class="btn btn-test" download="bbcc_instagram.png" style="flex:1;text-align:center;text-decoration:none;">&#11015;&#65039; Download image</a>
           <button class="btn btn-test" onclick="copyIgCaption()" style="flex:1;">&#128203; Copy caption</button>
         </div>
@@ -3458,7 +3529,7 @@ CONTROL_HTML = """<!DOCTYPE html>
   </div>
 
   <!-- Highlights + PCS monitor side by side (full width row) -->
-  <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 2fr;gap:14px;">
+  <div class="side-grid" style="grid-column:1/-1;">
 
     <!-- Highlights compiler -->
     <div class="card">
@@ -3501,7 +3572,7 @@ CONTROL_HTML = """<!DOCTYPE html>
 </div>
 
 <!-- ── Live status bar ── -->
-<div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;">
+<div id="live-status-bar" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;">
 
   <div id="live-status" style="
     display:flex; align-items:center; gap:12px;
@@ -5625,6 +5696,8 @@ if __name__ == "__main__":
     if not os.path.exists(STATE_FILE):
         save_state(DEFAULT_STATE)
         print(f"  Created {STATE_FILE}\n")
+
+    _seed_state_from_config()
 
     remote_info = ""
     if _BIND_HOST != "127.0.0.1":
