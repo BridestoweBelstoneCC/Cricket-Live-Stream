@@ -158,8 +158,8 @@ The scoring software writes a file on every ball. The server reads it and sends 
 
 New to this? Read your platform's quick start first:
 
-- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](SETUP_GUIDE_WINDOWS.md) — starts with a 3-step fast path, full detail below it
-- **macOS:** [`SETUP_GUIDE_MAC.md`](SETUP_GUIDE_MAC.md) — starts with a 4-step fast path, full detail below it
+- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](Windows/SETUP_GUIDE_WINDOWS.md) — starts with a 3-step fast path, full detail below it
+- **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 4-step fast path, full detail below it
 - **No coding experience at all?** [`FOR_NON_TECHNICAL_USERS.md`](FOR_NON_TECHNICAL_USERS.md) walks you through every step in plain English.
 
 The short version:
@@ -315,7 +315,7 @@ for full instructions, including how to find opposition club IDs.
 | OBS streaming | yes | yes |
 | Installer / launcher | `install.bat` + `quickstart.bat` | `install.sh` + `quickstart.sh` |
 
-For Mac users running NV Play: see [`MAC_VM_SETUP.md`](MAC_VM_SETUP.md) for running NV Play
+For Mac users running NV Play: see [`MAC_VM_SETUP.md`](Mac/MAC_VM_SETUP.md) for running NV Play
 inside a free Windows virtual machine while streaming natively from macOS.
 
 ---
@@ -337,9 +337,17 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── bbcc_scoreboard.template   NV Play output template
 ├── README.md                  This file
 ├── WHATS_NEW_V2.md            Version 2 release notes
-├── SETUP_GUIDE_WINDOWS.md     Full Windows setup + troubleshooting
-├── SETUP_GUIDE_MAC.md         Full Mac setup + troubleshooting
-├── MAC_VM_SETUP.md            Mac + VMware Fusion guide
+├── Windows/
+│   ├── SETUP_GUIDE_WINDOWS.md Full Windows setup + troubleshooting
+│   ├── install.bat
+│   ├── quickstart.bat
+│   └── start_server.bat
+├── Mac/
+│   ├── SETUP_GUIDE_MAC.md     Full Mac setup + troubleshooting
+│   ├── MAC_VM_SETUP.md        Mac + VMware Fusion guide
+│   ├── install.sh
+│   ├── quickstart.sh
+│   └── start_server.sh
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide
