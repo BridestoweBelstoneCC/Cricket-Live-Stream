@@ -4,7 +4,32 @@
 
 **Professional live stream overlays for grassroots cricket clubs — free, open source, and built for volunteers.**
 
-**Version 2.1** · Works on Windows and macOS · [What's new →](WHATS_NEW_V2.md)
+[![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
+[![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
+[![Version](https://img.shields.io/badge/Version-2.1.1-green)](RELEASE_NOTES_v2.1.md)
+[![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
+
+---
+
+## Contents
+
+- [Version 2.1 highlights](#version-21-highlights)
+- [The problem](#the-problem)
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Control panel](#control-panel)
+- [Features at a glance](#features-at-a-glance)
+- [Player photos](#player-photos-new-in-v2)
+- [Squad roster](#squad-roster-new-in-v2)
+- [Club badges](#club-badges)
+- [Platform support](#platform-support)
+- [File structure](#file-structure)
+- [Cost comparison](#cost-comparison)
+- [Version history](#version-history)
+- [Contributing](#contributing)
 
 ---
 
