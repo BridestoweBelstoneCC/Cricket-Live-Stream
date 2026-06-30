@@ -1,9 +1,15 @@
 config.ini
 match_state.json
 match_data.db
+match_data.db-shm
+match_data.db-wal
 __pycache__/
 *.pyc
 .DS_Store
+
+# Runtime-generated files
+season_stats_cache.json
+yt_token.json
 
 # Club-specific asset folders (different for every club)
 sponsors/
