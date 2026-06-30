@@ -30,3 +30,12 @@ jobs:
           open('/tmp/panel.js', 'w').write('\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', m.group(1), re.S)))
           "
           node --check /tmp/panel.js
+
+      - name: Extract and check overlay JS
+        run: |
+          python3 -c "
+          import re
+          s = open('overlay.html').read()
+          open('/tmp/overlay.js', 'w').write('\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', s, re.S)))
+          "
+          node --check /tmp/overlay.js

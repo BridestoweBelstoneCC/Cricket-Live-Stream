@@ -165,12 +165,18 @@ New to this? Read your platform's quick start first:
 - **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 4-step fast path, full detail below it
 - **No coding experience at all?** [`FOR_NON_TECHNICAL_USERS.md`](FOR_NON_TECHNICAL_USERS.md) walks you through every step in plain English.
 
-The short version:
+**First time? One command does everything:**
 
 1. **Install Python** from [python.org](https://python.org/downloads). On Windows, tick **"Add Python to PATH"**.
-2. **Install packages** — Windows: double-click `install.bat`. Mac: run `install.sh`.
-3. **Configure** — edit `config.ini` with your club name, colour, PlayCricket ID, and the scorer's output folder.
-4. **Run** — Windows: double-click `quickstart.bat`. Mac: run `quickstart.sh`. Then open the control panel in your browser.
+2. **Run the setup wizard** — Windows: double-click `Windows/setup.bat`. Mac: run `Mac/setup.sh`.
+   It installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
+
+That's it. The wizard handles everything else interactively — no manual file editing needed.
+
+**Already set up? Match day:**
+
+- Windows: double-click `Windows/quickstart.bat`
+- Mac: run `Mac/quickstart.sh`
 
 ---
 
@@ -329,7 +335,8 @@ inside a free Windows virtual machine while streaming natively from macOS.
 /
 ├── server.py                  Main server — runs everything
 ├── overlay.html               OBS browser source overlay (1920x1080)
-├── quickstart.py              Auto-setup script
+├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
+├── quickstart.py              Match-day launcher script
 ├── obs_setup.py               OBS auto-configuration
 ├── requirements.txt           Python package list
 ├── config.example.ini         Club configuration template — copy to config.ini and fill in
@@ -337,13 +344,15 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── bbcc_scoreboard.template   NV Play output template
 ├── Windows/
 │   ├── SETUP_GUIDE_WINDOWS.md Full Windows setup + troubleshooting
-│   ├── install.bat            Package installer
+│   ├── setup.bat              First-time setup wizard launcher
+│   ├── install.bat            Package installer (advanced)
 │   ├── quickstart.bat         Match-day launcher
 │   └── start_server.bat       Server-only launcher
 ├── Mac/
 │   ├── SETUP_GUIDE_MAC.md     Full Mac setup + troubleshooting
 │   ├── MAC_VM_SETUP.md        Mac + VMware Fusion guide
-│   ├── install.sh             Package installer
+│   ├── setup.sh               First-time setup wizard launcher
+│   ├── install.sh             Package installer (advanced)
 │   ├── quickstart.sh          Match-day launcher
 │   └── start_server.sh        Server-only launcher
 ├── docs/                      GitHub Pages landing page
