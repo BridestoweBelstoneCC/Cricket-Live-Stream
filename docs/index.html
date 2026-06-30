@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CricketStream Overlay — Free live stream graphics for grassroots cricket</title>
+  <meta name="description" content="Professional live stream overlays for grassroots cricket clubs. Free, open source, and built for volunteers. Works with OBS, NV Play, and YouTube.">
+  <meta property="og:title" content="CricketStream Overlay">
+  <meta property="og:description" content="Professional live stream graphics for grassroots cricket. Free and open source.">
+  <meta property="og:image" content="https://repository-images.githubusercontent.com/BridestoweBelstoneCC/Cricket-Live-Stream">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #2a6e3f;
+      --green-dark: #1d5230;
+      --green-light: #e8f5ee;
+      --gold: #c9a233;
+      --text: #1a1a1a;
+      --muted: #555;
+      --border: #e0e0e0;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    a { color: var(--green); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--green-dark);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    nav .brand {
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: .3px;
+    }
+    nav .nav-links { display: flex; gap: 20px; }
+    nav .nav-links a {
+      color: rgba(255,255,255,.85);
+      font-size: .9rem;
+    }
+    nav .nav-links a:hover { color: #fff; text-decoration: none; }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(160deg, var(--green-dark) 0%, var(--green) 100%);
+      color: #fff;
+      padding: 64px 24px 48px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 800;
+      line-height: 1.15;
+      max-width: 700px;
+      margin: 0 auto 16px;
+    }
+    .hero p {
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      opacity: .9;
+      max-width: 580px;
+      margin: 0 auto 32px;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 13px 28px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover { opacity: .9; transform: translateY(-1px); text-decoration: none; }
+    .btn-primary { background: #fff; color: var(--green-dark); }
+    .btn-secondary { background: rgba(255,255,255,.15); color: #fff; border: 2px solid rgba(255,255,255,.4); }
+    .hero-screenshot {
+      max-width: min(960px, 100%);
+      margin: 0 auto;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.4);
+    }
+    .hero-screenshot img { display: block; width: 100%; height: auto; }
+
+    /* ── Sections ── */
+    section { padding: 64px 24px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    h2 {
+      font-size: clamp(1.4rem, 3vw, 1.9rem);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .section-intro {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 640px;
+      margin-bottom: 40px;
+    }
+
+    /* ── Feature grid ── */
+    .features { background: var(--green-light); }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 24px;
+      border: 1px solid var(--border);
+    }
+    .feature-icon { font-size: 1.8rem; margin-bottom: 10px; }
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .feature-card p { font-size: .9rem; color: var(--muted); }
+
+    /* ── How it works ── */
+    .steps { counter-reset: step; }
+    .step {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 28px;
+    }
+    .step-num {
+      background: var(--green);
+      color: #fff;
+      font-weight: 700;
+      font-size: .95rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .step p { font-size: .9rem; color: var(--muted); }
+
+    /* ── Requirements ── */
+    .reqs { background: #fafafa; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .req-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .req-card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+    .req-card h3 { font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 10px; }
+    .req-card ul { list-style: none; }
+    .req-card li { font-size: .9rem; padding: 3px 0; }
+    .req-card li::before { content: "✓ "; color: var(--green); font-weight: 700; }
+    .optional { color: var(--muted); font-size: .8rem; }
+
+    /* ── CTA ── */
+    .cta {
+      background: var(--green-dark);
+      color: #fff;
+      text-align: center;
+    }
+    .cta h2 { color: #fff; }
+    .cta p { opacity: .85; max-width: 500px; margin: 0 auto 32px; }
+    .platform-links {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .platform-link {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.25);
+      color: #fff;
+      border-radius: 8px;
+      padding: 16px 28px;
+      font-weight: 600;
+      font-size: .95rem;
+      transition: background .15s;
+    }
+    .platform-link:hover { background: rgba(255,255,255,.2); text-decoration: none; }
+    .platform-label { font-size: .75rem; opacity: .7; display: block; margin-top: 2px; font-weight: 400; }
+
+    /* ── Footer ── */
+    footer {
+      background: #111;
+      color: rgba(255,255,255,.5);
+      text-align: center;
+      padding: 28px 24px;
+      font-size: .85rem;
+    }
+    footer a { color: rgba(255,255,255,.7); }
+    footer a:hover { color: #fff; }
+
+    @media (max-width: 600px) {
+      nav .nav-links { display: none; }
+      .hero { padding: 48px 20px 36px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">🏏 CricketStream Overlay</span>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How it works</a>
+    <a href="#get-started">Get started</a>
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Professional live stream graphics for grassroots cricket</h1>
+  <p>Free, open source, and built for volunteers. Add a broadcast-quality scorebar, player cards, replays, and AI commentary to your YouTube stream — with the scoring software you already use.</p>
+  <div class="hero-buttons">
+    <a href="#get-started" class="btn btn-primary">Get started</a>
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="btn btn-secondary">View on GitHub</a>
+  </div>
+  <div class="hero-screenshot">
+    <img src="https://github.com/user-attachments/assets/9477ebc9-37aa-4f9f-ac28-f6baab3fd130" alt="CricketStream Overlay showing scorebar, player cards and over summary">
+  </div>
+</div>
+
+<section class="features" id="features">
+  <div class="container">
+    <h2>Everything your stream needs</h2>
+    <p class="section-intro">All the graphics you see on broadcast cricket, driven automatically by your scorer's laptop.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Live scorebar</h3>
+        <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate, and a ball-by-ball ticker — updates on every delivery.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎴</div>
+        <h3>Player cards</h3>
+        <p>Photo and season batting average slide in when a new batter arrives, pulled live from PlayCricket for both your side and the opposition.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎬</div>
+        <h3>Instant replays</h3>
+        <p>Wickets, boundaries, and milestones replay automatically via the OBS replay buffer, with a full-screen transition.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>AI commentary</h3>
+        <p>Optional Sky Sports-style analysis at the end of every over, generated live by Claude AI from the actual match situation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📸</div>
+        <h3>Result posts</h3>
+        <p>Generate a polished Instagram result graphic for any match — home or away — with top batter, bowler, and match-day sponsors.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <h3>Phone control panel</h3>
+        <p>Responsive control panel runs on any device over Wi-Fi. Manage the stream from your phone on the boundary.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗄️</div>
+        <h3>Ball-by-ball database</h3>
+        <p>Every delivery is logged to a local SQLite file as you stream — your own season-long dataset, exportable to CSV.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏏</div>
+        <h3>Full innings scorecard</h3>
+        <p>Broadcast-style card at the innings break with all batters, dismissals spelled out in full, and bowling figures.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌧️</div>
+        <h3>DLS par &amp; weather</h3>
+        <p>Live Duckworth-Lewis par score when rain is forecast. Drinks-break weather widget from Open-Meteo.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how-it-works">
+  <div class="container">
+    <h2>How it works</h2>
+    <p class="section-intro">Three pieces of free software, already working together in minutes.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>Scorer uses NV Play as normal</h3>
+          <p>The scoring software writes a file on every ball. Nothing changes for the scorer.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>The server reads it and processes the data</h3>
+          <p>A small Python server running on the streaming laptop reads the scorer's file every few seconds, parses the ball data, and serves it to the overlay.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>OBS mixes the overlay with your camera</h3>
+          <p>The overlay is a browser source inside OBS. It polls the server and renders all the graphics — OBS sends the combined picture to YouTube.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h3>Manage everything from the control panel</h3>
+          <p>Open <code>http://localhost:5000/control</code> in any browser — on the streaming laptop or your phone over Wi-Fi — to set opposition details, toggle graphics, and run replays.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="reqs">
+  <div class="container">
+    <h2>What you need</h2>
+    <p class="section-intro">All software is free. You probably already have most of this.</p>
+    <div class="req-grid">
+      <div class="req-card">
+        <h3>Hardware</h3>
+        <ul>
+          <li>Windows or macOS laptop</li>
+          <li>Camera (USB webcam or HDMI)</li>
+          <li>Internet connection</li>
+        </ul>
+      </div>
+      <div class="req-card">
+        <h3>Software (free)</h3>
+        <ul>
+          <li>OBS Studio</li>
+          <li>Python 3</li>
+          <li>NV Play / PCS Pro</li>
+        </ul>
+      </div>
+      <div class="req-card">
+        <h3>Optional</h3>
+        <ul>
+          <li>PlayCricket API key <span class="optional">(fixture detection)</span></li>
+          <li>Anthropic API key <span class="optional">(AI features)</span></li>
+          <li>FFmpeg <span class="optional">(highlights reel)</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta" id="get-started">
+  <div class="container">
+    <h2>Get started</h2>
+    <p>Pick your platform for the full setup guide — each starts with a fast path to get you streaming in under 30 minutes.</p>
+    <div class="platform-links">
+      <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/Windows/SETUP_GUIDE_WINDOWS.md" class="platform-link">
+        Windows
+        <span class="platform-label">setup guide →</span>
+      </a>
+      <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/Mac/SETUP_GUIDE_MAC.md" class="platform-link">
+        macOS
+        <span class="platform-label">setup guide →</span>
+      </a>
+      <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/FOR_NON_TECHNICAL_USERS.md" class="platform-link">
+        New to this?
+        <span class="platform-label">plain-English guide →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Built by <a href="https://bridestoweandbelstone.play-cricket.com/home">Bridestowe &amp; Belstone CC</a> · Devon Cricket League ·
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a> ·
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/LICENSE">GPL-3.0 licence</a>
+  </p>
+  <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) · AI features powered by Claude (Anthropic) · Weather via Open-Meteo · Streaming via OBS Studio</p>
+</footer>
+
+</body>
+</html>
