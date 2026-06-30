@@ -330,30 +330,30 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── server.py                  Main server — runs everything
 ├── overlay.html               OBS browser source overlay (1920x1080)
 ├── quickstart.py              Auto-setup script
-├── quickstart.bat / .sh       Launchers (Windows / Mac)
 ├── obs_setup.py               OBS auto-configuration
-├── install.bat / .sh          Package installers
 ├── requirements.txt           Python package list
-├── config.ini                 Club configuration — edit this
+├── config.example.ini         Club configuration template — copy to config.ini and fill in
 ├── match_state.example.json   Settings template — copied to match_state.json on first run
-├── match_data.db              Ball-by-ball database (created as you stream; git-ignored)
 ├── bbcc_scoreboard.template   NV Play output template
-├── README.md                  This file
-├── WHATS_NEW_V2.md            Version 2 release notes
 ├── Windows/
 │   ├── SETUP_GUIDE_WINDOWS.md Full Windows setup + troubleshooting
-│   ├── install.bat
-│   ├── quickstart.bat
-│   └── start_server.bat
+│   ├── install.bat            Package installer
+│   ├── quickstart.bat         Match-day launcher
+│   └── start_server.bat       Server-only launcher
 ├── Mac/
 │   ├── SETUP_GUIDE_MAC.md     Full Mac setup + troubleshooting
 │   ├── MAC_VM_SETUP.md        Mac + VMware Fusion guide
-│   ├── install.sh
-│   ├── quickstart.sh
-│   └── start_server.sh
+│   ├── install.sh             Package installer
+│   ├── quickstart.sh          Match-day launcher
+│   └── start_server.sh        Server-only launcher
+├── docs/                      GitHub Pages landing page
+├── README.md                  This file
+├── WHATS_NEW_V2.md            Version 2 release notes
+├── RELEASE_NOTES_v2.1.md      Version 2.1 release notes
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide
+├── SECURITY.md                Security policy
 ├── logos/                     Club badge images (named by PlayCricket club ID)
 ├── headshots/                 Player photos (named by surname or shirt number)
 ├── socials/                   Match photos for social posts
@@ -362,10 +362,10 @@ inside a free Windows virtual machine while streaming natively from macOS.
 └── sponsors/                  Sponsor logo images
 ```
 
-> **Note on `match_state.json`:** the live settings file holds your API keys and OBS
-> password once configured, so it is **git-ignored**. The repo ships
-> `match_state.example.json` as a safe template; the server creates `match_state.json`
-> from defaults on first run.
+> **`config.ini` and `match_state.json`** are git-ignored — they hold your API keys and
+> OBS password once configured. The repo ships `config.example.ini` and
+> `match_state.example.json` as safe templates. Copy `config.example.ini` to `config.ini`
+> and fill in your details; the server creates `match_state.json` from defaults on first run.
 
 ---
 

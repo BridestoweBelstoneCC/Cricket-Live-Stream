@@ -47,6 +47,12 @@ Please keep youth-related features conservative by default (for example, the you
 posts use club stock photos and discreet player names). If a change affects how children are
 named or shown, call it out clearly in your pull request.
 
+## Architecture notes
+
+- **Remote access:** [`REMOTE_ACCESS_PLAN.md`](REMOTE_ACCESS_PLAN.md) explains the design
+  constraints around LAN/Tailscale access — worth reading before touching anything
+  network-related.
+
 ## Licence
 
 By contributing, you agree that your contributions are licensed under the same
