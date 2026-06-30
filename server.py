@@ -1193,6 +1193,65 @@ def save_state(s):
     _last_good_state = dict(s)
 
 
+def _seed_state_from_config():
+    """Copy config.ini values into match_state.json for fields still at empty/default.
+
+    Runs once at startup so operators who filled in config.ini (following the
+    example file) don't have to re-enter everything in the control panel.
+    Panel edits take precedence — once a field has been changed from its default,
+    config.ini no longer overwrites it.
+    """
+    import configparser as _cp
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if not os.path.exists(cfg_path):
+        return
+    cp = _cp.ConfigParser()
+    cp.read(cfg_path, encoding="utf-8")
+
+    # (ini_section, ini_key, state_field, type_cast)
+    MAPPING = [
+        ("Club",    "name",              "home_team",             str),
+        ("Club",    "abbreviation",      "home_abbrev",           str),
+        ("Club",    "home_colour",       "home_colour",           str),
+        ("Club",    "playcricket_id",    "home_club_id",          str),
+        ("Club",    "motto",             "replay_motto",          str),
+        ("API",     "playcricket_key",   "playcricket_api_key",   str),
+        ("API",     "anthropic_key",     "anthropic_api_key",     str),
+        ("Scoring", "pcs_output_folder", "pcs_output_folder",     str),
+        ("Scoring", "logos_folder",      "logos_folder",          str),
+        ("Scoring", "ground_filter",     "ground_filter",         str),
+        ("OBS",     "obs_password",      "obs_password",          str),
+        ("OBS",     "replay_folder",     "replay_folder",         str),
+        ("Stream",  "youtube_title",     "youtube_title_template", str),
+        ("Stream",  "max_overs",         "max_overs",             int),
+    ]
+
+    state = load_state()
+    seeded = []
+    for section, ini_key, field, cast in MAPPING:
+        try:
+            raw = cp.get(section, ini_key).strip()
+        except (_cp.NoSectionError, _cp.NoOptionError):
+            continue
+        if not raw:
+            continue
+        current = state.get(field)
+        default = DEFAULT_STATE.get(field)
+        if current == default or current == "" or current is None:
+            try:
+                state[field] = cast(raw)
+                seeded.append(field)
+            except (ValueError, TypeError):
+                pass
+
+    if seeded:
+        save_state(state)
+        visible   = [f for f in seeded if f not in SECRET_KEYS]
+        n_secrets = len(seeded) - len(visible)
+        parts = visible + ([f"{n_secrets} secret key(s)"] if n_secrets else [])
+        print(f"  ✔  Seeded from config.ini: {', '.join(parts)}")
+
+
 # ── PCS Pro local scoreboard reader ──────────────────────────
 # PCS Pro can output a JSON file locally on every ball.
 # This is far more reliable than any API — instant, no auth needed.
@@ -5637,6 +5696,8 @@ if __name__ == "__main__":
     if not os.path.exists(STATE_FILE):
         save_state(DEFAULT_STATE)
         print(f"  Created {STATE_FILE}\n")
+
+    _seed_state_from_config()
 
     remote_info = ""
     if _BIND_HOST != "127.0.0.1":
