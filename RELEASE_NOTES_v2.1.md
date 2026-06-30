@@ -39,6 +39,17 @@ own, and easier setup for non-technical operators.
 - Secrets are redacted from browser-facing responses; scorer-controlled names are escaped.
 - A control-panel health strip and a quickstart pre-flight self-test.
 
+## Control panel improvements (post-release patches)
+
+- **Responsive control panel.** The panel stacks into a single column on narrow screens
+  (≤ 768 px) and uses larger, touch-friendly buttons — so a phone operator on Wi-Fi can
+  run the stream without pinching and zooming.
+- **config.ini auto-seeding.** `server.py` now reads all sections of `config.ini` on
+  startup (`[API]`, `[OBS]`, `[Scoring]`, `[Club]`, `[Stream]`) and pre-populates any
+  fields in `match_state.json` that are still at their defaults. API keys, club name, kit
+  colour, folder paths, and YouTube title template all load automatically — no need to
+  re-enter them in the control panel after a fresh install.
+
 ## Upgrading from v2.0
 
 1. Replace `server.py` and `overlay.html`.

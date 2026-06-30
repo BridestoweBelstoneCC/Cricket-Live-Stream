@@ -151,6 +151,15 @@ The short version:
 Once running, open the control panel in any browser on the same machine
 (`http://localhost:5000/control` on Windows, `http://127.0.0.1:5000/control` on Mac).
 
+**Using it from your phone or tablet:** if you set `bind_host = 0.0.0.0` in `config.ini`
+and your phone is on the same Wi-Fi, you can open the panel from any device at
+`http://<laptop-ip>:5000/control` (your laptop's local IP is shown in the terminal when
+the server starts). The panel is fully responsive and designed to work at phone-screen size.
+
+**API keys and settings load automatically from `config.ini`** — values you entered in
+`[API]`, `[OBS]`, `[Scoring]`, and `[Stream]` are seeded into the panel on first run.
+You do not need to re-enter them manually.
+
 It lets you:
 - Set opposition name and kit colour
 - **Pick club badges** for either team from a dropdown (no need to name files perfectly)
@@ -338,6 +347,8 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**v2.1.1** — **Responsive control panel** (stacks to a single column with touch-friendly buttons at phone width, so a Wi-Fi phone operator can run the stream comfortably). **config.ini auto-seeding** — `server.py` now reads all `config.ini` sections on startup and pre-populates any fields still at their defaults, so API keys, club name, kit colour, and folder paths load automatically without needing to re-enter them in the control panel.
 
 **v2.1** — Broadcast intelligence & your own data. A local **ball-by-ball database**
 (SQLite) that logs every delivery as you stream, survives scorer edits, reconciles against

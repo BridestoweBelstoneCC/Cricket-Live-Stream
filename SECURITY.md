@@ -15,16 +15,18 @@ disclosure.
 
 - API keys (Anthropic, PlayCricket) and your OBS WebSocket password are stored locally in
   `match_state.json`, which is **git-ignored** so it is never committed.
-- The control panel runs on `localhost` only and is intended for use on the streaming
-  machine. The server redacts secrets from its status responses, so they are not readable
-  from the browser.
+- The server redacts secrets from all browser-facing responses — they are never readable
+  from the control panel or any `/state` endpoint, whether accessed locally or over Wi-Fi.
 - The repository ships only placeholder configuration (`config.ini`,
   `match_state.example.json`) — no real credentials.
 
 ## Good practice for clubs running this
 
-- Keep the streaming machine's control panel on `localhost`; don't expose port 5000 to the
-  internet.
+- **Do not expose port 5000 to the internet.** Local network (Wi-Fi) access for phone
+  operators is supported and fine; public internet exposure is not.
+- **Plain HTTP on local Wi-Fi** means the session token is visible to anyone monitoring
+  the same network. This is an acceptable trade-off for a trusted home or club network;
+  use a password on your Wi-Fi and don't run match-day ops from a public hotspot.
 - Treat your API keys like passwords. If one is ever committed by accident, revoke and
   regenerate it.
 - The ball-by-ball database (`match_data.db`) contains match data only — no credentials —

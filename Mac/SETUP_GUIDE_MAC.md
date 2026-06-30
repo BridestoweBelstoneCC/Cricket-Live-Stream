@@ -224,7 +224,7 @@ Save and close.
 
 ## Step 7 — First run
 
-> ⚠️ **You must run `quickstart.sh` before `server.py`** on a fresh install. Quickstart reads your `config.ini` and builds `match_state.json`. If you run `server.py` directly first, the control panel will be empty and nothing will save.
+> **Tip:** `server.py` now reads `config.ini` on startup and populates the control panel automatically — so your club name, API keys, and other settings appear straight away whether you launch via `quickstart.sh` or `python3 server.py`. Running `quickstart.sh` is still recommended for match days as it also fetches today's fixture and checks OBS.
 
 Right-click `quickstart.sh` → **Open**. Or run from Terminal:
 ```bash
