@@ -11,6 +11,8 @@
 [![Version](https://img.shields.io/badge/Version-2.1.1-green)](RELEASE_NOTES_v2.1.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
+**[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
+
 ---
 
 ## Contents
