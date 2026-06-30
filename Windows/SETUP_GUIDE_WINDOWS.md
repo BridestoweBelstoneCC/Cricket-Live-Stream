@@ -7,8 +7,8 @@
 
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
-1. **Install** — get Python 3 from https://python.org/downloads (**tick "Add Python to PATH"**), then double-click **`install.bat`**. *(Once only.)*
-2. **Configure** — open **`config.ini`** in Notepad and fill in your club name, abbreviation, colour, and PlayCricket ID. *(Once only.)*
+1. **Install Python** — get Python 3 from https://python.org/downloads (**tick "Add Python to PATH"**). *(Once only.)*
+2. **Setup** — double-click **`setup.bat`**. It installs packages and walks you through your club details, creating `config.ini` for you. *(Once only.)*
 3. **Match day** — double-click **`quickstart.bat`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
@@ -39,29 +39,38 @@ Do not put it on the Desktop — Windows sometimes blocks scripts running from t
 
 ---
 
-## Step 2 — Install Python packages
+## Step 2 — Install Python packages and configure
 
-Double-click **`install.bat`**.
+Double-click **`setup.bat`**.
 
-This installs everything the software needs automatically. You should see:
+The setup wizard installs packages, then asks a few questions — your club name, kit colour, PlayCricket ID, and any API keys you have. It creates `config.ini` for you automatically.
+
 ```
-  Found: Python 3.x.x
-  Updating pip...
-  Installing packages...
-  All packages installed successfully.
+  ====================================================
+        CricketStream Overlay -- First-time Setup
+  ====================================================
+  --- Step 1 — Installing packages ------------------
+  Running: pip install -r requirements.txt
+  [OK] Packages installed.
+  --- Step 2 — Club details -------------------------
+  Club name  (required):
 ```
 
-If you see an error, try right-clicking `install.bat` and selecting **Run as administrator**.
+If package installation fails, try right-clicking `setup.bat` and selecting **Run as administrator**.
 
 You only need to do this once per laptop.
 
+> **Prefer to configure manually?** Run `install.bat` to install packages, then follow Step 3 to fill in `config.ini` by hand.
+
 ---
 
-## Step 3 — Edit config.ini
+## Step 3 — Review or edit config.ini (optional)
 
-Open `config.ini` in Notepad (right-click → Open with → Notepad).
+If you ran `setup.bat`, your `config.ini` was created automatically — you can skip straight to Step 4.
 
-Fill in the following — everything else can stay as-is:
+To review settings or make changes later, open `config.ini` in Notepad (right-click → Open with → Notepad).
+
+The main settings are:
 
 ```ini
 [Club]
@@ -380,8 +389,9 @@ See **`CLUB_LOGOS.md`** for full instructions and tips on finding club badges.
 
 | File | Purpose | Edit? |
 |---|---|---|
-| `config.ini` | Your club settings | ✅ Once |
-| `install.bat` | Installs Python packages | Run once |
+| `config.ini` | Your club settings | ✅ Once (created by setup.bat) |
+| `setup.bat` | First-time setup wizard (installs packages + creates config) | Run once |
+| `install.bat` | Manual package install (alternative to setup.bat) | Run once |
 | `quickstart.bat` | Starts everything | Run each match day |
 | `server.py` | Main server | Never |
 | `overlay.html` | OBS overlay graphics | Never |

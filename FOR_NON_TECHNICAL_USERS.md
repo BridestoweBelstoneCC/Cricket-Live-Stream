@@ -70,7 +70,7 @@ You only need to do this once.
 
 ## Step 3 — Download the cricket stream software
 
-1. Go to **https://github.com/bridestowebelstone/Open-Source-Cricket-Stream**
+1. Go to **https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream**
 2. Click the green **Code** button
 3. Click **Download ZIP**
 4. Open the ZIP and extract the folder somewhere permanent — your Documents folder is fine
@@ -79,70 +79,32 @@ You only need to do this once.
 
 ---
 
-## Step 4 — Install the packages
+## Step 4 — First-time setup
 
-This is a one-off step that gives Python everything it needs.
+This one-off wizard installs everything Python needs and creates your `config.ini` — no manual text editing required.
 
-**Windows:** Double-click **`install.bat`**
-A black window will appear and show some text. Wait for it to say **"All packages installed successfully"** then press any key.
+**Windows:** Double-click **`setup.bat`**
+**Mac:** Right-click **`setup.sh`** → Open → Open
 
-**Mac:** Right-click **`install.sh`** → Open → Open
-A window will appear. Wait for it to say **"All packages installed successfully"** then press Enter.
+A window opens and asks you a few questions:
 
-If anything goes wrong here, see the Troubleshooting section at the bottom.
+- **Club name** — your full club name as it will appear on screen
+- **Abbreviation** — a short version for the scorebar, max 6 characters (e.g. BBCC, TAUN, OKE)
+- **Home kit colour** — the hex code for your kit colour. Go to **htmlcolorcodes.com**, pick your colour, copy the code that starts with `#`
+- **PlayCricket club ID** — the number in your club's play-cricket.com URL
+- **PlayCricket API key** — email PlayCricket support to request one (it's free)
+- **NV Play output folder** — where your scorer's NV Play software saves its data (your scorer knows this — it's set in NV Play under Tools → Configuration → Scoreboard)
+- **OBS WebSocket password** — you'll set this in Step 5, then come back and update it if needed
 
----
+For anything you don't have yet, just press Enter to skip it — you can fill it in later via the control panel.
 
-## Step 5 — Fill in your club details
+When the wizard finishes, it offers to launch the server straight away.
 
-Open the file called **`config.ini`** — this is the only file you ever need to edit.
-
-**Windows:** Right-click → Open with → Notepad
-**Mac:** Right-click → Open with → TextEdit (then go Format → Make Plain Text)
-
-You'll see something like this:
-
-```
-[Club]
-name = Your Club CC
-abbreviation = YCC
-home_colour = #1a3a5c
-playcricket_id = 12345
-motto =
-```
-
-Change each line to match your club:
-
-**name** — Your club's full name as you want it to appear on screen
-
-**abbreviation** — A short version for the scorebar. Maximum 6 characters. For example: BBCC, TAUN, OKE
-
-**home_colour** — The hex code for your kit colour. To find yours:
-- Go to **htmlcolorcodes.com**
-- Click your kit colour on the colour wheel
-- Copy the code that starts with # (like #1a3a5c for navy)
-
-**playcricket_id** — The number that identifies your club on PlayCricket:
-- Go to play-cricket.com and find your club's page
-- Look at the URL — there will be a number in it. That's your ID.
-
-**motto** — Optional. Whatever you want to show on the replay screen (e.g. "Up the Stags"). Leave it blank to show nothing.
-
-Further down you'll also need to fill in:
-
-**playcricket_key** — Your PlayCricket API key. Email PlayCricket support to request one. It's free.
-
-**pcs_output_folder** — The folder where your scorer's NV Play software saves its data. Your scorer will know this — it's set inside NV Play under Tools → Configuration → Scoreboard.
-
-**obs_password** — You set this in OBS. See Step 6.
-
-**replay_folder** — Where you want replay clips saved. Create a folder called Replays in your Videos or Movies folder and paste the path here.
-
-Save and close the file when done.
+> If anything goes wrong during install, see the Troubleshooting section at the bottom.
 
 ---
 
-## Step 6 — Set up OBS
+## Step 5 — Set up OBS
 
 ### Turn on WebSocket (lets the software talk to OBS)
 
@@ -166,7 +128,7 @@ Save and close the file when done.
 
 ---
 
-## Step 7 — Set up your camera in OBS
+## Step 6 — Set up your camera in OBS
 
 1. In OBS, under **Sources** (bottom left), click the **+** button
 2. Select **Video Capture Device**
@@ -184,10 +146,7 @@ Save and close the file when done.
 2. **Windows:** Double-click **`quickstart.bat`**
    **Mac:** Double-click **`quickstart.sh`**
 
-   > ⚠️ **Always use quickstart — never run `server.py` directly.**
-   > Quickstart reads your `config.ini`, builds the settings file, and then starts
-   > the server. If you run `server.py` on its own first, the control panel will be
-   > empty and nothing will save correctly. Run quickstart once to fix it.
+   > ⚠️ **Always use quickstart on match days** — it finds today's fixture, checks OBS is ready, and starts the server. Running `server.py` directly skips those checks.
 
 3. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
 4. Open your browser and go to **http://127.0.0.1:5000/control**
@@ -266,9 +225,9 @@ For full details including where to find club badge images, see **`CLUB_LOGOS.md
 
 ## Troubleshooting
 
-### The black window closes immediately when I run install.bat
+### The black window closes immediately when I run setup.bat
 
-Right-click **`install.bat`** → **Run as administrator**
+Right-click **`setup.bat`** → **Run as administrator**
 
 ### It says "Python was not found"
 
@@ -301,7 +260,7 @@ Make sure the black command window (the server) is still open. If you closed it,
 If you're stuck, the full technical setup guides are in the Windows and Mac folders. They cover every setting in detail.
 
 For bugs or issues, raise them on GitHub:
-**https://github.com/bridestowebelstone/Open-Source-Cricket-Stream/issues**
+**https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues**
 
 Even if you've never used GitHub before, raising an issue is as simple as clicking New Issue and describing what's happening.
 

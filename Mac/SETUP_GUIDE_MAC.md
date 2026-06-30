@@ -8,8 +8,8 @@
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
 1. **Turn off AirPlay Receiver** (it blocks port 5000): System Settings → General → AirDrop & Handoff → AirPlay Receiver **off**. *(Once only.)*
-2. **Install** — get Python 3 from https://python.org/downloads, then right-click **`install.sh`** → Open. *(Once only.)*
-3. **Configure** — open **`config.ini`** in TextEdit (Format → Make Plain Text) and fill in your club name, abbreviation, colour, and PlayCricket ID. *(Once only.)*
+2. **Install Python** — get Python 3 from https://python.org/downloads, then run **Install Certificates.command** from the Python folder in Applications (see Step 2 for why this matters). *(Once only.)*
+3. **Setup** — right-click **`setup.sh`** → Open → Open. It installs packages and walks you through your club details, creating `config.ini` for you. *(Once only.)*
 4. **Match day** — double-click **`quickstart.sh`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
@@ -78,28 +78,21 @@ Go to **System Preferences → General → AirDrop & Handoff** and untick **AirP
 
 ---
 
-## Step 3 — Install Python packages
+## Step 3 — Install Python packages and configure
 
 In Finder, navigate to your BBCC Stream folder.
-Right-click `install.sh` → **Open** (you may need to click Open again when macOS warns about an unknown developer).
+Right-click **`setup.sh`** → **Open** → **Open** (macOS will warn about an unknown developer — click Open again to proceed).
 
-You should see:
-```
-  Found: Python 3.x.x
-  Updating pip...
-  Installing packages...
-  All packages installed successfully.
-  You can now run: ./quickstart.sh
-```
-
-You only need to do this once.
+The setup wizard installs packages, then asks a few questions — your club name, kit colour, PlayCricket ID, and any API keys you have. It creates `config.ini` for you automatically. You only need to run this once.
 
 If you see a permissions error, open Terminal and run:
 ```bash
 cd ~/Documents/BBCC\ Stream
-chmod +x install.sh quickstart.sh start_server.sh
-./install.sh
+chmod +x setup.sh install.sh quickstart.sh
+./setup.sh
 ```
+
+> **Prefer to configure manually?** Run `install.sh` to install packages, then follow Step 5 to fill in `config.ini` by hand.
 
 ---
 
@@ -116,13 +109,13 @@ brew install ffmpeg
 
 ---
 
-## Step 5 — Edit config.ini
+## Step 5 — Review or edit config.ini (optional)
 
-Open `config.ini` in TextEdit (right-click → Open With → TextEdit).
+If you ran `setup.sh`, your `config.ini` was created automatically — you can skip straight to Step 6.
 
-If TextEdit opens it in rich text mode, go to **Format → Make Plain Text** first.
+To review settings or make changes later, open `config.ini` in TextEdit (right-click → Open With → TextEdit). If TextEdit opens it in rich text mode, go to **Format → Make Plain Text** first.
 
-Fill in:
+The main settings are:
 ```ini
 [Club]
 name = Your Club CC               ← Your full club name
@@ -420,6 +413,7 @@ See **`CLUB_LOGOS.md`** for full instructions and tips on finding club badges.
 
 | Command | Purpose |
 |---|---|
+| `./setup.sh` | First-time setup (install packages + create config) |
 | `./quickstart.sh` | Start everything (match day) |
-| `./install.sh` | Install packages (first time only) |
+| `./install.sh` | Manual package install (alternative to setup.sh) |
 | `python3 server.py` | Start server only (advanced) |
