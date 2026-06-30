@@ -32,6 +32,7 @@ def ask(prompt, default="", required=False, secret=False):
     while True:
         if secret:
             import getpass
+            sys.stdout.flush()
             val = getpass.getpass(display).strip()
         else:
             val = input(display).strip()
