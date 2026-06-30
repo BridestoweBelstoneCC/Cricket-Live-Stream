@@ -15,7 +15,6 @@
       --green: #2a6e3f;
       --green-dark: #1d5230;
       --green-light: #e8f5ee;
-      --gold: #c9a233;
       --text: #1a1a1a;
       --muted: #555;
       --border: #e0e0e0;
@@ -45,8 +44,9 @@
       font-weight: 700;
       font-size: 1.05rem;
       letter-spacing: .3px;
+      white-space: nowrap;
     }
-    nav .nav-links { display: flex; gap: 20px; }
+    nav .nav-links { display: flex; gap: 20px; align-items: center; }
     nav .nav-links a {
       color: rgba(255,255,255,.85);
       font-size: .9rem;
@@ -57,8 +57,9 @@
     .hero {
       background: linear-gradient(160deg, var(--green-dark) 0%, var(--green) 100%);
       color: #fff;
-      padding: 64px 24px 48px;
+      padding: 72px 24px 0;
       text-align: center;
+      overflow: hidden;
     }
     .hero h1 {
       font-size: clamp(1.8rem, 5vw, 3rem);
@@ -68,9 +69,9 @@
       margin: 0 auto 16px;
     }
     .hero p {
-      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      font-size: clamp(1rem, 2.5vw, 1.15rem);
       opacity: .9;
-      max-width: 580px;
+      max-width: 520px;
       margin: 0 auto 32px;
     }
     .hero-buttons {
@@ -78,7 +79,7 @@
       gap: 12px;
       justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 48px;
+      margin-bottom: 52px;
     }
     .btn {
       display: inline-block;
@@ -92,12 +93,14 @@
     .btn:hover { opacity: .9; transform: translateY(-1px); text-decoration: none; }
     .btn-primary { background: #fff; color: var(--green-dark); }
     .btn-secondary { background: rgba(255,255,255,.15); color: #fff; border: 2px solid rgba(255,255,255,.4); }
+
     .hero-screenshot {
-      max-width: min(960px, 100%);
+      max-width: min(1100px, 100%);
       margin: 0 auto;
-      border-radius: var(--radius);
+      border-radius: 12px 12px 0 0;
       overflow: hidden;
-      box-shadow: 0 24px 64px rgba(0,0,0,.4);
+      box-shadow: 0 -4px 0 rgba(255,255,255,.15), 0 24px 80px rgba(0,0,0,.5);
+      position: relative;
     }
     .hero-screenshot img { display: block; width: 100%; height: auto; }
 
@@ -129,12 +132,12 @@
       padding: 24px;
       border: 1px solid var(--border);
     }
-    .feature-icon { font-size: 1.8rem; margin-bottom: 10px; }
+    .feature-icon { margin-bottom: 12px; }
+    .feature-icon svg { display: block; }
     .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
     .feature-card p { font-size: .9rem; color: var(--muted); }
 
     /* ── How it works ── */
-    .steps { counter-reset: step; }
     .step {
       display: grid;
       grid-template-columns: 40px 1fr;
@@ -178,19 +181,10 @@
     .optional { color: var(--muted); font-size: .8rem; }
 
     /* ── CTA ── */
-    .cta {
-      background: var(--green-dark);
-      color: #fff;
-      text-align: center;
-    }
+    .cta { background: var(--green-dark); color: #fff; text-align: center; }
     .cta h2 { color: #fff; }
     .cta p { opacity: .85; max-width: 500px; margin: 0 auto 32px; }
-    .platform-links {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
+    .platform-links { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
     .platform-link {
       background: rgba(255,255,255,.1);
       border: 1px solid rgba(255,255,255,.25);
@@ -215,27 +209,29 @@
     footer a { color: rgba(255,255,255,.7); }
     footer a:hover { color: #fff; }
 
+    /* ── Responsive ── */
     @media (max-width: 600px) {
-      nav .nav-links { display: none; }
-      .hero { padding: 48px 20px 36px; }
+      nav .nav-links a:not(.nav-github) { display: none; }
+      .hero { padding: 48px 20px 0; }
+      .hero p { font-size: .95rem; }
     }
   </style>
 </head>
 <body>
 
 <nav>
-  <span class="brand">🏏 CricketStream Overlay</span>
+  <span class="brand">&#127955; CricketStream Overlay</span>
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#how-it-works">How it works</a>
     <a href="#get-started">Get started</a>
-    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a>
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="nav-github">GitHub</a>
   </div>
 </nav>
 
 <div class="hero">
   <h1>Professional live stream graphics for grassroots cricket</h1>
-  <p>Free, open source, and built for volunteers. Add a broadcast-quality scorebar, player cards, replays, and AI commentary to your YouTube stream — with the scoring software you already use.</p>
+  <p>Broadcast-quality scorebar, player cards, replays, and AI commentary — free, open source, and built for volunteers.</p>
   <div class="hero-buttons">
     <a href="#get-started" class="btn btn-primary">Get started</a>
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="btn btn-secondary">View on GitHub</a>
@@ -250,51 +246,99 @@
     <h2>Everything your stream needs</h2>
     <p class="section-intro">All the graphics you see on broadcast cricket, driven automatically by your scorer's laptop.</p>
     <div class="feature-grid">
+
       <div class="feature-card">
-        <div class="feature-icon">📊</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/>
+          </svg>
+        </div>
         <h3>Live scorebar</h3>
         <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate, and a ball-by-ball ticker — updates on every delivery.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🎴</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
         <h3>Player cards</h3>
         <p>Photo and season batting average slide in when a new batter arrives, pulled live from PlayCricket for both your side and the opposition.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🎬</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="#2a6e3f" stroke="#2a6e3f"/>
+          </svg>
+        </div>
         <h3>Instant replays</h3>
         <p>Wickets, boundaries, and milestones replay automatically via the OBS replay buffer, with a full-screen transition.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🤖</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
         <h3>AI commentary</h3>
         <p>Optional Sky Sports-style analysis at the end of every over, generated live by Claude AI from the actual match situation.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">📸</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="#2a6e3f"/><polyline points="21,15 16,10 5,21"/>
+          </svg>
+        </div>
         <h3>Result posts</h3>
         <p>Generate a polished Instagram result graphic for any match — home or away — with top batter, bowler, and match-day sponsors.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">📱</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="18" r="1" fill="#2a6e3f"/>
+          </svg>
+        </div>
         <h3>Phone control panel</h3>
         <p>Responsive control panel runs on any device over Wi-Fi. Manage the stream from your phone on the boundary.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🗄️</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>
+          </svg>
+        </div>
         <h3>Ball-by-ball database</h3>
         <p>Every delivery is logged to a local SQLite file as you stream — your own season-long dataset, exportable to CSV.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🏏</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+          </svg>
+        </div>
         <h3>Full innings scorecard</h3>
         <p>Broadcast-style card at the innings break with all batters, dismissals spelled out in full, and bowling figures.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">🌧️</div>
+        <div class="feature-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/><line x1="12" y1="15" x2="12" y2="23"/>
+            <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>
+          </svg>
+        </div>
         <h3>DLS par &amp; weather</h3>
         <p>Live Duckworth-Lewis par score when rain is forecast. Drinks-break weather widget from Open-Meteo.</p>
       </div>
+
     </div>
   </div>
 </section>
@@ -376,15 +420,15 @@
     <div class="platform-links">
       <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/Windows/SETUP_GUIDE_WINDOWS.md" class="platform-link">
         Windows
-        <span class="platform-label">setup guide →</span>
+        <span class="platform-label">setup guide &#8594;</span>
       </a>
       <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/Mac/SETUP_GUIDE_MAC.md" class="platform-link">
         macOS
-        <span class="platform-label">setup guide →</span>
+        <span class="platform-label">setup guide &#8594;</span>
       </a>
       <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/FOR_NON_TECHNICAL_USERS.md" class="platform-link">
         New to this?
-        <span class="platform-label">plain-English guide →</span>
+        <span class="platform-label">plain-English guide &#8594;</span>
       </a>
     </div>
   </div>
@@ -392,11 +436,11 @@
 
 <footer>
   <p>
-    Built by <a href="https://bridestoweandbelstone.play-cricket.com/home">Bridestowe &amp; Belstone CC</a> · Devon Cricket League ·
-    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a> ·
+    Built by <a href="https://bridestoweandbelstone.play-cricket.com/home">Bridestowe &amp; Belstone CC</a> &middot; Devon Cricket League &middot;
+    <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a> &middot;
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/LICENSE">GPL-3.0 licence</a>
   </p>
-  <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) · AI features powered by Claude (Anthropic) · Weather via Open-Meteo · Streaming via OBS Studio</p>
+  <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) &middot; AI features powered by Claude (Anthropic) &middot; Weather via Open-Meteo &middot; Streaming via OBS Studio</p>
 </footer>
 
 </body>
