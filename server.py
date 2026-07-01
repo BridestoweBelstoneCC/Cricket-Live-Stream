@@ -1158,7 +1158,7 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # with SECRET_SENTINEL; POST /state ignores fields whose value IS the sentinel, so the
 # control panel can round-trip its form without wiping stored secrets. "" still clears.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
-               "weather_api_key", "obs_password")
+               "weather_api_key", "obs_password", "camera_rtsp_url")
 SECRET_SENTINEL = "••••••••"
 
 def load_state():
@@ -5681,7 +5681,12 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 d = {}
             cfg = load_state()
-            url = (d.get("url") or cfg.get("camera_rtsp_url") or "").strip()
+            # If the field still shows the redacted sentinel (the operator loaded the panel
+            # without retyping the URL), fall back to the real stored value — otherwise this
+            # would try to add "••••••••" itself as the camera source.
+            posted_url = (d.get("url") or "").strip()
+            url = (cfg.get("camera_rtsp_url") or "").strip() if posted_url == SECRET_SENTINEL \
+                  else (posted_url or cfg.get("camera_rtsp_url") or "").strip()
             ok, msg = obs_add_camera(url, d.get("name"), d.get("scene"), cfg)
             self._json({"ok": ok, "message": msg})
 
