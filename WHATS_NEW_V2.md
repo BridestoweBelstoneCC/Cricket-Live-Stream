@@ -102,7 +102,7 @@ and can bundle them together with photos from a folder for an easy match-day rou
 - **Ball-by-ball database** — every delivery is logged to a local SQLite file (`match_data.db`) as you stream, building your own season-long dataset. The current over is rewritten live so a scorer's edits are captured, and a "Reconcile" button pulls PlayCricket's final scorecard as the authoritative record. Export any match to CSV from the new Match data panel.
 - **Match-day sponsors** — the sponsor strip now shows every logo in the `sponsors/` folder,
   scaled to share the width, so you can add as many as you like.
-- **Auto-detected moments** on the end-of-over graphic: season-best scores ("EWEN 67* —
+- **Auto-detected moments** on the end-of-over graphic: season-best scores ("SMITH 67* —
   his best score of the season!"), team milestones ("100 up in 14 overs"), with the same
   storylines fed to the AI commentator so it builds its sentence around them.
 - **"At this stage"** — in the second innings, every over summary compares the chase to
@@ -119,7 +119,7 @@ and can bundle them together with photos from a folder for an easy match-day rou
 - **Broadcast animation polish** — graphics now enter with a spring, FOUR/SIX banners
   sweep across like a Sky strap, and milestone numbers count up.
 
-**Template upgrade required for the scorecard:** copy the new `bbcc_scoreboard.template`
+**Template upgrade required for the scorecard:** copy the new `scoreboard.template`
 to the scorer machine, restart PCS Pro, and re-select the template in
 Tools → Configuration → Scoreboard. (Same deployment as the shirt-number upgrade — if
 you're doing that anyway, this comes free.)
@@ -146,7 +146,7 @@ you're doing that anyway, this comes free.)
 ## Upgrading from v1
 
 1. Replace `server.py`, `overlay.html`, and `quickstart.py` with the v2 versions.
-2. Copy the updated `bbcc_scoreboard.template` into NV Play's Templates folder and
+2. Copy the updated `scoreboard.template` into NV Play's Templates folder and
    **restart NV Play** so it picks up the new dismissal-detail **and shirt-number** fields.
 3. Create three new (optional) folders next to `server.py` if you want the new features:
    - `headshots/` — player photos for the player cards

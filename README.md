@@ -83,7 +83,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Boundary flash** — FOUR! or SIX! graphic fires on every boundary.
 - **Ball-by-ball colour coding** — wides (amber +), no balls (teal nb), byes (green b), leg byes (olive lb), wickets (red W), fours (blue 4), sixes (purple 6).
 - **Over summary** — end-of-over card with runs scored and the bowler's figures. Automatically suppressed when a wicket falls on the last ball, so it never collides with the wicket sequence.
-- **Auto-detected moments** *(new in v2.1)* — the over summary spots the storylines by itself: a gold strap fires for season-best scores (*"Ewen 67\* — his best score of the season!"*) and team milestones (*"100 up in 14 overs"*), and the same facts are fed to the AI commentator so the spoken line builds around them.
+- **Auto-detected moments** *(new in v2.1)* — the over summary spots the storylines by itself: a gold strap fires for season-best scores (*"Smith 67\* — his best score of the season!"*) and team milestones (*"100 up in 14 overs"*), and the same facts are fed to the AI commentator so the spoken line builds around them.
 - **"At this stage"** *(new in v2.1)* — in the second innings, each over summary compares the chase with the first innings at the same point (*"Heathcoat were 67-2 at this stage"*).
 - **Bowler spell tracker** *(new in v2.1)* — once a bowler has bowled consecutive overs from the same end, the over card adds *"This spell: 5-1-18-2"*.
 - **Full innings scorecard** *(new in v2.1)* — a broadcast-style card at the innings break: all eleven batters with dismissals spelled out, not-out batters highlighted, and bowling figures alongside. Also available on demand from the control panel. Requires the v2.1 scoreboard template.
@@ -148,7 +148,7 @@ The scoring software writes a file on every ball. The server reads it and sends 
 
 **Software (all free):**
 - [OBS Studio](https://obsproject.com) — streaming software
-- [Python 3](https://python.org/downloads) — runs the server
+- [Python 3](https://python.org/downloads) — runs the server (the setup wizard below can install this for you)
 - [NV Play](https://www.play-cricket.com/website/np_downloads) — scoring software (Windows) or PCS Pro
 
 **Optional:**
@@ -161,15 +161,17 @@ The scoring software writes a file on every ball. The server reads it and sends 
 
 New to this? Read your platform's quick start first:
 
-- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](Windows/SETUP_GUIDE_WINDOWS.md) — starts with a 3-step fast path, full detail below it
-- **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 4-step fast path, full detail below it
+- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](Windows/SETUP_GUIDE_WINDOWS.md) — starts with a 2-step fast path, full detail below it
+- **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 3-step fast path, full detail below it
 - **No coding experience at all?** [`FOR_NON_TECHNICAL_USERS.md`](FOR_NON_TECHNICAL_USERS.md) walks you through every step in plain English.
 
-**First time? One command does everything:**
+**First time? One download does everything — no need to install Python yourself:**
 
-1. **Install Python** from [python.org](https://python.org/downloads). On Windows, tick **"Add Python to PATH"**.
-2. **Run the setup wizard** — Windows: double-click `Windows/setup.bat`. Mac: run `Mac/setup.sh`.
-   It installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
+1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStreamSetup.exe` (Windows) or `CricketStreamSetup-mac.zip` (Mac) — and put it in the folder you extracted the project to.
+2. Run it — Windows: double-click the `.exe`. Mac: unzip it, then double-click `Setup Wizard.command`.
+   If Python isn't installed yet, it installs it for you, then installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
+
+Already have Python installed and prefer running from source? Skip the download and run `Windows/setup.bat` or `Mac/setup.sh` instead — same wizard.
 
 That's it. The wizard handles everything else interactively — no manual file editing needed.
 
@@ -288,7 +290,7 @@ PlayCricket account the stats use their most-played (regular) account automatica
 You only need to do this once per season, and only for players whose surname is shared or
 ambiguous. Everyone else resolves fine by surname alone. For this to work, the scorer's
 NV Play / PCS Pro squad must have shirt numbers assigned, and you must deploy the v2
-`bbcc_scoreboard.template` (see the upgrade notes in `WHATS_NEW_V2.md`).
+`scoreboard.template` (see the upgrade notes in `WHATS_NEW_V2.md`).
 
 **Checking a player's stats match.** If a card shows a photo but no stats (or you suspect
 the wrong record), open this in a browser while the server is running:
@@ -307,7 +309,7 @@ those players to the roster) or when someone has a duplicate PlayCricket account
 
 Small circular club badges appear next to team names in the scorebar automatically,
 matched by PlayCricket club ID. Create a `logos/` folder next to `server.py` and add
-badge images named by club ID (e.g. `29434.png`). The opposition's club ID and a short
+badge images named by club ID (e.g. `12345.png`). The opposition's club ID and a short
 abbreviation are detected automatically from the day's fixture, so naming their badge
 `<their-club-id>.png` is enough for it to appear. If a badge doesn't match, you can also
 pick either team's badge from a dropdown in the control panel. See [`CLUB_LOGOS.md`](CLUB_LOGOS.md)
@@ -341,7 +343,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── requirements.txt           Python package list
 ├── config.example.ini         Club configuration template — copy to config.ini and fill in
 ├── match_state.example.json   Settings template — copied to match_state.json on first run
-├── bbcc_scoreboard.template   NV Play output template
+├── scoreboard.template   NV Play output template
 ├── Windows/
 │   ├── SETUP_GUIDE_WINDOWS.md Full Windows setup + troubleshooting
 │   ├── setup.bat              First-time setup wizard launcher

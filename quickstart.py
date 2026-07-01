@@ -1,5 +1,5 @@
 """
-BBCC Stream Overlay — Quick Start
+CricketStream Overlay — Quick Start
 ──────────────────────────────────
 Reads config.ini, fetches today's match from the PlayCricket API,
 writes match_state.json with everything pre-configured, then starts
@@ -9,7 +9,7 @@ import configparser, json, os, sys, subprocess, urllib.request, datetime, platfo
 
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
-║         BBCC Stream Overlay — Quick Start            ║
+║         CricketStream Overlay — Quick Start          ║
 ╚══════════════════════════════════════════════════════╝
 """
 
@@ -123,7 +123,7 @@ def build_state(cfg, match):
         "playcricket_api_key":  api.get("playcricket_key",""),
         "anthropic_api_key":    api.get("anthropic_key",""),
         "home_club_id":         club.get("playcricket_id",""),
-        "ground_filter":        score.get("ground_filter","Millaton"),
+        "ground_filter":        score.get("ground_filter",""),
         "away_club_id":         match.get("away_club_id","") if match else "",
         "logos_folder":         score.get("logos_folder",""),
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Cricket Overlay v2.1 — Bridestowe &amp; Belstone CC</title>
+<title>CricketStream Overlay</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body {
@@ -494,7 +494,7 @@ html, body {
   <span id="dls-diff"></span>
 </div>
 <div id="scorebar">
-  <div class="seg" id="seg-batting-team"><img id="home-badge" class="team-badge" style="display:none"><span id="batting-team-name">BBCC</span></div>
+  <div class="seg" id="seg-batting-team"><img id="home-badge" class="team-badge" style="display:none"><span id="batting-team-name">—</span></div>
   <div class="seg seg-light" id="seg-score"><span id="score-total">0-0</span></div>
   <div class="seg seg-light" id="seg-innings"><span id="innings-badge">P1</span></div>
   <div class="seg seg-light" id="seg-overs"><span id="overs-display">0.0 <span class="muted">/ 50</span></span></div>
@@ -544,7 +544,7 @@ html, body {
       <div style="font-size:10px;font-weight:700;color:#2a6496;
                   text-transform:uppercase;letter-spacing:2px;">Competition</div>
       <div style="font-size:18px;font-weight:800;color:#fff;"
-           id="prematch-competition">Devon Cricket League</div>
+           id="prematch-competition">—</div>
     </div>
     <div style="width:1px;background:rgba(255,255,255,0.12);align-self:stretch;margin:14px 0;"></div>
     <div style="display:flex;flex-direction:column;gap:4px;">
@@ -689,7 +689,7 @@ html, body {
 
 <!-- Weather widget -->
 <div id="weather-widget">
-  <div class="w-header">Bridestowe — Current Conditions</div>
+  <div class="w-header">Current Conditions</div>
   <div class="w-main">
     <span class="w-icon" id="w-icon">⛅</span>
     <span class="w-temp" id="w-temp">—</span><span style="font-size:20px;color:#fff;">°C</span>
@@ -2189,7 +2189,7 @@ async function poll() {
   catch(e){console.warn('server.py not reachable');return;}
 
   MAX_OVERS=cfg.max_overs||50;
-  const home=cfg.home_team||'Bridestowe & Belstone CC';
+  const home=cfg.home_team||'Home CC';
   const away=cfg.away_team||'Opposition CC';
   // Apply colours using the LAST known batting side. Applying a default (home) here and then
   // the real side after the /live fetch caused a visible flicker each poll in the 2nd innings,

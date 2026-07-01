@@ -1,5 +1,5 @@
 # Running NV Play on Mac via VMware Fusion
-## Complete setup guide for streaming with BBCC Stream Overlay
+## Complete setup guide for streaming with CricketStream Overlay
 
 This guide covers running OBS natively on your Mac (for full performance streaming)
 while running NV Play inside a free Windows virtual machine (for ball-by-ball scoring
@@ -14,7 +14,7 @@ the VM, your Mac reads it directly.
 - VMware Fusion — free download (see Step 1)
 - A Windows 11 licence — approximately £20 from Microsoft
 - OBS Studio for Mac — https://obsproject.com
-- Python 3 — https://python.org/downloads
+- Python 3 — installed automatically by the setup wizard (see `SETUP_GUIDE_MAC.md`), or get it yourself from https://python.org/downloads
 - NV Play / PCS Pro — downloaded from your PlayCricket account
 
 ---
@@ -81,7 +81,7 @@ Or as a mapped network drive — VMware usually maps it automatically as the `Z:
    Z:\
    ```
    Or browse to `\\vmware-host\Shared Folders\NVPlayShared\`
-5. Set **Template File** to `bbcc_scoreboard.template`
+5. Set **Template File** to `scoreboard.template`
    (copy this file into the VM first — see Step 5)
 6. Click OK
 
@@ -98,38 +98,38 @@ Back on your Mac (outside the VM), the shared folder is accessible at:
 You can confirm this by opening **Finder → Documents → NVPlay Shared** — you should
 be able to see any files that Windows has written there.
 
-This is the path you will paste into the BBCC Stream Overlay control panel.
+This is the path you will paste into the CricketStream Overlay control panel.
 
 ---
 
 ## Step 5 — Copy the template file into the VM
 
-NV Play needs the `bbcc_scoreboard.template` file in its Templates folder.
+NV Play needs the `scoreboard.template` file in its Templates folder.
 
 **Easiest method — via the shared folder:**
-1. On your Mac, copy `bbcc_scoreboard.template` into `~/Documents/NVPlay Shared/`
+1. On your Mac, copy `scoreboard.template` into `~/Documents/NVPlay Shared/`
 2. Inside the Windows VM, open Explorer → navigate to the shared folder
-3. Copy `bbcc_scoreboard.template` to:
+3. Copy `scoreboard.template` to:
    ```
    C:\Users\YourWindowsUser\Documents\Cricket Matches\_Scoreboards\Templates\
    ```
 4. In NV Play → Tools → Configuration → Scoreboard → browse to that Templates folder
-   and select `bbcc_scoreboard.template`
+   and select `scoreboard.template`
 
 ---
 
-## Step 6 — Install and start the BBCC Stream Overlay server
+## Step 6 — Install and start the CricketStream Overlay server
 
 On your Mac (not inside the VM):
 
-1. Unzip `bbcc_stream_mac.zip` to `~/Documents/BBCC Stream/`
+1. Unzip `cricketstream_mac.zip` to `~/Documents/CricketStream/`
 2. Open Terminal and install the Python packages:
    ```bash
    pip3 install websocket-client anthropic google-api-python-client google-auth-oauthlib
    ```
 3. Start the server:
    ```bash
-   cd ~/Documents/BBCC\ Stream
+   cd ~/Documents/CricketStream
    python3 server.py
    ```
 4. Open your browser and go to `http://localhost:5000/control`
@@ -142,8 +142,8 @@ In the control panel → **Match card**:
 
 | Field | Value |
 |---|---|
-| Home team name | Bridestowe & Belstone CC |
-| Home scorebar abbrev. | BBCC |
+| Home team name | Your Club CC |
+| Home scorebar abbrev. | YOURCC |
 | PCS Pro output folder | `/Users/YourUsername/Documents/NVPlay Shared` |
 | Use widget as fallback | On (safety net if VM isn't running) |
 
@@ -207,7 +207,7 @@ On a 2015 MacBook Pro 15":
 |---|---|
 | OBS streaming at 720p | ~40-50% CPU, uses AMD GPU |
 | Windows VM with NV Play | ~15-20% CPU, ~3GB RAM |
-| BBCC Stream server | ~2-3% CPU |
+| CricketStream server | ~2-3% CPU |
 | Overlay browser source in OBS | Uses GPU — minimal CPU |
 | **Total** | **~60-70% CPU** — comfortable headroom |
 
@@ -245,7 +245,7 @@ On a 2015 MacBook Pro 13":
 
 - Check you are using the Mac path (starting with `/Users/`) not the Windows path
 - The Mac path should be the folder on your Mac, e.g.:
-  `/Users/patrick/Documents/NVPlay Shared`
+  `/Users/yourname/Documents/NVPlay Shared`
 - Not the Windows path like `Z:\` or `\\vmware-host\...`
 
 ### OBS dropping frames

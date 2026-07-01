@@ -20,7 +20,10 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
   `CONTROL_HTML`, and builds the social-media images.
 - **`overlay.html`** (~2200 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
 - **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test.
-- **`bbcc_scoreboard.template`** — the template the scorer's software fills in. Deployed to the
+- **`setup_wizard.py`** — first-time setup wizard; installs packages and writes `config.ini`.
+  Also built into a standalone Windows `.exe` / macOS binary by
+  `.github/workflows/build-setup-wizard.yml` (see gotchas below).
+- **`scoreboard.template`** — the template the scorer's software fills in. Deployed to the
   *scorer's* machine, not the streaming machine.
 - **`config.ini`** / **`match_state.json`** — local settings (git-ignored, hold secrets).
   Templates: `config.example.ini`, `match_state.example.json`.
@@ -71,6 +74,14 @@ gotchas).
   check `git status` before committing.
 - **The server reads the scorer's LOCAL file.** It must run on a machine that can see the
   scorer's output folder. This constrains anything network-related (see `REMOTE_ACCESS_PLAN.md`).
+- **Inside a frozen `setup_wizard.py` (PyInstaller), `sys.executable` is the exe itself, not a
+  Python interpreter** — passing it to `subprocess` for `pip`/launching another script causes
+  infinite self-relaunching. Use `find_python()`, which searches `PATH` instead. Same trap for
+  `__file__`: it resolves inside the temp extraction folder, so paths must use
+  `os.path.dirname(sys.executable)` when `sys.frozen` is set.
+- **No hardcoded club identity in defaults.** `DEFAULT_STATE`, `config.example.ini`, and
+  `match_state.example.json` must stay club-agnostic (e.g. `"Home CC"`, blank `ground_filter`/
+  `home_club_id`) — this project is used by clubs other than the original maintainer's.
 
 ## Conventions
 

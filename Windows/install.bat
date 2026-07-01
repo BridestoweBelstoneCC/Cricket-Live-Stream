@@ -1,7 +1,7 @@
 @echo off
 cd /d %~dp0
 echo.
-echo  BBCC Stream Overlay - Installing requirements
+echo  CricketStream Overlay - Installing requirements
 echo  ===============================================
 echo.
 

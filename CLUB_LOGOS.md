@@ -41,9 +41,9 @@ and overrides the automatic match.
    ```
    logos/{your_club_id}.png
    ```
-   For example, Bridestowe & Belstone CC (club ID 29434) would be:
+   For example, if your club ID is 12345, that's:
    ```
-   logos/29434.png
+   logos/12345.png
    ```
 
 3. That's it — restart the server and your badge will appear on the left
@@ -109,14 +109,14 @@ with the correct extension for your format.
 The `logos/` folder sits alongside `server.py`:
 
 ```
-BBCC Stream/
+CricketStream/
   server.py
   overlay.html
   config.ini
   logos/          ← add badge files here
-    29434.png     ← BBCC badge
-    11441.png     ← Okehampton CC (example)
-    6075.png      ← Taunton CC (example)
+    12345.png     ← your club's badge
+    11441.png     ← opposition club (example)
+    6075.png      ← another opposition club (example)
 ```
 
 Create the folder if it doesn't exist — the server creates it automatically

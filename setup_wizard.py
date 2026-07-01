@@ -5,13 +5,18 @@ Run this once to install packages and create your config.ini.
 On Windows: double-click setup.bat
 On Mac:     run setup.sh
 """
-import configparser, os, secrets, shutil, subprocess, sys
+import configparser, glob, os, secrets, shutil, subprocess, sys, tempfile, urllib.request, webbrowser
 
 FROZEN = getattr(sys, "frozen", False)
 # When frozen (PyInstaller), __file__ points inside the temp extraction
 # folder, which is deleted on exit — use the real exe's location instead.
 BASE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE, "config.ini")
+
+# Bump this occasionally. The macos11 tag is a universal2 installer — it
+# covers both Intel and Apple Silicon, so no architecture detection needed.
+PYTHON_VERSION = "3.12.8"
+MAC_PYTHON_PKG_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-macos11.pkg"
 
 BANNER = """
 ====================================================
@@ -69,12 +74,79 @@ def find_python():
         path = shutil.which(candidate)
         if path:
             return path
+    # winget/the official installer update the registry PATH, but that
+    # doesn't propagate into this already-running process — look in the
+    # usual per-user and machine-wide install locations too.
+    for base in (os.environ.get("LOCALAPPDATA"), os.environ.get("ProgramFiles")):
+        if not base:
+            continue
+        matches = sorted(glob.glob(os.path.join(base, "Programs", "Python", "Python3*", "python.exe")) +
+                          glob.glob(os.path.join(base, "Python3*", "python.exe")))
+        if matches:
+            return matches[-1]
+    return None
+
+def install_python_windows():
+    if shutil.which("winget"):
+        print("  Installing Python 3 via winget (this can take a minute)...\n")
+        subprocess.run([
+            "winget", "install", "--id", "Python.Python.3.12", "-e", "--silent",
+            "--accept-package-agreements", "--accept-source-agreements",
+        ])
+        python = find_python()
+        if python:
+            print("  [OK] Python installed.")
+            return python
+    print("  Couldn't install Python automatically (winget not available).")
+    print("  Opening the download page — tick 'Add python.exe to PATH' during setup,")
+    print("  then re-run this wizard.")
+    webbrowser.open("https://www.python.org/downloads/")
+    return None
+
+def install_python_mac():
+    print(f"  Downloading Python {PYTHON_VERSION} from python.org...\n")
+    tmp_pkg = os.path.join(tempfile.gettempdir(), f"python-{PYTHON_VERSION}.pkg")
+    try:
+        urllib.request.urlretrieve(MAC_PYTHON_PKG_URL, tmp_pkg)
+    except OSError as e:
+        print(f"  [!!] Download failed: {e}")
+        webbrowser.open("https://www.python.org/downloads/")
+        return None
+    print("  Installing — macOS will ask for your Mac password (admin required):\n")
+    result = subprocess.run(["sudo", "installer", "-pkg", tmp_pkg, "-target", "/"])
+    os.remove(tmp_pkg)
+    if result.returncode != 0:
+        print("  [!!] Install failed. Please install manually from python.org and re-run.")
+        return None
+    # Mac Python doesn't trust HTTPS certs until this bundled script runs —
+    # skipping it means pip/PlayCricket/Anthropic calls fail with SSL errors.
+    cert_script = f"/Applications/Python {PYTHON_VERSION.rsplit('.', 1)[0]}/Install Certificates.command"
+    if os.path.exists(cert_script):
+        print("  Fixing SSL certificates (required for HTTPS on Mac)...")
+        subprocess.run(["bash", cert_script])
+    python = shutil.which("python3")
+    if python:
+        print("  [OK] Python installed.")
+        return python
+    print("  [!!] Installed, but couldn't find python3 on PATH — try re-running the wizard.")
+    return None
+
+def install_python():
+    heading("Python 3 required")
+    print("  The wizard doesn't need Python, but the server does — it wasn't found.\n")
+    if not ask_yn("Install Python 3 now?", default=True):
+        return None
+    if sys.platform == "win32":
+        return install_python_windows()
+    if sys.platform == "darwin":
+        return install_python_mac()
+    print("  Please install Python 3 from https://python.org and re-run this wizard.")
     return None
 
 def install_packages():
     heading("Step 1 — Installing packages")
     req = os.path.join(BASE, "requirements.txt")
-    python = find_python()
+    python = find_python() or install_python()
     if not python:
         print("\n  [!!] No Python 3 install found on this machine.")
         print("    The setup wizard doesn't need Python, but the server does.")
@@ -105,7 +177,7 @@ def configure():
     if not colour.startswith("#"):
         colour = "#" + colour
 
-    motto = ask("Replay motto (e.g. 'Up the Stags')")
+    motto = ask("Replay motto (e.g. your club nickname)")
 
     heading("PlayCricket")
     print("  Your club ID is the number in the URL at play-cricket.com")

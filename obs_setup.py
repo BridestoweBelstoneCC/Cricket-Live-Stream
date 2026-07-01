@@ -1,6 +1,6 @@
 """
-OBS Auto-Setup — BBCC Stream Overlay
-──────────────────────────────────────
+OBS Auto-Setup — CricketStream Overlay
+────────────────────────────────────────
 Connects to OBS via WebSocket and configures everything needed:
   - Creates Main and Replay scenes
   - Creates Overlay browser source in Main
@@ -240,8 +240,8 @@ if __name__ == "__main__":
     replay_folder = os.path.expanduser(replay_folder)
 
     print()
-    print("OBS Auto-Setup — BBCC Stream Overlay")
-    print("─────────────────────────────────────")
+    print("OBS Auto-Setup — CricketStream Overlay")
+    print("────────────────────────────────────────")
     ok, messages = obs_setup(
         password      = password,
         replay_folder = replay_folder,

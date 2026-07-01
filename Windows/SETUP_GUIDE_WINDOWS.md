@@ -3,13 +3,12 @@
 
 ---
 
-## The fast path — up and running in 3 steps
+## The fast path — up and running in 2 steps
 
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
-1. **Install Python** — get Python 3 from https://python.org/downloads (**tick "Add Python to PATH"**). *(Once only.)*
-2. **Setup** — double-click **`setup.bat`**. It installs packages and walks you through your club details, creating `config.ini` for you. *(Once only.)*
-3. **Match day** — double-click **`quickstart.bat`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+1. **Setup** — download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), drop it into this folder, and double-click it. It installs Python for you if it's missing, installs packages, and walks you through your club details, creating `config.ini`. *(Once only.)*
+2. **Match day** — double-click **`quickstart.bat`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
 
@@ -21,8 +20,7 @@ You will need:
 - A Windows laptop or PC
 - A camera connected to your laptop (USB webcam or HDMI camera via capture card)
 - OBS Studio installed — https://obsproject.com
-- Python 3 installed — https://python.org/downloads
-  - During installation, tick **"Add Python to PATH"**
+- Python 3 — installed automatically by `CricketStreamSetup.exe` (see Step 2), or get it yourself from https://python.org/downloads and tick **"Add Python to PATH"**
 - A YouTube account with Live Streaming enabled
 - NV Play installed on the scorer's laptop
 
@@ -30,9 +28,9 @@ You will need:
 
 ## Step 1 — Extract the files
 
-Unzip `bbcc_stream_windows.zip` to a permanent location. Somewhere like:
+Unzip `cricketstream_windows.zip` to a permanent location. Somewhere like:
 ```
-C:\Users\YourName\Documents\BBCC Stream\
+C:\Users\YourName\Documents\CricketStream\
 ```
 
 Do not put it on the Desktop — Windows sometimes blocks scripts running from there.
@@ -41,7 +39,7 @@ Do not put it on the Desktop — Windows sometimes blocks scripts running from t
 
 ## Step 2 — Install Python packages and configure
 
-Double-click **`setup.bat`**.
+Don't have Python installed yet? Download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), drop it into this folder, and double-click it — it installs Python automatically before continuing. Already have Python? Double-click **`setup.bat`** instead; it's the same wizard, run from source.
 
 The setup wizard installs packages, then asks a few questions — your club name, kit colour, PlayCricket ID, and any API keys you have. It creates `config.ini` for you automatically.
 
@@ -56,7 +54,7 @@ The setup wizard installs packages, then asks a few questions — your club name
   Club name  (required):
 ```
 
-If package installation fails, try right-clicking `setup.bat` and selecting **Run as administrator**.
+If package installation fails, try right-clicking `setup.bat` (or the exe) and selecting **Run as administrator**.
 
 You only need to do this once per laptop.
 
@@ -92,7 +90,7 @@ replay_folder = C:/Users/You/Videos/Replays
                                   ← Where OBS saves replay clips
 
 [Stream]
-youtube_title = LIVE: {home} vs {away} — DCL 2026
+youtube_title = LIVE: {home} vs {away}
 max_overs = 50
 
 [AI]
@@ -170,8 +168,8 @@ The scorer needs to do this once before the first match.
    ```
    C:\Users\[ScorerName]\Documents\Cricket Matches\_Scoreboards\Templates\
    ```
-7. Copy `bbcc_scoreboard.template` (from the BBCC Stream folder) into that Templates folder
-8. Select `bbcc_scoreboard.template` as the Template File
+7. Copy `scoreboard.template` (from the CricketStream folder) into that Templates folder
+8. Select `scoreboard.template` as the Template File
 9. Click OK
 
 Paste the output folder path from step 4 into `config.ini` under `pcs_output_folder`.
@@ -188,8 +186,8 @@ You will see something like:
 ```
   ✓ Club: Your Club CC
   ✓ All packages present
-  ✓ Match found: Your Club CC vs Okehampton CC
-  ✓ Competition: Devon Cricket League — A Division
+  ✓ Match found: Your Club CC vs Example Opposition CC
+  ✓ Competition: Your League — Division 1
   ✓ Umpires: M. Davies / G. Allan
   ✓ match_state.json written
   ✓ Connected to OBS
@@ -199,7 +197,7 @@ You will see something like:
   ✓ ReplayClip media source created in Replay
   ✓ Replay buffer started
   ─────────────────────────────────────────
-  Ready: Your Club CC vs Okehampton CC
+  Ready: Your Club CC vs Example Opposition CC
   Control panel: http://localhost:5000/control
   Overlay:       http://localhost:5000/overlay
 ```
@@ -213,7 +211,7 @@ Open `http://localhost:5000/control` in your browser. You should see the control
 When a new batter comes in, the overlay can show a player card with their photo and
 season stats. To enable photos:
 
-1. Create a folder called `headshots` inside your BBCC Stream folder (next to `server.py`).
+1. Create a folder called `headshots` inside your CricketStream folder (next to `server.py`).
 2. Add player photos named by **surname** — for example `Smith.jpg`. Square images around
    400x400 pixels look best. JPG, PNG and WebP all work.
 3. That's it. The next time that batter comes in, their photo appears on the card.
@@ -343,9 +341,9 @@ They are matched automatically by PlayCricket club ID.
 
 **First-time setup:**
 
-1. Create a `logos/` folder inside your BBCC Stream folder (alongside `server.py`)
+1. Create a `logos/` folder inside your CricketStream folder (alongside `server.py`)
 2. Find your PlayCricket club ID — it's the `playcricket_id` value in `config.ini`
-3. Save your club badge as `logos\{your_id}.png` — for example `logos\29434.png`
+3. Save your club badge as `logos\{your_id}.png` — for example `logos\12345.png`
 4. Restart the server — your badge appears on the left of the scorebar
 
 **Adding opposition badges:**
@@ -396,7 +394,7 @@ See **`CLUB_LOGOS.md`** for full instructions and tips on finding club badges.
 | `server.py` | Main server | Never |
 | `overlay.html` | OBS overlay graphics | Never |
 | `obs_setup.py` | OBS auto-configuration | Never |
-| `bbcc_scoreboard.template` | NV Play template | Copy to NV Play once |
+| `scoreboard.template` | NV Play template | Copy to NV Play once |
 | `headshots/` | Player photos (new in v2) | Add your players |
 | `socials/` | Match photos for social posts (new in v2) | Optional |
 | `logos/` | Club badges (named by club ID) | Add your badges |

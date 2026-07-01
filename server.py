@@ -1,5 +1,5 @@
 """
-Bridestowe & Belstone CC — Stream Overlay Server
+CricketStream Overlay — Stream Server
 ─────────────────────────────────────────────────
 Run:  python server.py
 
@@ -27,8 +27,8 @@ OBS setup:
 
 PCS Pro setup (scorer's laptop):
     1. Tools → Configuration → Scoreboard → Enable output
-    2. Copy bbcc_scoreboard.template to the PCS Templates folder
-    3. Set Template File to bbcc_scoreboard.template
+    2. Copy scoreboard.template to the PCS Templates folder
+    3. Set Template File to scoreboard.template
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
@@ -557,7 +557,7 @@ def fetch_weather_data():
             "wind_speed_unit":"mph","timezone":"Europe/London"})
         req = urllib.request.Request(
             f"https://api.open-meteo.com/v1/forecast?{params}",
-            headers={"User-Agent":"BBCC-Overlay/1.0"})
+            headers={"User-Agent":"CricketStreamOverlay/1.0"})
         with urllib.request.urlopen(req, timeout=8) as r:
             data = json.loads(r.read().decode())
         cur  = data["current"]
@@ -625,7 +625,6 @@ def update_youtube_title(title):
 # Step 1: Fetch PlayCricket widget HTML → extract PC + RV match IDs
 # Step 2: Call ResultsVault matches endpoint for live scorecard data
 
-CLUB_ID   = 29434   # Bridestowe & Belstone CC
 RV_APIID  = "1003"
 _rv_cache = {"rv_id": None, "pc_id": None, "club_id": None}
 _widget_last_poll = 0
@@ -1103,8 +1102,8 @@ STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_sta
 MAX_CLIPS  = 100
 
 DEFAULT_STATE = {
-    "home_team":               "Bridestowe & Belstone CC",
-    "home_abbrev":             "BBCC",
+    "home_team":               "Home CC",
+    "home_abbrev":             "HOME",
     "away_abbrev":             "",
     "away_team":               "Opposition CC",
     "home_colour":             "#1a3a5c",
@@ -1119,7 +1118,7 @@ DEFAULT_STATE = {
     "drinks_over":             25,
     "poll_interval":           20,
     "match_notes":             "",
-    "replay_motto":            "Up the Stags",
+    "replay_motto":            "",
     "graphics_fow":            True,
     "graphics_partnership":    True,
     "graphics_lineup":         True,
@@ -1141,15 +1140,15 @@ DEFAULT_STATE = {
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
-    "youtube_title_template":  "LIVE: {home} vs {away} — DCL 2026",
+    "youtube_title_template":  "LIVE: {home} vs {away}",
     "weather_api_key":         "",
     "logos_folder":           "",
     "headshots_folder":       "",
     "roster":                 {},
     "socials_folder":         "",
     "drinks_over":            25,
-    "home_club_id":           "29434",
-    "ground_filter":          "Millaton",
+    "home_club_id":           "",
+    "ground_filter":          "",
     "away_club_id":           "",
 }
 
@@ -1260,7 +1259,7 @@ def _seed_state_from_config():
 #   1. Open PCS Pro
 #   2. Go to Tools → Configuration → Scoreboard
 #   3. Set Output Folder to any convenient path (note it down)
-#   4. Set Template File to: bbcc_scoreboard.template
+#   4. Set Template File to: scoreboard.template
 #      (copy this file from the stream folder into PCS Pro's Templates folder)
 #   5. Tick "Enable Scoreboard Output"
 #
@@ -1412,8 +1411,8 @@ def generate_match_report(report_type="report"):
 
     if report_type == "social":
         prompt = (
-            "You are running the social media for a village cricket club in Devon, England "
-            "(Bridestowe & Belstone CC). Write a short, upbeat match-result post for Twitter/Instagram "
+            f"You are running the social media for a village cricket club, {home}. "
+            "Write a short, upbeat match-result post for Twitter/Instagram "
             "based on the facts below. Max 60 words. Use the club spirit — warm, proud, a little wit. "
             "You may use up to 3 tasteful hashtags and at most 1 emoji. Do NOT invent facts not present below.\n\n"
             f"{summary}\n\nPost:"
@@ -1421,8 +1420,8 @@ def generate_match_report(report_type="report"):
         max_tok = 200
     else:
         prompt = (
-            "You are a cricket correspondent writing a match report for a village cricket club website "
-            "(Bridestowe & Belstone CC, Devon, England). Write an engaging, accurate report of 150-250 words "
+            f"You are a cricket correspondent writing a match report for {home}'s club website. "
+            "Write an engaging, accurate report of 150-250 words "
             "based ONLY on the facts below. Cover the key passages of play, standout performers, and the result. "
             "Warm local-paper tone, not hyperbole. Do NOT invent statistics or names not present.\n\n"
             f"{summary}\n\nMatch report:"
@@ -1495,7 +1494,7 @@ def list_social_photos(team_key=""):
 
 def _norm_name_key(s):
     """Normalise a player name or filename to a comparison key: lowercase, letters
-    and digits only. So 'P EWEN', 'p.ewen', 'P_Ewen' and 'pewen' all map to 'pewen'.
+    and digits only. So 'P SMITH', 'p.smith', 'P_Smith' and 'psmith' all map to 'psmith'.
     This lets headshot/stat lookups tolerate spaces, dots, underscores and case."""
     import re as _re
     return _re.sub(r"[^a-z0-9]", "", (s or "").lower())
@@ -1503,8 +1502,8 @@ def _norm_name_key(s):
 
 def roster_name(number):
     """Resolve a shirt number to a full player name via the squad roster in state.
-    This is how brothers (same surname) are told apart: the scorebar may show only 'EWEN'
-    for all three Ewens, but each has a distinct shirt number that maps to his full name.
+    This is how brothers (same surname) are told apart: the scorebar may show only 'SMITH'
+    for all three Smiths, but each has a distinct shirt number that maps to his full name.
     Returns '' if there's no roster entry."""
     num = str(number or "").strip()
     if not num:
@@ -1531,12 +1530,12 @@ def resolve_player(name, num):
 
 def _name_keys(s):
     """Tiered match keys for a player name, tolerant of differing initials/spacing/dots/case:
-        full     – every alphanumeric run joined ('K J BURNS' -> 'kjburns', 'K Burns' -> 'kburns')
-        initsur  – first initial + surname ('K J BURNS', 'K Burns' and 'Kevin Burns' -> 'kburns';
-                   'P EWEN' and 'p.ewen' -> 'pewen')
-        surname  – last token only ('burns', 'hatton', 'ewen')
+        full     – every alphanumeric run joined ('K J JONES' -> 'kjjones', 'K Jones' -> 'kjones')
+        initsur  – first initial + surname ('K J JONES', 'K Jones' and 'Kevin Jones' -> 'kjones';
+                   'P SMITH' and 'p.smith' -> 'psmith')
+        surname  – last token only ('jones', 'walker', 'smith')
     Matching tries full, then initsur, then surname (the last only when unambiguous), which
-    lets 'HATTON' find 'j.hatton', and 'K J BURNS' find PlayCricket's 'K Burns'."""
+    lets 'WALKER' find 'j.walker', and 'K J JONES' find PlayCricket's 'K Jones'."""
     import re as _re
     toks = _re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).split()
     if not toks:
@@ -1560,13 +1559,13 @@ def _pc_parse_int(v):
 def _aggregate_season_bat(match_details_list, keep_clubs=None):
     """Pure aggregation: given a list of PlayCricket match_detail.json payloads, build a
     season batting-stats lookup. Returned dict maps several name keys to the same record so
-    the overlay's short name ('P EWEN') can match PlayCricket's full name ('Peter Ewen'):
-      - full normalised name        ('peterewen')
-      - first-initial + surname      ('pewen')   ← matches NV Play short names
-      - surname only                 ('ewen')     ← only when that surname is unique
+    the overlay's short name ('P SMITH') can match PlayCricket's full name ('Peter Smith'):
+      - full normalised name        ('petersmith')
+      - first-initial + surname      ('psmith')   ← matches NV Play short names
+      - surname only                 ('smith')     ← only when that surname is unique
     Each record: {name, inn, avg, hs}. avg counts not-outs correctly; hs marks not-out with *.
 
-    keep_clubs: optional list of lowercased club-name fragments (e.g. ['bridestowe','heathcoat']).
+    keep_clubs: optional list of lowercased club-name fragments (e.g. ['home','opposition']).
     When set, only innings whose team_batting_name contains one of them are counted. Every
     scorecard lists BOTH teams' batsmen, so without this the pool balloons to hundreds of
     players (every opponent ever faced) and common surnames stop being unique. Falls back to
@@ -1619,7 +1618,7 @@ def _aggregate_season_bat(match_details_list, keep_clubs=None):
         }
 
     # Build a multi-key lookup. Some players have more than one PlayCricket account, so the
-    # same person can show up as two records (e.g. "Patrick Ewen" and "P Ewen"). When several
+    # same person can show up as two records (e.g. "Peter Smith" and "P Smith"). When several
     # records land on the same key, keep the one with the most innings — almost always their
     # main/regular account. Unique full-name keys for distinct people stay separate, so the
     # roster (shirt number → full name) still tells genuine brothers apart.
@@ -1699,7 +1698,7 @@ def build_season_stats(force=False):
     global _season_stats
     cfg     = load_state()
     api_key = cfg.get("playcricket_api_key", "").strip()
-    site_id = str(cfg.get("home_club_id", "") or "29434").strip() or "29434"
+    site_id = str(cfg.get("home_club_id", "")).strip()
     away_id = str(cfg.get("away_club_id", "") or "").strip()
     away_id = away_id if away_id.isdigit() else ""     # only query the API with a numeric club ID
     season  = str(datetime.date.today().year)
@@ -1771,7 +1770,7 @@ def build_season_stats(force=False):
     def _first_word(s):
         ws = re.sub(r"[^a-z ]", " ", (s or "").lower()).split()
         return ws[0] if ws and len(ws[0]) > 2 else ""
-    keep = [w for w in (_first_word(cfg.get("home_team","")) or "bridestowe",
+    keep = [w for w in (_first_word(cfg.get("home_team","")) or "home",
                         _first_word(cfg.get("away_team",""))) if w]
     lookup = _aggregate_season_bat(details, keep_clubs=keep or None)
     result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
@@ -1792,8 +1791,8 @@ def build_season_stats(force=False):
 
 def lookup_season_stats(name):
     """Return {'avg','hs','inn'} for a player name from the cached season build, or None.
-    Tries full name, then first-initial+surname, then surname — so the scorebar's 'K J BURNS'
-    matches PlayCricket's 'K Burns', and 'HATTON' matches 'J Hatton' (when unambiguous)."""
+    Tries full name, then first-initial+surname, then surname — so the scorebar's 'K J JONES'
+    matches PlayCricket's 'K Jones', and 'WALKER' matches 'J Walker' (when unambiguous)."""
     lk = _season_stats.get("lookup") or {}
     if not name or not lk:
         return None
@@ -1806,14 +1805,14 @@ def lookup_season_stats(name):
 
 def _club_fragment(cfg):
     """First word of our club name, lowercased — used to tell 'us' from the opponent."""
-    base = (cfg.get("home_team") or cfg.get("name") or "Bridestowe").lower().split()
-    return base[0] if base else "bridestowe"
+    base = (cfg.get("home_team") or cfg.get("name") or "Home").lower().split()
+    return base[0] if base else "home"
 
 def _is_our_team(name, cfg):
     return _club_fragment(cfg) in (name or "").lower()
 
 def _short_name(nm, youth=False):
-    """'Patrick Ewen' -> 'P EWEN'; 'Ewen' -> 'EWEN'. Broadcast-style.
+    """'Peter Smith' -> 'P SMITH'; 'Smith' -> 'SMITH'. Broadcast-style.
     For youth (youth=True) use a more discreet first-name + surname-initial form where a
     full first name is available ('Jack Smith' -> 'Jack S'), aligning with common junior
     safeguarding practice. Falls back to the standard form when only an initial is on record."""
@@ -1998,7 +1997,7 @@ def generate_social_graphic_facts():
         "From the cricket match facts below, produce a JSON object for a result graphic. "
         "Use ONLY facts present; if something is unknown use an empty string. "
         "Return ONLY the JSON, no preamble, no markdown fences. Keys:\n"
-        '  "result": short result line, UPPERCASE, max 40 chars (e.g. "BBCC WIN BY 5 WICKETS")\n'
+        '  "result": short result line, UPPERCASE, max 40 chars (e.g. "HOME WIN BY 5 WICKETS")\n'
         '  "team1_name": first innings batting team, UPPERCASE\n'
         '  "team1_score": e.g. "230 (32.1)"\n'
         '  "team2_name": second innings batting team, UPPERCASE\n'
@@ -2327,7 +2326,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
     # ── Footer accent bar (club name + date, white on accent) ──
     d.rectangle([0, H - FOOT_H, W, H], fill=ACCENT)
     f_foot = _ig_font(30, bold=True)
-    club = (cfg.get("name", "") or "Bridestowe & Belstone CC")
+    club = (cfg.get("name", "") or "Home CC")
     d.text((PAD, H - FOOT_H/2), club, font=f_foot, fill=WHITE, anchor="lm")
     datestr = datetime.date.today().strftime("%d %b %Y").upper()
     dw = d.textlength(datestr, font=f_foot)
@@ -2482,15 +2481,19 @@ def parse_pcs_json(data):
 
 
 # ── PlayCricket API — auto-detect today's match ──────────────────────────────
-def fetch_todays_match(api_key, site_id=29434):
+def fetch_todays_match(api_key, site_id):
     """
-    Fetch today's BBCC fixture from the PlayCricket API.
+    Fetch today's home fixture from the PlayCricket API.
     Returns a dict with match details or None if not found.
     """
     if not api_key or not api_key.strip():
         return {"error": "No API key set"}
+    if not site_id:
+        return {"error": "No PlayCricket club ID set"}
 
-    today = datetime.date.today().strftime("%d/%m/%Y")
+    today  = datetime.date.today().strftime("%d/%m/%Y")
+    s_cfg  = load_state()
+    club_name = s_cfg.get("home_abbrev") or s_cfg.get("home_team") or "Your club"
 
     url = (f"https://play-cricket.com/api/v2/matches.json"
            f"?api_token={api_key}&site_id={site_id}&season={datetime.date.today().year}")
@@ -2512,11 +2515,10 @@ def fetch_todays_match(api_key, site_id=29434):
     if not home_matches:
         away = [m for m in todays if str(m.get("away_club_id","")) == str(site_id)]
         if away:
-            return {"error": f"BBCC are away today — no home fixture to stream"}
-        return {"error": f"No BBCC matches found for today ({today})"}
+            return {"error": f"{club_name} are away today — no home fixture to stream"}
+        return {"error": f"No {club_name} matches found for today ({today})"}
 
     # Filter by ground name if configured
-    s_cfg    = load_state()
     gnd_filt = s_cfg.get("ground_filter","").strip().lower()
     if gnd_filt and len(home_matches) > 1:
         ground_matches = [m for m in home_matches
@@ -2884,7 +2886,7 @@ CONTROL_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stream Control — Bridestowe &amp; Belstone CC</title>
+<title id="page-title">Stream Control Panel</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,sans-serif;background:#0d1b2e;color:#e8edf2;padding:20px;min-height:100vh}
@@ -3025,8 +3027,8 @@ CONTROL_HTML = """<!DOCTYPE html>
 </div>
 
 <header>
-  <div class="badge">BB</div>
-  <h1>Stream Control Panel<span>Bridestowe &amp; Belstone CC</span></h1>
+  <div class="badge" id="panel-club-badge">CC</div>
+  <h1>Stream Control Panel<span id="panel-club-name">Your Club</span></h1>
 </header>
 
 <!-- ── Pre-match checklist ── -->
@@ -3098,7 +3100,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     </div>
     <div class="field" style="margin-top:10px;">
       <label>Ground name filter</label>
-      <input type="text" id="ground_filter" placeholder="Millaton">
+      <input type="text" id="ground_filter" placeholder="e.g. The Green">
       <p class="hint">Only fetch home fixtures at this ground. Partial match, case-insensitive. Leave blank for any home ground.</p>
     </div>
     <button class="btn" onclick="fetchTodaysMatch()"
@@ -3139,7 +3141,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       </div>
       <div class="field" style="margin-bottom:0">
         <label>Scorebar abbrev.</label>
-        <input type="text" id="home_abbrev" placeholder="BBCC" maxlength="6"
+        <input type="text" id="home_abbrev" placeholder="e.g. HOME" maxlength="6"
                style="width:70px;text-transform:uppercase;font-weight:700;">
       </div>
     </div>
@@ -3149,16 +3151,16 @@ CONTROL_HTML = """<!DOCTYPE html>
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
       <div class="field" style="margin-bottom:0">
         <label>Opposition name</label>
-        <input type="text" id="away_team" placeholder="e.g. Okehampton CC">
+        <input type="text" id="away_team" placeholder="e.g. Opposition CC">
       </div>
       <div class="field" style="margin-bottom:0">
         <label>Scorebar abbrev.</label>
-        <input type="text" id="away_abbrev" placeholder="OKE" maxlength="6"
+        <input type="text" id="away_abbrev" placeholder="OPP" maxlength="6"
                style="width:70px;text-transform:uppercase;font-weight:700;">
       </div>
     </div>
     <p class="hint" style="margin-top:3px;margin-bottom:10px;">
-      e.g. "OKE", "TAUN", "EXTR" — shown in the coloured end blocks of the scorebar.
+      e.g. "OPP", "TAUN", "EXTR" — shown in the coloured end blocks of the scorebar.
     </p>
     <div class="field">
       <label>Max overs per innings</label>
@@ -3179,7 +3181,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     </div>
     <div class="field">
       <label>Toss / match notes</label>
-      <textarea id="match_notes" placeholder="e.g. BBCC won toss, elected to bat"></textarea>
+      <textarea id="match_notes" placeholder="e.g. Home won toss, elected to bat"></textarea>
       <p class="hint">Shown in the status segment of the scorebar</p>
     </div>
   </div>
@@ -3204,7 +3206,7 @@ CONTROL_HTML = """<!DOCTYPE html>
       <div class="presets" id="away-presets"></div>
     </div>
     <div class="preview-bar" id="colour-preview">
-      <div class="preview-home" id="prev-home">BRIDES</div>
+      <div class="preview-home" id="prev-home">HOME</div>
       <div class="preview-centre">147-4 &nbsp; 28.3/50</div>
       <div class="preview-away" id="prev-away">OPP</div>
       <div class="preview-bowler" id="prev-bowler">Harrison 1-34</div>
@@ -3213,14 +3215,14 @@ CONTROL_HTML = """<!DOCTYPE html>
     <!-- Logos folder -->
     <div class="field" style="margin-top:14px;">
       <label>Logos folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
-      <input type="text" id="logos_folder" placeholder="e.g. /Users/patrick/Documents/BBCC Stream/logos">
-      <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 29434.png)</p>
+      <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
+      <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
     </div>
 
     <div class="field" style="margin-top:10px;">
       <label>Headshots folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
-      <input type="text" id="headshots_folder" placeholder="e.g. /Users/patrick/Documents/BBCC Stream/headshots">
-      <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.ewen.jpg</code>, <code>P EWEN.png</code> and <code>pewen.jpg</code> all match the scorebar name "P EWEN").</p>
+      <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
+      <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
     </div>
 
     <div class="field" style="margin-top:10px;">
@@ -3231,7 +3233,7 @@ CONTROL_HTML = """<!DOCTYPE html>
 
     <div class="field" style="margin-top:10px;">
       <label>Socials folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
-      <input type="text" id="socials_folder" placeholder="e.g. /Users/patrick/Documents/BBCC Stream/socials">
+      <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
       <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
     </div>
 
@@ -3296,8 +3298,8 @@ CONTROL_HTML = """<!DOCTYPE html>
   <!-- Squad roster (shirt number → player) -->
   <div class="card">
     <label>Squad Roster — tells brothers apart</label>
-    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Ewen</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.ewen.png</code>). Enter it once per season.</p>
-    <textarea id="roster-text" rows="8" placeholder="21 = Peter Ewen&#10;7 = James Ewen&#10;14 = Michael Ewen&#10;9 = Karl Burns&#10;23 = Jamie Burns" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
+    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
+    <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
     <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
     <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
   </div>
@@ -3438,7 +3440,7 @@ CONTROL_HTML = """<!DOCTYPE html>
     </p>
     <div class="field">
       <label>Title template</label>
-      <input type="text" id="youtube_title_template" placeholder="LIVE: {home} vs {away} — DCL 2026">
+      <input type="text" id="youtube_title_template" placeholder="LIVE: {home} vs {away}">
       <p class="hint">{home} and {away} are replaced with the team names automatically</p>
     </div>
     <button class="btn btn-test" onclick="updateYouTubeTitle()" style="margin-top:6px;">&#9654; Update YouTube title now</button>
@@ -3456,7 +3458,7 @@ CONTROL_HTML = """<!DOCTYPE html>
   <!-- Weather widget -->
   <div class="card">
     <h2>Weather Widget</h2>
-    <p class="section-note">Shows current conditions at Bridestowe in the top-left corner of the stream. Use during rain delays.</p>
+    <p class="section-note">Shows current conditions at your ground in the top-left corner of the stream. Use during rain delays.</p>
     <div class="btn-row" style="margin-top:4px;">
       <button class="btn btn-test" onclick="showWeather()" style="flex:1;">&#9728; Show weather</button>
       <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
@@ -3874,6 +3876,12 @@ async function loadState() {
   updatePreview();
   updateDemoStyle(!!s.demo_mode);
   checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
+  const clubName = s.home_team || 'Your Club';
+  const clubBadgeEl = document.getElementById('panel-club-badge');
+  const clubNameEl  = document.getElementById('panel-club-name');
+  if (clubBadgeEl) clubBadgeEl.textContent = (s.home_abbrev || clubName || 'CC').slice(0,2).toUpperCase();
+  if (clubNameEl)  clubNameEl.textContent  = clubName;
+  document.title = 'Stream Control — ' + clubName;
 }
 
 async function saveState() {
@@ -3882,7 +3890,7 @@ async function saveState() {
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) state[id]=parseInt(el.value)||0; });
   BOOL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=el.checked; });
   // Defaults for blank required fields
-  if (!state.home_team) state.home_team = 'Bridestowe & Belstone CC';
+  if (!state.home_team) state.home_team = 'Home CC';
   if (!state.away_team) state.away_team = 'Opposition CC';
   if (!state.obs_host)  state.obs_host  = 'localhost';
   if (!state.obs_port)  state.obs_port  = 4455;
@@ -4579,7 +4587,7 @@ async function checkLiveStatus() {
         dot.style.background = '#c87800';
         dot.style.animation  = 'none';
         line1.textContent    = s.demo_mode ? 'Demo mode active' : 'Connected — no live match today';
-        line2.textContent    = `Widget reachable · Club ID ${data.club_id || 29434}`;
+        line2.textContent    = `Widget reachable · Club ID ${data.club_id || 'not set'}`;
         src.textContent      = 'Widget';
         src.style.background = '#2a1a00';
         src.style.color      = '#c87800';
@@ -4960,7 +4968,7 @@ class Handler(BaseHTTPRequestHandler):
                         "batter2_wicketfielder (Fielder)":  _show("batter2_wicketfielder"),
                         "note": "After a wicket, at least one set should show real values "
                                 "(e.g. type='Caught', fielder='Jones', Wicket='Smith'). If they show "
-                                "'NOT RECOGNISED', the field names in bbcc_scoreboard.template don't "
+                                "'NOT RECOGNISED', the field names in scoreboard.template don't "
                                 "match this NV Play version — read the real names from the keys list "
                                 "below and tell Claude so the template can be corrected.",
                     },
@@ -5099,9 +5107,9 @@ class Handler(BaseHTTPRequestHandler):
             mimes = {"png":"image/png","jpg":"image/jpeg",
                      "jpeg":"image/jpeg","webp":"image/webp"}
             # Tiered match so the scorebar name finds the photo even when they differ in form:
-            #   full  : 'P EWEN' -> 'p.ewen'
-            #   initsur: 'K J BURNS' -> 'k.burns'  (first initial + surname)
-            #   surname: 'HATTON'  -> 'j.hatton'   (only when one file has that surname)
+            #   full  : 'P SMITH' -> 'p.smith'
+            #   initsur: 'K J JONES' -> 'k.jones'  (first initial + surname)
+            #   surname: 'WALKER'  -> 'j.walker'   (only when one file has that surname)
             want = _name_keys(resolved)   # resolved = roster full name if confirmed, else scorebar name
             try:
                 files = [f for f in os.listdir(hdir)
@@ -5247,7 +5255,8 @@ class Handler(BaseHTTPRequestHandler):
             # Fetch today's match from PlayCricket API and optionally auto-fill state
             s      = load_state()
             key    = s.get("playcricket_api_key","").strip()
-            result = fetch_todays_match(key)
+            site   = s.get("home_club_id","").strip()
+            result = fetch_todays_match(key, site)
             if "error" not in result:
                 # Auto-fill state with fetched data
                 updates = {}
@@ -5272,8 +5281,9 @@ class Handler(BaseHTTPRequestHandler):
             # Return all fixtures for the season
             s   = load_state()
             key = s.get("playcricket_api_key","").strip()
+            site= s.get("home_club_id","").strip()
             url = (f"https://play-cricket.com/api/v2/matches.json"
-                   f"?api_token={key}&site_id=29434&season={datetime.date.today().year}")
+                   f"?api_token={key}&site_id={site}&season={datetime.date.today().year}")
             try:
                 req = urllib.request.Request(url, headers={"Accept":"application/json"})
                 with urllib.request.urlopen(req, timeout=15) as resp:
@@ -5389,9 +5399,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/live":
             global _rv_cache
             s    = load_state()
-            home = s.get("home_team","Bridestowe & Belstone CC")
+            home = s.get("home_team","Home CC")
             away = s.get("away_team","Opposition CC")
-            club_id = int(s.get("test_club_id","") or s.get("site_id","") or CLUB_ID)
+            club_id = int(s.get("test_club_id") or s.get("home_club_id") or 0)
 
             # match_url: pin to a specific match
             match_url   = s.get("match_url","").strip()
@@ -5424,7 +5434,7 @@ class Handler(BaseHTTPRequestHandler):
                     url = (f"https://play-cricket.com/api/v2/match_detail.json"
                            f"?id={s['match_id']}&site_id={s.get('site_id','')}"
                            f"&api_token={s['api_token']}")
-                    req = urllib.request.Request(url, headers={"User-Agent":"BBCC-Overlay/1.0"})
+                    req = urllib.request.Request(url, headers={"User-Agent":"CricketStreamOverlay/1.0"})
                     with urllib.request.urlopen(req, timeout=10) as r:
                         data = json.loads(r.read().decode())
                     self._json({"source":"api","data":data})
@@ -5489,7 +5499,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 st = load_state()
                 demo_state = {
-                    "battingTeamName": st.get("home_team","Bridestowe & Belstone CC"),
+                    "battingTeamName": st.get("home_team","Home CC"),
                     "bowlingTeamName": st.get("away_team","Opposition CC"),
                     "score":87,"wickets":3,"overs":18.2,
                     "batter1":{"name":"A. Richards","runs":34,"balls":52},
@@ -5609,9 +5619,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 data  = json.loads(body)
                 s     = load_state()
-                home  = s.get("home_team", "BBCC")
+                home  = s.get("home_team", "Home CC")
                 away  = s.get("away_team", "Opposition")
-                tmpl  = data.get("title") or s.get("youtube_title_template", "LIVE: {home} vs {away} — DCL 2026")
+                tmpl  = data.get("title") or s.get("youtube_title_template", "LIVE: {home} vs {away}")
                 title = tmpl.replace("{home}", home).replace("{away}", away)
                 ok, msg = update_youtube_title(title)
                 print(f"  {'✓' if ok else '✗'}  YouTube: {msg}")
@@ -5656,7 +5666,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 st = load_state()
                 demo_state = {
-                    "battingTeamName": st.get("home_team","Bridestowe & Belstone CC"),
+                    "battingTeamName": st.get("home_team","Home CC"),
                     "bowlingTeamName": st.get("away_team","Opposition CC"),
                     "score":87,"wickets":3,"overs":18.2,
                     "batter1":{"name":"A. Richards","runs":34,"balls":52},
@@ -5716,7 +5726,7 @@ if __name__ == "__main__":
 
     print(f"""
   ╔══════════════════════════════════════════════════════╗
-  ║   Bridestowe & Belstone CC — Stream Overlay Server   ║
+  ║        CricketStream Overlay — Stream Server         ║
   ╠══════════════════════════════════════════════════════╣
   ║   Control panel  →  http://localhost:{PORT}/control     ║
   ║   OBS overlay    →  http://localhost:{PORT}/overlay     ║

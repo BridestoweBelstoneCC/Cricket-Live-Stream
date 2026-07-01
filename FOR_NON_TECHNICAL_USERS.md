@@ -25,38 +25,12 @@ This software does exactly that — for your club's YouTube live stream. It runs
 - A GitHub account is not needed — you're just downloading the software, not contributing to it
 
 **Software (all free, we'll install it together):**
-- Python — a programming language the software is written in. You don't need to know how to use it, just install it
+- Python — a programming language the software is written in. You don't need to install this yourself — the setup wizard in Step 3 installs it for you
 - OBS Studio — the software that mixes your camera with the graphics and sends it to YouTube
 
 ---
 
-## Step 1 — Download and install Python
-
-1. Go to **https://python.org/downloads**
-2. Click the big yellow button that says **Download Python**
-3. Open the downloaded file and run the installer
-4. **Windows only:** On the first screen, tick the box that says **"Add Python to PATH"**. It's near the bottom and easy to miss.
-5. Click **Install Now**
-6. When it finishes, click Close
-
-### Mac only — fix SSL certificates
-
-After installing Python on a Mac you must run one extra step, otherwise the software
-will hang when trying to connect to PlayCricket and the control panel will show
-"Checking connection..." indefinitely.
-
-1. Open **Finder**
-2. Go to **Applications**
-3. Open the **Python 3.x** folder (the version you just installed)
-4. Double-click **Install Certificates.command**
-5. A terminal window opens and runs — wait for it to say **"update complete"**
-6. Close the window
-
-You only need to do this once.
-
----
-
-## Step 2 — Download and install OBS Studio
+## Step 1 — Download and install OBS Studio
 
 1. Go to **https://obsproject.com**
 2. Click the button for your operating system (Windows or macOS)
@@ -68,7 +42,7 @@ You only need to do this once.
 
 ---
 
-## Step 3 — Download the cricket stream software
+## Step 2 — Download the cricket stream software
 
 1. Go to **https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream**
 2. Click the green **Code** button
@@ -79,32 +53,36 @@ You only need to do this once.
 
 ---
 
-## Step 4 — First-time setup
+## Step 3 — First-time setup
 
-This one-off wizard installs everything Python needs and creates your `config.ini` — no manual text editing required.
+Go to the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) page and download the setup wizard for your computer:
 
-**Windows:** Double-click **`setup.bat`**
-**Mac:** Right-click **`setup.sh`** → Open → Open
+**Windows:** `CricketStreamSetup.exe` — put it in the folder from Step 2 and double-click it.
+**Mac:** `CricketStreamSetup-mac.zip` — put it in the folder from Step 2, unzip it, then double-click **`Setup Wizard.command`** (macOS will warn about an unknown developer the first time — click **Open** to proceed).
+
+You don't need to install Python first — if it's missing, the wizard installs it for you (and on Mac, fixes the SSL certificate issue automatically, which used to be a separate manual step). On Mac it will ask for your Mac password partway through — that's the wizard installing Python, not anything suspicious.
 
 A window opens and asks you a few questions:
 
 - **Club name** — your full club name as it will appear on screen
-- **Abbreviation** — a short version for the scorebar, max 6 characters (e.g. BBCC, TAUN, OKE)
+- **Abbreviation** — a short version for the scorebar, max 6 characters (e.g. TAUN, STOW, EXE)
 - **Home kit colour** — the hex code for your kit colour. Go to **htmlcolorcodes.com**, pick your colour, copy the code that starts with `#`
 - **PlayCricket club ID** — the number in your club's play-cricket.com URL
 - **PlayCricket API key** — email PlayCricket support to request one (it's free)
 - **NV Play output folder** — where your scorer's NV Play software saves its data (your scorer knows this — it's set in NV Play under Tools → Configuration → Scoreboard)
-- **OBS WebSocket password** — you'll set this in Step 5, then come back and update it if needed
+- **OBS WebSocket password** — you'll set this in Step 4, then come back and update it if needed
 
 For anything you don't have yet, just press Enter to skip it — you can fill it in later via the control panel.
 
 When the wizard finishes, it offers to launch the server straight away.
 
+> Already have Python installed and comfortable with that? You can use `setup.bat` (Windows) / `setup.sh` (Mac) from the folder instead — it's the same wizard, run from source.
+
 > If anything goes wrong during install, see the Troubleshooting section at the bottom.
 
 ---
 
-## Step 5 — Set up OBS
+## Step 4 — Set up OBS
 
 ### Turn on WebSocket (lets the software talk to OBS)
 
@@ -128,7 +106,7 @@ When the wizard finishes, it offers to launch the server straight away.
 
 ---
 
-## Step 6 — Set up your camera in OBS
+## Step 5 — Set up your camera in OBS
 
 1. In OBS, under **Sources** (bottom left), click the **+** button
 2. Select **Video Capture Device**
@@ -197,8 +175,8 @@ you have added the badge file.
 
 1. Find a PNG image of your club badge (from your club website or play-cricket.com)
 2. Open `config.ini` and note the number next to `playcricket_id` — that is your club ID
-3. Rename the badge image to `{your_id}.png` — for example `29434.png`
-4. Create a folder called `logos` inside your BBCC Stream folder
+3. Rename the badge image to `{your_id}.png` — for example `12345.png`
+4. Create a folder called `logos` inside your CricketStream folder
 5. Put the renamed badge file into that `logos` folder
 6. Right-click the Overlay source in OBS → **Refresh**
 
@@ -225,13 +203,17 @@ For full details including where to find club badge images, see **`CLUB_LOGOS.md
 
 ## Troubleshooting
 
-### The black window closes immediately when I run setup.bat
+### The black window closes immediately when I run setup.bat or CricketStreamSetup.exe
 
-Right-click **`setup.bat`** → **Run as administrator**
+Right-click it → **Run as administrator**
 
-### It says "Python was not found"
+### The wizard couldn't install Python automatically
 
-You need to reinstall Python and make sure to tick **"Add Python to PATH"** during installation.
+It opens the python.org download page instead — download it from there, tick **"Add Python to PATH"** during install (Windows) or run **Install Certificates.command** from the Python folder in Applications afterwards (Mac), then re-run the wizard. This is rare — it only happens without an internet connection, or on very old Windows versions without `winget`.
+
+### It says "Python was not found" (when running setup.bat / setup.sh directly)
+
+You need to install Python from python.org and make sure to tick **"Add Python to PATH"** during installation — or just use `CricketStreamSetup.exe` / `CricketStreamSetup-mac.zip` from Step 3 instead, which installs Python for you.
 
 ### The overlay shows on my browser but not in OBS
 

@@ -53,7 +53,7 @@ own, and easier setup for non-technical operators.
 ## Upgrading from v2.0
 
 1. Replace `server.py` and `overlay.html`.
-2. **Deploy the v2.1 `bbcc_scoreboard.template`** to the scorer's NV Play / PCS Pro machine —
+2. **Deploy the v2.1 `scoreboard.template`** to the scorer's NV Play / PCS Pro machine —
    required for the full innings scorecard and shirt-number features. Restart PCS Pro and
    re-select the scoreboard in Tools → Configuration.
 3. Install Pillow if you haven't: `pip install Pillow` (used for social-post images).

@@ -3,14 +3,13 @@
 
 ---
 
-## The fast path — up and running in 4 steps
+## The fast path — up and running in 3 steps
 
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
 1. **Turn off AirPlay Receiver** (it blocks port 5000): System Settings → General → AirDrop & Handoff → AirPlay Receiver **off**. *(Once only.)*
-2. **Install Python** — get Python 3 from https://python.org/downloads, then run **Install Certificates.command** from the Python folder in Applications (see Step 2 for why this matters). *(Once only.)*
-3. **Setup** — right-click **`setup.sh`** → Open → Open. It installs packages and walks you through your club details, creating `config.ini` for you. *(Once only.)*
-4. **Match day** — double-click **`quickstart.sh`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+2. **Setup** — download `CricketStreamSetup-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), unzip it into this folder, and double-click **`Setup Wizard.command`**. It installs Python and fixes SSL certificates for you if needed (see Step 2 for why that matters), then installs packages and walks you through your club details, creating `config.ini`. *(Once only.)*
+3. **Match day** — double-click **`quickstart.sh`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
 
@@ -22,7 +21,7 @@ You will need:
 - A Mac running macOS 12 (Monterey) or later
 - A camera connected to your Mac (USB webcam or HDMI camera via capture card)
 - OBS Studio for Mac — https://obsproject.com
-- Python 3 — https://python.org/downloads
+- Python 3 — installed automatically by `Setup Wizard.command` (see Step 2), or get it yourself from https://python.org/downloads
 - A YouTube account with Live Streaming enabled
 
 **Scoring software on Mac:**
@@ -37,14 +36,16 @@ A 2015 MacBook Pro or later handles both OBS and a Windows VM comfortably.
 
 ## Step 1 — Extract the files
 
-Unzip `bbcc_stream_mac.zip` to a permanent location:
+Unzip `cricketstream_mac.zip` to a permanent location:
 ```
-~/Documents/BBCC Stream/
+~/Documents/CricketStream/
 ```
 
 ---
 
 ## Step 2 — Install Python
+
+> **Skip this whole step if you're using `CricketStreamSetup-mac.zip`** (see the fast path above) — the setup wizard installs Python and fixes SSL certificates for you automatically, including the "Fix SSL certificates" part below. This section is only for people running `setup.sh` from source.
 
 1. Download from https://python.org/downloads — choose the macOS installer
 2. Run the installer and follow the prompts
@@ -80,14 +81,16 @@ Go to **System Preferences → General → AirDrop & Handoff** and untick **AirP
 
 ## Step 3 — Install Python packages and configure
 
-In Finder, navigate to your BBCC Stream folder.
+Already ran `CricketStreamSetup-mac.zip`'s `Setup Wizard.command`? You've done this step — skip to Step 5.
+
+Otherwise, in Finder, navigate to your CricketStream folder.
 Right-click **`setup.sh`** → **Open** → **Open** (macOS will warn about an unknown developer — click Open again to proceed).
 
 The setup wizard installs packages, then asks a few questions — your club name, kit colour, PlayCricket ID, and any API keys you have. It creates `config.ini` for you automatically. You only need to run this once.
 
 If you see a permissions error, open Terminal and run:
 ```bash
-cd ~/Documents/BBCC\ Stream
+cd ~/Documents/CricketStream
 chmod +x setup.sh install.sh quickstart.sh
 ./setup.sh
 ```
@@ -221,7 +224,7 @@ Save and close.
 
 Right-click `quickstart.sh` → **Open**. Or run from Terminal:
 ```bash
-cd ~/Documents/BBCC\ Stream
+cd ~/Documents/CricketStream
 ./quickstart.sh
 ```
 
@@ -229,8 +232,8 @@ You should see:
 ```
   ✓ Club: Your Club CC
   ✓ All packages present
-  ✓ Match found: Your Club CC vs Taunton CC
-  ✓ Competition: Devon Cricket League — A Division
+  ✓ Match found: Your Club CC vs Example Opposition CC
+  ✓ Competition: Your League — Division 1
   ✓ match_state.json written
   ✓ Connected to OBS
   ✓ Scene 'Main' already exists
@@ -238,7 +241,7 @@ You should see:
   ✓ Overlay browser source settings updated
   ✓ Replay buffer started
   ─────────────────────────────────────────
-  Ready: Your Club CC vs Taunton CC
+  Ready: Your Club CC vs Example Opposition CC
   Control panel: http://127.0.0.1:5000/control
 ```
 
@@ -265,7 +268,7 @@ A 2015 MacBook Pro 15" handles this comfortably. A 2015 13" works but keep OBS a
 When a new batter comes in, the overlay can show a player card with their photo and
 season stats.
 
-1. Create a folder called `headshots` inside your BBCC Stream folder (next to `server.py`).
+1. Create a folder called `headshots` inside your CricketStream folder (next to `server.py`).
 2. Add player photos named by **surname** — e.g. `Smith.jpg`. Square images around
    400x400 pixels look best (JPG, PNG, WebP all work).
 3. The next time that batter comes in, their photo appears on the card.
@@ -372,9 +375,9 @@ They are matched automatically by PlayCricket club ID.
 
 **First-time setup:**
 
-1. Create a `logos/` folder inside your BBCC Stream folder (alongside `server.py`)
+1. Create a `logos/` folder inside your CricketStream folder (alongside `server.py`)
 2. Find your PlayCricket club ID — it's the `playcricket_id` value in `config.ini`
-3. Save your club badge as `logos/{your_id}.png` — for example `logos/29434.png`
+3. Save your club badge as `logos/{your_id}.png` — for example `logos/12345.png`
 4. Restart the server — your badge appears on the left of the scorebar
 
 **Adding opposition badges:**

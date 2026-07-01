@@ -1,7 +1,7 @@
 @echo off
 cd /d %~dp0
 echo.
-echo  BBCC Stream Overlay - Quick Start
+echo  CricketStream Overlay - Quick Start
 echo  ===================================
 echo.
 
