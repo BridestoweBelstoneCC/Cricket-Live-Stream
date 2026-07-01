@@ -27,6 +27,16 @@ jobs:
           name: CricketStreamSetup-windows
           path: dist/CricketStreamSetup.exe
 
+  # PyInstaller's onefile bootloader appends a single archive (the Python runtime + bundled
+  # files) after the Mach-O binary and finds it at runtime via an offset from EOF. Building
+  # arm64 and x86_64 separately and lipo-merging them does NOT work for onefile builds —
+  # the merged binary's bootloader can only ever discover one of the two archives (whichever
+  # occurs last), so it runs fine on one architecture and fails on the other with a
+  # "Failed to load Python shared library ... incompatible architecture" error (confirmed by
+  # actually building and running it). The correct approach is PyInstaller's own
+  # --target-arch universal2, which builds one archive containing both architectures'
+  # native libraries — actions/setup-python installs python.org's own universal2 build for
+  # Python >= 3.11 on macOS, so no extra Python install step is needed.
   build-macos:
     runs-on: macos-latest
     steps:
@@ -39,8 +49,11 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Build binary
-        run: pyinstaller --onefile --name CricketStreamSetup setup_wizard.py
+      - name: Build universal2 binary
+        run: pyinstaller --onefile --target-arch universal2 --name CricketStreamSetup setup_wizard.py
+
+      - name: Verify both architectures are present
+        run: lipo -info dist/CricketStreamSetup
 
       - name: Package with a double-clickable launcher
         # A raw Mach-O binary double-clicked in Finder runs with no visible
