@@ -4,6 +4,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## v2.2.2 — 2026-07-01
+
+Docs-only release — no code changes. Consolidated `RELEASE_NOTES_v2.1.md` and
+`WHATS_NEW_V2.md` into this single `CHANGELOG.md`, documented Intel Mac support in the
+setup guides, and updated the stale version badge.
+
 ## v2.2.1 — 2026-07-01
 
 - **Fixed the macOS setup wizard for Intel Macs.** The download was accidentally
