@@ -100,6 +100,11 @@ html, body {
 #player-card-right { padding:16px 32px 16px 26px; left:50%;
   flex-direction:column; align-items:flex-start; gap:8px;
   background:rgba(12,12,18,0.92); }
+/* Pre-game season form — same box treatment as the player card, shown while waiting
+   for the scorer to select the openers. */
+#pregame-form-home, #pregame-form-away { padding:16px 32px 16px 26px;
+  flex-direction:column; align-items:flex-start; gap:8px;
+  background:rgba(12,12,18,0.92); }
 .pc-headshot { width:72px; height:72px; border-radius:50%;
   object-fit:cover; border:2px solid rgba(255,255,255,0.15);
   flex-shrink:0; }
@@ -560,6 +565,67 @@ html, body {
       <div style="font-size:18px;font-weight:800;color:#fff;"
            id="prematch-scorer">—</div>
     </div>
+  </div>
+</div>
+
+<!-- Pre-game season form — fills the dead time before the openers are selected -->
+<div id="pregame-form-home" class="graphic-panel">
+  <div class="pc-accent" id="pregame-form-home-accent"></div>
+  <div style="display:flex;align-items:center;gap:20px;">
+    <img id="pregame-form-home-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
+    <div>
+      <div class="pc-label" id="pregame-form-home-label">Season Form</div>
+      <div class="pc-name" id="pregame-form-home-name">—</div>
+    </div>
+  </div>
+  <div class="pc-stats">
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-home-runs">—</span>
+      <span class="pc-stat-key">Season Runs</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-home-avg">—</span>
+      <span class="pc-stat-key">Average</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-home-inn">—</span>
+      <span class="pc-stat-key">Innings</span>
+    </div>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.55);">
+    Leading wicket-taker: <span id="pregame-form-home-bowler-name" style="color:#fff;font-weight:700;">—</span><span id="pregame-form-home-bowler-figs"></span>
+  </div>
+</div>
+
+<div id="pregame-form-away" class="graphic-panel">
+  <div class="pc-accent" id="pregame-form-away-accent"></div>
+  <div style="display:flex;align-items:center;gap:20px;">
+    <img id="pregame-form-away-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
+    <div>
+      <div class="pc-label" id="pregame-form-away-label">Season Form</div>
+      <div class="pc-name" id="pregame-form-away-name">—</div>
+    </div>
+  </div>
+  <div class="pc-stats">
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-away-runs">—</span>
+      <span class="pc-stat-key">Season Runs</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-away-avg">—</span>
+      <span class="pc-stat-key">Average</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="pregame-form-away-inn">—</span>
+      <span class="pc-stat-key">Innings</span>
+    </div>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.55);">
+    Leading wicket-taker: <span id="pregame-form-away-bowler-name" style="color:#fff;font-weight:700;">—</span><span id="pregame-form-away-bowler-figs"></span>
   </div>
 </div>
 
@@ -1750,7 +1816,7 @@ function detectEvents(state, allInnings) {
     // Genuine innings start (not a mid-match refresh): queue opening pair for a player card
     if (cfg.graphics_player_card && score === 0 && Math.floor(parseFloat(overs)) === 0) {
       [batter1, batter2].forEach(function(b){
-        if (b && b.name && b.name !== '\u2014' && !_playerCardShown[bId(b)]
+        if (isRealBatter(b) && !_playerCardShown[bId(b)]
             && !_pendingCards.some(function(x){return bId(x)===bId(b);})) _pendingCards.push(b);
       });
       _wicketReplayAt = 0;  // no replay pending — cards can show immediately
@@ -1846,7 +1912,7 @@ function detectEvents(state, allInnings) {
 
     // Detect newly arrived batters by their unique id (shirt number when available)
     var newBatters = [batter1, batter2].filter(function(b) {
-      return b && b.name && b.name !== '\u2014' &&
+      return isRealBatter(b) &&
              prev.batIds.indexOf(bId(b)) < 0 && !_playerCardShown[bId(b)];
     });
 
@@ -2059,6 +2125,12 @@ function bId(b) {
   return b.number ? ('#' + b.number) : (b.name || '');
 }
 
+// True once a real player is at the crease — false for "—" or blank (pre-game / server.py
+// already normalises blanks to "—", but this is a defence-in-depth check on the overlay side).
+function isRealBatter(b) {
+  return !!(b && b.name && b.name.trim() && b.name !== '—');
+}
+
 function showPlayerCard(b) {
   if (!cfg.graphics_player_card) return;
   var name = (b && b.name) || (typeof b === 'string' ? b : '');
@@ -2073,19 +2145,86 @@ function showPlayerCard(b) {
   if (pc) pc.classList.add("show");
 }
 
+// ── Pre-game season form ─────────────────────────────────
+// Fills the dead time before the scorer selects the openers with each team's own top
+// scorer/wicket-taker this season, reusing the player-card visual (headshot + stat row).
+var _pregameForm = { home: null, away: null };
+var _pregameFormRequested = false;
+
+function loadPregameForm() {
+  if (_pregameFormRequested) return;
+  _pregameFormRequested = true;
+  var tries = 0;
+  (function attempt() {
+    fetch(SERVER + '/season/top').then(function(r){ return r.json(); }).then(function(d) {
+      if (d && d.ready === false && tries < 15) { tries++; setTimeout(attempt, 3000); return; }
+      if (d && d.ready) {
+        _pregameForm.home = (d.scorers && d.scorers.home)
+          ? { scorer: d.scorers.home, bowler: (d.bowlers || {}).home } : null;
+        _pregameForm.away = (d.scorers && d.scorers.away)
+          ? { scorer: d.scorers.away, bowler: (d.bowlers || {}).away } : null;
+      }
+    }).catch(function(){});
+  })();
+}
+
+// Fills the DOM for one side and returns true if there was data worth showing.
+function fillPregameForm(side, teamName, teamAbbrev, colour) {
+  var data = _pregameForm[side];
+  if (!data || !data.scorer) return false;
+  var pfx = 'pregame-form-' + side;
+  var accent = el(pfx + '-accent');
+  if (accent) accent.style.background = colour || '';
+  el(pfx + '-label').textContent = (teamAbbrev || teamName || side).toUpperCase() + ' — SEASON FORM';
+  el(pfx + '-name').textContent  = data.scorer.name;
+  var hs = el(pfx + '-headshot');
+  if (hs) {
+    hs.style.display = 'none';
+    hs.onload  = function() { hs.style.display = ''; };
+    hs.onerror = function() { hs.style.display = 'none'; };
+    hs.src = '/headshot/' + encodeURIComponent(data.scorer.name);
+  }
+  el(pfx + '-runs').textContent = data.scorer.runs;
+  el(pfx + '-avg').textContent  = data.scorer.avg;
+  el(pfx + '-inn').textContent  = data.scorer.inn;
+  var bowlerName = el(pfx + '-bowler-name');
+  var bowlerFigs = el(pfx + '-bowler-figs');
+  if (data.bowler) {
+    bowlerName.textContent = data.bowler.name;
+    bowlerFigs.textContent = ' (' + data.bowler.wkts + ' wkts, avg ' + data.bowler.avg + ')';
+  } else {
+    bowlerName.textContent = '—';
+    bowlerFigs.textContent = '';
+  }
+  return true;
+}
+
 function showPreMatchInfo() {
+  loadPregameForm();
   // Show pre-match competition/umpires panel if we have API data
   const comp   = cfg.competition_name || '';
   const u1     = cfg.umpire1_name     || '';
   const u2     = cfg.umpire2_name     || '';
   const scorer = cfg.scorer1_name     || cfg.umpire1_name && cfg.umpire2_name ? '' : '';
-  if (!comp && !u1) return;
   const umpStr = u1 && u2 ? `${fmtSurname(u1)} / ${fmtSurname(u2)}`
                : u1 ? fmtSurname(u1) : '—';
-  el('prematch-competition').textContent = comp || '—';
-  el('prematch-umpires').textContent     = umpStr;
-  el('prematch-scorer').textContent      = scorer || '—';
-  queueGraphic('prematch-panel', 10000);
+  if (comp || u1) {
+    el('prematch-competition').textContent = comp || '—';
+    el('prematch-umpires').textContent     = umpStr;
+    el('prematch-scorer').textContent      = scorer || '—';
+  }
+  // This runs every poll (2-3s) while there's no live batter data, so only queue a fresh
+  // cycle once the previous one has fully drained — otherwise prematch-panel would get
+  // re-queued every poll and starve the season-form panels out entirely.
+  if (queue.length === 0 && !graphicActive) {
+    if (comp || u1) queueGraphic('prematch-panel', 9000);
+    if (fillPregameForm('home', cfg.home_team, cfg.home_abbrev, cfg.home_colour)) {
+      queueGraphic('pregame-form-home', 9000);
+    }
+    if (fillPregameForm('away', cfg.away_team, cfg.away_abbrev, cfg.away_colour)) {
+      queueGraphic('pregame-form-away', 9000);
+    }
+  }
 }
 
 function renderPreMatch(home, away) {
@@ -2241,9 +2380,9 @@ async function poll() {
     } else if (liveData.source==='api'&&liveData.data) {
       const {state,allInnings}=parsePlayCricket(liveData.data,home,away);
       if (state){renderScorebar(state,home,away);detectEvents(state,allInnings);}
-      else renderPreMatch(home,away);
+      else { renderPreMatch(home,away); showPreMatchInfo(); }
     } else {
-      renderPreMatch(home,away);
+      renderPreMatch(home,away); showPreMatchInfo();
     }
     _fetchErrors = 0;          // success this poll — clear the consecutive-failure counter
   } catch(e){

@@ -1613,6 +1613,7 @@ def _aggregate_season_bat(match_details_list, keep_clubs=None):
         finals[key] = {
             "name": r["name"],
             "inn":  str(r["inn"]),
+            "runs": r["runs"],
             "avg":  (f"{avg:.2f}" if avg is not None else "—"),
             "hs":   (f"{r['hs']}*" if r["hs_no"] else str(r["hs"])) if r["hs"] >= 0 else "—",
         }
@@ -1652,6 +1653,66 @@ def _aggregate_season_bat(match_details_list, keep_clubs=None):
         if surname and surname_count.get(surname) == 1:
             lookup.setdefault(surname, rec)
     return lookup
+
+
+def _season_top_bowler(match_details_list, club_frag):
+    """Season leading wicket-taker for one club. PlayCricket's per-innings bowling card
+    ('bowl') belongs to the FIELDING side, not the innings' own team_batting_name — so a club's
+    bowling figures live on the OTHER innings of the same match. For each match, find the
+    innings that is this club's own batting innings, then credit the bowlers listed on the
+    remaining innings (the side that bowled at them) to this club."""
+    if not club_frag:
+        return None
+    acc = {}
+    for det in match_details_list:
+        try:
+            md = (det.get("match_details") or [{}])[0]
+            innings = md.get("innings", []) or []
+        except AttributeError:
+            continue
+        if len(innings) < 2:
+            continue
+        for i, inn in enumerate(innings):
+            tname = (inn.get("team_batting_name") or "").lower()
+            if club_frag not in tname:
+                continue
+            for j, other in enumerate(innings):
+                if j == i:
+                    continue
+                for bw in other.get("bowl", []) or []:
+                    nm = (bw.get("bowler_name") or "").strip()
+                    if not nm:
+                        continue
+                    wkts = _pc_parse_int(bw.get("wickets"))
+                    runs = _pc_parse_int(bw.get("runs"))
+                    if wkts is None or runs is None:
+                        continue
+                    key = _norm_name_key(nm)
+                    rec = acc.setdefault(key, {"name": nm, "wkts": 0, "runs": 0})
+                    rec["wkts"] += wkts
+                    rec["runs"] += runs
+    if not acc:
+        return None
+    best = max(acc.values(), key=lambda r: (r["wkts"], -r["runs"]))
+    if best["wkts"] <= 0:
+        return None
+    avg = round(best["runs"] / best["wkts"], 1)
+    return {"name": best["name"], "wkts": best["wkts"], "runs": best["runs"], "avg": f"{avg}"}
+
+
+def _season_top_scorer(bat_lookup):
+    """Pick the single highest season-runs record from a keep_clubs-filtered batting lookup.
+    Lookup values are shared objects (several keys can point at the same record), so dedupe by
+    identity first — same trick used elsewhere in this file for player counts."""
+    seen = {}
+    for rec in bat_lookup.values():
+        seen[id(rec)] = rec
+    if not seen:
+        return None
+    best = max(seen.values(), key=lambda r: r.get("runs", 0))
+    if best.get("runs", 0) <= 0:
+        return None
+    return {"name": best["name"], "runs": best["runs"], "inn": best["inn"], "avg": best["avg"]}
 
 
 # ── Season stats cache (PlayCricket has no per-player endpoint, so we aggregate match
@@ -1770,10 +1831,25 @@ def build_season_stats(force=False):
     def _first_word(s):
         ws = re.sub(r"[^a-z ]", " ", (s or "").lower()).split()
         return ws[0] if ws and len(ws[0]) > 2 else ""
-    keep = [w for w in (_first_word(cfg.get("home_team","")) or "home",
-                        _first_word(cfg.get("away_team",""))) if w]
+    home_frag = _first_word(cfg.get("home_team","")) or "home"
+    away_frag = _first_word(cfg.get("away_team",""))
+    keep = [w for w in (home_frag, away_frag) if w]
     lookup = _aggregate_season_bat(details, keep_clubs=keep or None)
+
+    # Pre-game "season form" panel: each team's own top scorer/wicket-taker, computed
+    # separately per club (the combined lookup above mixes both teams' players together).
+    top_scorers = {
+        "home": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[home_frag])),
+        "away": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[away_frag]))
+                if away_frag else None,
+    }
+    top_bowlers = {
+        "home": _season_top_bowler(details, home_frag),
+        "away": _season_top_bowler(details, away_frag) if away_frag else None,
+    }
+
     result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
+              "top_scorers": top_scorers, "top_bowlers": top_bowlers,
               "built": True, "building": False, "matches_used": used, "calls": calls, "error": err}
     with _season_stats_lock:
         _season_stats = result
@@ -2343,9 +2419,13 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
 def parse_pcs_json(data):
     """Convert PCS Pro JSON output into overlay state format."""
     def g(key, default=""):
-        """Get value, handling PCS's {{field}} placeholders for unset values."""
+        """Get value, handling PCS's {{field}} placeholders for unset values. Also falls back
+        to default on a blank string — NV Play renders the template as soon as a match starts,
+        so fields like batter1_name are genuinely empty (not missing, not {{placeholder}}) until
+        the scorer actually selects the openers. Without this, pre-game state looks like a real
+        (blank-named) player to the overlay instead of "nobody's in yet"."""
         val = data.get(key, default)
-        if isinstance(val, str) and val.startswith("{{"):
+        if isinstance(val, str) and (val.startswith("{{") or val.strip() == ""):
             return default
         return val
 
@@ -5233,6 +5313,20 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ready": True, **rec})
                 else:
                     self._json({"ready": True, "avg":"—", "hs":"—", "inn":"—"})
+
+        elif path == "/season/top":
+            # Pre-game "season form" panel data: each team's own top scorer/wicket-taker.
+            # Same lazy-build-in-background pattern as /player/stats — never blocks the overlay.
+            today = datetime.date.today().isoformat()
+            built = _season_stats.get("built") and _season_stats.get("date") == today
+            if not built and not _season_stats.get("building"):
+                threading.Thread(target=build_season_stats, daemon=True).start()
+            if not built:
+                self._json({"ready": False})
+            else:
+                self._json({"ready": True,
+                            "scorers": _season_stats.get("top_scorers") or {"home": None, "away": None},
+                            "bowlers": _season_stats.get("top_bowlers") or {"home": None, "away": None}})
 
         elif path == "/player/stats/refresh":
             if not self._check_token(): return
