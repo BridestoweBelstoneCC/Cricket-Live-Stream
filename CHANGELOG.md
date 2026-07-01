@@ -6,30 +6,17 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## v2.2.2 — 2026-07-01
 
-Docs-only release — no code changes. Consolidated `RELEASE_NOTES_v2.1.md` and
-`WHATS_NEW_V2.md` into this single `CHANGELOG.md`, documented Intel Mac support in the
-setup guides, and updated the stale version badge.
-
-## v2.2.1 — 2026-07-01
-
-- **Fixed the macOS setup wizard for Intel Macs.** The download was accidentally
-  Apple-Silicon-only (`arm64`), which crashed immediately with "bad CPU type in executable"
-  on Intel hardware — no Rosetta-equivalent runs `arm64` code the other way round. It's now
-  built as a proper `universal2` binary, so one download works on both Apple Silicon and
-  Intel Macs.
-- **Redacted the camera RTSP URL from `GET /state`.** Most IP cameras embed credentials
-  directly in the URL (`rtsp://user:pass@host/stream`); this was being sent in plaintext to
-  anything that could reach the control panel, including over plain HTTP Wi-Fi when using
-  the phone/tablet control panel. It now redacts the same way the OBS password and API keys
-  already did.
-
-## v2.2 — 2026-07-01
+*`v2.2` and `v2.2.1` were superseded by this release and their tags/GitHub releases
+removed — everything they contained is included below.*
 
 - **Standalone setup wizard.** `CricketStreamSetup.exe` (Windows) and
-  `CricketStreamSetup-mac.zip` (Mac) let a new club get started without installing Python
-  first — the wizard installs Python itself if it's missing (via `winget` on Windows, the
-  official installer plus the SSL-certificate fix on Mac), then walks through the same club
-  setup as running `setup_wizard.py` from source.
+  `CricketStreamSetup-mac.zip` (Mac, universal2 — works on both Apple Silicon and Intel) let
+  a new club get started without installing Python first — the wizard installs Python
+  itself if it's missing (via `winget` on Windows, the official installer plus the
+  SSL-certificate fix on Mac), then walks through the same club setup as running
+  `setup_wizard.py` from source. (The first build of this was accidentally Apple-Silicon-only
+  and crashed with "bad CPU type in executable" on Intel Macs — no Rosetta-equivalent runs
+  `arm64` code the other way round — fixed by building a proper `universal2` binary.)
 - **Fixed a blank pre-game player card.** NV Play renders the scoreboard template as soon as
   a match starts, so batter names come through as genuinely empty (not missing) until the
   scorer actually selects the openers — the overlay used to treat that as a real new batter
@@ -43,6 +30,14 @@ setup guides, and updated the stale version badge.
   invisible to BBCC's own use since the "wrong" default happened to be their own real data,
   but broken for any other club. Renamed `bbcc_scoreboard.template` to `scoreboard.template`
   and rebranded "BBCC Stream Overlay" to "CricketStream Overlay" throughout.
+- **Redacted the camera RTSP URL from `GET /state`.** Most IP cameras embed credentials
+  directly in the URL (`rtsp://user:pass@host/stream`); this was being sent in plaintext to
+  anything that could reach the control panel, including over plain HTTP Wi-Fi when using
+  the phone/tablet control panel. It now redacts the same way the OBS password and API keys
+  already did.
+- **Docs:** consolidated `RELEASE_NOTES_v2.1.md` and `WHATS_NEW_V2.md` into this
+  `CHANGELOG.md`, documented Intel Mac support in the setup guides, and updated the stale
+  version badge.
 
 ## v2.1 — Broadcast intelligence & your own data
 
