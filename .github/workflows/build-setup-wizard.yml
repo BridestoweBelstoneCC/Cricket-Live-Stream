@@ -1,0 +1,80 @@
+name: Build setup wizard
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build exe
+        run: pyinstaller --onefile --console --name CricketStreamSetup setup_wizard.py
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: CricketStreamSetup-windows
+          path: dist/CricketStreamSetup.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build binary
+        run: pyinstaller --onefile --name CricketStreamSetup setup_wizard.py
+
+      - name: Package with a double-clickable launcher
+        # A raw Mach-O binary double-clicked in Finder runs with no visible
+        # window, so an interactive wizard would appear to hang. A .command
+        # file is what Finder opens in Terminal.app automatically.
+        run: |
+          cd dist
+          cat > "Setup Wizard.command" <<'EOF'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          ./CricketStreamSetup
+          EOF
+          chmod +x "Setup Wizard.command" CricketStreamSetup
+          zip CricketStreamSetup-mac.zip CricketStreamSetup "Setup Wizard.command"
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: CricketStreamSetup-mac
+          path: dist/CricketStreamSetup-mac.zip
+
+  release:
+    needs: [build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          path: artifacts
+
+      - name: Attach binaries to the GitHub release
+        uses: softprops/action-gh-release@v2.3.2
+        with:
+          files: |
+            artifacts/CricketStreamSetup-windows/CricketStreamSetup.exe
+            artifacts/CricketStreamSetup-mac/CricketStreamSetup-mac.zip

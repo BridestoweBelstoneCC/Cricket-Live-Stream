@@ -5,9 +5,12 @@ Run this once to install packages and create your config.ini.
 On Windows: double-click setup.bat
 On Mac:     run setup.sh
 """
-import configparser, os, secrets, subprocess, sys
+import configparser, os, secrets, shutil, subprocess, sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)
+# When frozen (PyInstaller), __file__ points inside the temp extraction
+# folder, which is deleted on exit — use the real exe's location instead.
+BASE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE, "config.ini")
 
 BANNER = """
@@ -58,12 +61,29 @@ def abbrev_from_name(name):
         return ""
     return words[0][:6].upper()
 
+def find_python():
+    """Return a real Python interpreter, never the frozen exe itself."""
+    if not FROZEN:
+        return sys.executable
+    for candidate in ("python3", "python", "py"):
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return None
+
 def install_packages():
     heading("Step 1 — Installing packages")
     req = os.path.join(BASE, "requirements.txt")
+    python = find_python()
+    if not python:
+        print("\n  [!!] No Python 3 install found on this machine.")
+        print("    The setup wizard doesn't need Python, but the server does.")
+        print("    Install Python 3 from python.org, then run:")
+        print(f"    pip install -r \"{req}\"")
+        sys.exit(1)
     print("  Running: pip install -r requirements.txt\n")
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", req, "--quiet"],
+        [python, "-m", "pip", "install", "-r", req, "--quiet"],
         capture_output=False
     )
     if result.returncode != 0:
@@ -210,7 +230,11 @@ def main():
 
     if ask_yn("Launch the server now?", default=True):
         quickstart = os.path.join(BASE, "quickstart.py")
-        subprocess.run([sys.executable, quickstart])
+        python = find_python()
+        if not python or not os.path.exists(quickstart):
+            print("\n  Run quickstart.sh (Mac) or quickstart.bat (Windows) to start the server.")
+        else:
+            subprocess.run([python, quickstart])
 
 if __name__ == "__main__":
     try:
