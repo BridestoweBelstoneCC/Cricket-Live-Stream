@@ -8,7 +8,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.1.1-green)](RELEASE_NOTES_v2.1.md)
+[![Version](https://img.shields.io/badge/Version-2.2.1-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
@@ -57,7 +57,7 @@ Version 2.1 builds on the v2.0 broadcast layer with match intelligence, your own
 - **Automatic club badges** matched by PlayCricket club ID, with a manual picker in the control panel.
 - **Drinks-break weather**, smarter over-summary timing, and a much more robust update loop.
 
-See [`WHATS_NEW_V2.md`](WHATS_NEW_V2.md) for the full list and upgrade notes.
+See [`CHANGELOG.md`](CHANGELOG.md) for the full list and upgrade notes.
 
 ---
 
@@ -167,7 +167,7 @@ New to this? Read your platform's quick start first:
 
 **First time? One download does everything — no need to install Python yourself:**
 
-1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStreamSetup.exe` (Windows) or `CricketStreamSetup-mac.zip` (Mac) — and put it in the folder you extracted the project to.
+1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStreamSetup.exe` (Windows) or `CricketStreamSetup-mac.zip` (Mac, works on both Apple Silicon and Intel) — and put it in the folder you extracted the project to.
 2. Run it — Windows: double-click the `.exe`. Mac: unzip it, then double-click `Setup Wizard.command`.
    If Python isn't installed yet, it installs it for you, then installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
 
@@ -290,7 +290,7 @@ PlayCricket account the stats use their most-played (regular) account automatica
 You only need to do this once per season, and only for players whose surname is shared or
 ambiguous. Everyone else resolves fine by surname alone. For this to work, the scorer's
 NV Play / PCS Pro squad must have shirt numbers assigned, and you must deploy the v2
-`scoreboard.template` (see the upgrade notes in `WHATS_NEW_V2.md`).
+`scoreboard.template` (see the upgrade notes in `CHANGELOG.md`).
 
 **Checking a player's stats match.** If a card shows a photo but no stats (or you suspect
 the wrong record), open this in a browser while the server is running:
@@ -359,8 +359,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 │   └── start_server.sh        Server-only launcher
 ├── docs/                      GitHub Pages landing page
 ├── README.md                  This file
-├── WHATS_NEW_V2.md            Version 2 release notes
-├── RELEASE_NOTES_v2.1.md      Version 2.1 release notes
+├── CHANGELOG.md               Version history and upgrade notes
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide

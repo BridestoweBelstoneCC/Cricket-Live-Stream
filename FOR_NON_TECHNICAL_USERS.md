@@ -58,7 +58,7 @@ This software does exactly that — for your club's YouTube live stream. It runs
 Go to the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) page and download the setup wizard for your computer:
 
 **Windows:** `CricketStreamSetup.exe` — put it in the folder from Step 2 and double-click it.
-**Mac:** `CricketStreamSetup-mac.zip` — put it in the folder from Step 2, unzip it, then double-click **`Setup Wizard.command`** (macOS will warn about an unknown developer the first time — click **Open** to proceed).
+**Mac:** `CricketStreamSetup-mac.zip` (works on both Apple Silicon and Intel Macs) — put it in the folder from Step 2, unzip it, then double-click **`Setup Wizard.command`** (macOS will warn about an unknown developer the first time — click **Open** to proceed).
 
 You don't need to install Python first — if it's missing, the wizard installs it for you (and on Mac, fixes the SSL certificate issue automatically, which used to be a separate manual step). On Mac it will ask for your Mac password partway through — that's the wizard installing Python, not anything suspicious.
 

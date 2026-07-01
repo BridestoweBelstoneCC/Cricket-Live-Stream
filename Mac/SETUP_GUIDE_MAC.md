@@ -8,7 +8,7 @@
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
 1. **Turn off AirPlay Receiver** (it blocks port 5000): System Settings → General → AirDrop & Handoff → AirPlay Receiver **off**. *(Once only.)*
-2. **Setup** — download `CricketStreamSetup-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), unzip it into this folder, and double-click **`Setup Wizard.command`**. It installs Python and fixes SSL certificates for you if needed (see Step 2 for why that matters), then installs packages and walks you through your club details, creating `config.ini`. *(Once only.)*
+2. **Setup** — download `CricketStreamSetup-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) (one download works on both Apple Silicon and Intel Macs), unzip it into this folder, and double-click **`Setup Wizard.command`**. It installs Python and fixes SSL certificates for you if needed (see Step 2 for why that matters), then installs packages and walks you through your club details, creating `config.ini`. *(Once only.)*
 3. **Match day** — double-click **`quickstart.sh`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
@@ -18,7 +18,7 @@ Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full 
 ## Before you start
 
 You will need:
-- A Mac running macOS 12 (Monterey) or later
+- A Mac running macOS 12 (Monterey) or later — Apple Silicon (M1/M2/M3) or Intel, both supported
 - A camera connected to your Mac (USB webcam or HDMI camera via capture card)
 - OBS Studio for Mac — https://obsproject.com
 - Python 3 — installed automatically by `Setup Wizard.command` (see Step 2), or get it yourself from https://python.org/downloads
