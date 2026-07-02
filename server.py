@@ -13,6 +13,11 @@ Requirements (pip install each):
     google-auth-oauthlib      — YouTube title updater (optional)
     qrcode                    — QR code for remote control panel access (optional)
 
+Also optional (not pip packages — install separately):
+    tailscale   — private remote access (see REMOTE_ACCESS_PLAN.md)
+    cloudflared — public remote access fallback; set cloudflare_tunnel=true in
+                  config.ini [Network] once club_password is set
+
 Data sources (priority order):
     1. PCS Pro local file  — ball by ball, batter/bowler names, no internet needed
     2. PlayCricket widget  — score only, fallback when PCS not connected
@@ -58,22 +63,24 @@ SERVER_START_TIME = time.time()
 # control_token: signing key for session tokens — never shown to users.
 # club_password:  what operators type in the login form.
 # Auth is disabled when club_password is empty (safe on localhost).
-_CONTROL_TOKEN = ""
-_CLUB_PASSWORD = ""
-_SESSION_HOURS = 12
-_BIND_HOST     = "127.0.0.1"
+_CONTROL_TOKEN      = ""
+_CLUB_PASSWORD      = ""
+_SESSION_HOURS      = 12
+_BIND_HOST          = "127.0.0.1"
+_CLOUDFLARE_TUNNEL  = False
 
 def _load_auth_config():
-    global _CONTROL_TOKEN, _CLUB_PASSWORD, _BIND_HOST
+    global _CONTROL_TOKEN, _CLUB_PASSWORD, _BIND_HOST, _CLOUDFLARE_TUNNEL
     import configparser as _cp
     cfg = _cp.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
-        _CONTROL_TOKEN = cfg.get("Auth",    "control_token", fallback="").strip()
-        _CLUB_PASSWORD = cfg.get("Auth",    "club_password", fallback="").strip()
-        _BIND_HOST     = (os.environ.get("BBCC_BIND_HOST","").strip()
-                          or cfg.get("Network", "bind_host", fallback="127.0.0.1").strip())
+        _CONTROL_TOKEN     = cfg.get("Auth",    "control_token", fallback="").strip()
+        _CLUB_PASSWORD     = cfg.get("Auth",    "club_password", fallback="").strip()
+        _BIND_HOST         = (os.environ.get("BBCC_BIND_HOST","").strip()
+                              or cfg.get("Network", "bind_host", fallback="127.0.0.1").strip())
+        _CLOUDFLARE_TUNNEL = cfg.getboolean("Network", "cloudflare_tunnel", fallback=False)
 
 _load_auth_config()
 
@@ -120,18 +127,67 @@ def _tailscale_ip():
         pass
     return None
 
-def _remote_target():
-    """(url, via) for reaching the control panel from another device — via is 'tailscale'
-    or 'lan'. (None, None) if the server is only bound to localhost."""
-    if _BIND_HOST == "127.0.0.1":
-        return None, None
-    ts_ip = _tailscale_ip()
+# Cloudflare Tunnel is a persistent subprocess (unlike the one-shot `tailscale ip` call),
+# so its URL is discovered once at startup and cached here rather than looked up per request.
+_cf_process       = None
+_cf_url           = None
+_cf_lock          = threading.Lock()
+_cf_restart_count = 0
+CF_MAX_RESTARTS   = 5   # give up auto-restarting after this many — likely a real problem
+
+def _start_cloudflare_tunnel():
+    """Launches `cloudflared tunnel --url` (a free 'quick tunnel', no Cloudflare account
+    needed) and captures the https://*.trycloudflare.com URL it prints to stdout. Runs the
+    reader in a daemon thread; safe to call even if cloudflared isn't installed."""
+    global _cf_process, _cf_url
+    try:
+        proc = subprocess.Popen(
+            ["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{PORT}"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    except FileNotFoundError:
+        print("  ✗  Cloudflare Tunnel: 'cloudflared' not installed — see")
+        print("     https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+        return
+    except Exception as e:
+        print(f"  ✗  Cloudflare Tunnel failed to start: {e}")
+        return
+    with _cf_lock:
+        _cf_process = proc
+        _cf_url     = None
+
+    def _read_output():
+        for line in proc.stdout:
+            m = re.search(r"https://[a-zA-Z0-9\-]+\.trycloudflare\.com", line)
+            if m:
+                with _cf_lock:
+                    globals()["_cf_url"] = m.group(0)
+                print(f"  ✓  Cloudflare Tunnel ready → {m.group(0)}/control")
+                break
+    threading.Thread(target=_read_output, daemon=True).start()
+
+def _stop_cloudflare_tunnel():
+    with _cf_lock:
+        proc = _cf_process
+    if proc and proc.poll() is None:
+        proc.terminate()
+
+def _remote_targets():
+    """Priority-ordered list of {'via','url'} for reaching the control panel from another
+    device — 'tailscale' (private), 'cloudflare' (public, opt-in), 'lan' (same network).
+    Empty if the server is only bound to localhost and no tunnel is running."""
+    targets = []
+    ts_ip = _tailscale_ip() if _BIND_HOST != "127.0.0.1" else None
     if ts_ip:
-        return f"http://{ts_ip}:{PORT}/control", "tailscale"
-    lan_ip = _lan_ip()
-    if lan_ip:
-        return f"http://{lan_ip}:{PORT}/control", "lan"
-    return None, None
+        targets.append({"via": "tailscale", "url": f"http://{ts_ip}:{PORT}/control"})
+    with _cf_lock:
+        cf_url = _cf_url
+    if cf_url:
+        targets.append({"via": "cloudflare", "url": f"{cf_url}/control"})
+    if _BIND_HOST != "127.0.0.1":
+        lan_ip = _lan_ip()
+        if lan_ip:
+            targets.append({"via": "lan", "url": f"http://{lan_ip}:{PORT}/control"})
+    return targets
 
 def _qr_png_bytes(data):
     """PNG bytes of a QR code for `data`, or None if the optional 'qrcode' package
@@ -1770,7 +1826,7 @@ def _season_top_scorer(bat_lookup):
 # ── Season stats cache (PlayCricket has no per-player endpoint, so we aggregate match
 #    scorecards ONCE per day and serve every batsman from the cached build) ──
 _season_stats = {"date": None, "lookup": {}, "built": False, "building": False,
-                 "matches_used": 0, "calls": 0, "error": None}
+                 "matches_used": 0, "calls": 0, "error": None, "build_started": None}
 _season_stats_lock = threading.Lock()
 _season_stats_last_action = None   # "cache" | "fresh" (transient, for status messages)
 SEASON_STATS_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -1844,77 +1900,178 @@ def build_season_stats(force=False):
                     return _season_stats
             except Exception:
                 pass
-        _season_stats["building"] = True
-        _season_stats["error"]    = None
+        _season_stats["building"]      = True
+        _season_stats["build_started"] = time.time()
+        _season_stats["error"]         = None
 
-    err = None
-    calls = 0
-    ids = set()
-    # 1) Home club's completed matches
+    # Everything below runs with 'building' True and no lock held (network calls can take a
+    # while). This try/finally is the fix for a real bug: an unexpected exception here used to
+    # leave 'building' stuck True forever, permanently wedging the season-stats feature until
+    # the server was restarted. Now it always clears, even on a crash — the next request
+    # (or the watchdog, as a second line of defense) can retry.
     try:
-        ids |= _pc_match_ids(api_key, site_id, season); calls += 1
-    except Exception as e:
-        err = f"home list failed: {e}"
-    # 2) Opposition's completed matches (token isn't club-scoped, so this is allowed)
-    away_ok = False
-    if away_id:
+        err = None
+        calls = 0
+        ids = set()
+        # 1) Home club's completed matches
         try:
-            ids |= _pc_match_ids(api_key, away_id, season); calls += 1
-            away_ok = True
+            ids |= _pc_match_ids(api_key, site_id, season); calls += 1
         except Exception as e:
-            err = (err + "; " if err else "") + f"opposition list failed: {e}"
+            err = f"home list failed: {e}"
+        # 2) Opposition's completed matches (token isn't club-scoped, so this is allowed)
+        away_ok = False
+        if away_id:
+            try:
+                ids |= _pc_match_ids(api_key, away_id, season); calls += 1
+                away_ok = True
+            except Exception as e:
+                err = (err + "; " if err else "") + f"opposition list failed: {e}"
 
-    # 3) Fetch each UNIQUE scorecard once (the shared fixture is in both lists but fetched once)
-    details = []
-    used = 0
-    for mid in sorted(ids)[:160]:                      # overall safety cap
+        # 3) Fetch each UNIQUE scorecard once (the shared fixture is in both lists but fetched once)
+        details = []
+        used = 0
+        for mid in sorted(ids)[:160]:                      # overall safety cap
+            try:
+                det = _pc_get_json(f"https://play-cricket.com/api/v2/match_detail.json"
+                                   f"?api_token={api_key}&match_id={mid}")
+                calls += 1
+                details.append(det)
+                used += 1
+                time.sleep(0.2)                            # be gentle on the API
+            except Exception:
+                continue
+
+        # Keep only the two clubs we actually display (home + today's opposition), so the pool
+        # stays small and surnames remain unique. Match on the first significant word of each name.
+        def _first_word(s):
+            ws = re.sub(r"[^a-z ]", " ", (s or "").lower()).split()
+            return ws[0] if ws and len(ws[0]) > 2 else ""
+        home_frag = _first_word(cfg.get("home_team","")) or "home"
+        away_frag = _first_word(cfg.get("away_team",""))
+        keep = [w for w in (home_frag, away_frag) if w]
+        lookup = _aggregate_season_bat(details, keep_clubs=keep or None)
+
+        # Pre-game "season form" panel: each team's own top scorer/wicket-taker, computed
+        # separately per club (the combined lookup above mixes both teams' players together).
+        top_scorers = {
+            "home": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[home_frag])),
+            "away": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[away_frag]))
+                    if away_frag else None,
+        }
+        top_bowlers = {
+            "home": _season_top_bowler(details, home_frag),
+            "away": _season_top_bowler(details, away_frag) if away_frag else None,
+        }
+
+        result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
+                  "top_scorers": top_scorers, "top_bowlers": top_bowlers, "build_started": None,
+                  "built": True, "building": False, "matches_used": used, "calls": calls, "error": err}
+        with _season_stats_lock:
+            _season_stats = result
+        globals()["_season_stats_last_action"] = "fresh"
         try:
-            det = _pc_get_json(f"https://play-cricket.com/api/v2/match_detail.json"
-                               f"?api_token={api_key}&match_id={mid}")
-            calls += 1
-            details.append(det)
-            used += 1
-            time.sleep(0.2)                            # be gentle on the API
+            with open(SEASON_STATS_CACHE_FILE, "w") as f:
+                json.dump(result, f)
         except Exception:
-            continue
+            pass
+        print(f"  📊  Season stats: {len(lookup)} player keys from {used} matches "
+              f"({calls} API calls{', incl. opposition' if away_ok else ''})"
+              f"{' — ' + err if err else ''}")
+        return result
+    except Exception as e:
+        with _season_stats_lock:
+            _season_stats["building"]      = False
+            _season_stats["build_started"] = None
+            _season_stats["error"]         = f"build crashed: {e}"
+        print(f"  ✗  Season stats: build crashed — {e}")
+        return _season_stats
 
-    # Keep only the two clubs we actually display (home + today's opposition), so the pool
-    # stays small and surnames remain unique. Match on the first significant word of each name.
-    def _first_word(s):
-        ws = re.sub(r"[^a-z ]", " ", (s or "").lower()).split()
-        return ws[0] if ws and len(ws[0]) > 2 else ""
-    home_frag = _first_word(cfg.get("home_team","")) or "home"
-    away_frag = _first_word(cfg.get("away_team",""))
-    keep = [w for w in (home_frag, away_frag) if w]
-    lookup = _aggregate_season_bat(details, keep_clubs=keep or None)
 
-    # Pre-game "season form" panel: each team's own top scorer/wicket-taker, computed
-    # separately per club (the combined lookup above mixes both teams' players together).
-    top_scorers = {
-        "home": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[home_frag])),
-        "away": _season_top_scorer(_aggregate_season_bat(details, keep_clubs=[away_frag]))
-                if away_frag else None,
-    }
-    top_bowlers = {
-        "home": _season_top_bowler(details, home_frag),
-        "away": _season_top_bowler(details, away_frag) if away_frag else None,
-    }
+# ── Self-healing watchdog ──────────────────────────────────────
+# Runs quietly in the background for the life of the process and periodically checks the
+# few things known to be able to get stuck during a long match day, fixing what it safely
+# can and just logging what it can't (an external process like the scorer's laptop isn't
+# something this server can restart for you).
+WATCHDOG_INTERVAL_SEC   = 90
+SEASON_BUILD_STUCK_SEC  = 300   # defense in depth — build_season_stats' own try/finally
+                                # should already prevent this; this is a second line of defense
+RATE_LIMIT_TS_MAX_AGE   = 3600  # drop old cooldown timestamps so the dict doesn't grow all day
 
-    result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
-              "top_scorers": top_scorers, "top_bowlers": top_bowlers,
-              "built": True, "building": False, "matches_used": used, "calls": calls, "error": err}
-    with _season_stats_lock:
-        _season_stats = result
-    globals()["_season_stats_last_action"] = "fresh"
+_watchdog_status = {"last_run": None, "runs": 0, "fixes_applied": [], "pcs_was_fresh": None}
+_watchdog_lock   = threading.Lock()
+
+def _watchdog_log_fix(what):
+    print(f"  🩹  Watchdog: {what}")
+    with _watchdog_lock:
+        _watchdog_status["fixes_applied"].append({"time": time.time(), "what": what})
+        _watchdog_status["fixes_applied"] = _watchdog_status["fixes_applied"][-20:]
+
+def _watchdog_tick():
+    global _cf_restart_count
+    now = time.time()
+
+    # 1) Season-stats build stuck 'building' true — reset so the next request can retry.
+    started = _season_stats.get("build_started")
+    if _season_stats.get("building") and started and (now - started) > SEASON_BUILD_STUCK_SEC:
+        with _season_stats_lock:
+            _season_stats["building"]      = False
+            _season_stats["build_started"] = None
+            _season_stats["error"]         = "watchdog: build looked stuck and was reset"
+        _watchdog_log_fix("season stats build looked stuck — reset so it can retry")
+
+    # 2) Cloudflare Tunnel died unexpectedly — restart it, capped so a real problem doesn't
+    # loop forever.
+    if _CLOUDFLARE_TUNNEL and _CLUB_PASSWORD:
+        with _cf_lock:
+            proc = _cf_process
+        if proc is not None and proc.poll() is not None:
+            if _cf_restart_count < CF_MAX_RESTARTS:
+                _cf_restart_count += 1
+                _watchdog_log_fix(f"Cloudflare Tunnel had stopped — restarting "
+                                  f"(attempt {_cf_restart_count}/{CF_MAX_RESTARTS})")
+                _start_cloudflare_tunnel()
+            elif _cf_restart_count == CF_MAX_RESTARTS:
+                _cf_restart_count += 1   # bump past the cap so this only prints once
+                print("  ✗  Watchdog: Cloudflare Tunnel keeps dying — giving up auto-restart, "
+                      "check cloudflared manually")
+
+    # 3) Trim old rate-limit cooldown timestamps (memory hygiene over a long match day).
+    with _rate_limit_lock:
+        stale = [k for k, ts in _rate_limit_ts.items() if now - ts > RATE_LIMIT_TS_MAX_AGE]
+        for k in stale:
+            del _rate_limit_ts[k]
+
+    # 4) PCS scorer feed freshness — visibility only. The server can't restart the scorer's
+    # laptop, so this just logs the transition instead of silently sitting stale all match.
     try:
-        with open(SEASON_STATS_CACHE_FILE, "w") as f:
-            json.dump(result, f)
+        s        = load_state()
+        pcs_dir  = os.path.expanduser(s.get("pcs_output_folder","").strip())
+        pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
+        fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
     except Exception:
-        pass
-    print(f"  📊  Season stats: {len(lookup)} player keys from {used} matches "
-          f"({calls} API calls{', incl. opposition' if away_ok else ''})"
-          f"{' — ' + err if err else ''}")
-    return result
+        fresh = None
+    with _watchdog_lock:
+        was = _watchdog_status["pcs_was_fresh"]
+        if was and fresh is False:
+            print("  ⚠  Watchdog: PCS scorer feed has gone stale (2+ min old) — check the scorer's laptop")
+        elif was is False and fresh:
+            print("  ✓  Watchdog: PCS scorer feed is fresh again")
+        _watchdog_status["pcs_was_fresh"] = fresh
+        _watchdog_status["last_run"] = now
+        _watchdog_status["runs"]    += 1
+
+def _watchdog_loop():
+    while True:
+        try:
+            _watchdog_tick()
+        except Exception as e:
+            # Must never let the watchdog itself die — that would be the one thing nobody's
+            # watching. Log and try again next tick.
+            print(f"  ✗  Watchdog tick failed (will retry): {e}")
+        time.sleep(WATCHDOG_INTERVAL_SEC)
+
+def start_watchdog():
+    threading.Thread(target=_watchdog_loop, daemon=True).start()
 
 
 def lookup_season_stats(name):
@@ -3034,6 +3191,7 @@ CONTROL_HTML = """<!DOCTYPE html>
   #remote-pill:hover{border-color:#2a5a8c}
   #remote-pill .dot{width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0}
   #remote-pill.via-tailscale .dot{background:#5b9bd5}
+  #remote-pill.via-cloudflare .dot{background:#f5a623}
   #remote-pill.via-local .dot{background:#8ba3c0}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
@@ -3888,16 +4046,46 @@ function remoteVia() {
   const h = location.hostname;
   if (h === 'localhost' || h === '127.0.0.1') return 'local';
   if (h.startsWith('100.')) return 'tailscale';
+  if (h.endsWith('.trycloudflare.com')) return 'cloudflare';
   return 'lan';
 }
 (function initRemotePill() {
   const via   = remoteVia();
   const pill  = document.getElementById('remote-pill');
   const label = document.getElementById('remote-pill-label');
-  const text  = {local: 'This machine', tailscale: 'Tailscale remote', lan: 'Same network'}[via];
+  const text  = {local: 'This machine', tailscale: 'Tailscale remote',
+                 cloudflare: 'Cloudflare remote', lan: 'Same network'}[via];
   label.textContent = text;
   pill.classList.add('via-' + via);
 })();
+
+let _remoteTargets = [];
+const REMOTE_TAB_LABEL  = {tailscale: 'Tailscale', cloudflare: 'Cloudflare', lan: 'Same network'};
+const REMOTE_SCAN_NOTE  = {tailscale: 'over Tailscale', lan: 'on the same network',
+                           cloudflare: 'over the public internet — password protected'};
+
+function renderRemoteTarget(via) {
+  const body = document.getElementById('remote-modal-body');
+  const t = _remoteTargets.find(x => x.via === via) || _remoteTargets[0];
+  if (!t) return;
+  const tabs = _remoteTargets.length <= 1 ? '' : '<div style="margin-bottom:12px;">' +
+    _remoteTargets.map(x => {
+      const active = x.via === t.via;
+      return '<button onclick="renderRemoteTarget(\'' + x.via + '\')" style="font-size:11px;' +
+        'padding:5px 10px;border-radius:14px;cursor:pointer;margin:0 3px;border:1px solid ' +
+        (active ? '#5b9bd5' : '#1e3550') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
+        ';color:#e8edf2;">' + REMOTE_TAB_LABEL[x.via] + '</button>';
+    }).join('') + '</div>';
+  body.innerHTML = tabs +
+    '<p style="font-size:12px;color:#8ba3c0;margin-bottom:12px;">Scan on a phone or tablet ' +
+    REMOTE_SCAN_NOTE[t.via] + ':</p>' +
+    '<img src="/remote/qr.png?via=' + t.via + '&t=' + Date.now() + '" style="width:200px;height:200px;' +
+    'background:#fff;border-radius:8px;padding:8px;" ' +
+    'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
+    '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
+    'style:\'font-size:12px;color:#8ba3c0\'}))">' +
+    '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + t.url + '</p>';
+}
 
 async function showRemoteOverlay() {
   const ov   = document.getElementById('remote-overlay');
@@ -3907,24 +4095,17 @@ async function showRemoteOverlay() {
   try {
     const res = await fetch('/remote/info');
     const d = await res.json();
-    if (!d.url) {
+    _remoteTargets = d.targets || [];
+    if (!_remoteTargets.length) {
       body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;line-height:1.5;">' +
         'Not reachable from another device yet — set <code style="background:#0d1b2e;' +
         'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
-        '#0d1b2e;padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, or install ' +
-        'Tailscale, then restart the server.</p>';
+        '#0d1b2e;padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
+        'Tailscale, or enable <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">' +
+        'cloudflare_tunnel</code>, then restart the server.</p>';
       return;
     }
-    const viaLabel = d.via === 'tailscale' ? 'over Tailscale' : 'on the same network';
-    body.innerHTML =
-      '<p style="font-size:12px;color:#8ba3c0;margin-bottom:12px;">Scan on a phone or tablet ' +
-      viaLabel + ':</p>' +
-      '<img src="/remote/qr.png?t=' + Date.now() + '" style="width:200px;height:200px;' +
-      'background:#fff;border-radius:8px;padding:8px;" ' +
-      'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
-      '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
-      'style:\'font-size:12px;color:#8ba3c0\'}))">' +
-      '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + d.url + '</p>';
+    renderRemoteTarget(_remoteTargets[0].via);
   } catch (err) {
     body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
   }
@@ -5633,17 +5814,27 @@ class Handler(BaseHTTPRequestHandler):
                     "home": s_h.get("home_team",""), "away": s_h.get("away_team",""),
                     "badges": bool(s_h.get("home_club_id")) and bool(s_h.get("away_club_id")),
                 },
+                "watchdog": {
+                    "last_run_sec_ago": (int(now - _watchdog_status["last_run"])
+                                         if _watchdog_status["last_run"] else None),
+                    "runs":          _watchdog_status["runs"],
+                    "fixes_applied": _watchdog_status["fixes_applied"][-5:],
+                },
             })
 
         elif path == "/remote/info":
-            # Not auth-gated, same reasoning as /health: no secrets, just tells a device
-            # that's already on the right network (or Tailscale) where to point itself.
-            url, via = _remote_target()
-            self._json({"ok": bool(url), "url": url, "via": via})
+            # Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that
+            # URL is only reachable by a device already on the right network/tunnel anyway.
+            targets = _remote_targets()
+            self._json({"ok": bool(targets), "targets": targets})
 
         elif path == "/remote/qr.png":
-            url, _via = _remote_target()
-            png = _qr_png_bytes(url) if url else None
+            from urllib.parse import parse_qs
+            q      = parse_qs(urlparse(self.path).query)
+            via    = q.get("via", [""])[0]
+            targets = _remote_targets()
+            target  = next((t for t in targets if t["via"] == via), targets[0] if targets else None)
+            png = _qr_png_bytes(target["url"]) if target else None
             if not png:
                 self.send_response(404); self.end_headers()
                 return
@@ -5966,22 +6157,35 @@ if __name__ == "__main__":
         print(f"  Created {STATE_FILE}\n")
 
     _seed_state_from_config()
+    start_watchdog()
 
+    if _CLOUDFLARE_TUNNEL:
+        if not _CLUB_PASSWORD:
+            print("  ✗  Cloudflare Tunnel is enabled in config.ini but club_password is blank.")
+            print("     Refusing to start it — that would expose the control panel with no")
+            print("     login. Set [Auth] club_password first, then restart.")
+        else:
+            _start_cloudflare_tunnel()
+
+    _LABELS = {"tailscale": "Tailscale remote", "cloudflare": "Cloudflare remote (public)",
+               "lan": "Same-network remote"}
+    targets = _remote_targets()
     remote_info = ""
-    remote_url, remote_via = _remote_target()
-    if remote_url:
-        label = "Tailscale remote" if remote_via == "tailscale" else "Same-network remote"
-        remote_info = f"\n  {label} → {remote_url}"
+    if targets:
+        remote_info = "".join(f"\n  {_LABELS[t['via']]} → {t['url']}" for t in targets)
     elif _BIND_HOST != "127.0.0.1":
         remote_info = f"\n  Listening on {_BIND_HOST}:{PORT} — use your device IP to connect remotely"
+    if _CLOUDFLARE_TUNNEL and _CLUB_PASSWORD and not any(t["via"] == "cloudflare" for t in targets):
+        remote_info += "\n  Cloudflare Tunnel starting up — its URL will appear in the control panel shortly"
 
-    if remote_url:
+    if targets:
         try:
             import qrcode
+            top = targets[0]
             qr = qrcode.QRCode(border=1)
-            qr.add_data(remote_url)
+            qr.add_data(top["url"])
             qr.make(fit=True)
-            print(f"\n  Scan to open the control panel on another device ({remote_via}):\n")
+            print(f"\n  Scan to open the control panel on another device ({top['via']}):\n")
             qr.print_ascii(invert=True)
         except ImportError:
             print("\n  Tip: pip install qrcode to get a scannable QR code here and in the panel.")
@@ -6011,3 +6215,5 @@ if __name__ == "__main__":
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n  Server stopped.")
+    finally:
+        _stop_cloudflare_tunnel()
