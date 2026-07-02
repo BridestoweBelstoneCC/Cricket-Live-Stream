@@ -4,6 +4,28 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## v2.3 — 2026-07-02
+
+- **Remote access, phase 3.** A QR code — printed as ASCII art in the terminal at startup
+  and shown in the control panel — lets you pair a phone or tablet without typing an IP
+  address. The panel shows a small pill ("This machine" / "Same network" / "Tailscale
+  remote" / "Cloudflare remote") so whoever's looking at it always knows which kind of
+  connection they're on. Added **Cloudflare Tunnel** as a public-URL fallback
+  (`cloudflare_tunnel` in `config.ini [Network]`) for operators who can't install
+  Tailscale — it refuses to start unless `club_password` is set, since that URL would
+  otherwise be reachable with no login.
+- **Self-healing watchdog.** A background check every 90 seconds fixes what it safely can
+  and just logs what it can't: resets the season-stats build if it ever gets stuck (this
+  also fixed the underlying bug — an unexpected error mid-build used to leave it wedged
+  until a manual server restart), restarts the Cloudflare Tunnel if it dies (capped
+  retries so a real problem doesn't loop forever), trims old rate-limit timestamps, and
+  logs when the scorer's feed goes stale or recovers. Status visible at `GET /health`.
+- **README rewrite.** Leads with the problem and what the project does, instead of a
+  "Version 2.1 highlights" recap that had gone stale relative to this changelog.
+- **Landing page polish.** The GitHub Pages site got scroll-in animations, hover lift on
+  the feature cards, and a pulsing "LIVE" badge on the hero screenshot — all skipped
+  automatically for visitors who've asked their browser for reduced motion.
+
 ## v2.2.2 — 2026-07-01
 
 *`v2.2` and `v2.2.1` were superseded by this release and their tags/GitHub releases
