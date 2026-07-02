@@ -38,7 +38,12 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      transition: box-shadow .2s ease;
     }
+    nav.scrolled { box-shadow: 0 2px 16px rgba(0,0,0,.25); }
     nav .brand {
       color: #fff;
       font-weight: 700;
@@ -60,7 +65,19 @@
       padding: 72px 24px 0;
       text-align: center;
       overflow: hidden;
+      position: relative;
     }
+    /* Soft drifting glow behind the hero content — a slow ambient light sweep rather
+       than anything distracting; disabled entirely for reduced-motion users below. */
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      background: radial-gradient(circle at 28% 20%, rgba(255,255,255,.16), transparent 45%),
+                  radial-gradient(circle at 78% 65%, rgba(255,255,255,.12), transparent 42%);
+      pointer-events: none;
+    }
+    .hero > * { position: relative; z-index: 1; }
     .hero h1 {
       font-size: clamp(1.8rem, 5vw, 3rem);
       font-weight: 800;
@@ -89,10 +106,23 @@
       font-size: 1rem;
       cursor: pointer;
       transition: opacity .15s, transform .1s;
+      position: relative;
+      overflow: hidden;
     }
     .btn:hover { opacity: .9; transform: translateY(-1px); text-decoration: none; }
     .btn-primary { background: #fff; color: var(--green-dark); }
     .btn-secondary { background: rgba(255,255,255,.15); color: #fff; border: 2px solid rgba(255,255,255,.4); }
+    /* Diagonal gleam that sweeps across on hover */
+    .btn::after {
+      content: "";
+      position: absolute;
+      top: 0; left: -60%;
+      width: 40%; height: 100%;
+      background: linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent);
+      transform: skewX(-20deg);
+      transition: left .55s ease;
+    }
+    .btn:hover::after { left: 130%; }
 
     .hero-screenshot {
       max-width: min(1100px, 100%);
@@ -103,6 +133,25 @@
       position: relative;
     }
     .hero-screenshot img { display: block; width: 100%; height: auto; }
+
+    .live-badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+    }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; flex-shrink: 0; }
 
     /* ── Sections ── */
     section { padding: 64px 24px; }
@@ -131,9 +180,16 @@
       border-radius: var(--radius);
       padding: 24px;
       border: 1px solid var(--border);
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
     }
-    .feature-icon { margin-bottom: 12px; }
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 14px 28px rgba(0,0,0,.08);
+      border-color: var(--green);
+    }
+    .feature-icon { margin-bottom: 12px; transition: transform .2s ease; }
     .feature-icon svg { display: block; }
+    .feature-card:hover .feature-icon { transform: scale(1.12) rotate(-4deg); }
     .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
     .feature-card p { font-size: .9rem; color: var(--muted); }
 
@@ -215,6 +271,48 @@
       .hero { padding: 48px 20px 0; }
       .hero p { font-size: .95rem; }
     }
+
+    /* ── Scroll-reveal ── */
+    /* Visible by default (progressive enhancement) — only hidden-then-animated for
+       users who haven't asked for reduced motion, and only once JS has actually
+       attached the observer (see the .js-ready gate below). */
+    .reveal { opacity: 1; transform: none; }
+    html.js-ready .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    html.js-ready .reveal.is-visible {
+      opacity: 1;
+      transform: none;
+      transition: opacity .6s ease, transform .6s ease;
+      transition-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    /* ── Motion (skipped entirely for prefers-reduced-motion) ── */
+    @media (prefers-reduced-motion: no-preference) {
+      .hero::before {
+        animation: heroDrift 16s ease-in-out infinite alternate;
+      }
+      .hero h1, .hero p, .hero-buttons, .hero-screenshot {
+        animation: heroRise .7s ease both;
+      }
+      .hero p         { animation-delay: .08s; }
+      .hero-buttons   { animation-delay: .16s; }
+      .hero-screenshot{ animation-delay: .24s; }
+      .live-dot { animation: livePulse 1.8s ease-in-out infinite; }
+    }
+    @keyframes heroDrift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(3%, -4%) scale(1.08); }
+    }
+    @keyframes heroRise {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes livePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,59,48,.55); }
+      50%      { box-shadow: 0 0 0 6px rgba(255,59,48,0); }
+    }
   </style>
 </head>
 <body>
@@ -237,6 +335,7 @@
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="btn btn-secondary">View on GitHub</a>
   </div>
   <div class="hero-screenshot">
+    <span class="live-badge"><span class="live-dot"></span>LIVE</span>
     <img src="https://github.com/user-attachments/assets/9477ebc9-37aa-4f9f-ac28-f6baab3fd130" alt="CricketStream Overlay showing scorebar, player cards and over summary">
   </div>
 </div>
@@ -247,7 +346,7 @@
     <p class="section-intro">All the graphics you see on broadcast cricket, driven automatically by your scorer's laptop.</p>
     <div class="feature-grid">
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:0">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/>
@@ -257,7 +356,7 @@
         <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate, and a ball-by-ball ticker — updates on every delivery.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:1">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
@@ -267,7 +366,7 @@
         <p>Photo and season batting average slide in when a new batter arrives, pulled live from PlayCricket for both your side and the opposition.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:2">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16" fill="#2a6e3f" stroke="#2a6e3f"/>
@@ -277,7 +376,7 @@
         <p>Wickets, boundaries, and milestones replay automatically via the OBS replay buffer, with a full-screen transition.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:3">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -287,7 +386,7 @@
         <p>Optional Sky Sports-style analysis at the end of every over, generated live by Claude AI from the actual match situation.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:4">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="#2a6e3f"/><polyline points="21,15 16,10 5,21"/>
@@ -297,7 +396,7 @@
         <p>Generate a polished Instagram result graphic for any match — home or away — with top batter, bowler, and match-day sponsors.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:5">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="18" r="1" fill="#2a6e3f"/>
@@ -307,7 +406,7 @@
         <p>Responsive control panel runs on any device over Wi-Fi. Manage the stream from your phone on the boundary.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:6">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>
@@ -317,7 +416,7 @@
         <p>Every delivery is logged to a local SQLite file as you stream — your own season-long dataset, exportable to CSV.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:7">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
@@ -328,7 +427,7 @@
         <p>Broadcast-style card at the innings break with all batters, dismissals spelled out in full, and bowling figures.</p>
       </div>
 
-      <div class="feature-card">
+      <div class="feature-card reveal" style="--i:8">
         <div class="feature-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2a6e3f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/><line x1="12" y1="15" x2="12" y2="23"/>
@@ -348,28 +447,28 @@
     <h2>How it works</h2>
     <p class="section-intro">Three pieces of free software, already working together in minutes.</p>
     <div class="steps">
-      <div class="step">
+      <div class="step reveal" style="--i:0">
         <div class="step-num">1</div>
         <div>
           <h3>Scorer uses NV Play as normal</h3>
           <p>The scoring software writes a file on every ball. Nothing changes for the scorer.</p>
         </div>
       </div>
-      <div class="step">
+      <div class="step reveal" style="--i:1">
         <div class="step-num">2</div>
         <div>
           <h3>The server reads it and processes the data</h3>
           <p>A small Python server running on the streaming laptop reads the scorer's file every few seconds, parses the ball data, and serves it to the overlay.</p>
         </div>
       </div>
-      <div class="step">
+      <div class="step reveal" style="--i:2">
         <div class="step-num">3</div>
         <div>
           <h3>OBS mixes the overlay with your camera</h3>
           <p>The overlay is a browser source inside OBS. It polls the server and renders all the graphics — OBS sends the combined picture to YouTube.</p>
         </div>
       </div>
-      <div class="step">
+      <div class="step reveal" style="--i:3">
         <div class="step-num">4</div>
         <div>
           <h3>Manage everything from the control panel</h3>
@@ -385,7 +484,7 @@
     <h2>What you need</h2>
     <p class="section-intro">All software is free. You probably already have most of this.</p>
     <div class="req-grid">
-      <div class="req-card">
+      <div class="req-card reveal" style="--i:0">
         <h3>Hardware</h3>
         <ul>
           <li>Windows or macOS laptop</li>
@@ -393,7 +492,7 @@
           <li>Internet connection</li>
         </ul>
       </div>
-      <div class="req-card">
+      <div class="req-card reveal" style="--i:1">
         <h3>Software (free)</h3>
         <ul>
           <li>OBS Studio</li>
@@ -401,7 +500,7 @@
           <li>NV Play / PCS Pro</li>
         </ul>
       </div>
-      <div class="req-card">
+      <div class="req-card reveal" style="--i:2">
         <h3>Optional</h3>
         <ul>
           <li>PlayCricket API key <span class="optional">(fixture detection)</span></li>
@@ -442,6 +541,32 @@
   </p>
   <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) &middot; AI features powered by Claude (Anthropic) &middot; Weather via Open-Meteo &middot; Streaming via OBS Studio</p>
 </footer>
+
+<script>
+  // Gate the scroll-reveal CSS behind JS actually running, so content never hides
+  // permanently if JS fails to load — see the .reveal / html.js-ready rules above.
+  document.documentElement.classList.add('js-ready');
+
+  var revealEls = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add('is-visible'); });
+  }
+
+  var nav = document.querySelector('nav');
+  window.addEventListener('scroll', function () {
+    nav.classList.toggle('scrolled', window.scrollY > 8);
+  }, { passive: true });
+</script>
 
 </body>
 </html>
