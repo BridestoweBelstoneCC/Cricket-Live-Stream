@@ -17,7 +17,6 @@
 
 ## Contents
 
-- [Version 2.1 highlights](#version-21-highlights)
 - [The problem](#the-problem)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
@@ -33,31 +32,6 @@
 - [Cost comparison](#cost-comparison)
 - [Version history](#version-history)
 - [Contributing](#contributing)
-
----
-
-## Version 2.1 highlights
-
-Version 2.1 builds on the v2.0 broadcast layer with match intelligence, your own data, and easier setup:
-
-- **Ball-by-ball database** — every delivery is logged to a local SQLite file as you stream, building your own season-long dataset. Resilient to scorer edits, with one-click reconciliation against PlayCricket's published scorecard and CSV export.
-- **Standalone result posts** — generate a polished Instagram result graphic for *any* match, home or away, streamed or not. It works out the result and your top batter and bowler straight from the scorecard. Per-team and youth photo folders, with safeguarding defaults for juniors.
-- **Auto-detected moments** — season-best scores and team milestones fire automatically on the over summary and are woven into the AI commentary.
-- **Innings scorecard, spell tracker, and DLS par pill** — broadcast-style cards at the break, bowler spell figures, and a Duckworth-Lewis par guide when rain is forecast.
-- **One-click camera setup** — enter your camera's RTSP URL and the overlay adds it to OBS for you, so non-technical operators don't have to.
-- **Match-day sponsors** — every logo in your `sponsors/` folder appears on result posts, scaled to fit.
-
-### Version 2.0 foundation
-
-- **Player cards** with photos and **season batting stats** — for your players *and* the opposition, pulled live from PlayCricket.
-- **Squad roster** (shirt numbers) so brothers, same-surname players, and players with duplicate PlayCricket accounts always resolve to the right photo and the right stats.
-- **Worm chart** — cumulative runs by over for both innings, drawn in each team's colours with wicket markers.
-- **Full-word dismissals** on the wicket card (*Caught Jones Bowled Smith*, not *c Jones b Smith*).
-- **AI over commentary, match reports, and social posts**, powered by Claude.
-- **Automatic club badges** matched by PlayCricket club ID, with a manual picker in the control panel.
-- **Drinks-break weather**, smarter over-summary timing, and a much more robust update loop.
-
-See [`CHANGELOG.md`](CHANGELOG.md) for the full list and upgrade notes.
 
 ---
 
