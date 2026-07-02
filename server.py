@@ -11,6 +11,7 @@ Requirements (pip install each):
     anthropic                 — AI commentary (optional)
     google-api-python-client  — YouTube title updater (optional)
     google-auth-oauthlib      — YouTube title updater (optional)
+    qrcode                    — QR code for remote control panel access (optional)
 
 Data sources (priority order):
     1. PCS Pro local file  — ball by ball, batter/bowler names, no internet needed
@@ -32,7 +33,7 @@ PCS Pro setup (scorer's laptop):
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
-import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess
+import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess, socket, io
 
 # Mac SSL fix — use certifi certificates to avoid CERTIFICATE_VERIFY_FAILED errors
 try:
@@ -95,6 +96,57 @@ def _verify_session_token(token):
         return hmac.compare_digest(sig, expected)
     except Exception:
         return False
+
+# ── Remote access helpers (Tailscale / LAN / QR) ──────────────
+def _lan_ip():
+    """Best-guess LAN IP for this machine. The UDP 'connect' below sends no packets — it
+    just asks the OS which local interface would be used to reach that address."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return None
+    finally:
+        s.close()
+
+def _tailscale_ip():
+    try:
+        r = subprocess.run(["tailscale", "ip", "-4"],
+                           capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+def _remote_target():
+    """(url, via) for reaching the control panel from another device — via is 'tailscale'
+    or 'lan'. (None, None) if the server is only bound to localhost."""
+    if _BIND_HOST == "127.0.0.1":
+        return None, None
+    ts_ip = _tailscale_ip()
+    if ts_ip:
+        return f"http://{ts_ip}:{PORT}/control", "tailscale"
+    lan_ip = _lan_ip()
+    if lan_ip:
+        return f"http://{lan_ip}:{PORT}/control", "lan"
+    return None, None
+
+def _qr_png_bytes(data):
+    """PNG bytes of a QR code for `data`, or None if the optional 'qrcode' package
+    isn't installed."""
+    try:
+        import qrcode
+    except ImportError:
+        return None
+    qr = qrcode.QRCode(border=2, box_size=8)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 # ── Rate limiting (manual AI endpoints only) ─────────────────
 # /commentary/over/generate is NOT here — the overlay fires it automatically at
@@ -2976,6 +3028,13 @@ CONTROL_HTML = """<!DOCTYPE html>
          display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0}
   h1{font-size:17px;font-weight:700;color:#fff}
   h1 span{color:#5b9bd5;font-weight:400;font-size:12px;display:block;margin-top:2px}
+  #remote-pill{margin-left:auto;display:flex;align-items:center;gap:8px;background:#0a1628;
+      border:1px solid #1e3550;border-radius:20px;padding:6px 12px 6px 10px;cursor:pointer;
+      font-size:11px;color:#8ba3c0;white-space:nowrap}
+  #remote-pill:hover{border-color:#2a5a8c}
+  #remote-pill .dot{width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0}
+  #remote-pill.via-tailscale .dot{background:#5b9bd5}
+  #remote-pill.via-local .dot{background:#8ba3c0}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
   .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -3109,7 +3168,29 @@ CONTROL_HTML = """<!DOCTYPE html>
 <header>
   <div class="badge" id="panel-club-badge">CC</div>
   <h1>Stream Control Panel<span id="panel-club-name">Your Club</span></h1>
+  <div id="remote-pill" onclick="showRemoteOverlay()" title="Click for a QR code to open this panel on another device">
+    <span class="dot"></span><span id="remote-pill-label">This machine</span>
+  </div>
 </header>
+
+<!-- ── Remote access overlay — QR code for pairing another device ── -->
+<div id="remote-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
+     z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideRemoteOverlay()">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+       width:100%;max-width:340px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      REMOTE ACCESS
+    </div>
+    <div id="remote-modal-body">
+      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+    </div>
+    <button onclick="hideRemoteOverlay()"
+            style="margin-top:16px;background:none;border:none;font-size:11px;color:#3d5a7a;
+                   cursor:pointer;text-decoration:underline;">
+      Close
+    </button>
+  </div>
+</div>
 
 <!-- ── Pre-match checklist ── -->
 <div id="checklist-bar" style="background:#0a1628;border:1px solid #1e3550;border-radius:9px;padding:16px 18px;margin-bottom:16px;">
@@ -3797,6 +3878,60 @@ async function doSkip() {
 // Script is at the bottom of <body> so the DOM is ready — no DOMContentLoaded needed.
 if (getToken() === null) {
   document.getElementById('auth-overlay').style.display = 'flex';
+}
+
+// ── Remote-access pill + QR overlay ────────────────────────────
+// How *this* page load reached the server, judged purely from the URL bar — no round
+// trip needed. Tailscale IPs are always in the 100.64.0.0/10 CGNAT range, so "starts
+// with 100." is a reliable, dependency-free check.
+function remoteVia() {
+  const h = location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') return 'local';
+  if (h.startsWith('100.')) return 'tailscale';
+  return 'lan';
+}
+(function initRemotePill() {
+  const via   = remoteVia();
+  const pill  = document.getElementById('remote-pill');
+  const label = document.getElementById('remote-pill-label');
+  const text  = {local: 'This machine', tailscale: 'Tailscale remote', lan: 'Same network'}[via];
+  label.textContent = text;
+  pill.classList.add('via-' + via);
+})();
+
+async function showRemoteOverlay() {
+  const ov   = document.getElementById('remote-overlay');
+  const body = document.getElementById('remote-modal-body');
+  ov.style.display = 'flex';
+  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  try {
+    const res = await fetch('/remote/info');
+    const d = await res.json();
+    if (!d.url) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;line-height:1.5;">' +
+        'Not reachable from another device yet — set <code style="background:#0d1b2e;' +
+        'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
+        '#0d1b2e;padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, or install ' +
+        'Tailscale, then restart the server.</p>';
+      return;
+    }
+    const viaLabel = d.via === 'tailscale' ? 'over Tailscale' : 'on the same network';
+    body.innerHTML =
+      '<p style="font-size:12px;color:#8ba3c0;margin-bottom:12px;">Scan on a phone or tablet ' +
+      viaLabel + ':</p>' +
+      '<img src="/remote/qr.png?t=' + Date.now() + '" style="width:200px;height:200px;' +
+      'background:#fff;border-radius:8px;padding:8px;" ' +
+      'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
+      '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
+      'style:\'font-size:12px;color:#8ba3c0\'}))">' +
+      '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + d.url + '</p>';
+  } catch (err) {
+    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+  }
+}
+
+function hideRemoteOverlay() {
+  document.getElementById('remote-overlay').style.display = 'none';
 }
 
 function buildPresets(cId, hexId, swId) {
@@ -4846,6 +4981,16 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError): pass
 
+    def _bytes(self, body, mime):
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError): pass
+
     def _file(self, path, mime):
         try:
             with open(path,"rb") as f: body=f.read()
@@ -5490,6 +5635,20 @@ class Handler(BaseHTTPRequestHandler):
                 },
             })
 
+        elif path == "/remote/info":
+            # Not auth-gated, same reasoning as /health: no secrets, just tells a device
+            # that's already on the right network (or Tailscale) where to point itself.
+            url, via = _remote_target()
+            self._json({"ok": bool(url), "url": url, "via": via})
+
+        elif path == "/remote/qr.png":
+            url, _via = _remote_target()
+            png = _qr_png_bytes(url) if url else None
+            if not png:
+                self.send_response(404); self.end_headers()
+                return
+            self._bytes(png, "image/png")
+
         elif path == "/live":
             global _rv_cache
             s    = load_state()
@@ -5809,19 +5968,23 @@ if __name__ == "__main__":
     _seed_state_from_config()
 
     remote_info = ""
-    if _BIND_HOST != "127.0.0.1":
-        ts_ip = None
+    remote_url, remote_via = _remote_target()
+    if remote_url:
+        label = "Tailscale remote" if remote_via == "tailscale" else "Same-network remote"
+        remote_info = f"\n  {label} → {remote_url}"
+    elif _BIND_HOST != "127.0.0.1":
+        remote_info = f"\n  Listening on {_BIND_HOST}:{PORT} — use your device IP to connect remotely"
+
+    if remote_url:
         try:
-            r = subprocess.run(["tailscale", "ip", "-4"],
-                               capture_output=True, text=True, timeout=2)
-            if r.returncode == 0:
-                ts_ip = r.stdout.strip()
-        except Exception:
-            pass
-        if ts_ip:
-            remote_info = f"\n  Tailscale remote → http://{ts_ip}:{PORT}/control"
-        else:
-            remote_info = f"\n  Listening on {_BIND_HOST}:{PORT} — use your device IP to connect remotely"
+            import qrcode
+            qr = qrcode.QRCode(border=1)
+            qr.add_data(remote_url)
+            qr.make(fit=True)
+            print(f"\n  Scan to open the control panel on another device ({remote_via}):\n")
+            qr.print_ascii(invert=True)
+        except ImportError:
+            print("\n  Tip: pip install qrcode to get a scannable QR code here and in the panel.")
 
     print(f"""
   ╔══════════════════════════════════════════════════════╗
