@@ -14,7 +14,7 @@ Requirements (pip install each):
     qrcode                    — QR code for remote control panel access (optional)
 
 Also optional (not pip packages — install separately):
-    tailscale   — private remote access (see REMOTE_ACCESS_PLAN.md)
+    tailscale   — private remote access (recommended)
     cloudflared — public remote access fallback; set cloudflare_tunnel=true in
                   config.ini [Network] once club_password is set
 
@@ -1388,8 +1388,7 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # control panel can round-trip its form without wiping stored secrets. "" still clears.
 # control_token/club_password can never actually reach match_state.json today (they live only
 # in config.ini's [Auth] section and _seed_state_from_config's MAPPING doesn't copy them) —
-# they're listed here anyway as a defensive backstop per SECURITY_HARDENING.md 2.4, in case
-# that ever changes.
+# they're listed here anyway as a defensive backstop in case that ever changes.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
                "weather_api_key", "obs_password", "camera_rtsp_url",
                "control_token", "club_password")

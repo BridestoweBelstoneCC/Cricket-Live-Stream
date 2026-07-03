@@ -73,7 +73,14 @@ gotchas).
 - **Never commit `config.ini`, `match_state.json`, or `match_data.db`.** They're git-ignored;
   check `git status` before committing.
 - **The server reads the scorer's LOCAL file.** It must run on a machine that can see the
-  scorer's output folder. This constrains anything network-related (see `REMOTE_ACCESS_PLAN.md`).
+  scorer's output folder, so it can never move to a cloud host — remote *operation* (not the
+  server itself) is what's exposed. Built: Tailscale (private, recommended first) and a
+  Cloudflare Tunnel quick tunnel (public URL, opt-in via `config.ini [Network]
+  cloudflare_tunnel`, refuses to start unless `club_password` is set). Don't port-forward the
+  raw port directly — no TLS, no gating, worst option. A cloud relay (tiny VPS; the laptop
+  opens a persistent outbound WebSocket to it, the relay forwards control messages back) was
+  scoped but deliberately not built — only worth it if Tailscale and Cloudflare Tunnel are
+  both genuinely blocked on a club's network, which hasn't come up.
 - **Inside a frozen `setup_wizard.py` (PyInstaller), `sys.executable` is the exe itself, not a
   Python interpreter** — passing it to `subprocess` for `pip`/launching another script causes
   infinite self-relaunching. Use `find_python()`, which searches `PATH` instead. Same trap for

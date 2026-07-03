@@ -49,8 +49,8 @@ named or shown, call it out clearly in your pull request.
 
 ## Architecture notes
 
-- **Remote access:** [`REMOTE_ACCESS_PLAN.md`](REMOTE_ACCESS_PLAN.md) explains the design
-  constraints around LAN/Tailscale access — worth reading before touching anything
+- **Remote access:** see `CLAUDE.md`'s gotchas section for the design constraints around
+  LAN/Tailscale/Cloudflare Tunnel access — worth reading before touching anything
   network-related.
 
 ## Licence
