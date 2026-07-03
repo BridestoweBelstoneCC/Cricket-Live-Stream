@@ -2952,8 +2952,13 @@ def fetch_todays_match(api_key, site_id):
         opp_name  = match.get("home_team_name", "")
         opp_club  = match.get("home_club_name", "")
 
-    # Auto-abbreviate opposition: first word up to 5 chars, uppercased
-    opp_words = opp_name.replace(" CC","").replace(" Cricket Club","").strip().split()
+    # Auto-abbreviate opposition: first word up to 5 chars, uppercased. Abbreviate the CLUB
+    # name (e.g. "Ivybridge CC"), not the team label (e.g. "Under 15" or "1st XI") — PlayCricket
+    # gives every age-group/adult team a generic label like that on both sides of the fixture,
+    # so abbreviating opp_name instead of opp_club produced meaningless abbreviations like
+    # "UNDER" or "1ST" for the opposition. Fall back to opp_name only if opp_club is blank.
+    abbrev_source = opp_club or opp_name
+    opp_words = abbrev_source.replace(" CC","").replace(" Cricket Club","").strip().split()
     auto_abbrev = opp_words[0][:5].upper() if opp_words else ""
 
     return {
