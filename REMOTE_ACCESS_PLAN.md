@@ -7,6 +7,13 @@ unsafely.
 **Non-goal:** letting the public *watch* — YouTube already does that. This is about *operating*
 the graphics remotely, not viewing the stream.
 
+> **Status (2026-07-03):** Phases 1–3 below are implemented, including both legs of Phase 3
+> Option A — Tailscale and Cloudflare Tunnel. `SECURITY_HARDENING.md`'s Phases 0–2 (secret
+> scanning, login rate-limiting/lockout, CSRF/CORS/security headers, session revocation, an
+> auth event log) are also done on top of this. Phase 3 Option B (the cloud relay) is
+> deliberately **not** built — it's the documented last resort, only needed if Tailscale and
+> Cloudflare Tunnel are both genuinely blocked, which hasn't come up.
+
 ---
 
 ## The one constraint that shapes everything

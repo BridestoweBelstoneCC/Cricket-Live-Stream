@@ -261,8 +261,9 @@ On a 2015 MacBook Pro 13":
 macOS uses port 5000 for AirPlay Receiver which will block the server.
 Fix: **System Preferences → General → AirDrop & Handoff → untick AirPlay Receiver**
 
-Or change the server port: edit `server.py` and change `PORT = 5000` to `PORT = 5001`,
-then use `http://localhost:5001/control` and update the OBS browser source URL.
+Or change the server port: edit `server.py` and change `PORT = 5000` to something else (e.g.
+`PORT = 5050`), then use `http://localhost:5050/control` — the OBS browser source URL in the
+control panel updates itself automatically, no need to change that separately.
 
 ### VMware Fusion asks for payment
 

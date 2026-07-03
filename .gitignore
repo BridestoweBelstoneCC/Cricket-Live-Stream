@@ -5,6 +5,7 @@ match_data.db-shm
 match_data.db-wal
 __pycache__/
 *.pyc
+*.log
 .DS_Store
 
 # Runtime-generated files

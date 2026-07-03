@@ -149,9 +149,11 @@ area so the operator can see if something is probing during a match.
 - Confirm `config.ini` is untracked (`git ls-files | grep config.ini` → only
   `config.example.ini`). If the live file is still tracked: `git rm --cached config.ini`.
 - Docs: README/setup guides say copy `config.example.ini` → `config.ini`; sync the port number
-  everywhere (code says 5001, README says 5000); document "restart server or use Log everyone
-  out to revoke sessions"; state plainly that Tailscale is the recommended exposure method and
-  quick tunnels are the fallback.
+  everywhere (server.py's own docstring header and the control panel's OBS-overlay link said
+  5001 while `PORT = 5000` — fixed, and the panel link is now computed from `location.origin`
+  so it can't drift again); document "restart server or use Log everyone out to revoke
+  sessions"; state plainly that Tailscale is the recommended exposure method and quick tunnels
+  are the fallback.
 - Add a note to `REMOTE_ACCESS_PLAN.md` marking which phases are now implemented.
 
 ---
@@ -163,12 +165,12 @@ Phase 0:
    credential rotated); a staged file containing a fake key is blocked by the pre-commit hook.
 
 Local, auth enabled (`club_password` set):
-1. `curl -X POST localhost:5001/state -d '{}'` → **401**.
+1. `curl -X POST localhost:5000/state -d '{}'` → **401**.
 2. Login with wrong password 5× → 6th attempt → **429**; correct password still locked out
    until the window passes.
 3. Login with correct password → session works; POST /state with token → **200**.
-4. `curl localhost:5001/live` (no auth) → **200**; overlay in OBS still updates.
-5. `curl localhost:5001/state` (authed) → response contains `••••••••` for every secret,
+4. `curl localhost:5000/live` (no auth) → **200**; overlay in OBS still updates.
+5. `curl localhost:5000/state` (authed) → response contains `••••••••` for every secret,
    including `control_token` and `club_password`.
 6. Set `bind_host = 0.0.0.0` with empty `club_password` → server binds 127.0.0.1 and warns.
 7. Blank `control_token` + set password → server generates and persists a token; sessions

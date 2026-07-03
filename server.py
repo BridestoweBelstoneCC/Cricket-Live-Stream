@@ -3,8 +3,8 @@ CricketStream Overlay — Stream Server
 ─────────────────────────────────────────────────
 Run:  python server.py
 
-Control panel  →  http://localhost:5001/control
-OBS overlay    →  http://localhost:5001/overlay
+Control panel  →  http://localhost:5000/control
+OBS overlay    →  http://localhost:5000/overlay
 
 Requirements (pip install each):
     websocket-client          — OBS WebSocket / instant replay
@@ -3498,6 +3498,10 @@ CONTROL_HTML = """<!DOCTYPE html>
                    font-size:13px;font-weight:700;cursor:pointer;background:#7a2020;color:#fff;">
       Log out everyone
     </button>
+    <p style="font-size:11px;color:#3d5a7a;margin-top:8px;">
+      Sessions also expire on their own after 12 hours, and restarting the server has the
+      same effect as this button — both invalidate every signed-in device at once.
+    </p>
     <button onclick="hideSecurityOverlay()"
             style="margin-top:10px;background:none;border:none;font-size:11px;color:#3d5a7a;
                    cursor:pointer;text-decoration:underline;">
@@ -4111,7 +4115,7 @@ CONTROL_HTML = """<!DOCTYPE html>
 
 <div class="links">
   <span>OBS browser source:</span>
-  <a href="http://localhost:5001/overlay" target="_blank">http://localhost:5001/overlay</a>
+  <a id="overlay-link" href="/overlay" target="_blank">/overlay</a>
 </div>
 
 <script>
@@ -4213,6 +4217,15 @@ function remoteVia() {
                  cloudflare: 'Cloudflare remote', lan: 'Same network'}[via];
   label.textContent = text;
   pill.classList.add('via-' + via);
+})();
+
+// The OBS browser-source URL always matches whatever host/port this page was actually
+// loaded from — no hardcoded port to drift out of sync with PORT in server.py again.
+(function initOverlayLink() {
+  const url = location.origin + '/overlay';
+  const a = document.getElementById('overlay-link');
+  a.href = url;
+  a.textContent = url;
 })();
 
 let _remoteTargets = [];
