@@ -143,25 +143,36 @@ def _load_auth_config():
 
 _load_auth_config()
 
+# Mixed into every session signature. Rotating it (see "log everyone out" / POST
+# /auth/logout_all) invalidates every previously issued session instantly, without needing
+# to restart the stream — a fresh random value is picked at each server start too, so a
+# restart alone already has the same effect.
+_SESSION_EPOCH      = secrets.token_hex(8)
+_session_epoch_lock = threading.Lock()
+
 def _make_session_token():
     """Issue a signed, expiring session token: '{expiry}:{nonce}:{sig}'."""
     if not _CONTROL_TOKEN:
         raise RuntimeError("refusing to sign a session with an empty control_token")
     expiry = str(int(time.time()) + _SESSION_HOURS * 3600)
     nonce  = secrets.token_hex(8)
-    sig    = hmac.new(_CONTROL_TOKEN.encode(), f"{expiry}:{nonce}".encode(),
-                      hashlib.sha256).hexdigest()
+    with _session_epoch_lock:
+        epoch = _SESSION_EPOCH
+    sig = hmac.new(f"{_CONTROL_TOKEN}:{epoch}".encode(), f"{expiry}:{nonce}".encode(),
+                   hashlib.sha256).hexdigest()
     return f"{expiry}:{nonce}:{sig}"
 
 def _verify_session_token(token):
-    """True if the token has a valid signature and has not expired."""
+    """True if the token has a valid signature (under the current epoch) and hasn't expired."""
     if not _CONTROL_TOKEN:
         return False
     try:
         expiry, nonce, sig = token.split(":", 2)
         if int(expiry) < time.time():
             return False
-        expected = hmac.new(_CONTROL_TOKEN.encode(), f"{expiry}:{nonce}".encode(),
+        with _session_epoch_lock:
+            epoch = _SESSION_EPOCH
+        expected = hmac.new(f"{_CONTROL_TOKEN}:{epoch}".encode(), f"{expiry}:{nonce}".encode(),
                             hashlib.sha256).hexdigest()
         return hmac.compare_digest(sig, expected)
     except Exception:
@@ -175,6 +186,18 @@ _login_attempts_lock = threading.Lock()
 LOGIN_MAX_FAILURES   = 5
 LOGIN_WINDOW_SEC     = 600    # failures older than this don't count towards the lockout
 LOGIN_LOCKOUT_SEC    = 600    # how long an IP is rejected once it trips the limit
+
+# ── Auth event log (Phase 2.7) ────────────────────────────────
+# Small ring buffer so an operator can see at a glance (via /health) if something's probing
+# the panel during a match — IP + time + event kind only, never the attempted password.
+_auth_log      = []   # [{"time","event","ip"}, ...] — most recent last, capped
+_auth_log_lock = threading.Lock()
+AUTH_LOG_MAX   = 200
+
+def _auth_log_add(event, ip):
+    with _auth_log_lock:
+        _auth_log.append({"time": time.time(), "event": event, "ip": ip})
+        del _auth_log[:-AUTH_LOG_MAX]
 
 # ── Remote access helpers (Tailscale / LAN / QR) ──────────────
 def _lan_ip():
@@ -1305,6 +1328,7 @@ PORT       = 5000
 # Always resolve state file relative to server.py regardless of launch directory
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_state.json")
 MAX_CLIPS  = 100
+MAX_BODY_BYTES = 1024 * 1024   # 1 MB — every POST body is small JSON; cheap guard against junk
 
 DEFAULT_STATE = {
     "home_team":               "Home CC",
@@ -1362,8 +1386,13 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # Keys whose values must never be sent to a browser. GET /state replaces a stored value
 # with SECRET_SENTINEL; POST /state ignores fields whose value IS the sentinel, so the
 # control panel can round-trip its form without wiping stored secrets. "" still clears.
+# control_token/club_password can never actually reach match_state.json today (they live only
+# in config.ini's [Auth] section and _seed_state_from_config's MAPPING doesn't copy them) —
+# they're listed here anyway as a defensive backstop per SECURITY_HARDENING.md 2.4, in case
+# that ever changes.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
-               "weather_api_key", "obs_password", "camera_rtsp_url")
+               "weather_api_key", "obs_password", "camera_rtsp_url",
+               "control_token", "club_password")
 SECRET_SENTINEL = "••••••••"
 
 def load_state():
@@ -3426,6 +3455,12 @@ CONTROL_HTML = """<!DOCTYPE html>
   <div id="remote-pill" onclick="showRemoteOverlay()" title="Click for a QR code to open this panel on another device">
     <span class="dot"></span><span id="remote-pill-label">This machine</span>
   </div>
+  <div id="security-pill" onclick="showSecurityOverlay()" title="Recent sign-in activity and session controls"
+       style="margin-left:8px;display:flex;align-items:center;gap:6px;background:#0a1628;
+              border:1px solid #1e3550;border-radius:20px;padding:6px 12px;cursor:pointer;
+              font-size:11px;color:#8ba3c0;white-space:nowrap;">
+    &#128274; Security
+  </div>
 </header>
 
 <!-- ── Remote access overlay — QR code for pairing another device ── -->
@@ -3441,6 +3476,30 @@ CONTROL_HTML = """<!DOCTYPE html>
     </div>
     <button onclick="hideRemoteOverlay()"
             style="margin-top:16px;background:none;border:none;font-size:11px;color:#3d5a7a;
+                   cursor:pointer;text-decoration:underline;">
+      Close
+    </button>
+  </div>
+</div>
+
+<!-- ── Security overlay — recent auth activity + session revocation ── -->
+<div id="security-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
+     z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideSecurityOverlay()">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+       width:100%;max-width:400px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      SECURITY
+    </div>
+    <div id="security-modal-body" style="text-align:left;">
+      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+    </div>
+    <button onclick="logoutAllSessions()"
+            style="width:100%;margin-top:16px;padding:11px;border:none;border-radius:6px;
+                   font-size:13px;font-weight:700;cursor:pointer;background:#7a2020;color:#fff;">
+      Log out everyone
+    </button>
+    <button onclick="hideSecurityOverlay()"
+            style="margin-top:10px;background:none;border:none;font-size:11px;color:#3d5a7a;
                    cursor:pointer;text-decoration:underline;">
       Close
     </button>
@@ -4210,6 +4269,70 @@ async function showRemoteOverlay() {
 
 function hideRemoteOverlay() {
   document.getElementById('remote-overlay').style.display = 'none';
+}
+
+// ── Security overlay — recent auth activity + session revocation ──
+function fmtAgo(ts) {
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (sec < 60) return sec + 's ago';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+  return Math.floor(sec / 3600) + 'h ago';
+}
+
+const AUTH_EVENT_LABEL = {
+  login_ok: 'Login succeeded', login_fail: 'Wrong password',
+  locked_out: 'Blocked (too many attempts)', logout_all: 'All sessions logged out',
+  '401': 'Rejected (no/invalid session)'
+};
+
+async function showSecurityOverlay() {
+  const ov   = document.getElementById('security-overlay');
+  const body = document.getElementById('security-modal-body');
+  ov.style.display = 'flex';
+  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  try {
+    const res = await apiFetch('/auth/log');
+    const d = await res.json();
+    if (!d.ok) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Could not load auth activity.</p>';
+      return;
+    }
+    if (!d.entries.length) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">No auth activity recorded yet this session.</p>';
+      return;
+    }
+    body.innerHTML = '<p style="font-size:11px;color:#5b9bd5;text-transform:uppercase;' +
+      'letter-spacing:1px;margin-bottom:8px;">Recent activity</p>' +
+      '<div style="max-height:220px;overflow-y:auto;">' +
+      d.entries.map(function(e) {
+        const label = AUTH_EVENT_LABEL[e.event] || e.event;
+        const color = (e.event === 'login_ok') ? '#4caf50' :
+                      (e.event === 'logout_all') ? '#5b9bd5' : '#f44336';
+        return '<div style="display:flex;justify-content:space-between;gap:10px;' +
+          'font-size:11px;padding:5px 0;border-bottom:1px solid #1e3550;">' +
+          '<span style="color:' + color + '">' + label + '</span>' +
+          '<span style="color:#3d5a7a;">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+  } catch (err) {
+    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+  }
+}
+
+function hideSecurityOverlay() {
+  document.getElementById('security-overlay').style.display = 'none';
+}
+
+async function logoutAllSessions() {
+  if (!confirm('Log out every device using this control panel, including this one? ' +
+               'You will need to log back in.')) return;
+  try {
+    await apiFetch('/auth/logout_all',
+      {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+  } catch (err) {}
+  sessionStorage.removeItem('bbcc_token');
+  hideSecurityOverlay();
+  showLoginOverlay('Signed out — log in again');
 }
 
 function buildPresets(cId, hexId, swId) {
@@ -5238,13 +5361,25 @@ def compile_highlights(folder, output_path, max_clips=100):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
 
+    def _security_headers(self):
+        """Baseline hardening headers (Phase 2.3) for every panel/API response."""
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+
     def _json(self, data, status=200):
         try:
             body = json.dumps(data).encode()
             self.send_response(status)
             self.send_header("Content-Type","application/json")
             self.send_header("Content-Length",str(len(body)))
-            self.send_header("Access-Control-Allow-Origin","*")
+            self._security_headers()
+            # 2.2: mutating (POST) responses are same-origin-only — the control panel calls
+            # them from its own page on this server, so no CORS header is needed — except
+            # the one POST route the overlay itself calls (over-end AI commentary), which
+            # keeps it for the same reason /live's GET does.
+            if self.command != "POST" or urlparse(self.path).path == "/commentary/over/generate":
+                self.send_header("Access-Control-Allow-Origin","*")
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError): pass
@@ -5255,6 +5390,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type","text/html; charset=utf-8")
             self.send_header("Content-Length",str(len(body)))
+            self._security_headers()
+            # The panel is one self-contained page (inline <style>/<script>, no external
+            # resources — verified: its only https:// references are plain <a href> links,
+            # never loaded), so 'unsafe-inline' is required but everything else is locked down.
+            self.send_header("Content-Security-Policy",
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self'; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError): pass
@@ -5302,22 +5445,37 @@ class Handler(BaseHTTPRequestHandler):
         return self.client_address[0] in ("127.0.0.1", "::1")
 
     def _check_token(self):
-        """Returns True if the request carries a valid session token (or auth is disabled)."""
+        """Returns True if the request carries a valid session token (or auth is disabled).
+        Bearer-only by design (see CONTROL_HTML's apiFetch): no cookie fallback, so there's
+        no ambient credential a cross-site page could ride along on CSRF-style."""
         if not _CLUB_PASSWORD:
             return True
         auth = self.headers.get("Authorization", "")
         provided = auth[7:] if auth.startswith("Bearer ") else ""
-        if not provided:
-            for part in self.headers.get("Cookie", "").split(";"):
-                k, _, v = part.strip().partition("=")
-                if k.strip() == "control_token":
-                    provided = v.strip()
-                    break
         if provided and _verify_session_token(provided):
             return True
-        print(f"  ✗  Auth: 401 {self.path} [{self._client_ip()}]")
+        ip = self._client_ip()
+        print(f"  ✗  Auth: 401 {self.path} [{ip}]")
+        _auth_log_add("401", ip)
         self._json({"ok": False, "error": "Unauthorized"}, status=401)
         return False
+
+    def _origin_ok(self):
+        """True unless Origin/Referer is present and points at a different host — defense in
+        depth against CSRF-style cross-site requests. Absent headers pass (curl, some
+        embedded-browser fetches don't send them); only a *mismatched* one is rejected."""
+        host = self.headers.get("Host", "")
+        for hdr in ("Origin", "Referer"):
+            val = self.headers.get(hdr, "")
+            if not val:
+                continue
+            try:
+                netloc = urlparse(val).netloc
+            except Exception:
+                return False
+            if netloc and netloc != host:
+                return False
+        return True
 
     def _handle_login(self, body):
         """POST /login — exchange club password for a signed session token."""
@@ -5335,6 +5493,7 @@ class Handler(BaseHTTPRequestHandler):
         if locked_until > now:
             wait = int(locked_until - now) + 1
             print(f"  ✗  Login: {ip} is locked out ({wait}s remaining)")
+            _auth_log_add("locked_out", ip)
             self._json({"ok": False, "error": f"Too many attempts — try again in {wait}s"},
                        status=429)
             return
@@ -5349,6 +5508,7 @@ class Handler(BaseHTTPRequestHandler):
                 _login_attempts.pop(ip, None)
             tok = _make_session_token()
             print(f"  ✓  Login: session issued [{ip}]")
+            _auth_log_add("login_ok", ip)
             self._json({"ok": True, "session_token": tok})
         else:
             time.sleep(1)   # slow down brute-force attempts — never log the password itself
@@ -5360,6 +5520,7 @@ class Handler(BaseHTTPRequestHandler):
                 if count >= LOGIN_MAX_FAILURES:
                     rec["locked_until"] = now + LOGIN_LOCKOUT_SEC
             print(f"  ✗  Login: bad password, {count} failure(s) in window [{ip}]")
+            _auth_log_add("login_fail", ip)
             self._json({"ok": False, "error": "Wrong password"}, status=401)
 
     def _check_rate_limit(self, path):
@@ -5964,6 +6125,16 @@ class Handler(BaseHTTPRequestHandler):
                 },
             })
 
+        elif path == "/auth/log":
+            # Auth-gated (unlike /health) — this reveals client IPs, so it shouldn't be
+            # readable by anonymous callers even though the rest of /health is deliberately
+            # open. Lets an operator see if something's been probing the panel.
+            if not self._check_token(): return
+            with _auth_log_lock:
+                entries = list(_auth_log[-50:])
+            entries.reverse()   # most recent first — the panel just lists them top-down
+            self._json({"ok": True, "entries": entries})
+
         elif path == "/remote/info":
             # Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that
             # URL is only reachable by a device already on the right network/tunnel anyway.
@@ -6107,8 +6278,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path   = urlparse(self.path).path
-        length = int(self.headers.get("Content-Length",0))
+        length = int(self.headers.get("Content-Length",0) or 0)
+        if length > MAX_BODY_BYTES:
+            self.send_response(413)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body   = self.rfile.read(length)
+
+        if not self._origin_ok():
+            self._json({"ok": False, "error": "Cross-origin request rejected"}, status=403)
+            return
 
         if path == "/login":
             self._handle_login(body)
@@ -6280,6 +6460,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": bool(c["text"]), "text": c["text"] or "Generating..."})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
+
+        elif path == "/auth/logout_all":
+            # Rotates the signing epoch mixed into every session's HMAC — every session
+            # issued before this instant (including the caller's own) stops verifying,
+            # without needing to restart the stream. Already behind the blanket
+            # _check_token() gate above, same as every other POST route.
+            global _SESSION_EPOCH
+            with _session_epoch_lock:
+                _SESSION_EPOCH = secrets.token_hex(8)
+            ip = self._client_ip()
+            print(f"  \u26a0  All sessions revoked by [{ip}]")
+            _auth_log_add("logout_all", ip)
+            self._json({"ok": True})
 
         else:
             self.send_response(404); self.end_headers()
