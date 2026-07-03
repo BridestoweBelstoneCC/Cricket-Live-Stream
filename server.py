@@ -69,11 +69,48 @@ _SESSION_HOURS      = 12
 _BIND_HOST          = "127.0.0.1"
 _CLOUDFLARE_TUNNEL  = False
 
+def _config_ini_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+
+def _persist_control_token(new_token):
+    """Writes a freshly-generated control_token into config.ini's [Auth] section, editing
+    the line in place (not via configparser's writer, which would strip every comment in
+    the file) and atomically (temp file + os.replace, same pattern as save_state()).
+    Returns True on success."""
+    cfg_path = _config_ini_path()
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        in_auth, found = False, False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                in_auth = (stripped == "[Auth]")
+                continue
+            if in_auth and re.match(r"^\s*control_token\s*=", line):
+                lines[i] = f"control_token = {new_token}\n"
+                found = True
+                break
+        if not found:
+            if not any(l.strip() == "[Auth]" for l in lines):
+                lines.append("\n[Auth]\n")
+            lines.append(f"control_token = {new_token}\n")
+        tmp = cfg_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, cfg_path)
+        return True
+    except Exception as e:
+        print(f"  ✗  Could not persist generated control_token to config.ini: {e}")
+        return False
+
 def _load_auth_config():
     global _CONTROL_TOKEN, _CLUB_PASSWORD, _BIND_HOST, _CLOUDFLARE_TUNNEL
     import configparser as _cp
     cfg = _cp.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = _config_ini_path()
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
         _CONTROL_TOKEN     = cfg.get("Auth",    "control_token", fallback="").strip()
@@ -82,10 +119,34 @@ def _load_auth_config():
                               or cfg.get("Network", "bind_host", fallback="127.0.0.1").strip())
         _CLOUDFLARE_TUNNEL = cfg.getboolean("Network", "cloudflare_tunnel", fallback=False)
 
+    # 1.1 — sessions are HMAC-signed with control_token; a blank one means anyone who's read
+    # the (public) source can forge a valid session. Generate one the first time a password
+    # is set, rather than ever signing with "".
+    if _CLUB_PASSWORD and not _CONTROL_TOKEN:
+        new_token = secrets.token_hex(32)
+        if _persist_control_token(new_token):
+            _CONTROL_TOKEN = new_token
+            print("  ✓  No control_token was set — generated one and saved it to config.ini")
+        else:
+            _BIND_HOST = "127.0.0.1"
+            print("  ✗  Generated a control_token but could not save it to config.ini — "
+                  "refusing to bind beyond 127.0.0.1 until [Auth] control_token is set "
+                  "manually")
+
+    # 1.3 — binding beyond localhost with no password would expose every control-panel
+    # action to the network with nothing gating it. Fail closed.
+    if _BIND_HOST not in ("127.0.0.1", "localhost") and not _CLUB_PASSWORD:
+        print(f"  ✗  bind_host is set to {_BIND_HOST} but club_password is blank — binding "
+              f"127.0.0.1 instead. Set [Auth] club_password in config.ini to enable remote "
+              f"access.")
+        _BIND_HOST = "127.0.0.1"
+
 _load_auth_config()
 
 def _make_session_token():
     """Issue a signed, expiring session token: '{expiry}:{nonce}:{sig}'."""
+    if not _CONTROL_TOKEN:
+        raise RuntimeError("refusing to sign a session with an empty control_token")
     expiry = str(int(time.time()) + _SESSION_HOURS * 3600)
     nonce  = secrets.token_hex(8)
     sig    = hmac.new(_CONTROL_TOKEN.encode(), f"{expiry}:{nonce}".encode(),
@@ -94,6 +155,8 @@ def _make_session_token():
 
 def _verify_session_token(token):
     """True if the token has a valid signature and has not expired."""
+    if not _CONTROL_TOKEN:
+        return False
     try:
         expiry, nonce, sig = token.split(":", 2)
         if int(expiry) < time.time():
@@ -103,6 +166,15 @@ def _verify_session_token(token):
         return hmac.compare_digest(sig, expected)
     except Exception:
         return False
+
+# ── Login brute-force protection (Phase 1.2) ──────────────────
+# In-memory per-process is fine here — a village club's server restarts between matches
+# anyway, and this only needs to survive the length of one brute-force attempt.
+_login_attempts      = {}   # ip -> {"failures": [timestamps], "locked_until": epoch or 0}
+_login_attempts_lock = threading.Lock()
+LOGIN_MAX_FAILURES   = 5
+LOGIN_WINDOW_SEC     = 600    # failures older than this don't count towards the lockout
+LOGIN_LOCKOUT_SEC    = 600    # how long an IP is rejected once it trips the limit
 
 # ── Remote access helpers (Tailscale / LAN / QR) ──────────────
 def _lan_ip():
@@ -5211,6 +5283,24 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # Client disconnected mid-response (e.g. OBS scene switch) — harmless
 
+    def _client_ip(self):
+        """Client IP, preferring X-Forwarded-For's first hop over the raw socket address —
+        a tunnel (Tailscale funnel / Cloudflare quick tunnel) proxies the connection, so the
+        socket address would otherwise always be the tunnel's own endpoint."""
+        xff = self.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+        return self.address_string()
+
+    def _is_trusted_loopback(self):
+        """True only for a genuine same-machine connection with nothing proxying it — e.g.
+        the overlay running in OBS on this box. cloudflared forwards tunnelled requests to
+        127.0.0.1 too, so a bare address check would be fooled by it; the giveaway is that a
+        proxied request carries X-Forwarded-For and a direct one never does."""
+        if self.headers.get("X-Forwarded-For", ""):
+            return False
+        return self.client_address[0] in ("127.0.0.1", "::1")
+
     def _check_token(self):
         """Returns True if the request carries a valid session token (or auth is disabled)."""
         if not _CLUB_PASSWORD:
@@ -5225,7 +5315,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
         if provided and _verify_session_token(provided):
             return True
-        print(f"  ✗  Auth: 401 {self.path} [{self.address_string()}]")
+        print(f"  ✗  Auth: 401 {self.path} [{self._client_ip()}]")
         self._json({"ok": False, "error": "Unauthorized"}, status=401)
         return False
 
@@ -5236,16 +5326,40 @@ class Handler(BaseHTTPRequestHandler):
             tok = _make_session_token() if _CONTROL_TOKEN else ""
             self._json({"ok": True, "session_token": tok})
             return
+
+        ip  = self._client_ip()
+        now = time.time()
+        with _login_attempts_lock:
+            rec         = _login_attempts.setdefault(ip, {"failures": [], "locked_until": 0})
+            locked_until = rec["locked_until"]
+        if locked_until > now:
+            wait = int(locked_until - now) + 1
+            print(f"  ✗  Login: {ip} is locked out ({wait}s remaining)")
+            self._json({"ok": False, "error": f"Too many attempts — try again in {wait}s"},
+                       status=429)
+            return
+
         try:
             pw = json.loads(body).get("password", "")
         except Exception:
             pw = ""
+
         if pw and hmac.compare_digest(pw.encode(), _CLUB_PASSWORD.encode()):
+            with _login_attempts_lock:
+                _login_attempts.pop(ip, None)
             tok = _make_session_token()
-            print(f"  ✓  Login: session issued [{self.address_string()}]")
+            print(f"  ✓  Login: session issued [{ip}]")
             self._json({"ok": True, "session_token": tok})
         else:
-            print(f"  ✗  Login: bad password [{self.address_string()}]")
+            time.sleep(1)   # slow down brute-force attempts — never log the password itself
+            with _login_attempts_lock:
+                rec = _login_attempts.setdefault(ip, {"failures": [], "locked_until": 0})
+                rec["failures"] = [t for t in rec["failures"] if now - t < LOGIN_WINDOW_SEC]
+                rec["failures"].append(now)
+                count = len(rec["failures"])
+                if count >= LOGIN_MAX_FAILURES:
+                    rec["locked_until"] = now + LOGIN_LOCKOUT_SEC
+            print(f"  ✗  Login: bad password, {count} failure(s) in window [{ip}]")
             self._json({"ok": False, "error": "Wrong password"}, status=401)
 
     def _check_rate_limit(self, path):
@@ -5425,6 +5539,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(db_status())
 
         elif path.startswith("/data/export"):
+            if not self._check_token(): return
             from urllib.parse import parse_qs
             mid = parse_qs(urlparse(self.path).query).get("match_id", [""])[0].strip()
             if not mid:
@@ -5446,6 +5561,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"photos": list_social_photos(tk), "team": tk})
 
         elif path == "/social/recent":
+            if not self._check_token(): return
             # Recent completed matches for the post picker — works for away games too.
             rcfg = load_state()
             rkey = (rcfg.get("playcricket_api_key") or rcfg.get("api_token") or "").strip()
@@ -5518,6 +5634,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
 
         elif path == "/report/log":
+            if not self._check_token(): return
             # Raw match log (for debugging / manual editing)
             self._json(_match_log)
 
@@ -5997,7 +6114,14 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_login(body)
             return
 
-        if not self._check_token():
+        if path == "/commentary/over/generate":
+            # Fired automatically by the overlay at the end of every over, from a loopback
+            # OBS browser source that has no way to log in — but it spends Anthropic credit,
+            # so it must not be callable anonymously through a tunnel. Trust loopback callers
+            # with no forwarding proxy in front of them, or a valid session either way.
+            if not (self._is_trusted_loopback() or self._check_token()):
+                return
+        elif not self._check_token():
             return
 
         if path == "/state":
