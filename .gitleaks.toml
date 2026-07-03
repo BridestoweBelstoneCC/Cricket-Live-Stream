@@ -1,0 +1,14 @@
+title = "gitleaks config for CricketStream Overlay"
+
+# Extends gitleaks' built-in ruleset — it has no rule for Anthropic's key format
+# (sk-ant-api03-...), which is long and dash-containing enough to fall outside the
+# generic-api-key rule's pattern. Confirmed by testing a realistic fake key against
+# the default ruleset before adding this. See SECURITY_HARDENING.md Phase 0.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "anthropic"]
