@@ -607,6 +607,31 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
                 notable.append(f"{nm} ({rn}) is well past his season average of {season_av:.0f}.")
     except Exception:
         pass
+    # "Coming up" milestones — the anticipation angle, not just reacting after the fact.
+    # overlay.html already fires its own graphic once these are actually reached; this just
+    # gives the commentator a reason to build tension in the over before that happens.
+    try:
+        for bk in ('batter1', 'batter2'):
+            b = state.get(bk) or {}
+            nm, rn = b.get('name', ''), int(b.get('runs', 0) or 0)
+            if not nm or nm == '—':
+                continue
+            target = 50 if rn < 50 else (100 if rn < 100 else None)
+            if target and 0 < target - rn <= 15:
+                label = 'century' if target == 100 else 'half-century'
+                notable.append(f"{nm} is {target - rn} runs from a {label}.")
+        bowler_wkts = int(str(figs).split('-')[-1])
+        if bowler_wkts in (3, 4):
+            need = 5 - bowler_wkts
+            notable.append(f"{bowler} is {need} wicket{'s' if need != 1 else ''} from a five-wicket haul.")
+    except (ValueError, IndexError, TypeError):
+        pass
+    try:
+        next_hundred = ((sc // 50) + 1) * 50
+        if 0 < next_hundred - sc <= 15:
+            notable.append(f"{bat} are {next_hundred - sc} runs from {next_hundred}.")
+    except Exception:
+        pass
     notable_txt = (' Notable: ' + ' '.join(notable)) if notable else ''
     prompt = (
         'You are a cricket commentator for a village match in Devon, England. '
