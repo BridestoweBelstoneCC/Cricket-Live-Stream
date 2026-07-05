@@ -1723,9 +1723,13 @@ function processPCSData(state) {
       // Recover a missed run-scoring last ball into the sequence so the count is right too
       var overBalls = _currentOverBalls.slice();
       if (overRuns > tickerRuns) overBalls.push(classifyBall(String(overRuns - tickerRuns)));
-      const bowlerName = fmtSurname(state.prev_bowler_name || state.bowler?.name || '—');
-      const figs = state.prev_bowler_overs
-        ? `${state.prev_bowler_overs}-${state.prev_bowler_maidens||0}-${state.prev_bowler_runs}-${state.prev_bowler_wickets||0}`
+      // state.bowler already reflects whoever PCS Pro has rotated to for the NEXT over by the
+      // time this fires -- _lastPolledBowler (captured at the end of the previous poll, before
+      // that rotation) is the one who actually bowled the over that just finished.
+      const finishedBowler = _lastPolledBowler || state.bowler || {};
+      const bowlerName = fmtSurname(finishedBowler.name || '—');
+      const figs = finishedBowler.overs
+        ? `${finishedBowler.overs}-${finishedBowler.maidens||0}-${finishedBowler.runs||0}-${finishedBowler.wickets||0}`
         : '';
       showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
       _overRunHistory.push(overRuns);
@@ -1752,6 +1756,9 @@ function processPCSData(state) {
     }
     _currentOverBalls = parsed;
     _lastPCSovers = currentOver;  // always update so next poll can detect transition
+    // Snapshot AFTER this poll's over-transition check has used the previous snapshot --
+    // next poll's "who just finished bowling" is this poll's "who's currently bowling".
+    _lastPolledBowler = state.bowler || _lastPolledBowler;
   }
 
   // ── Ball-based boundary detection — runs EVERY poll (parsed is [] when ticker empty) ──
@@ -2097,6 +2104,12 @@ var _drinksWeatherShown = false;
 var _lastBallSig        = null; // last-seen ticker string (null = not yet seeded; '' is a real empty ticker)
 var _lastBallCount      = 0;   // ball count last poll (within current over)
 var _lastBallOver       = -1;  // over number last poll (-1 = not yet seeded)
+// The bowler at the end of the LAST poll, i.e. before PCS Pro rotates state.bowler to whoever
+// is up next. scoreboard.template never actually maps a "prev bowler" field from NV Play (the
+// prev_bowler_* keys server.py reads don't exist in the template, so they're always blank) --
+// by the time an over transition is detected, state.bowler already reflects the NEXT bowler, so
+// the outgoing bowler's figures have to be captured from the previous tick instead.
+var _lastPolledBowler   = null;
 
 function _showCard(suffix, name, number) {
   var sfx = suffix || "";
