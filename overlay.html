@@ -354,6 +354,33 @@ html, body {
 .over-ball-dot.bye     { background: #2d7a4a; }  /* green */
 .over-ball-dot.legbye  { background: #5a7a2a; }  /* olive */
 
+/* Weekend sponsor — a persistent strap overlaid along the bottom third of the over-summary,
+   partnership and AI-commentary panels (never the run-rate worm, which stays untouched).
+   Shown/hidden per-panel in nextGraphic() below, not queued as its own slide. Fully
+   transparent -- sits directly on whichever panel's own background is already showing.
+   --sponsor-strap-h is shared with .sponsor-space-reserved below so the two stay in sync;
+   deliberately a fixed px value, not a %, since percentage padding is relative to the
+   container's WIDTH even for padding-bottom -- a % here would reserve the wrong amount. */
+:root { --sponsor-strap-h: 356px; }
+#sponsor-strap {
+  position: absolute; left: 0; right: 0; bottom: 72px;
+  height: var(--sponsor-strap-h);
+  z-index: 10; /* .graphic-panel siblings use transform/opacity, which creates its own
+                  stacking context -- z-index makes sure the strap always paints on top */
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+  background: transparent;
+  opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+#sponsor-strap.show { opacity: 1; }
+.sponsor-strap-label { font-size: 16px; font-weight: 700; color: rgba(255,255,255,0.6);
+  text-transform: uppercase; letter-spacing: 2px; }
+.sponsor-strap-logo { max-height: 170px; max-width: 480px; object-fit: contain; }
+.sponsor-strap-name { font-size: 80px; font-weight: 400; color: #fff; text-align: center; }
+/* Applied (via JS, only to whichever panel is currently showing) to shift that panel's
+   centered content up out of the strap's reserved space, instead of the two overlapping. */
+.sponsor-space-reserved { padding-bottom: var(--sponsor-strap-h) !important; }
+
 /* Partnership display */
 #partnership-display {
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px;
@@ -818,6 +845,14 @@ html, body {
   <div class="over-moment" id="over-moment"></div>
 </div>
 
+<!-- Weekend sponsor — persistent strap along the bottom of the over-summary/partnership/AI
+     commentary panels (see nextGraphic()). Only shown when a sponsor name is set. -->
+<div id="sponsor-strap">
+  <span class="sponsor-strap-label">Weekend Sponsor</span>
+  <img id="sponsor-logo" class="sponsor-strap-logo" style="display:none" onerror="this.style.display='none'">
+  <span class="sponsor-strap-name" id="sponsor-name-text">—</span>
+</div>
+
 <!-- Full innings scorecard (auto at the innings break, or via the control panel) -->
 <div class="graphic-panel" id="scorecard-panel">
   <div class="sc-header">
@@ -900,6 +935,11 @@ function nextGraphic() {
     const el2 = document.getElementById(id);
     if (el2) el2.classList.remove('show');
   });
+  // Weekend sponsor strap: isolated in its own try/catch below (hideSponsorStrap/
+  // showSponsorStripFor) so it can never break the queue advancement that every other
+  // end-of-over graphic depends on, whatever happens with it.
+  try { hideSponsorStrap(); } catch(e) { console.warn('sponsor strap error:', e); }
+
   if (!queue.length) { graphicActive = false; return; }
   graphicActive = true;
   const { id, duration } = queue.shift();
@@ -907,6 +947,7 @@ function nextGraphic() {
   if (!panel) { nextGraphic(); return; }
   requestAnimationFrame(() => requestAnimationFrame(() => {
     panel.classList.add('show');
+    try { showSponsorStripFor(id); } catch(e) { console.warn('sponsor strap error:', e); }
     if (id === 'over-commentary-display') {
       fetch('/commentary/over').then(function(r){return r.json();})
         .then(function(d){ if (d && d.text) el('oc-text').textContent = d.text; })
@@ -914,6 +955,12 @@ function nextGraphic() {
     }
     setTimeout(() => {
       panel.classList.remove('show');
+      // Fade the strap's opacity out in sync with the panel starting to fade -- but don't
+      // touch sponsor-space-reserved here (that's hideSponsorStrap(), called once everything
+      // is already invisible at the top of the next nextGraphic(), 450ms below). Removing that
+      // padding isn't itself animated, so doing it now would snap the panel's own centered
+      // content to a different vertical position while still visibly mid-fade.
+      try { fadeSponsorStrap(); } catch(e) { console.warn('sponsor strap error:', e); }
       setTimeout(nextGraphic, 450);
     }, duration);
   }));
@@ -1532,6 +1579,52 @@ function showOverSummary(overNum, overRuns, bowlerName, bowlerFigs, balls) {
       })
     }).catch(function(){});
   }
+  // Weekend sponsor -- content refreshed each over; actual show/hide of the strap itself
+  // happens per-panel in nextGraphic(), overlaid on over-summary/partnership/AI commentary
+  // only (never the run rate worm).
+  updateSponsorStrap();
+}
+
+function updateSponsorStrap() {
+  if (!cfg.sponsor_name) return;
+  el('sponsor-name-text').textContent = cfg.sponsor_name;
+  var logo = el('sponsor-logo');
+  if (cfg.sponsor_id) {
+    logo.style.display = 'none';
+    logo.onload  = function() { logo.style.display = ''; };
+    logo.onerror = function() { logo.style.display = 'none'; };
+    logo.src = '/sponsor/' + encodeURIComponent(cfg.sponsor_id) + '?t=' + Date.now();
+  } else {
+    logo.style.display = 'none';
+    logo.removeAttribute('src');
+  }
+}
+
+// Sponsor strap show/hide, called from nextGraphic() -- kept as standalone functions (rather
+// than inline) so a try/catch there can isolate this from the core graphic-queue advancement.
+var SPONSOR_STRAP_PANELS = ['over-summary-panel', 'partnership-display', 'over-commentary-display'];
+function fadeSponsorStrap() {
+  var s = document.getElementById('sponsor-strap');
+  if (s) s.classList.remove('show');
+}
+function hideSponsorStrap() {
+  fadeSponsorStrap();
+  // Clear the reserved-space class from all three -- cheaper than tracking which one had it,
+  // and idempotent (removing a class that isn't there is a no-op). Only called once everything
+  // is already fully faded (see nextGraphic()), since this padding change isn't itself animated.
+  SPONSOR_STRAP_PANELS.forEach(function(id) {
+    var p = document.getElementById(id);
+    if (p) p.classList.remove('sponsor-space-reserved');
+  });
+}
+function showSponsorStripFor(panelId) {
+  if (!cfg.sponsor_name || SPONSOR_STRAP_PANELS.indexOf(panelId) < 0) return;
+  var s = document.getElementById('sponsor-strap');
+  if (s) s.classList.add('show');
+  // Shift that panel's own centered content up out of the strap's space instead of the two
+  // overlapping -- see .sponsor-space-reserved (CSS above).
+  var p = document.getElementById(panelId);
+  if (p) p.classList.add('sponsor-space-reserved');
 }
 
 // ── v2.1: bowler spell tracker ────────────────────────────
@@ -1703,73 +1796,86 @@ function processPCSData(state) {
 
   // NV Play gives whole over as a string — parse it fresh each update
   const overStr = state.last_ball || '';
-  var parsed = [];  // declared here so card-hide logic can access it
-  if (overStr && !overStr.startsWith('{{')) {
-    parsed = parseOverString(overStr);
-    // Over transition: fires when completed overs counter increases
-    const _oversIncreased = (currentOver > _lastPCSovers && _lastPCSovers >= 0);
+  const overStrValid = overStr && !overStr.startsWith('{{');
+  var parsed = overStrValid ? parseOverString(overStr) : [];  // declared here so card-hide logic can access it
 
-    if (_oversIncreased && _currentOverBalls.length > 0) {
-      // Take the over's runs from the SCORE DELTA, not by summing the ticker. When the final
-      // ball and the over-rollover arrive in the same poll, that ball is missing from the
-      // ticker (e.g. a wicket then a quick 2 to end the over) — the score delta still has it.
-      const tickerRuns = _currentOverBalls.reduce((s,b) => {
-        const n = parseInt(b.label); return s + (isNaN(n) ? 0 : n);
-      }, 0);
-      // _rrData.prevScore still holds the score at the START of the completing over here
-      // (rrRecordOver updates it later this poll), so this is the over's runs.
-      const overRuns = Math.max(tickerRuns, runs - _rrData.prevScore);
-      // Recover a missed run-scoring last ball into the sequence so the count is right too
-      var overBalls = _currentOverBalls.slice();
-      if (overRuns > tickerRuns) overBalls.push(classifyBall(String(overRuns - tickerRuns)));
-      // state.bowler already reflects whoever PCS Pro has rotated to for the NEXT over by the
-      // time this fires -- _lastPolledBowler (captured at the end of the previous poll, before
-      // that rotation) is the one who actually bowled the over that just finished.
-      const finishedBowler = _lastPolledBowler || state.bowler || {};
-      const bowlerName = fmtSurname(finishedBowler.name || '—');
-      const figs = finishedBowler.overs
-        ? `${finishedBowler.overs}-${finishedBowler.maidens||0}-${finishedBowler.runs||0}-${finishedBowler.wickets||0}`
-        : '';
-      showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
-      _overRunHistory.push(overRuns);
-      // v2.1: bowler spell, "at this stage" comparison, auto-detected moments.
-      // _rrData.prevWickets still holds the start-of-over value here (rrRecordOver runs later).
-      const wktsThisOver = Math.max(0, parseInt(state.wickets||0) - (_rrData.prevWickets||0));
-      try { updateSpell(bowlerName, _lastPCSovers + 1, overRuns, wktsThisOver); }
-      catch(e){ console.warn('spell error:', e); }
-      try { overExtras(state, _lastPCSovers + 1, overRuns); }
-      catch(e){ console.warn('overExtras error:', e); }
-      // Drinks break — show weather card after the over graphics sequence
-      var drinksOv = parseInt(cfg.drinks_over) || 0;
-      if (drinksOv > 0 && (_lastPCSovers + 1) === drinksOv) {
-        var seqDuration = 7000
-          + (cfg.graphics_partnership_display ? 5000 : 0)
-          + (cfg.graphics_runrate_trend       ? 5000 : 0)
-          + (cfg.graphics_commentary_over     ? 9000 : 0)
-          + 1500;  // buffer
-        setTimeout(function() {
-          fetch(SERVER+'/weather/show',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
-          _drinksWeatherShown = true;
-        }, seqDuration);
-      }
+  // Over transition: fires when completed overs counter increases. Deliberately NOT gated on
+  // overStrValid -- NV Play clears the ticker back to "" the instant the over completes,
+  // before any ball of the new over is recorded. Gating this whole check on the ticker being
+  // populated delayed the entire end-of-over sequence to the first ball of the NEXT over,
+  // since _lastPCSovers never got the chance to update on the poll where overs actually ticked
+  // over. _currentOverBalls (the just-finished over, captured on an earlier poll while the
+  // ticker was still populated) is what's used below regardless of this poll's ticker state.
+  const _oversIncreased = (currentOver > _lastPCSovers && _lastPCSovers >= 0);
+
+  if (_oversIncreased && _currentOverBalls.length > 0) {
+    // Take the over's runs from the SCORE DELTA, not by summing the ticker. When the final
+    // ball and the over-rollover arrive in the same poll, that ball is missing from the
+    // ticker (e.g. a wicket then a quick 2 to end the over) — the score delta still has it.
+    const tickerRuns = _currentOverBalls.reduce((s,b) => {
+      const n = parseInt(b.label); return s + (isNaN(n) ? 0 : n);
+    }, 0);
+    // _rrData.prevScore still holds the score at the START of the completing over here
+    // (rrRecordOver updates it later this poll), so this is the over's runs.
+    const overRuns = Math.max(tickerRuns, runs - _rrData.prevScore);
+    // Recover a missed run-scoring last ball into the sequence so the count is right too
+    var overBalls = _currentOverBalls.slice();
+    if (overRuns > tickerRuns) overBalls.push(classifyBall(String(overRuns - tickerRuns)));
+    // state.bowler already reflects whoever PCS Pro has rotated to for the NEXT over by the
+    // time this fires -- _lastPolledBowler (captured at the end of the previous poll, before
+    // that rotation) is the one who actually bowled the over that just finished.
+    const finishedBowler = _lastPolledBowler || state.bowler || {};
+    const bowlerName = fmtSurname(finishedBowler.name || '—');
+    const figs = finishedBowler.overs
+      ? `${finishedBowler.overs}-${finishedBowler.maidens||0}-${finishedBowler.runs||0}-${finishedBowler.wickets||0}`
+      : '';
+    showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
+    _overRunHistory.push(overRuns);
+    // v2.1: bowler spell, "at this stage" comparison, auto-detected moments.
+    // _rrData.prevWickets still holds the start-of-over value here (rrRecordOver runs later).
+    const wktsThisOver = Math.max(0, parseInt(state.wickets||0) - (_rrData.prevWickets||0));
+    try { updateSpell(bowlerName, _lastPCSovers + 1, overRuns, wktsThisOver); }
+    catch(e){ console.warn('spell error:', e); }
+    try { overExtras(state, _lastPCSovers + 1, overRuns); }
+    catch(e){ console.warn('overExtras error:', e); }
+    // Drinks break — show weather card after the over graphics sequence
+    var drinksOv = parseInt(cfg.drinks_over) || 0;
+    if (drinksOv > 0 && (_lastPCSovers + 1) === drinksOv) {
+      var seqDuration = 7000
+        + (cfg.graphics_partnership_display ? 5000 : 0)
+        + (cfg.graphics_runrate_trend       ? 5000 : 0)
+        + (cfg.graphics_commentary_over     ? 9000 : 0)
+        + 1500;  // buffer
+      setTimeout(function() {
+        fetch(SERVER+'/weather/show',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
+        _drinksWeatherShown = true;
+      }, seqDuration);
     }
-    _currentOverBalls = parsed;
-    _lastPCSovers = currentOver;  // always update so next poll can detect transition
-    // Snapshot AFTER this poll's over-transition check has used the previous snapshot --
-    // next poll's "who just finished bowling" is this poll's "who's currently bowling".
-    _lastPolledBowler = state.bowler || _lastPolledBowler;
   }
+  // Only replace the in-progress ticker once the new over actually has (possibly zero) real
+  // data -- an empty/placeholder poll just means "still between overs", not "over reset to
+  // nothing yet", so leave _currentOverBalls alone rather than clearing it prematurely.
+  if (overStrValid) {
+    _currentOverBalls = parsed;
+  } else if (_oversIncreased) {
+    _currentOverBalls = [];
+  }
+  _lastPCSovers = currentOver;  // always update, every poll, so detection isn't delayed
+  // Snapshot AFTER this poll's over-transition check has used the previous snapshot --
+  // next poll's "who just finished bowling" is this poll's "who's currently bowling".
+  _lastPolledBowler = state.bowler || _lastPolledBowler;
 
   // ── Ball-based boundary detection — runs EVERY poll (parsed is [] when ticker empty) ──
   // Reads the actual ball code ('4'/'6') from the ticker, so it correctly ignores 4 byes,
   // leg-byes and wide+4 (all of which also move the score by 4).
   //
-  // We fire only when the ticker STRING content changes. This is the key to avoiding a
-  // double replay at the over rollover: when the last ball of an over is a boundary, NV Play
-  // increments the over number while briefly still showing that completed over's ticker. The
-  // over number changes but the ticker string does NOT, so we skip it — no re-fire. A genuine
-  // new ball always changes the ticker string (a ball is appended, or it resets for a new over).
-  // The newest ball is the last token of the ticker.
+  // We fire only when the ticker STRING content changes. NV Play actually clears the ticker
+  // straight back to "" the instant the over completes (confirmed via [over-trace] logging --
+  // it does NOT keep showing the finished over's ticker for an extra poll). That transition to
+  // "" does count as a string change, but parsed.length is 0 there, so the inner check below
+  // is naturally skipped -- no spurious replay fires on the over-rollover poll itself. A
+  // genuine new ball always changes the ticker string with real content (a ball is appended,
+  // or the first ball of the new over appears). The newest ball is the last token of the ticker.
   if (overStr !== _lastBallSig) {
     if (_lastBallOver >= 0 && parsed.length > 0) {   // _lastBallOver<0 = first poll (seed): don't fire
       // Inspect every ball added since the last poll, not just the newest one. If NV Play's

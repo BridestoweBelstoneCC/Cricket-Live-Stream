@@ -19,7 +19,9 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
   (`ThreadingHTTPServer`). Also serves the control panel as an inline HTML string,
   `CONTROL_HTML`, and builds the social-media images.
 - **`overlay.html`** (~2200 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
-- **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test.
+- **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test and a best-effort
+  GitHub release check (`check_for_updates()` — compares `git describe --tags` against the
+  latest release; purely informational, silently skipped if there's no git/internet).
 - **`setup_wizard.py`** — first-time setup wizard; installs packages and writes `config.ini`.
   Also built into a standalone Windows `.exe` / macOS binary by
   `.github/workflows/build-setup-wizard.yml` (see gotchas below).
@@ -28,6 +30,11 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
 - **`config.ini`** / **`match_state.json`** — local settings (git-ignored, hold secrets).
   Templates: `config.example.ini`, `match_state.example.json`.
 - **`match_data.db`** — SQLite ball-by-ball log, created at runtime (git-ignored).
+- **`sponsors/`** — weekend-sponsor logos, named by ID (`sponsors/3.png`), served via
+  `/sponsor/<id>`. Paired with the control panel's "Weekend sponsor name" / "Weekend sponsor
+  image ID" fields. Renders as a persistent strap overlaid on the over-summary/partnership/
+  AI-commentary panels only (never the run-rate worm — see `showSponsorStripFor` /
+  `.sponsor-space-reserved` in `overlay.html`); off entirely unless a sponsor name is set.
 
 ## Build / test commands
 
@@ -96,6 +103,28 @@ it looks (see gotchas) — it's also wired into `.github/workflows/ci.yml`.
 - **No hardcoded club identity in defaults.** `DEFAULT_STATE`, `config.example.ini`, and
   `match_state.example.json` must stay club-agnostic (e.g. `"Home CC"`, blank `ground_filter`/
   `home_club_id`) — this project is used by clubs other than the original maintainer's.
+- **NV Play clears its ball-ticker field (`last_ball`) back to `""` the instant an over
+  completes** — it does NOT keep showing the finished over's ticker for one extra poll first.
+  Over-transition detection in `overlay.html`'s `processPCSData` (`_oversIncreased`) must run
+  *every* poll regardless of whether the ticker string is currently populated, or it fires a
+  whole poll late — on the first ball of the NEXT over instead of the instant the over ends.
+- **`overlay.html`'s `SERVER` constant must be `location.origin`, never a hardcoded host.**
+  The server rejects cross-origin POSTs by design (`_origin_ok()` compares the `Origin` header
+  against `Host`, a CSRF defense). If the overlay is loaded via `localhost` but `SERVER` points
+  at `127.0.0.1` (or vice versa), every POST it makes (`/replay`, `/weather/show`, ...) silently
+  403s — and `curl` testing won't catch this, since curl doesn't send an `Origin` header at all
+  (add `-H "Origin: ..."` explicitly, or test from a real browser tab, to catch this class of bug).
+- **Endpoints the overlay itself calls need the trusted-loopback carve-out, not just a session
+  token.** The overlay has no login flow (it's a loopback OBS browser source), so `/replay`,
+  `/weather/show`, `/weather/hide`, and `/commentary/over/generate` check
+  `_is_trusted_loopback() or _check_token()` in `do_POST` instead of requiring a token
+  outright. Any *new* endpoint the overlay calls needs the same carve-out, or it silently
+  401/403s the moment `club_password` is set, with nothing but a console warning to show for it.
+- **Two players sharing a surname silently suppress season-stat matching, by design.** PCS Pro
+  only reports a bare surname, so if it's ambiguous (e.g. brothers), the surname-only stats
+  lookup is deliberately withheld rather than risk crediting the wrong player. The fix is data,
+  not code: add `shirt_number = Full Name` to the **Squad Roster** card in the control panel.
+  `/player/stats?name=SURNAME&debug=1` shows exactly why a name did or didn't resolve.
 
 ## Conventions
 

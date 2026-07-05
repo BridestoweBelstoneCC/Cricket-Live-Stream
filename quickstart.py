@@ -17,6 +17,47 @@ def log(msg, status=""):
     icons = {"ok": "  ✓", "warn": "  ⚠", "err": "  ✗", "": "   "}
     print(f"{icons.get(status,'   ')} {msg}")
 
+GITHUB_REPO = "BridestoweBelstoneCC/Cricket-Live-Stream"
+
+def get_current_version():
+    """Best-effort local version via `git describe --tags`. Returns '' if this isn't a git
+    checkout, git isn't installed, or anything else goes wrong -- purely informational, so a
+    missing git binary must never be treated as an error."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        out = subprocess.run(["git", "describe", "--tags"], cwd=script_dir,
+                              capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+def check_for_updates():
+    """Compares the locally checked-out version against the latest GitHub release. Purely
+    informational -- any failure (no internet, no git, API rate limit, private fork) is
+    swallowed silently so a flaky network check can never block match-day startup."""
+    current = get_current_version()
+    if not current:
+        return
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            headers={"User-Agent": "CricketStreamOverlay-quickstart"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            latest = json.loads(r.read().decode()).get("tag_name", "")
+        if not latest:
+            return
+        # `git describe` returns exactly the tag when HEAD is on it, or "TAG-N-gHASH" when N
+        # commits ahead of it -- either way means "on (or ahead of) the latest release".
+        if current == latest or current.startswith(latest + "-"):
+            log(f"Up to date ({current})", "ok")
+        else:
+            log(f"Update available: {latest} (you're on {current})", "warn")
+            log("Run 'git pull' in the project folder to update", "warn")
+    except Exception:
+        pass  # no internet, rate-limited, etc. -- never block startup over this
+
 def load_config():
     cfg = configparser.ConfigParser()
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
@@ -193,6 +234,10 @@ def check_requirements():
 def main():
     print(BANNER)
     script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # ── Check for updates ──
+    check_for_updates()
+    print()
 
     # ── Access mode ──
     print("  How do you want to run today?")

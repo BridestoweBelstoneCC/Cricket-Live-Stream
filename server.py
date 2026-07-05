@@ -1381,6 +1381,8 @@ DEFAULT_STATE = {
     "headshots_folder":       "",
     "roster":                 {},
     "socials_folder":         "",
+    "sponsor_name":           "",
+    "sponsor_id":             "",
     "drinks_over":            25,
     "home_club_id":           "",
     "ground_filter":          "",
@@ -4095,6 +4097,17 @@ CONTROL_HTML = """<!DOCTYPE html>
            <div class="toggle-desc">Bar chart of runs per over — top left corner</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_runrate_trend"><span class="track"></span></label>
     </div>
+    <hr>
+    <div class="field">
+      <label>Weekend sponsor name</label>
+      <input type="text" id="sponsor_name" placeholder="e.g. Acme Builders — leave blank to disable">
+      <p class="hint">Shown after the over summary/partnership/AI commentary sequence at the end of each over (not with the run rate chart). Blank = off.</p>
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Weekend sponsor image ID</label>
+      <input type="text" id="sponsor_id" placeholder="e.g. 3 — matches sponsors/3.png">
+      <p class="hint">Matches an image in the sponsors/ folder next to server.py, named by this ID (sponsors/3.png, sponsors/3.jpg, ...). Optional — the name still shows on its own if no image is found.</p>
+    </div>
   </div>
 
   <!-- Instant replay -->
@@ -4747,7 +4760,7 @@ function updatePreview() {
 const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
   'pcs_output_folder','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
-  'youtube_title_template','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder'];
+  'youtube_title_template','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
@@ -6257,6 +6270,28 @@ class Handler(BaseHTTPRequestHandler):
                 logo_path = os.path.join(logo_dir, f"{name}.{ext}")
                 if os.path.exists(logo_path):
                     self._file(logo_path, mime)
+                    found = True
+                    break
+            if not found:
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        elif path.startswith("/sponsor/"):
+            # Serve the weekend sponsor image from the sponsors/ folder, named by ID
+            # (e.g. sponsor_id "3" -> sponsors/3.png) so the same set of images can be
+            # reused week to week just by changing which ID is set in the control panel.
+            raw_name = path[9:].split("?")[0].strip("/")
+            name     = os.path.basename(raw_name.replace("..", "").replace("/", "")
+                                        .replace("\\", "").replace(":", ""))
+            sponsor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors")
+            mimes    = {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
+                        "svg":"image/svg+xml","webp":"image/webp","gif":"image/gif"}
+            found = False
+            for ext, mime in mimes.items():
+                sponsor_path = os.path.join(sponsor_dir, f"{name}.{ext}")
+                if os.path.exists(sponsor_path):
+                    self._file(sponsor_path, mime)
                     found = True
                     break
             if not found:
