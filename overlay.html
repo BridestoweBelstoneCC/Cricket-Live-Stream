@@ -864,7 +864,11 @@ html, body {
 <div id="event-flash"></div>
 
 <script>
-const SERVER = 'http://127.0.0.1:5000';
+// Must match whatever host/port this page was actually loaded from -- a hardcoded host here
+// creates a same-origin mismatch against the server's own CSRF-style Origin check (_origin_ok)
+// for every POST (e.g. /replay), which a browser rejects even though curl testing (no Origin
+// header sent) makes it look fine. See server.py's initOverlayLink for the same fix pattern.
+const SERVER = location.origin;
 let MAX_OVERS = 50;
 let cfg = {};
 
@@ -1030,19 +1034,27 @@ function triggerReplayTransition(callback) {
 var _lastReplayTime = 0;
 
 async function triggerReplay(reason) {
-  if (!cfg.replay_enabled) return;
+  if (!cfg.replay_enabled) { console.log('[replay] skipped (' + reason + '): replay_enabled is off'); return; }
   // Debounce: ignore if replay triggered within last 20 seconds
   var now = Date.now();
-  if (now - _lastReplayTime < 3000) { return; }  // 3s: prevents double-fire only
+  if (now - _lastReplayTime < 3000) { console.log('[replay] skipped (' + reason + '): debounced'); return; }
   _lastReplayTime = now;
   triggerReplayTransition(async () => {
     try {
-      await fetch(`${SERVER}/replay`, {
+      // fetch() only rejects on a network failure -- it resolves normally even for a 401/500,
+      // so that had to be checked explicitly or a rejected request would silently look like
+      // a success (banner shown, no error logged, nothing in OBS).
+      const res = await fetch(`${SERVER}/replay`, {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ reason }),
       });
+      if (!res.ok) {
+        console.warn('[replay] server rejected the request (' + reason + '):', res.status, await res.text().catch(() => ''));
+        return;
+      }
+      console.log('[replay] triggered:', reason);
       showReplayBanner(reason);
-    } catch(e) { console.warn('Replay trigger failed:', e); }
+    } catch(e) { console.warn('[replay] fetch failed (' + reason + '):', e); }
   });
 }
 
@@ -1754,9 +1766,15 @@ function processPCSData(state) {
   // The newest ball is the last token of the ticker.
   if (overStr !== _lastBallSig) {
     if (_lastBallOver >= 0 && parsed.length > 0) {   // _lastBallOver<0 = first poll (seed): don't fire
-      var newBall = parsed[parsed.length - 1];
-      if (newBall.cls === 'four') { showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
-      else if (newBall.cls === 'six') { showFlash('six','SIX!'); triggerReplay('Six'); }
+      // Inspect every ball added since the last poll, not just the newest one. If NV Play's
+      // file advances by more than one ball between polls (a quick sequence, or a slow/missed
+      // poll), checking only the last token silently buries an earlier four/six under whatever
+      // dot balls followed it — the replay would just never fire.
+      var newBalls = (currentOver === _lastBallOver) ? parsed.slice(_lastBallCount) : parsed;
+      newBalls.forEach(function(newBall) {
+        if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
+        else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
+      });
     }
     _lastBallSig   = overStr;
     _lastBallCount = parsed.length;
