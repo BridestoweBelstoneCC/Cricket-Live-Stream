@@ -307,6 +307,7 @@ _RATE_LIMITS = {
     "/commentary/test":        60,   # test button — 60 s cooldown
     "/report/generate":       120,   # AI match report — 2 min
     "/social/image/generate": 120,   # AI social graphic — 2 min
+    "/obs/stream_check":      300,   # runs real test recordings in OBS — 5 min cooldown
 }
 _rate_limit_ts   = {}
 _rate_limit_lock = threading.Lock()
@@ -1369,6 +1370,8 @@ DEFAULT_STATE = {
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
+    "network_test_mbps":       None,
+    "network_test_at":         0,
     "youtube_title_template":  "LIVE: {home} vs {away}",
     "weather_api_key":         "",
     "logos_folder":           "",
@@ -3298,6 +3301,241 @@ def _enforce_clip_limit(folder, limit):
         except Exception as e:
             print(f"  ✗  Could not delete {f}: {e}")
 
+# ── Stream health check ────────────────────────────────────────
+# Recommends OBS stream settings (bitrate/resolution/encoder) instead of expecting a
+# non-technical volunteer to know what any of that means. Two independent measurements, not
+# static specs — a GPU that *should* support hardware encoding doesn't always perform well in
+# practice, so the encoder choice is decided by actually recording a short test clip with each
+# candidate and comparing dropped-frame rates, not by assuming from hardware alone.
+
+NETWORK_TEST_MAX_AGE_SEC = 7 * 24 * 3600   # re-test at most weekly unless asked to force —
+                                            # this uses real upload data, worth respecting a
+                                            # club's ground connection/mobile data allowance
+
+def _measure_upload_mbps():
+    """Uploads a small payload to Cloudflare's public speed-test endpoint and times it.
+    Returns Mbps, or raises on any network failure (caller decides how to report that)."""
+    payload = os.urandom(4 * 1024 * 1024)   # 4 MB — enough to smooth out a slow first packet
+    req = urllib.request.Request(
+        "https://speed.cloudflare.com/__up", data=payload, method="POST",
+        # Cloudflare 403s Python's default urllib User-Agent — needs to look like a browser.
+        headers={"Content-Type": "application/octet-stream",
+                 "User-Agent": "Mozilla/5.0 (CricketStreamOverlay stream-health-check)"})
+    start = time.time()
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        resp.read()
+    elapsed = max(time.time() - start, 0.001)
+    return (len(payload) * 8 / elapsed) / 1_000_000
+
+def get_upload_mbps(state, force=False):
+    """Cached upload-speed test — only re-measures if forced or the cached result is stale."""
+    cached_at = state.get("network_test_at", 0)
+    if not force and cached_at and (time.time() - cached_at) < NETWORK_TEST_MAX_AGE_SEC:
+        return state.get("network_test_mbps"), False
+    mbps = _measure_upload_mbps()
+    current = load_state()
+    current["network_test_mbps"] = round(mbps, 2)
+    current["network_test_at"]   = time.time()
+    save_state(current)
+    return mbps, True
+
+def _recommend_bitrate_and_resolution(upload_mbps):
+    """Standard streaming guidance: keep bitrate comfortably under measured upload speed (25%
+    headroom) so real-world jitter doesn't cause buffering, then pick a resolution/fps tier
+    that bitrate can actually support well."""
+    safe_kbps = int(upload_mbps * 1000 * 0.75)
+    if safe_kbps < 1500:
+        return max(safe_kbps, 800), "720p", 30, "Upload speed is limited — 720p30 keeps quality watchable without buffering."
+    if safe_kbps < 2800:
+        return safe_kbps, "720p", 30, "Enough headroom for a clean 720p30 stream."
+    if safe_kbps < 4500:
+        return min(safe_kbps, 4000), "1080p", 30, "Good enough for 1080p30 — the standard for this project."
+    return min(safe_kbps, 6000), "1080p", 30, "Plenty of headroom for a strong 1080p30 stream (60fps rarely helps for cricket — the action is slower-moving than most sports)."
+
+def obs_stream_health_check(state, test_seconds=8):
+    """Connects to OBS, refuses to touch anything if a real stream/recording is already live,
+    then runs one or two short throwaway test recordings to measure actual encoder
+    performance (dropped/skipped frames) rather than trusting hardware specs alone. Restores
+    whatever encoder was configured before returning, always. Returns a result dict."""
+    try:
+        import websocket
+    except ImportError:
+        return {"ok": False, "error": "websocket-client not installed — run: pip install websocket-client"}
+
+    host     = state.get("obs_host", "localhost")
+    port     = state.get("obs_port", 4455)
+    password = state.get("obs_password", "")
+    ws_url   = f"ws://{host}:{port}"
+    mid = [0]
+    def nid():
+        mid[0] += 1
+        return str(mid[0])
+    def send_msg(ws, op, data=None):
+        ws.send(json.dumps({"op": op, "d": data or {}}))
+    def wait_for_op(ws, target, timeout=6):
+        ws.settimeout(timeout)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                raw = ws.recv()
+                if not raw: continue
+                msg = json.loads(raw)
+                if msg.get("op") == target:
+                    return msg
+            except Exception:
+                break
+        return None
+    def send_request(ws, rt, rd=None, timeout=10):
+        rid = nid()
+        payload = {"requestType": rt, "requestId": rid}
+        if rd is not None:
+            payload["requestData"] = rd
+        send_msg(ws, 6, payload)
+        ws.settimeout(timeout)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                raw = ws.recv()
+                if not raw: continue
+                msg = json.loads(raw)
+                if msg.get("op") == 7 and msg.get("d", {}).get("requestId") == rid:
+                    return msg.get("d", {})
+            except Exception:
+                break
+        return None
+
+    def _run_recording_test(ws, label):
+        """Starts a recording, waits test_seconds, stops it, and returns dropped-frame stats.
+        Deletes the throwaway file it produces.
+
+        GetRecordStatus does NOT carry frame-drop counters (verified against a real OBS
+        32.1.2 instance — it only has outputActive/outputBytes/outputDuration/outputTimecode).
+        The frame counters live in the general GetStats request instead, and — also verified
+        empirically, since this isn't documented anywhere obvious — outputTotalFrames/
+        outputSkippedFrames reset to ~0 the moment a new output (recording or stream) starts
+        and count up cleanly from there for that session; they're not a lifetime-cumulative
+        total. So a single read right before stopping is the right number, no before/after
+        diff needed."""
+        status = send_request(ws, "GetRecordStatus")
+        if (status or {}).get("responseData", {}).get("outputActive"):
+            return {"error": "a recording was already active — skipped"}
+        start_resp = send_request(ws, "StartRecord")
+        if not (start_resp or {}).get("requestStatus", {}).get("result"):
+            comment = (start_resp or {}).get("requestStatus", {}).get("comment", "unknown error")
+            return {"error": f"could not start test recording: {comment}"}
+        time.sleep(test_seconds)
+        stats = (send_request(ws, "GetStats") or {}).get("responseData", {})
+        stop_resp = send_request(ws, "StopRecord")
+        out_path = (stop_resp or {}).get("responseData", {}).get("outputPath")
+        if out_path and os.path.exists(out_path):
+            try:
+                os.remove(out_path)
+            except Exception:
+                pass   # not worth failing the whole check over a leftover test clip
+        total   = stats.get("outputTotalFrames", 0) or 0
+        skipped = stats.get("outputSkippedFrames", 0) or 0
+        skip_pct = round((skipped / total) * 100, 1) if total else None
+        return {"label": label, "total_frames": total, "skipped_frames": skipped,
+                "skip_pct": skip_pct}
+
+    result = {"ok": False}
+    try:
+        ws = websocket.create_connection(ws_url, timeout=10)
+        hello = wait_for_op(ws, 0, 5)
+        if not hello:
+            return {"ok": False, "error": "No response from OBS — is it running with the WebSocket server enabled?"}
+        auth = hello["d"].get("authentication")
+        identify = {"rpcVersion": 1}
+        if auth and password:
+            identify["authentication"] = _obs_auth_response(password, auth["salt"], auth["challenge"])
+        send_msg(ws, 1, identify)
+        if not wait_for_op(ws, 2, 5):
+            ws.close()
+            return {"ok": False, "error": "OBS authentication failed — check the WebSocket password"}
+
+        # Safety: never touch encoder settings or start a test recording while the real
+        # stream (or an unrelated recording) is actually running.
+        stream_status = send_request(ws, "GetStreamStatus")
+        if (stream_status or {}).get("responseData", {}).get("outputActive"):
+            ws.close()
+            return {"ok": False, "error": "OBS is currently live streaming — refusing to run "
+                                          "the health check while the real stream is active."}
+
+        # The frame-drop counters below are pipeline-wide, not scoped to the test recording —
+        # if the Replay Buffer or Virtual Camera is already running (both normal during a real
+        # match), their frames land in the same counters and make the test noisier. Doesn't
+        # block the check (stopping either would itself be disruptive); just says so.
+        caveats = []
+        rb = send_request(ws, "GetReplayBufferStatus")
+        if (rb or {}).get("responseData", {}).get("outputActive"):
+            caveats.append("Replay Buffer is running — its frames count towards the test too, "
+                          "so results are less precise than running this before match prep starts.")
+        vc = send_request(ws, "GetVirtualCamStatus")
+        if (vc or {}).get("responseData", {}).get("outputActive"):
+            caveats.append("Virtual Camera is running — same caveat as the Replay Buffer above.")
+
+        mode_resp = send_request(ws, "GetProfileParameter",
+                                 {"parameterCategory": "Output", "parameterName": "Mode"})
+        mode = (mode_resp or {}).get("responseData", {}).get("parameterValue", "Simple")
+        if mode != "Simple":
+            ws.close()
+            return {"ok": False, "error": "OBS is set to Advanced output mode — the automatic "
+                                          "encoder test only supports the default Simple mode "
+                                          "for now. Bitrate/resolution recommendations below "
+                                          "still apply; set the encoder manually in "
+                                          "Settings → Output."}
+
+        enc_resp = send_request(ws, "GetProfileParameter",
+                                {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder"})
+        baseline_encoder = (enc_resp or {}).get("responseData", {}).get("parameterValue", "x264")
+
+        tests = {"baseline": dict(_run_recording_test(ws, baseline_encoder), encoder=baseline_encoder)}
+
+        is_hardware = baseline_encoder != "x264" and "x264" not in baseline_encoder
+        if is_hardware:
+            # Compare against software (x264) — the one encoder ID that's been stable across
+            # OBS versions — since that's the exact comparison the operator needs: "is my
+            # hardware encoder actually pulling its weight, or would plain CPU do better?"
+            send_request(ws, "SetProfileParameter",
+                         {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder",
+                          "parameterValue": "x264"})
+            tests["alternate"] = dict(_run_recording_test(ws, "x264"), encoder="x264")
+            # Always restore what was configured before, whether the test above succeeded or not.
+            send_request(ws, "SetProfileParameter",
+                        {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder",
+                         "parameterValue": baseline_encoder})
+
+        ws.close()
+
+        # Decide: keep the baseline unless the alternate clearly did better (a couple of
+        # points of skipped-frame difference is noise; this needs to be a real gap).
+        recommended_encoder = baseline_encoder
+        notes = []
+        base_pct = tests["baseline"].get("skip_pct")
+        if "error" in tests["baseline"]:
+            notes.append(f"Could not test the currently configured encoder: {tests['baseline']['error']}")
+        elif base_pct and base_pct > 2:
+            notes.append(f"Currently configured encoder ({baseline_encoder}) dropped {base_pct}% "
+                        f"of frames in an {test_seconds}s test.")
+        if "alternate" in tests:
+            alt_pct = tests["alternate"].get("skip_pct")
+            if "error" in tests["alternate"]:
+                notes.append(f"Could not test x264 for comparison: {tests['alternate']['error']}")
+            elif base_pct is not None and alt_pct is not None:
+                if alt_pct + 2 < base_pct:
+                    recommended_encoder = "x264"
+                    notes.append(f"Software (x264) dropped fewer frames ({alt_pct}% vs {base_pct}%) — "
+                                f"recommending it over {baseline_encoder} on this machine.")
+                else:
+                    notes.append(f"Hardware encoder ({baseline_encoder}) performed at least as well "
+                                f"as software ({alt_pct}% vs {base_pct}% dropped) — keeping it.")
+
+        result = {"ok": True, "tests": tests, "recommended_encoder": recommended_encoder,
+                  "notes": notes, "caveats": caveats}
+    except Exception as e:
+        result = {"ok": False, "error": f"Could not reach OBS: {e}"}
+    return result
+
 # ── Control panel HTML ────────────────────────────────────────
 
 CONTROL_HTML = """<!DOCTYPE html>
@@ -3521,6 +3759,26 @@ CONTROL_HTML = """<!DOCTYPE html>
     <button onclick="resetChecklist()" style="font-size:10px;color:#3d5a7a;background:none;border:none;cursor:pointer;padding:0;">Reset</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px;" id="checklist-items"></div>
+</div>
+
+<!-- ── Stream health check ── -->
+<div class="card" style="margin-bottom:14px;border-color:#2a6496;">
+  <h2 style="color:#5b9bd5;">&#128225; Stream Health Check</h2>
+  <p class="section-note">
+    Recommends a bitrate/resolution from your actual measured upload speed, and tests whether
+    your hardware video encoder is really performing better than plain CPU encoding — instead
+    of just guessing from your computer's specs. Runs automatically once OBS is detected;
+    briefly starts and stops a short throwaway test recording in OBS to measure it (never
+    while the real stream is live).
+  </p>
+  <div id="stream-check-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
+       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:36px;">
+    Waiting to detect OBS…
+  </div>
+  <button class="btn" onclick="runStreamHealthCheck(true)"
+          style="background:#2a6496;margin-top:10px;">
+    &#128225; Check now
+  </button>
 </div>
 
 <!-- ── AI Commentary card ── -->
@@ -4231,6 +4489,76 @@ function remoteVia() {
   a.href = url;
   a.textContent = url;
 })();
+
+// ── Stream health check ─────────────────────────────────────
+const STREAM_ENCODER_LABEL = {
+  x264: 'Software (x264 / CPU)', nvenc: 'NVIDIA NVENC', nvenc_hevc: 'NVIDIA NVENC (HEVC)',
+  amd: 'AMD hardware', amd_hevc: 'AMD hardware (HEVC)',
+  qsv: 'Intel QuickSync', qsv_hevc: 'Intel QuickSync (HEVC)',
+};
+function encoderLabel(id) { return STREAM_ENCODER_LABEL[id] || id || '—'; }
+
+async function runStreamHealthCheck(force) {
+  const body = document.getElementById('stream-check-body');
+  body.style.color = '#3d5a7a';
+  body.textContent = 'Checking your connection and OBS encoder — this takes a few seconds and '
+    + 'may briefly show REC in OBS (a throwaway test, deleted automatically)…';
+  try {
+    const res = await apiFetch('/obs/stream_check' + (force ? '?force=1' : ''));
+    const d = await res.json();
+    if (res.status === 429) {
+      body.innerHTML = '<span style="color:#8ba3c0;">' + (d.error || 'Checked recently — try again shortly.') + '</span>';
+      return;
+    }
+    let html = '';
+    const n = d.network || {};
+    if (n.error) {
+      html += '<div style="color:#f44336;margin-bottom:8px;">' + n.error + '</div>';
+    } else if (n.recommended_kbps) {
+      html += '<div style="margin-bottom:8px;"><strong style="color:#e8edf2;">Recommended: '
+        + n.recommended_kbps + ' kbps, ' + n.recommended_resolution + ' ' + n.recommended_fps + 'fps</strong><br>'
+        + '<span style="color:#8ba3c0;">Measured upload speed: ' + n.upload_mbps + ' Mbps'
+        + (n.freshly_tested ? '' : ' (cached from an earlier test)') + ' — ' + n.note + '</span></div>';
+    }
+    const enc = d.encoder || {};
+    if (enc.ok) {
+      const base = (enc.tests || {}).baseline || {};
+      const alt  = (enc.tests || {}).alternate;
+      html += '<div style="margin-bottom:4px;"><strong style="color:#e8edf2;">Encoder: '
+        + encoderLabel(enc.recommended_encoder) + ' recommended</strong></div>';
+      if (base.error) {
+        html += '<div style="color:#8ba3c0;">' + base.error + '</div>';
+      } else if (base.skip_pct !== undefined) {
+        html += '<div style="color:#8ba3c0;">' + encoderLabel(base.encoder) + ': '
+          + (base.skip_pct ?? 0) + '% of frames dropped in a short test</div>';
+      }
+      if (alt && !alt.error && alt.skip_pct !== undefined) {
+        html += '<div style="color:#8ba3c0;">' + encoderLabel(alt.encoder) + ': '
+          + (alt.skip_pct ?? 0) + '% of frames dropped in the same test</div>';
+      }
+      (enc.notes || []).forEach(function (note) {
+        html += '<div style="color:#8ba3c0;margin-top:4px;">' + note + '</div>';
+      });
+      (enc.caveats || []).forEach(function (c) {
+        html += '<div style="color:#c8a84b;margin-top:4px;">&#9888; ' + c + '</div>';
+      });
+    } else if (enc.error) {
+      html += '<div style="color:#8ba3c0;">' + enc.error + '</div>';
+    }
+    body.innerHTML = html || 'No data yet — click Check now.';
+  } catch (err) {
+    body.style.color = '#f44336';
+    body.textContent = 'Could not reach the server.';
+  }
+}
+
+// Auto-run once per browser session (a tab staying open through a match), not on every page
+// refresh — the check briefly starts/stops a real OBS recording, so it shouldn't fire
+// silently every time the panel reloads mid-match.
+if (!sessionStorage.getItem('bbcc_stream_check_done')) {
+  sessionStorage.setItem('bbcc_stream_check_done', '1');
+  runStreamHealthCheck(false);
+}
 
 let _remoteTargets = [];
 const REMOTE_TAB_LABEL  = {tailscale: 'Tailscale', cloudflare: 'Cloudflare', lan: 'Same network'};
@@ -6151,6 +6479,25 @@ class Handler(BaseHTTPRequestHandler):
                 entries = list(_auth_log[-50:])
             entries.reverse()   # most recent first — the panel just lists them top-down
             self._json({"ok": True, "entries": entries})
+
+        elif path == "/obs/stream_check":
+            if not self._check_token(): return
+            if not self._check_rate_limit(path): return
+            from urllib.parse import parse_qs
+            q     = parse_qs(urlparse(self.path).query)
+            force = q.get("force", ["0"])[0].lower() in ("1", "true", "yes")
+            s     = load_state()
+            out   = {"ok": True}
+            try:
+                mbps, fresh = get_upload_mbps(s, force=force)
+                bitrate, res, fps, bitrate_note = _recommend_bitrate_and_resolution(mbps)
+                out["network"] = {"upload_mbps": round(mbps, 2), "freshly_tested": fresh,
+                                  "recommended_kbps": bitrate, "recommended_resolution": res,
+                                  "recommended_fps": fps, "note": bitrate_note}
+            except Exception as e:
+                out["network"] = {"error": f"Could not test upload speed: {e}"}
+            out["encoder"] = obs_stream_health_check(s)
+            self._json(out)
 
         elif path == "/remote/info":
             # Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that

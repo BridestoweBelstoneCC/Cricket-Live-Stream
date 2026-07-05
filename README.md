@@ -183,6 +183,9 @@ It lets you:
 - Monitor live data from NV Play in real time
 - Generate the AI match report and social posts
 - Compile a post-match highlights reel
+- Get a recommended bitrate/resolution from a real upload-speed test, and find out whether
+  your hardware video encoder is actually outperforming plain CPU encoding — measured with a
+  short OBS test recording, not guessed from your computer's specs
 
 ---
 
