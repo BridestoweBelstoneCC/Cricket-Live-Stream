@@ -100,11 +100,13 @@ html, body {
 #player-card-right { padding:16px 32px 16px 26px; left:50%;
   flex-direction:column; align-items:flex-start; gap:8px;
   background:rgba(12,12,18,0.92); }
-/* Pre-game season form — same box treatment as the player card, shown while waiting
-   for the scorer to select the openers. */
-#pregame-form-home, #pregame-form-away { padding:16px 32px 16px 26px;
-  flex-direction:column; align-items:flex-start; gap:8px;
-  background:rgba(12,12,18,0.92); }
+/* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
+   (defined further down), since nothing else needs to be on screen until play starts. */
+#prematch-panel, #pregame-form-home, #pregame-form-away {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 72px; height: auto;
+  background: rgba(10,15,25,0.92);
+}
 .pc-headshot { width:72px; height:72px; border-radius:50%;
   object-fit:cover; border:2px solid rgba(255,255,255,0.15);
   flex-shrink:0; }
@@ -539,46 +541,39 @@ html, body {
   </div>
 </div>
 
-<!-- Pre-match info panel -->
+<!-- Pre-match info panel — same full-screen shell as #over-summary-panel -->
 <div class="graphic-panel" id="prematch-panel">
-  <div style="width:8px;background:#2a6496;flex-shrink:0;"></div>
-  <div style="background:rgba(12,12,18,0.92);flex:1;display:flex;
-              align-items:center;padding:0 28px;gap:32px;
-              border-top:1px solid rgba(255,255,255,0.08);">
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:10px;font-weight:700;color:#2a6496;
-                  text-transform:uppercase;letter-spacing:2px;">Competition</div>
-      <div style="font-size:18px;font-weight:800;color:#fff;"
-           id="prematch-competition">—</div>
+  <div class="over-accent" style="background:#2a6496;"></div>
+  <div class="pc-stats">
+    <div class="pc-stat">
+      <span class="pc-label" style="color:#2a6496;">Competition</span>
+      <span class="pc-stat-val" id="prematch-competition">—</span>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.12);align-self:stretch;margin:14px 0;"></div>
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:10px;font-weight:700;color:#2a6496;
-                  text-transform:uppercase;letter-spacing:2px;">Umpires</div>
-      <div style="font-size:18px;font-weight:800;color:#fff;"
-           id="prematch-umpires">—</div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-label" style="color:#2a6496;">Umpires</span>
+      <span class="pc-stat-val" id="prematch-umpires">—</span>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.12);align-self:stretch;margin:14px 0;"></div>
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:10px;font-weight:700;color:#2a6496;
-                  text-transform:uppercase;letter-spacing:2px;">Scorer</div>
-      <div style="font-size:18px;font-weight:800;color:#fff;"
-           id="prematch-scorer">—</div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-label" style="color:#2a6496;">Scorer</span>
+      <span class="pc-stat-val" id="prematch-scorer">—</span>
     </div>
   </div>
 </div>
 
-<!-- Pre-game season form — fills the dead time before the openers are selected -->
+<!-- Pre-game season form — fills the dead time before the openers are selected. Same
+     full-screen shell as #over-summary-panel/#prematch-panel above. -->
 <div id="pregame-form-home" class="graphic-panel">
-  <div class="pc-accent" id="pregame-form-home-accent"></div>
-  <div style="display:flex;align-items:center;gap:20px;">
+  <div class="over-accent" id="pregame-form-home-accent"></div>
+  <div style="display:flex;align-items:center;gap:24px;">
     <img id="pregame-form-home-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
-    <div>
+    <div style="text-align:left;">
       <div class="pc-label" id="pregame-form-home-label">Season Form</div>
       <div class="pc-name" id="pregame-form-home-name">—</div>
     </div>
   </div>
-  <div class="pc-stats">
+  <div class="pc-stats" style="margin-top:16px;">
     <div class="pc-stat">
       <span class="pc-stat-val" id="pregame-form-home-runs">—</span>
       <span class="pc-stat-key">Season Runs</span>
@@ -594,21 +589,21 @@ html, body {
       <span class="pc-stat-key">Innings</span>
     </div>
   </div>
-  <div style="font-size:12px;color:rgba(255,255,255,0.55);">
+  <div style="font-size:13px;color:rgba(255,255,255,0.55);margin-top:16px;">
     Leading wicket-taker: <span id="pregame-form-home-bowler-name" style="color:#fff;font-weight:700;">—</span><span id="pregame-form-home-bowler-figs"></span>
   </div>
 </div>
 
 <div id="pregame-form-away" class="graphic-panel">
-  <div class="pc-accent" id="pregame-form-away-accent"></div>
-  <div style="display:flex;align-items:center;gap:20px;">
+  <div class="over-accent" id="pregame-form-away-accent"></div>
+  <div style="display:flex;align-items:center;gap:24px;">
     <img id="pregame-form-away-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
-    <div>
+    <div style="text-align:left;">
       <div class="pc-label" id="pregame-form-away-label">Season Form</div>
       <div class="pc-name" id="pregame-form-away-name">—</div>
     </div>
   </div>
-  <div class="pc-stats">
+  <div class="pc-stats" style="margin-top:16px;">
     <div class="pc-stat">
       <span class="pc-stat-val" id="pregame-form-away-runs">—</span>
       <span class="pc-stat-key">Season Runs</span>
@@ -624,7 +619,7 @@ html, body {
       <span class="pc-stat-key">Innings</span>
     </div>
   </div>
-  <div style="font-size:12px;color:rgba(255,255,255,0.55);">
+  <div style="font-size:13px;color:rgba(255,255,255,0.55);margin-top:16px;">
     Leading wicket-taker: <span id="pregame-form-away-bowler-name" style="color:#fff;font-weight:700;">—</span><span id="pregame-form-away-bowler-figs"></span>
   </div>
 </div>
@@ -896,8 +891,12 @@ function nextGraphic() {
     if ((p.id === 'player-card' || p.id === 'player-card-right') && _playerCardVisible) return;
     p.classList.remove('show');
   });
-  // Also hide centred end-of-over panels
-  ['partnership-display','runrate-display','over-commentary-display','player-card-right'].forEach(id => {
+  // Also hide centred end-of-over panels (these aren't .graphic-panel elements, so the
+  // querySelectorAll loop above doesn't reach them). player-card-right is NOT listed here --
+  // it IS a .graphic-panel, already correctly protected above while _playerCardVisible is
+  // true; forcing it closed here bypassed that guard and collapsed the two-opener split view
+  // down to just the left card the instant any other graphic finished its cycle.
+  ['partnership-display','runrate-display','over-commentary-display'].forEach(id => {
     const el2 = document.getElementById(id);
     if (el2) el2.classList.remove('show');
   });
