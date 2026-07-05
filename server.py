@@ -1357,6 +1357,9 @@ DEFAULT_STATE = {
     "graphics_innings_summary":True,
     "graphics_commentary":     False,
     "graphics_commentary_over":False,
+    "graphics_over_summary":   True,
+    "graphics_partnership_display":True,
+    "graphics_runrate_trend":  True,
     "graphics_player_card":     False,
     "replay_enabled":          True,
     "replay_on_fifty":         False,
@@ -6601,6 +6604,11 @@ class Handler(BaseHTTPRequestHandler):
                     events = list(_event_buffer)
                     _event_buffer.clear()
                     self._json({"source":"pcs","state":pcs_state,"club_id":club_id,"events":events})
+                elif pcs_folder:
+                    # PCS Pro is configured but hasn't written a match yet (pre-match, or
+                    # between innings) -- still report "pcs" so the overlay keeps fast-polling
+                    # instead of falling back to slow widget polling and a mislabeled source.
+                    self._json({"source":"pcs","state":None,"club_id":club_id,"events":[]})
                 else:
                     if s.get("use_widget", True):
                         # Run widget fetch in thread with hard 5s timeout
@@ -6680,11 +6688,13 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_login(body)
             return
 
-        if path == "/commentary/over/generate":
-            # Fired automatically by the overlay at the end of every over, from a loopback
-            # OBS browser source that has no way to log in — but it spends Anthropic credit,
-            # so it must not be callable anonymously through a tunnel. Trust loopback callers
-            # with no forwarding proxy in front of them, or a valid session either way.
+        # These are fired automatically by the overlay itself — a loopback OBS browser
+        # source with no login flow of its own. /commentary/over/generate additionally
+        # spends Anthropic credit, so all of them trust loopback callers with no forwarding
+        # proxy in front of them (see _is_trusted_loopback), or a valid session either way,
+        # rather than requiring a session the overlay can never obtain.
+        OVERLAY_ENDPOINTS = ("/commentary/over/generate", "/replay", "/weather/show", "/weather/hide")
+        if path in OVERLAY_ENDPOINTS:
             if not (self._is_trusted_loopback() or self._check_token()):
                 return
         elif not self._check_token():
