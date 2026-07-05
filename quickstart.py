@@ -314,8 +314,10 @@ def main():
     # match's scorecard once, aggregates every player's season figures, and caches them to
     # season_stats_cache.json next to server.py. Re-running the same day reuses that file
     # (no further API calls). Done here so the figures are ready before the first player card.
+    token = ""
     if wait_for_server():
-        pull_season_stats(api_key)
+        token = get_session_token(cfg)
+        pull_season_stats(api_key, token)
         self_test()
     else:
         log("Server didn't respond in time — season stats will load on the first player card", "warn")
@@ -346,7 +348,7 @@ def main():
         proc.wait()
     except KeyboardInterrupt:
         # Offer the report while the server is STILL RUNNING (match log lives in its memory)
-        offer_match_report()
+        offer_match_report(token)
         print("\n  Shutting down server...")
         proc.terminate()
         try:
@@ -440,7 +442,28 @@ def wait_for_server(timeout=20):
     return False
 
 
-def pull_season_stats(api_key):
+def get_session_token(cfg):
+    """Log in to the just-started server with the club password from config.ini, so this
+    script's own calls to auth-gated endpoints (/player/stats/refresh, /report/generate) carry
+    a valid Bearer token instead of 401ing against our own server. Returns "" if no password is
+    set (auth disabled — server accepts unauthenticated calls) or if login fails."""
+    import urllib.request, json
+    pw = cfg["Auth"].get("club_password", "").strip() if cfg.has_section("Auth") else ""
+    if not pw:
+        return ""
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:5000/login",
+            data=json.dumps({"password": pw}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read().decode())
+        return d.get("session_token", "") if d.get("ok") else ""
+    except Exception:
+        return ""
+
+
+def pull_season_stats(api_key, token=""):
     """Trigger the season-stats build on the running server and report the result.
     Uses the non-forced refresh so a same-day cache is reused (no repeat API calls)."""
     import urllib.request, json
@@ -449,7 +472,9 @@ def pull_season_stats(api_key):
         return
     log("Pulling season batting stats from PlayCricket (both teams, one-off, cached locally)...")
     try:
-        with urllib.request.urlopen("http://127.0.0.1:5000/player/stats/refresh", timeout=180) as r:
+        req = urllib.request.Request("http://127.0.0.1:5000/player/stats/refresh",
+            headers={"Authorization": f"Bearer {token}"} if token else {})
+        with urllib.request.urlopen(req, timeout=180) as r:
             d = json.loads(r.read().decode())
     except Exception as e:
         log(f"Season stats: couldn't pull ({e}) — will load on first player card", "warn")
@@ -464,7 +489,7 @@ def pull_season_stats(api_key):
             f"from {d.get('matches_used',0)} matches ({src}){opp}", "ok")
 
 
-def offer_match_report():
+def offer_match_report(token=""):
     """Offer to generate an AI match report from the still-running server."""
     import urllib.request, json, datetime
     print()
@@ -477,7 +502,9 @@ def offer_match_report():
         return
     print("  Generating report (needs your Anthropic API key)...")
     try:
-        with urllib.request.urlopen("http://127.0.0.1:5000/report/generate", timeout=60) as r:
+        req = urllib.request.Request("http://127.0.0.1:5000/report/generate",
+            headers={"Authorization": f"Bearer {token}"} if token else {})
+        with urllib.request.urlopen(req, timeout=60) as r:
             result = json.loads(r.read().decode())
         if result.get("ok"):
             print()
