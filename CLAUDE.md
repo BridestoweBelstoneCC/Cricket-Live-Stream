@@ -37,26 +37,33 @@ There is no compiler and no test framework yet — verification is lightweight:
 # 1. Server must compile cleanly
 python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); print('OK')"
 
-# 2. The control panel JS is embedded in server.py — extract and syntax-check it
-python3 -c "import re; s=open('server.py').read(); \
-m=re.search(r'CONTROL_HTML\\s*=\\s*\"\"\"(.*?)\"\"\"', s, re.S); \
-open('/tmp/panel.js','w').write('\\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', m.group(1), re.S)))"
-node --check /tmp/panel.js
+# 2. The control panel JS (in server.py's CONTROL_HTML) and overlay.html's JS —
+#    syntax-check both. This imports server.py and reads the real, evaluated CONTROL_HTML
+#    string rather than regexing the raw source, because a naive text check can't see bugs
+#    where Python's own string-escaping silently eats a backslash meant for the JS (see
+#    gotcha below). Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
+python3 scripts/check_panel_js.py
 
 # 3. Run it
 pip install -r requirements.txt
 python3 server.py      # or: python3 quickstart.py
 ```
 
-Always run steps 1 and 2 after editing `server.py`. Step 2 matters more than it looks (see
-gotchas).
+Always run steps 1 and 2 after editing `server.py` or `overlay.html`. Step 2 matters more than
+it looks (see gotchas) — it's also wired into `.github/workflows/ci.yml`.
 
 ## Critical gotchas (these have bitten us before)
 
 - **`CONTROL_HTML` is a plain triple-quoted string, NOT an f-string.** Any backslash in the
   embedded JavaScript must be **doubled** — write `\\n`, `\\t`, `\\d` in regexes, etc. A single
-  backslash will break the panel silently. After any panel edit, run the `node --check` step
-  above; brace-counting alone is not enough.
+  backslash will break the panel silently, and the JS failure is confusing: the whole inline
+  `<script>` block fails to parse, so *every* function in it comes back "not defined" at the
+  call site, and any code before the broken point (like the "Checking connection..." polling
+  loop) just hangs with no visible error. `scripts/check_panel_js.py` (step 2 above) catches
+  this — run it after every panel edit; brace-counting or eyeballing the diff is not enough.
+  The panel also now has a `window.onerror` handler (top of the big `<script>` block) that
+  shows a visible red banner if this class of bug ever reaches a running server again, instead
+  of silently hanging.
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
 - **Logging must never raise.** `log_ball_data()` and anything in the match-day loop is wrapped

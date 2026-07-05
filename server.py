@@ -4380,6 +4380,28 @@ CONTROL_HTML = """<!DOCTYPE html>
   <a id="overlay-link" href="/overlay" target="_blank">/overlay</a>
 </div>
 
+<!-- Separate, earlier script: if the big script block below fails to parse (e.g. a raw
+     backslash swallowed by CONTROL_HTML's Python string escaping -- see CLAUDE.md), that
+     whole block silently never runs, and the panel just hangs on "Checking connection...".
+     This registers a global handler first so a parse failure shows up as a visible banner
+     instead of a silent hang. Run scripts/check_panel_js.py after editing either script. -->
+<script>
+window.onerror = function (message, source, lineno, colno) {
+  var el = document.getElementById("panel-fatal-error");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "panel-fatal-error";
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;" +
+      "background:#3a0d0d;color:#ffb4b4;font:13px monospace;padding:10px 16px;" +
+      "border-bottom:2px solid #f44336;white-space:pre-wrap;";
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.textContent = "Control panel script error: " + message +
+    " (line " + lineno + ", col " + colno + ") -- the panel did not load correctly. " +
+    "Check the browser console, and server.py for a raw backslash inside CONTROL_HTML.";
+};
+</script>
+
 <script>
 const PRESETS = """ + json.dumps(KIT_PRESETS) + """;
 
@@ -4572,7 +4594,7 @@ function renderRemoteTarget(via) {
   const tabs = _remoteTargets.length <= 1 ? '' : '<div style="margin-bottom:12px;">' +
     _remoteTargets.map(x => {
       const active = x.via === t.via;
-      return '<button onclick="renderRemoteTarget(\'' + x.via + '\')" style="font-size:11px;' +
+      return '<button onclick="renderRemoteTarget(\\'' + x.via + '\\')" style="font-size:11px;' +
         'padding:5px 10px;border-radius:14px;cursor:pointer;margin:0 3px;border:1px solid ' +
         (active ? '#5b9bd5' : '#1e3550') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
         ';color:#e8edf2;">' + REMOTE_TAB_LABEL[x.via] + '</button>';
@@ -4582,9 +4604,9 @@ function renderRemoteTarget(via) {
     REMOTE_SCAN_NOTE[t.via] + ':</p>' +
     '<img src="/remote/qr.png?via=' + t.via + '&t=' + Date.now() + '" style="width:200px;height:200px;' +
     'background:#fff;border-radius:8px;padding:8px;" ' +
-    'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
-    '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
-    'style:\'font-size:12px;color:#8ba3c0\'}))">' +
+    'onerror="this.replaceWith(Object.assign(document.createElement(\\'p\\'),' +
+    '{textContent:\\'Install the qrcode package on the server for a scannable code.\\',' +
+    'style:\\'font-size:12px;color:#8ba3c0\\'}))">' +
     '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + t.url + '</p>';
 }
 
