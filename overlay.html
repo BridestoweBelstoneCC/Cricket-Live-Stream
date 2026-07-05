@@ -2230,6 +2230,19 @@ function fillPregameForm(side, teamName, teamAbbrev, colour) {
   return true;
 }
 
+function isPreMatchPCS(state) {
+  // NV Play sets batting_team (server.py parse_pcs_json) as soon as the match is configured in
+  // PCS Pro -- well before the scorer selects the openers, which is normally the last setup step
+  // before play. state stops being null right there, long before the game actually starts, which
+  // would otherwise switch the overlay from pre-match graphics to a live scorebar showing blank
+  // "—" batters for that whole window. Both batter names still default to "—" until openers are
+  // chosen, which is the more reliable "hasn't really started yet" signal.
+  if (!state) return true;
+  var b1 = (state.batter1 && state.batter1.name) || '—';
+  var b2 = (state.batter2 && state.batter2.name) || '—';
+  return b1 === '—' && b2 === '—';
+}
+
 function showPreMatchInfo() {
   loadPregameForm();
   // Show pre-match competition/umpires panel if we have API data
@@ -2373,7 +2386,7 @@ async function poll() {
     const liveData=await liveRes.json();
     _lastSource = liveData.source || '';
     if (liveData.source==='pcs') {
-      if (liveData.state){
+      if (liveData.state && !isPreMatchPCS(liveData.state)){
         // Each stage isolated so one failure can't kill the others (esp. the events forEach)
         try { renderScorebar(liveData.state,home,away); }
         catch(e){ console.warn('renderScorebar error:', e); }
