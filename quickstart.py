@@ -120,14 +120,22 @@ def fetch_todays_match(api_key, club_id):
     }, None
 
 def build_state(cfg, match):
-    """Build a complete match_state.json from config + API data."""
-    # Load existing state to preserve user-set toggles
+    """Build match_state.json from config + API data, MERGED over the existing file.
+
+    The merge matters: the control panel stores plenty that this launcher knows nothing
+    about — the squad roster (shirt number → name, entered once per season), the weekend
+    sponsor fields, the cached network test, badge club IDs... A full rewrite here used to
+    silently wipe all of them on every match day. Fields quickstart genuinely owns (today's
+    opposition, config.ini values, match-day safety defaults like demo_mode=False) still
+    override; everything else in the existing file survives untouched."""
     state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "match_state.json")
     try:
         import json as _j
         with open(state_path) as _f:
             exist = _j.load(_f)
+        if not isinstance(exist, dict):
+            exist = {}
     except Exception:
         exist = {}
     club  = cfg["Club"]
@@ -136,22 +144,24 @@ def build_state(cfg, match):
     obs   = cfg["OBS"]
     stream= cfg["Stream"]
 
-    away_team   = match["away_team"]   if match else "Opposition CC"
-    away_abbrev = match["away_abbrev"] if match else ""
-    competition = match["competition"] if match else ""
-    umpire1     = match["umpire1"]     if match else ""
-    umpire2     = match["umpire2"]     if match else ""
-    scorer1     = match["scorer1"]     if match else ""
-    pc_match_id = match["match_id"]    if match else ""
+    # Match-derived fields: no fixture found today → keep whatever the operator already
+    # entered in the panel rather than stomping it back to placeholders.
+    away_team   = match["away_team"]   if match else exist.get("away_team", "Opposition CC")
+    away_abbrev = match["away_abbrev"] if match else exist.get("away_abbrev", "")
+    competition = match["competition"] if match else exist.get("competition_name", "")
+    umpire1     = match["umpire1"]     if match else exist.get("umpire1_name", "")
+    umpire2     = match["umpire2"]     if match else exist.get("umpire2_name", "")
+    scorer1     = match["scorer1"]     if match else exist.get("scorer1_name", "")
+    pc_match_id = match["match_id"]    if match else exist.get("pc_match_id", "")
 
-    return {
+    fresh = {
         # Club / match identity
         "home_team":            club.get("name","My Club CC"),
         "home_abbrev":          club.get("abbreviation","CC"),
         "away_team":            away_team,
         "away_abbrev":          away_abbrev,
         "home_colour":          club.get("home_colour","#1a3a5c"),
-        "away_colour":          "#7b2d2d",
+        "away_colour":          exist.get("away_colour", "#7b2d2d"),
         "competition_name":     competition,
         "replay_motto":          cfg["Club"].get("motto",""),
         "umpire1_name":         umpire1,
@@ -165,7 +175,7 @@ def build_state(cfg, match):
         "anthropic_api_key":    api.get("anthropic_key",""),
         "home_club_id":         club.get("playcricket_id",""),
         "ground_filter":        score.get("ground_filter",""),
-        "away_club_id":         match.get("away_club_id","") if match else "",
+        "away_club_id":         match.get("away_club_id","") if match else exist.get("away_club_id",""),
         "logos_folder":         score.get("logos_folder",""),
 
         # Hard-coded operational defaults
@@ -193,12 +203,12 @@ def build_state(cfg, match):
         "graphics_commentary_over":     exist.get("graphics_commentary_over",    False),
         "graphics_player_card":         exist.get("graphics_player_card",        False),
 
-        # Replay — everything on including 50s
-        "replay_enabled":       True,
-        "replay_on_fifty":      True,
+        # Replay — on by default (including 50s), but panel edits survive re-runs
+        "replay_enabled":       exist.get("replay_enabled",   True),
+        "replay_on_fifty":      exist.get("replay_on_fifty",  True),
         "replay_folder":        os.path.expanduser(obs.get("replay_folder","")),
-        "max_clips":            500,
-        "replay_duration":      18,
+        "max_clips":            exist.get("max_clips",        500),
+        "replay_duration":      exist.get("replay_duration",  18),
 
         # OBS
         "obs_host":             "localhost",
@@ -214,9 +224,12 @@ def build_state(cfg, match):
         "weather_api_key":      "",
 
         # Misc
-        "poll_interval":        20,
-        "match_url":            "",
+        "poll_interval":        exist.get("poll_interval", 20),
+        "match_url":            "",   # deliberately cleared — a pinned match is per-day
     }
+    # Everything the panel knows that quickstart doesn't (roster, sponsor_name/sponsor_id,
+    # network test cache, badge IDs, ...) rides through from the existing file.
+    return {**exist, **fresh}
 
 def check_requirements():
     """Check Python packages are installed."""
