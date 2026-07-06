@@ -2354,7 +2354,8 @@ function showPreMatchInfo() {
   const comp   = cfg.competition_name || '';
   const u1     = cfg.umpire1_name     || '';
   const u2     = cfg.umpire2_name     || '';
-  const scorer = cfg.scorer1_name     || cfg.umpire1_name && cfg.umpire2_name ? '' : '';
+  // (was `a || b && c ? '' : ''` — both ternary arms were '', so the scorer never showed)
+  const scorer = cfg.scorer1_name || '';
   const umpStr = u1 && u2 ? `${fmtSurname(u1)} / ${fmtSurname(u2)}`
                : u1 ? fmtSurname(u1) : '—';
   if (comp || u1) {

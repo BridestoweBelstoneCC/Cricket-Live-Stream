@@ -3,48 +3,7 @@
 Full review of server.py, overlay.html, quickstart.py, setup_wizard.py, obs_setup.py,
 scripts/, and CI. Work on `dev`; merge to `main` only once tested.
 
-## Match-day critical
-
-- [ ] **quickstart.py wipes panel-entered state on every run.** `build_state()` rebuilds
-      match_state.json from scratch and only carries over the graphics toggles — `roster`
-      (the shirt-number map, "enter once per season"), `sponsor_name`/`sponsor_id`,
-      custom `away_colour`, and the cached network test are all lost each run. Merge over
-      the existing state instead of replacing it.
-- [ ] **/live crashes on a non-numeric `home_club_id`** (server.py `int(s.get("test_club_id")
-      or s.get("home_club_id") or 0)`). The manual badge picker sets `home_club_id` to a
-      logo *filename stem*, so picking a non-numeric filename 500s every `/live` poll and
-      reload-loops the overlay. Guard the cast.
-- [ ] **Weather is hardcoded to one ground.** `GROUND_LAT/GROUND_LON` are used
-      unconditionally; the `weather_lat`/`weather_lon` that `/match/fetch` saves are never
-      read. Any other club gets the wrong weather (and the DLS rain threshold keys off it).
-- [ ] **"Export CSV" breaks when club_password is set.** `/data/export` is token-gated but
-      the panel opens it via `window.open`, which can't send the Bearer header → 401.
-      Fetch with `apiFetch` and download as a blob instead.
-
-## Real bugs, lower impact
-
-- [ ] **Ball-event AI commentary trigger is dead code.** In `/live`, `buffer_pcs_events()`
-      advances `_prev_state` *before* `check_commentary_trigger()` reads it, so deltas are
-      always zero and `graphics_commentary` / `record_event` context never fire. Reorder.
-- [ ] **Prematch "Scorer" never displays** (overlay.html `showPreMatchInfo`):
-      `cfg.scorer1_name || u1 && u2 ? '' : ''` — both ternary arms are `''`.
-- [ ] **`_persist_control_token` appends into the wrong section** when `[Auth]` exists but
-      the `control_token =` line was deleted — the appended line lands at EOF under
-      `[Network]`, is never read back, and a new token is appended every restart.
-- [ ] **`generate_social_graphic_facts` iterates `_match_log` unprotected** — unlike
-      `generate_match_report`, no snapshot/retry, so a concurrent ball event can raise
-      RuntimeError out of the handler. Share the report generator's snapshot helper.
-- [ ] **Dead/duplicated routes in `do_GET`**: a GET `/commentary/over/generate` handler
-      referencing the undefined `body` variable, a GET duplicate of `/commentary/test`,
-      and a second unreachable `/pcs/debug` handler. Delete all three.
-- [ ] **Duplicate dict keys**: `DEFAULT_STATE` defines `drinks_over` twice;
-      `parse_pcs_json`'s state literal defines `runsRequired`/`ballsRemaining` twice
-      (the first, computed-from-target values are silently discarded — fold the target
-      fallback into the surviving key).
-- [ ] **Duplicate DOM id `replay_enabled`** on the disabled "Replay on centuries" toggle
-      in CONTROL_HTML — works only because getElementById returns the first match.
-
-## Design warts (needs a decision, not just a patch)
+## Open — design warts (need a decision, not just a patch)
 
 - [ ] **`/live` is a mutating GET consumed by two clients.** The control panel polls it
       every 3s/10s/15s, so it randomly eats buffered wicket events meant for the overlay
@@ -62,6 +21,33 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       the panel to its own file served from disk (would also simplify the JS check and
       kill the backslash-escaping gotcha class). CLAUDE.md's "~5000 lines" note is stale.
 
-## Done
+## Fixed on dev (2026-07-06) — verify live on Saturday before merging to main
 
-- [x] Delete `CLAUDE 2.md` (stale Finder duplicate of CLAUDE.md, 3 Jul vintage).
+- [x] **quickstart.py wiped panel-entered state on every run** (roster, sponsor fields,
+      away colour, network-test cache, replay toggle edits; manual opposition when no
+      fixture found). `build_state()` now merges over the existing file; match-day safety
+      defaults (demo_mode/use_widget off) still forced.
+- [x] **/live crashed on a non-numeric `home_club_id`** (set by the manual badge picker to
+      a logo filename stem) — `int()` now guarded, falls back to 0.
+- [x] **Weather was hardcoded to one ground** — `fetch_weather_data()` now prefers the
+      `weather_lat`/`weather_lon` that `/match/fetch` saves; constants are fallback only.
+- [x] **"Export CSV" 401'd when club_password was set** — panel now downloads via
+      `apiFetch` + blob instead of `window.open` (which can't carry the Bearer header).
+- [x] **Ball-event AI commentary trigger was dead** — `check_commentary_trigger` now runs
+      *before* `buffer_pcs_events` advances `_prev_state`.
+- [x] **Wicket events never buffered with commentary off** (found while fixing the above):
+      `_prev_state` was only ever seeded inside the toggle-gated trigger, so with
+      `graphics_commentary` off (the default) it stayed `None` all match — no wicket
+      events, no fall-of-wickets in the match log. `buffer_pcs_events` now seeds it.
+- [x] **Prematch "Scorer" never displayed** (overlay.html operator-precedence bug).
+- [x] **`_persist_control_token` appended into the wrong section** when the
+      `control_token =` line was missing — now inserts under `[Auth]`.
+- [x] **`generate_social_graphic_facts` read `_match_log` unprotected** — both generators
+      now share `match_log_snapshot_copy()`.
+- [x] **Dead/duplicated `do_GET` routes removed** (GET `/commentary/over/generate` with its
+      undefined `body`, GET `/commentary/test`, second `/pcs/debug`).
+- [x] **Duplicate dict keys removed** (`drinks_over` in DEFAULT_STATE;
+      `runsRequired`/`ballsRemaining` in `parse_pcs_json`, with the computed-from-target
+      value folded in as a fallback).
+- [x] **Duplicate DOM id `replay_enabled`** on the display-only centuries toggle removed.
+- [x] Deleted `CLAUDE 2.md` (stale Finder duplicate of CLAUDE.md).
