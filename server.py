@@ -92,9 +92,15 @@ def _persist_control_token(new_token):
                 found = True
                 break
         if not found:
-            if not any(l.strip() == "[Auth]" for l in lines):
+            # Insert directly under the [Auth] header — appending at EOF would land the
+            # line inside whichever section happens to be last (e.g. [Network]), where
+            # configparser never reads it back, so a new token got appended every restart.
+            auth_idx = next((i for i, l in enumerate(lines) if l.strip() == "[Auth]"), None)
+            if auth_idx is None:
                 lines.append("\n[Auth]\n")
-            lines.append(f"control_token = {new_token}\n")
+                lines.append(f"control_token = {new_token}\n")
+            else:
+                lines.insert(auth_idx + 1, f"control_token = {new_token}\n")
         tmp = cfg_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.writelines(lines)
@@ -447,6 +453,24 @@ def match_log_reset():
     _match_log["milestones"].clear()
     _match_log["started"] = None
 
+def match_log_snapshot_copy():
+    """Defensive copy of _match_log for the report/social generators. Under the threaded
+    server, live ball events mutate the log while a generator reads it — retry if a
+    concurrent append trips iteration, so generation can never raise mid-request."""
+    snap = {"innings": {}, "fall_of_wickets": [], "milestones": [], "events": []}
+    for _attempt in range(4):
+        try:
+            snap = {
+                "innings": {k: dict(v) for k, v in _match_log.get("innings", {}).items()},
+                "fall_of_wickets": list(_match_log.get("fall_of_wickets", [])),
+                "milestones": list(_match_log.get("milestones", [])),
+                "events": list(_match_log.get("events", [])),
+            }
+            break
+        except RuntimeError:
+            time.sleep(0.02)
+    return snap
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Ball-by-ball logger — your own resilient match database (SQLite)
@@ -774,13 +798,26 @@ def pop_commands():
     return s
 
 # ── Weather (Open-Meteo, no API key needed) ───────────────────
+# Fallback coordinates only — /match/fetch saves the real ground's weather_lat/weather_lon
+# from PlayCricket into state, and fetch_weather_data prefers those. Without that
+# preference, every club got THIS ground's weather (and the DLS rain threshold keyed off it).
 GROUND_LAT, GROUND_LON = 50.691, -4.093
+
+def _ground_coords():
+    cfg = load_state()
+    try:
+        lat = float(cfg.get("weather_lat") or GROUND_LAT)
+        lon = float(cfg.get("weather_lon") or GROUND_LON)
+        return lat, lon
+    except (TypeError, ValueError):
+        return GROUND_LAT, GROUND_LON
 WMO_ICONS = {0:"☀",1:"🌤",2:"⛅",3:"☁",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"🌨",73:"🌨",75:"❄",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"}
 WMO_DESC  = {0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Foggy",48:"Freezing fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",71:"Light snow",73:"Snow",75:"Heavy snow",80:"Rain showers",81:"Heavy showers",82:"Violent showers",95:"Thunderstorm",96:"Thunderstorm+hail",99:"Heavy thunderstorm"}
 
 def fetch_weather_data():
     try:
-        params = urlencode({"latitude":GROUND_LAT,"longitude":GROUND_LON,
+        lat, lon = _ground_coords()
+        params = urlencode({"latitude":lat,"longitude":lon,
             "current":"temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code",
             "hourly":"precipitation_probability","forecast_hours":4,
             "wind_speed_unit":"mph","timezone":"Europe/London"})
@@ -1256,6 +1293,12 @@ def buffer_pcs_events(state):
     prev_s  = _prev_state["score"]
     prev_w  = _prev_state["wickets"]
     if prev_s is None:
+        # First poll: seed the baseline HERE, unconditionally. Seeding used to happen only
+        # inside check_commentary_trigger, which is gated on the graphics_commentary toggle
+        # (off by default) — so with it off, _prev_state stayed None all match and no wicket
+        # ever reached the event buffer or the match log's fall-of-wickets list.
+        _prev_state.update({"score": score, "wickets": wickets,
+                            "overs": state.get("overs", 0.0)})
         return
     delta = score - prev_s
     dw    = wickets - prev_w
@@ -1383,7 +1426,6 @@ DEFAULT_STATE = {
     "socials_folder":         "",
     "sponsor_name":           "",
     "sponsor_id":             "",
-    "drinks_over":            25,
     "home_club_id":           "",
     "ground_filter":          "",
     "away_club_id":           "",
@@ -1610,22 +1652,8 @@ def generate_match_report(report_type="report"):
     except ImportError:
         return {"ok": False, "error": "anthropic package not installed (pip install anthropic)"}
 
-    # Build a factual match summary from the log + current state.
-    # Under the threaded server, live ball events mutate _match_log while we read it here.
-    # Take a defensive snapshot (retry if a concurrent append trips iteration) so a report
-    # request can never raise — and never blocks the live thread.
-    snap = {"innings": {}, "fall_of_wickets": [], "milestones": [], "events": []}
-    for _attempt in range(4):
-        try:
-            snap = {
-                "innings": {k: dict(v) for k, v in _match_log.get("innings", {}).items()},
-                "fall_of_wickets": list(_match_log.get("fall_of_wickets", [])),
-                "milestones": list(_match_log.get("milestones", [])),
-                "events": list(_match_log.get("events", [])),
-            }
-            break
-        except RuntimeError:
-            time.sleep(0.02)
+    # Build a factual match summary from a defensive snapshot of the log (see helper).
+    snap = match_log_snapshot_copy()
 
     st = _pcs_last_state or {}
     home = cfg.get("home_team","") or cfg.get("name","Home")
@@ -2390,25 +2418,27 @@ def generate_social_graphic_facts():
     except ImportError:
         return {"ok": False, "error": "anthropic package not installed"}
 
-    # Reuse the same factual summary the report generator builds
+    # Reuse the same factual summary the report generator builds — from the same defensive
+    # snapshot (reading _match_log directly here could raise if a ball event lands mid-read).
+    snap = match_log_snapshot_copy()
     st = _pcs_last_state or {}
     home = cfg.get("home_team","") or cfg.get("name","Home")
     away = cfg.get("away_team","Opposition")
     comp = cfg.get("competition","")
     lines = [f"Match: {home} v {away}" + (f" ({comp})" if comp else "")]
-    for inn_no in sorted(_match_log["innings"].keys()):
-        r = _match_log["innings"][inn_no]
+    for inn_no in sorted(snap["innings"].keys()):
+        r = snap["innings"][inn_no]
         lines.append(f"Innings {inn_no}: {r.get('batting_team','?')} "
                      f"{r.get('score',0)}-{r.get('wickets',0)} ({r.get('overs',0)} overs)")
-    if _match_log["fall_of_wickets"]:
+    if snap["fall_of_wickets"]:
         lines.append("Wickets: " + "; ".join(
             f"{w.get('batter','?')} {w.get('howout','')} at {w.get('score','?')}"
-            for w in _match_log["fall_of_wickets"][:12]))
-    if _match_log["milestones"]:
+            for w in snap["fall_of_wickets"][:12]))
+    if snap["milestones"]:
         lines.append("Milestones: " + "; ".join(
-            f"{m.get('batter','?')} {m.get('milestone','')}" for m in _match_log["milestones"][:8]))
-    if _match_log["events"]:
-        lines.append("Key moments: " + " | ".join(e["detail"] for e in _match_log["events"][-25:]))
+            f"{m.get('batter','?')} {m.get('milestone','')}" for m in snap["milestones"][:8]))
+    if snap["events"]:
+        lines.append("Key moments: " + " | ".join(e["detail"] for e in snap["events"][-25:]))
     summary = "\n".join(lines)
 
     prompt = (
@@ -2858,8 +2888,6 @@ def parse_pcs_json(data):
         "statusText":     f"RR: {rr:.2f}" if rr else "—",
         "run_rate":       rr,
         "targetRuns":     target,
-        "runsRequired":   max(0, target - runs) if target else 0,
-        "ballsRemaining": 0,
         # PCS-specific live fields passed through to overlay
         "partnership_runs":    gi("partnership_runs"),
         "partnership_balls":   gi("partnership_balls"),
@@ -2875,7 +2903,9 @@ def parse_pcs_json(data):
         "last_over_runs":      gi("last_over_runs"),
         "over_history":        g("over_history"),
         "pcs_overs":           overs,
-        "runsRequired":        gi("runs_required", 0),
+        # Template's own field when mapped; else compute from target (these two keys used to
+        # appear TWICE in this literal, silently discarding a computed-from-target value)
+        "runsRequired":        gi("runs_required", 0) or (max(0, target - runs) if target else 0),
         "ballsRemaining":      gi("balls_remaining", 0),
     }
 
@@ -4127,7 +4157,8 @@ CONTROL_HTML = """<!DOCTYPE html>
     <div class="toggle-row">
       <div><div class="toggle-label">Replay on centuries</div>
            <div class="toggle-desc">Always triggers a replay when a batter reaches 100+</div></div>
-      <label class="toggle"><input type="checkbox" id="replay_enabled" disabled checked style="opacity:0.4"></label>
+      <!-- display-only (always on); no id — it must not shadow the real #replay_enabled above -->
+      <label class="toggle"><input type="checkbox" disabled checked style="opacity:0.4"></label>
     </div>
     <div class="toggle-row" style="margin-bottom:10px">
       <div><div class="toggle-label">Replay on fifties</div>
@@ -5000,10 +5031,26 @@ async function reconcileMatch() {
     else { if (msg) { msg.textContent = d.error || 'Could not reconcile'; msg.style.color = '#f85149'; } }
   } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
 }
-function exportLatestCsv() {
+async function exportLatestCsv() {
   const msg = document.getElementById('data-msg');
   if (!_latestMatchId) { if (msg) { msg.textContent = 'No match logged yet'; msg.style.color = '#d29922'; } return; }
-  window.open('/data/export?match_id=' + encodeURIComponent(_latestMatchId), '_blank');
+  // Download via apiFetch + blob, NOT window.open: the endpoint is auth-gated and
+  // window.open can't carry the Bearer header, so it just 401'd once a password was set.
+  try {
+    const res = await apiFetch('/data/export?match_id=' + encodeURIComponent(_latestMatchId));
+    if (!res.ok) throw new Error('server returned ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'match_' + _latestMatchId + '_balls.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+    if (msg) { msg.textContent = 'CSV downloaded'; msg.style.color = '#3fb950'; }
+  } catch(e) {
+    if (msg) { msg.textContent = 'Export failed: ' + e.message; msg.style.color = '#f85149'; }
+  }
 }
 async function hideWeather() {
   await apiFetch('/weather/hide', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -6426,31 +6473,7 @@ class Handler(BaseHTTPRequestHandler):
                         "state_file": STATE_FILE,
                         "file_exists": os.path.exists(STATE_FILE)})
 
-        elif path == "/pcs/debug":
-            s = load_state()
-            folder = s.get("pcs_output_folder", "").strip()
-            result = {"folder": folder, "folder_exists": False, "files": [], "found": None, "content_preview": "", "parse_error": ""}
-            if folder:
-                import os as _os, glob as _glob
-                result["folder_exists"] = _os.path.isdir(folder)
-                if result["folder_exists"]:
-                    all_files = _glob.glob(_os.path.join(folder, "*"))
-                    result["files"] = [_os.path.basename(f) for f in all_files]
-                    found = find_pcs_output_file(folder)
-                    result["found"] = _os.path.basename(found) if found else None
-                    if found:
-                        try:
-                            with open(found, encoding="utf-8", errors="replace") as f:
-                                raw = f.read().strip()
-                            result["content_preview"] = raw[:1200]
-                            import json as _json
-                            data = _json.loads(raw)
-                            result["json_keys"] = list(data.keys())
-                            result["json_sample"] = {k: v for k, v in list(data.items())[:5]}
-                            result["ball_fields"] = {k: v for k, v in data.items() if any(x in k.lower() for x in ["ball","over","last"])}
-                        except Exception as e:
-                            result["parse_error"] = str(e)
-            self._json(result)
+        # (a second, unreachable /pcs/debug handler used to live here — the real one is above)
 
         elif path == "/status":
             # Server uptime and clip count
@@ -6577,7 +6600,12 @@ class Handler(BaseHTTPRequestHandler):
             s    = load_state()
             home = s.get("home_team","Home CC")
             away = s.get("away_team","Opposition CC")
-            club_id = int(s.get("test_club_id") or s.get("home_club_id") or 0)
+            # home_club_id isn't guaranteed numeric: the panel's manual badge picker sets it
+            # to a logo FILENAME stem (that picker exists precisely for clubs with no
+            # PlayCricket ID). A bare int() here crashed every /live poll — and with it the
+            # whole overlay — the moment someone picked a file like "opposition.png".
+            _club_raw = str(s.get("test_club_id") or s.get("home_club_id") or "").strip()
+            club_id   = int(_club_raw) if _club_raw.isdigit() else 0
 
             # match_url: pin to a specific match
             match_url   = s.get("match_url","").strip()
@@ -6624,12 +6652,16 @@ class Handler(BaseHTTPRequestHandler):
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
                     pcs_state["away_abbrev"] = s.get("away_abbrev","").strip().upper()
-                    # Buffer boundary/wicket events before updating prev_state
+                    # Commentary trigger MUST run before buffer_pcs_events: both diff the
+                    # state against _prev_state, but buffer_pcs_events advances _prev_state
+                    # when it's done. Running the trigger after it meant every delta it saw
+                    # was zero, so ball-event commentary could simply never fire.
+                    if s.get("graphics_commentary", True):
+                        check_commentary_trigger(pcs_state)
+                    # Buffer boundary/wicket events (this advances _prev_state)
                     buffer_pcs_events(pcs_state)
                     match_log_snapshot(pcs_state)
                     log_ball_data(pcs_state)   # append to our own ball-by-ball database
-                    if s.get("graphics_commentary", True):
-                        check_commentary_trigger(pcs_state)
                     # Include buffered events in response and clear buffer
                     events = list(_event_buffer)
                     _event_buffer.clear()
@@ -6660,42 +6692,9 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         self._json({"source":"widget","state":None,"club_id":club_id})
 
-        elif path == "/commentary/over/generate":
-            if not self._check_token(): return
-            try:
-                d  = json.loads(body)
-                st = load_state()
-                ps = read_pcs_file(st.get("pcs_output_folder","")) or {}
-                generate_over_commentary(
-                    d.get("over_num",0), d.get("over_runs",0),
-                    d.get("bowler_name",""), d.get("bowler_figs",""),
-                    d.get("balls",""), ps)
-                self._json({"ok":True})
-            except Exception as exc:
-                self._json({"ok":False,"error":str(exc)})
-
-        elif path == "/commentary/test":
-            if not self._check_token(): return
-            if not self._check_rate_limit(path): return
-            try:
-                st = load_state()
-                demo_state = {
-                    "battingTeamName": st.get("home_team","Home CC"),
-                    "bowlingTeamName": st.get("away_team","Opposition CC"),
-                    "score":87,"wickets":3,"overs":18.2,
-                    "batter1":{"name":"A. Richards","runs":34,"balls":52},
-                    "batter2":{"name":"T. Blake","runs":12,"balls":21},
-                    "bowler":{"name":"J. Harrison","wickets":2,"runs":28,"overs":"7"},
-                }
-                threading.Thread(
-                    target=generate_commentary,
-                    args=(demo_state, ["FOUR — 87-3","Wicket — 75-3"]),
-                    daemon=True).start()
-                time.sleep(3)
-                c = get_commentary()
-                self._json({"ok": bool(c["text"]), "text": c["text"] or "Generating..."})
-            except Exception as e:
-                self._json({"ok": False, "error": str(e)}, status=500)
+        # NOTE: /commentary/over/generate and /commentary/test are POST-only (see do_POST).
+        # GET copies of both used to sit here — dead code, and the first referenced do_POST's
+        # `body` variable, which doesn't exist in do_GET.
 
         else:
             self.send_response(404); self.end_headers()
