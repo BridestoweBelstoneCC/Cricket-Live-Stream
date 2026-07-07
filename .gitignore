@@ -17,3 +17,6 @@ sponsors/
 headshots/
 logos/
 socials/
+
+# Match simulator output (rehearsal only)
+sim_pcs_output/

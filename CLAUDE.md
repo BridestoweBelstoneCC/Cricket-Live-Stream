@@ -27,6 +27,13 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
   `.github/workflows/build-setup-wizard.yml` (see gotchas below).
 - **`scoreboard.template`** — the template the scorer's software fills in. Deployed to the
   *scorer's* machine, not the streaming machine.
+- **`simulate_match.py`** — match simulator for rehearsing the whole broadcast without a
+  scorer: writes NV Play-style frames (faithful to the gotchas: ticker clears on the
+  over-completing write, blank pre-match names, runs_required-driven innings 2) to a fake
+  PCS folder. Scenarios: full / chase / century / collapse; `--configure` points the running
+  server at it; `--chaos` injects mid-write/stall failures. Deterministic per `--seed`; the
+  engine is imported by `tests/test_simulator.py` as a parser-consistency harness. Always
+  rehearse graphics changes with it before match day.
 - **`config.ini`** / **`match_state.json`** — local settings (git-ignored, hold secrets).
   Templates: `config.example.ini`, `match_state.example.json`.
 - **`match_data.db`** — SQLite ball-by-ball log, created at runtime (git-ignored).

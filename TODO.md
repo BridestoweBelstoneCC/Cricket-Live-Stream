@@ -21,6 +21,12 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       the panel to its own file served from disk (would also simplify the JS check and
       kill the backslash-escaping gotcha class). CLAUDE.md's "~5000 lines" note is stale.
 
+## Features added on dev (2026-07-07)
+
+- [x] **Match simulator** (`simulate_match.py`): rehearse the entire broadcast without a
+      scorer. Scenarios full/chase/century/collapse, `--configure`, `--chaos` failure
+      injection, deterministic per seed; 17 tests feed its frames through the real parser.
+
 ## Fixed on dev (2026-07-06) — verify live on Saturday before merging to main
 
 - [x] **quickstart.py wiped panel-entered state on every run** (roster, sponsor fields,
