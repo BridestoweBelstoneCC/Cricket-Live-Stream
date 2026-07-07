@@ -38,7 +38,8 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
 
 ## Build / test commands
 
-There is no compiler and no test framework yet — verification is lightweight:
+There is no compiler — verification is a compile check, an embedded-JS syntax check, and a
+stdlib-unittest suite (no test dependencies to install):
 
 ```bash
 # 1. Server must compile cleanly
@@ -51,13 +52,22 @@ python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); pr
 #    gotcha below). Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Run it
+# 3. Automated tests (~80, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+#    parsing, season-stats aggregation, session tokens, quickstart's state merge, a JS↔Python
+#    classifyBall parity check (node, or JavaScriptCore on macOS), and HTTP integration tests
+#    that spin up the real Handler on an ephemeral port (auth, redaction, path traversal,
+#    origin check, loopback carve-out, /live PCS pipeline + event buffer + ball DB).
+python3 -m unittest discover -s tests
+
+# 4. Run it
 pip install -r requirements.txt
 python3 server.py      # or: python3 quickstart.py
 ```
 
-Always run steps 1 and 2 after editing `server.py` or `overlay.html`. Step 2 matters more than
-it looks (see gotchas) — it's also wired into `.github/workflows/ci.yml`.
+Always run steps 1–3 after editing `server.py`, `overlay.html`, or `quickstart.py`. Step 2
+matters more than it looks (see gotchas). All three are wired into `.github/workflows/ci.yml`.
+The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — real
+`match_state.json`/`match_data.db` are never touched.
 
 ## Critical gotchas (these have bitten us before)
 

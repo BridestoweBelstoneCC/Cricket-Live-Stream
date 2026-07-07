@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -23,3 +23,6 @@ jobs:
 
       - name: Check embedded JS (control panel + overlay)
         run: python3 scripts/check_panel_js.py
+
+      - name: Run test suite
+        run: python3 -m unittest discover -s tests -v

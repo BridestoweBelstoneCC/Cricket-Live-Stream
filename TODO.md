@@ -51,3 +51,11 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       value folded in as a fallback).
 - [x] **Duplicate DOM id `replay_enabled`** on the display-only centuries toggle removed.
 - [x] Deleted `CLAUDE 2.md` (stale Finder duplicate of CLAUDE.md).
+- [x] **Added an automated test suite** (`tests/`, stdlib unittest, ~80 tests, wired into
+      CI which now also runs on `dev` pushes): parsing (ball tokens, PCS JSON incl. the
+      innings latch, widget JSON), season-stats aggregation, session tokens + lockout,
+      config token persistence, quickstart's state merge, JS↔Python classifyBall parity,
+      and HTTP integration tests against a real in-process server (auth gating, secret
+      redaction/sentinel round-trip, origin check, loopback carve-out, path traversal,
+      and the /live PCS pipeline with event buffering + the ball-by-ball DB).
+      Run: `python3 -m unittest discover -s tests`

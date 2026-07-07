@@ -119,7 +119,7 @@ def fetch_todays_match(api_key, club_id):
         "match_time":   match.get("match_time",""),
     }, None
 
-def build_state(cfg, match):
+def build_state(cfg, match, state_path=None):
     """Build match_state.json from config + API data, MERGED over the existing file.
 
     The merge matters: the control panel stores plenty that this launcher knows nothing
@@ -127,9 +127,12 @@ def build_state(cfg, match):
     sponsor fields, the cached network test, badge club IDs... A full rewrite here used to
     silently wipe all of them on every match day. Fields quickstart genuinely owns (today's
     opposition, config.ini values, match-day safety defaults like demo_mode=False) still
-    override; everything else in the existing file survives untouched."""
-    state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "match_state.json")
+    override; everything else in the existing file survives untouched.
+
+    state_path is overridable for the test suite; production callers pass nothing."""
+    if state_path is None:
+        state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "match_state.json")
     try:
         import json as _j
         with open(state_path) as _f:
