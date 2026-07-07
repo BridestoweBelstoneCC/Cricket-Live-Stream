@@ -155,6 +155,9 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - `http://localhost:5000/health` — feed freshness, photos, badges, AI key status.
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
+- `http://localhost:5000/highlights/status` — outcome of the last background highlights
+  compile (clips are auto-tagged at replay time via the `clips` DB table; the reel gets
+  captions + a chapters description file).
 - `http://localhost:5000/obs/stream_check?force=1` (auth-required) — recommended bitrate from a
   real upload-speed test, and an encoder comparison from actual short OBS test recordings
   (never trust hardware specs alone for this — see `obs_stream_health_check()`).

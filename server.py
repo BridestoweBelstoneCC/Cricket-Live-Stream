@@ -520,6 +520,10 @@ def db_init():
                 match_id TEXT, innings INTEGER, name TEXT, overs TEXT,
                 maidens INTEGER, runs INTEGER, wickets INTEGER,
                 PRIMARY KEY (match_id, innings, name));
+            CREATE TABLE IF NOT EXISTS clips (
+                match_id TEXT, file TEXT, ts TEXT, reason TEXT,
+                caption TEXT,
+                PRIMARY KEY (match_id, file));
             """)
     except sqlite3.Error as e:
         print(f"  ⚠  match DB init failed: {e}")
@@ -3042,7 +3046,7 @@ def _obs_auth_response(password, salt, challenge):
     auth_response = base64.b64encode(hashlib.sha256((secret + challenge).encode()).digest()).decode()
     return auth_response
 
-def obs_trigger_replay(state):
+def obs_trigger_replay(state, reason=""):
     """
     Full OBS WebSocket v5 flow (runs in a background thread).
     Uses a message-ID tracking approach compatible with OBS 28+.
@@ -3052,6 +3056,11 @@ def obs_trigger_replay(state):
     except ImportError:
         print("  ✗  websocket-client not installed. Run: pip install websocket-client")
         return
+
+    # Caption is built from the match state NOW, at trigger time — by the time OBS has
+    # saved the clip a few seconds from here, the strike may have rotated or a new
+    # batter walked in, and the caption would describe the wrong moment.
+    clip_caption = make_clip_caption(reason, _pcs_last_state)
 
     host     = state.get("obs_host", "localhost")
     port     = state.get("obs_port", 4455)
@@ -3162,6 +3171,10 @@ def obs_trigger_replay(state):
         else:
             _enforce_clip_limit(folder, load_state().get('max_clips', MAX_CLIPS))
             print(f"  ✓  Clip found: {os.path.basename(clip_path)}")
+            # Tag the clip with why it was captured — feeds the highlights compiler
+            log_replay_clip(clip_path, reason, clip_caption)
+            if clip_caption:
+                print(f"  🏷  Tagged: {clip_caption}")
 
             # Step 7: Point ReplayClip media source at the new clip
             send_request(ws, "SetInputSettings", {
@@ -3330,6 +3343,171 @@ def _enforce_clip_limit(folder, limit):
             print(f"  🗑  Deleted old clip: {os.path.basename(f)}")
         except Exception as e:
             print(f"  ✗  Could not delete {f}: {e}")
+
+# ── Replay clip tagging (auto-tagged highlights) ──────────────
+# Every replay the overlay triggers already knows WHY it fired (wicket / four / six /
+# milestone). Recording that reason against the saved clip file — plus the live match
+# context at that moment — is what lets the highlights compiler caption each clip and
+# write a chaptered description, with no operator effort.
+
+def make_clip_caption(reason, match_state):
+    """One broadcast-style caption line for a clip, from the trigger reason plus the live
+    match state at that moment. Returns '' for reasons that shouldn't be tagged (tests)."""
+    r = (reason or "").strip()
+    if not r or r.lower() == "test":
+        return ""
+    st = match_state or {}
+    score_bit = ""
+    if st.get("battingTeamName"):
+        score_bit = f"{st.get('score', 0)}-{st.get('wickets', 0)} ({st.get('overs', 0)} ov)"
+
+    def striker():
+        b1, b2 = st.get("batter1") or {}, st.get("batter2") or {}
+        b = b1 if b1.get("onStrike") else b2
+        if not b.get("name") or b.get("name") == "—":
+            return ""
+        return f"{b['name']} {b.get('runs', 0)}*"
+
+    low = r.lower()
+    if low == "wicket":
+        parts = ["WICKET", st.get("lastWicketBatter", ""), st.get("lastWicketHowOut", "")]
+    elif low == "boundary":
+        parts = ["FOUR", striker()]
+    elif low == "six":
+        parts = ["SIX", striker()]
+    elif low.startswith("century"):
+        parts = ["CENTURY", r.split("-", 1)[1].strip() if "-" in r else ""]
+    elif low.startswith("fifty"):
+        parts = ["FIFTY", r.split("-", 1)[1].strip() if "-" in r else ""]
+    else:
+        parts = [r.upper()]
+    parts.append(score_bit)
+    return "  ·  ".join(p for p in parts if p)
+
+
+def log_replay_clip(clip_path, reason, caption):
+    """Tag a saved replay clip in the DB. Never raises — same rule as log_ball_data."""
+    try:
+        if not clip_path or not caption:
+            return
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        with _db_lock, _db() as c:
+            c.execute("INSERT OR REPLACE INTO clips(match_id,file,ts,reason,caption) "
+                      "VALUES(?,?,?,?,?)",
+                      (current_match_id(), os.path.basename(clip_path), now, reason, caption))
+    except Exception:
+        pass
+
+
+def clip_tags(files):
+    """Map clip basename → {reason, caption} from the DB, for whichever files exist."""
+    try:
+        with _db_lock, _db() as c:
+            rows = c.execute("SELECT file, reason, caption FROM clips").fetchall()
+        wanted = {os.path.basename(f) for f in files}
+        return {r[0]: {"reason": r[1], "caption": r[2]} for r in rows if r[0] in wanted}
+    except Exception:
+        return {}
+
+
+def guess_clip_tags(files, window_sec=90):
+    """Fallback for clips saved manually (OBS hotkey) with no trigger reason on record:
+    correlate the file's mtime against notable balls (W/4/6) in the ball-by-ball log and
+    caption from the closest one inside the window. Returns basename → caption."""
+    out = {}
+    try:
+        with _db_lock, _db() as c:
+            rows = c.execute(
+                "SELECT ts, outcome, is_wicket, batter, bowler, cum_runs, cum_wkts, over "
+                "FROM balls WHERE is_wicket=1 OR outcome IN ('4','6')").fetchall()
+        if not rows:
+            return out
+        events = []
+        for ts, outcome, is_wkt, batter, bowler, runs, wkts, over in rows:
+            try:
+                t = datetime.datetime.fromisoformat(ts).timestamp()
+            except ValueError:
+                continue
+            events.append((t, outcome, is_wkt, batter, bowler, runs, wkts, over))
+        for f in files:
+            try:
+                mtime = os.path.getmtime(f)
+            except OSError:
+                continue
+            near = [e for e in events if abs(e[0] - mtime) <= window_sec]
+            if not near:
+                continue
+            # prefer wickets, then sixes, then fours; closest in time within each class
+            near.sort(key=lambda e: (-(e[2] * 2 + (e[1] == "6")), abs(e[0] - mtime)))
+            t, outcome, is_wkt, batter, bowler, runs, wkts, over = near[0]
+            label = "WICKET" if is_wkt else ("SIX" if outcome == "6" else "FOUR")
+            who = (batter or "").strip()
+            out[os.path.basename(f)] = "  ·  ".join(
+                p for p in (label, who, f"{runs}-{wkts} (over {over + 1})") if p)
+    except Exception:
+        pass
+    return out
+
+
+def plan_highlights(files, tags):
+    """Pure planning step (testable without ffmpeg): chronological clip order with each
+    clip's caption, replay-trigger test clips excluded."""
+    plan = []
+    for f in sorted(files, key=os.path.getmtime):
+        tag = tags.get(os.path.basename(f), {})
+        if (tag.get("reason") or "").strip().lower() == "test":
+            continue
+        plan.append({"file": f, "caption": tag.get("caption", "")})
+    return plan
+
+
+def chapters_text(entries, title="Match highlights"):
+    """YouTube-ready description with chapter timestamps.
+    entries: [{caption, duration}] in reel order (duration in seconds)."""
+    lines = [title, ""]
+    t = 0.0
+    for e in entries:
+        mm, ss = divmod(int(t), 60)
+        lines.append(f"{mm:02d}:{ss:02d} {e['caption'] or 'Replay'}")
+        t += max(0.0, e.get("duration") or 0.0)
+    return "\n".join(lines) + "\n"
+
+
+def _font_path():
+    """A real .ttf/.ttc path for ffmpeg's drawtext, cross-platform (same family list as
+    the Instagram builder). None if nothing usable is found — captions are skipped then."""
+    candidates = [
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    try:
+        import PIL
+        candidates.append(os.path.join(os.path.dirname(PIL.__file__), "fonts",
+                                       "DejaVuSans-Bold.ttf"))
+    except ImportError:
+        pass
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _clip_duration(path):
+    """Clip length in seconds via ffprobe, or None if unavailable."""
+    import shutil
+    if not shutil.which("ffprobe"):
+        return None
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", path],
+                           capture_output=True, text=True, timeout=20)
+        return float(r.stdout.strip()) if r.returncode == 0 else None
+    except Exception:
+        return None
+
 
 # ── Stream health check ────────────────────────────────────────
 # Recommends OBS stream settings (bitrate/resolution/encoder) instead of expecting a
@@ -5058,14 +5236,28 @@ async function hideWeather() {
   prev.textContent = 'Weather widget hidden'; prev.style.color='#3d5a7a';
 }
 
+let _hlPollTimer = null;
 async function compileHighlights() {
   const st = document.getElementById('highlights-status');
-  st.textContent = 'Compiling... this may take a minute.'; st.style.color='#5b9bd5';
+  st.textContent = 'Starting compile...'; st.style.color='#5b9bd5';
   try {
     const res = await apiFetch('/highlights', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d = await res.json();
-    st.textContent = d.ok ? 'Done — ' + d.output : 'Error: ' + (d.error||'unknown');
-    st.style.color = d.ok ? '#4caf50' : '#f44336';
+    if (!d.ok) { st.textContent = 'Error: ' + (d.error||'unknown'); st.style.color='#f44336'; return; }
+    st.textContent = 'Compiling ' + d.clip_count + ' clip' + (d.clip_count!==1?'s':'')
+      + ' (' + (d.tagged||0) + ' auto-tagged with wicket/boundary captions)…';
+    // The compile runs server-side in the background — poll until it resolves
+    if (_hlPollTimer) clearInterval(_hlPollTimer);
+    _hlPollTimer = setInterval(async function() {
+      try {
+        const s2 = await (await apiFetch('/highlights/status')).json();
+        if (!s2.running && s2.message) {
+          clearInterval(_hlPollTimer); _hlPollTimer = null;
+          st.textContent = (s2.ok ? '✓ ' : '✗ ') + s2.message;
+          st.style.color = s2.ok ? '#4caf50' : '#f44336';
+        }
+      } catch(e) {}
+    }, 3000);
   } catch(e) { st.textContent = 'Could not reach server'; st.style.color='#f44336'; }
 }
 
@@ -5728,13 +5920,30 @@ setInterval(pollHealth, 10000);
 # ── HTTP handler ──────────────────────────────────────────────
 
 # ── Post-match highlights compiler ───────────────────────────
+# Last/current compile, for the panel: it kicks off in a background thread, so the POST
+# response can't carry the outcome — the panel polls GET /highlights/status instead.
+_highlights_status = {"running": False, "ok": None, "message": ""}
+
+
+def _ff_filter_path(path):
+    """A path made safe for use INSIDE an ffmpeg filter option value: forward slashes,
+    and ':' escaped (the filter parser treats it as an option separator — bites every
+    Windows drive-letter path)."""
+    return path.replace("\\", "/").replace(":", "\\:")
+
+
 def compile_highlights(folder, output_path, max_clips=100):
     """
-    Stitch all replay clips in folder into a highlights reel using FFmpeg.
-    Clips are sorted by creation time (chronological match order).
-    Adds a 0.5s black gap between clips for a clean broadcast feel.
+    Stitch replay clips into a captioned highlights reel using FFmpeg.
+
+    Clips run in chronological match order. Each tagged clip (tags are recorded the
+    moment the replay fires — see log_replay_clip; untagged clips get a best-effort tag
+    by correlating mtime against the ball-by-ball log) has its caption burned in as a
+    lower-third; replay-test clips are excluded. A YouTube-ready description with
+    chapter timestamps is written next to the reel.
     """
     import shutil
+    import tempfile
     if not shutil.which("ffmpeg"):
         return False, "FFmpeg not found — download from https://ffmpeg.org/download.html and add to PATH"
 
@@ -5749,18 +5958,43 @@ def compile_highlights(folder, output_path, max_clips=100):
     if not clips:
         return False, f"No replay clips found in {folder}"
 
-    clips.sort(key=os.path.getmtime)
-    print(f"  📎  Compiling {len(clips)} clips into highlights reel...")
+    tags = clip_tags(clips)
+    for name, caption in guess_clip_tags(
+            [c for c in clips if os.path.basename(c) not in tags]).items():
+        tags[name] = {"reason": "auto", "caption": caption}
+    plan = plan_highlights(clips, tags)
+    if not plan:
+        return False, "Only replay-test clips found — nothing worth compiling"
+    tagged_n = sum(1 for e in plan if e["caption"])
+    print(f"  📎  Compiling {len(plan)} clips ({tagged_n} captioned) into highlights reel...")
 
-    # Write FFmpeg concat file
-    concat_file = os.path.join(folder, "_concat.txt")
+    font = _font_path()
+    tmpdir = tempfile.mkdtemp(prefix="highlights_")
+    concat_file = os.path.join(tmpdir, "_concat.txt")
     try:
-        with open(concat_file, "w") as f:
-            for clip in clips:
-                # Use forward slashes for FFmpeg on Windows
-                safe_path = clip.replace("\\", "/")
-                f.write(f"file '{safe_path}'\n")
-                f.write("duration 0.5\n")  # small gap between clips
+        entries = []
+        with open(concat_file, "w", encoding="utf-8") as f:
+            for i, e in enumerate(plan):
+                src = e["file"]
+                if e["caption"] and font:
+                    # Caption via a textfile (no escaping minefield for the text itself)
+                    txt_path = os.path.join(tmpdir, f"cap_{i:03d}.txt")
+                    with open(txt_path, "w", encoding="utf-8") as tf:
+                        tf.write(e["caption"])
+                    vf = ("drawtext=textfile='" + _ff_filter_path(txt_path) + "'"
+                          ":fontfile='" + _ff_filter_path(font) + "'"
+                          ":fontcolor=white:fontsize=38:x=48:y=h-th-48"
+                          ":box=1:boxcolor=black@0.55:boxborderw=16")
+                    captioned = os.path.join(tmpdir, f"cap_{i:03d}.mp4")
+                    r = subprocess.run(
+                        ["ffmpeg", "-y", "-i", src, "-vf", vf,
+                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                         "-c:a", "aac", "-b:a", "160k", captioned],
+                        capture_output=True, text=True, timeout=180)
+                    if r.returncode == 0:
+                        src = captioned      # caption failed? fall back to the raw clip
+                f.write(f"file '{src.replace(chr(92), '/')}'\n")
+                entries.append({"caption": e["caption"], "duration": _clip_duration(src)})
 
         cmd = [
             "ffmpeg", "-y",
@@ -5770,17 +6004,31 @@ def compile_highlights(folder, output_path, max_clips=100):
             "-c:a", "aac", "-b:a", "128k",
             output_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             return False, f"FFmpeg error: {result.stderr[-200:]}"
-        return True, f"Highlights saved to {output_path} ({len(clips)} clips)"
+
+        # Chapters/description file — only when every clip's duration is known (ffprobe)
+        desc_note = ""
+        if entries and all(e["duration"] for e in entries):
+            cfg = load_state()
+            title = (f"{cfg.get('home_team','Home')} v {cfg.get('away_team','Opposition')}"
+                     f" — highlights, {datetime.date.today().strftime('%d %b %Y')}")
+            desc_path = os.path.splitext(output_path)[0] + "_description.txt"
+            try:
+                with open(desc_path, "w", encoding="utf-8") as df:
+                    df.write(chapters_text(entries, title=title))
+                desc_note = f" + chapter list ({os.path.basename(desc_path)})"
+            except OSError:
+                pass
+        return True, (f"Highlights saved to {output_path} "
+                      f"({len(plan)} clips, {tagged_n} captioned{desc_note})")
     except subprocess.TimeoutExpired:
         return False, "FFmpeg timed out — too many clips or slow machine"
     except Exception as e:
         return False, str(e)
     finally:
-        if os.path.exists(concat_file):
-            os.remove(concat_file)
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -6475,6 +6723,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # (a second, unreachable /pcs/debug handler used to live here — the real one is above)
 
+        elif path == "/highlights/status":
+            # Outcome of the last/current background compile (see POST /highlights)
+            self._json(dict(_highlights_status))
+
         elif path == "/status":
             # Server uptime and clip count
             uptime_secs = int(time.time() - SERVER_START_TIME)
@@ -6768,7 +7020,7 @@ class Handler(BaseHTTPRequestHandler):
                 data   = json.loads(body)
                 reason = data.get("reason","Unknown")
                 # Fire in background thread — don't block the overlay
-                t = threading.Thread(target=obs_trigger_replay, args=(state,), daemon=True)
+                t = threading.Thread(target=obs_trigger_replay, args=(state, reason), daemon=True)
                 t.start()
                 self._json({"ok":True,"reason":reason})
                 print(f"  ▶  Replay queued — reason: {reason}")
@@ -6839,15 +7091,24 @@ class Handler(BaseHTTPRequestHandler):
                 folder = st.get("replay_folder","") or _default_replay_folder()
                 output = s.get("output", os.path.join(folder, "highlights.mp4"))
                 max_c  = int(st.get("max_clips", 100))
+                _highlights_status.update({"running": True, "ok": None, "message": ""})
                 def run_compile():
-                    ok, msg = compile_highlights(folder, output, max_c)
+                    try:
+                        ok, msg = compile_highlights(folder, output, max_c)
+                    except Exception as exc:      # belt and braces — status must resolve
+                        ok, msg = False, str(exc)
+                    _highlights_status.update({"running": False, "ok": ok, "message": msg})
                     print(f"  {'✓' if ok else '✗'}  Highlights: {msg}")
                 threading.Thread(target=run_compile, daemon=True).start()
-                # Count current clips
+                # Count current clips and how many carry a tag (excluding replay tests)
                 patterns = ["*.mkv","*.mp4","*.flv","*.mov"]
                 clips = [c for p in patterns for c in glob.glob(os.path.join(folder,p))
                          if "highlights" not in os.path.basename(c).lower()]
-                self._json({"ok": True, "output": output, "clip_count": len(clips)})
+                tags  = clip_tags(clips)
+                tagged = sum(1 for t in tags.values()
+                             if (t.get("reason") or "").lower() != "test")
+                self._json({"ok": True, "output": output,
+                            "clip_count": len(clips), "tagged": tagged})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
 

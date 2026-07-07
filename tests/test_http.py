@@ -107,7 +107,8 @@ class TestRoutesOpen(HttpTestBase):
             self.assertEqual(status, 404, f"GET {path} should 404 (POST-only or removed)")
 
     def test_diagnostics_respond(self):
-        for path in ("/health", "/status", "/data/status", "/pcs/debug", "/logos/debug"):
+        for path in ("/health", "/status", "/data/status", "/pcs/debug", "/logos/debug",
+                     "/highlights/status"):
             status, body = self.get_json(path)
             self.assertEqual(status, 200, path)
         status, body = self.get_json("/health")

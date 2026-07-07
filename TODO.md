@@ -26,6 +26,14 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
 - [x] **Match simulator** (`simulate_match.py`): rehearse the entire broadcast without a
       scorer. Scenarios full/chase/century/collapse, `--configure`, `--chaos` failure
       injection, deterministic per seed; 17 tests feed its frames through the real parser.
+- [x] **Auto-tagged highlights**: every replay clip is tagged at capture with why it fired
+      plus the match context (a `clips` DB table); manually saved clips get a best-effort
+      tag by mtime-correlation against the ball log. The compiler burns captions in as
+      lower-thirds, skips replay-test clips, and writes a YouTube-ready
+      `highlights_description.txt` with chapter timestamps; the panel now polls
+      `/highlights/status` and shows the real outcome (it used to fire-and-forget).
+      ⚠ ffmpeg isn't on this Mac — run one compile on the Windows streaming machine
+      before Saturday to verify drawtext there.
 
 ## Fixed on dev (2026-07-06) — verify live on Saturday before merging to main
 
