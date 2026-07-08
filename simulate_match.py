@@ -35,6 +35,8 @@ import random
 import sys
 import time
 
+from scoring_engine import InningsEngine
+
 # ── Squads (deliberately club-agnostic; two Smiths to rehearse the brothers path) ──
 HOME_TEAM = "Home CC"
 AWAY_TEAM = "Rival CC"
@@ -51,76 +53,21 @@ AWAY_XI = [
     ("13", "Cy Woods"), ("27", "Vic Moon"),
 ]
 
-WICKET_TYPES = [  # (weight, type) — howout strings formatted like PCS Pro's
-    (45, "caught"), (30, "bowled"), (12, "lbw"), (8, "run out"), (5, "stumped")]
+# Dismissal-type weights for SAMPLED wickets (manual scoring picks the type explicitly)
+SIM_WICKET_WEIGHTS = [(45, "caught"), (30, "bowled"), (12, "lbw"), (8, "run out"), (5, "stumped")]
 
 
-def surname(full):
-    return full.split()[-1].upper()
-
-
-class Batter:
-    def __init__(self, number, name):
-        self.number, self.name = number, name
-        self.runs = self.balls = self.fours = self.sixes = 0
-        self.how_out = ""          # "" = not out / yet to bat
-
-    @property
-    def sr(self):
-        return round(self.runs / self.balls * 100, 1) if self.balls else 0.0
-
-
-class Bowler:
-    def __init__(self, number, name):
-        self.number, self.name = number, name
-        self.legal = self.runs = self.wkts = self.maidens = 0
-        self._over_conceded = 0    # runs off this bowler in the current over
-
-    @property
-    def overs_str(self):
-        return f"{self.legal // 6}.{self.legal % 6}" if self.legal % 6 else str(self.legal // 6)
-
-
-class InningsSim:
-    """One innings, ball by ball. frame() renders the current state as the exact dict
-    NV Play's scoreboard.template produces (all values strings)."""
+class SimInnings(InningsEngine):
+    """The shared scorer's-book engine (scoring_engine.py) plus random outcome sampling —
+    all the bookkeeping lives in the engine; only the dice live here. The manual scoring
+    page drives the SAME engine with operator button presses instead."""
 
     def __init__(self, batting_xi, bowling_xi, batting_name, bowling_name,
                  max_overs, rng, target=None, wicket_boost=1.0, run_boost=1.0):
+        super().__init__(batting_xi, bowling_xi, batting_name, bowling_name,
+                         max_overs, target=target)
         self.rng = rng
-        self.batting_name, self.bowling_name = batting_name, bowling_name
-        self.max_overs, self.target = max_overs, target
-        self.batters = [Batter(n, nm) for n, nm in batting_xi]
-        self.fielders = [nm for _, nm in bowling_xi]
-        # Bowling attack: the last five in the order, two ends alternating, 4-over spells
-        self.attack = [Bowler(n, nm) for n, nm in bowling_xi[6:]]
-        self.striker, self.non_striker = self.batters[0], self.batters[1]
-        self.next_bat = 2
-        self.total = self.wkts = self.legal_balls = 0
-        self.extras = 0
-        self.over_tokens = []          # this over's ticker tokens
-        self.over_runs = 0             # team runs this over
-        self.over_history = []         # runs per completed over
-        self.token_history = []        # (tokens, runs) per completed over — for tests
-        self.p_runs = self.p_balls = 0
-        self.last_wicket = {"howout": "", "batter": "", "bowler": "", "fielder": "", "type": ""}
         self.wicket_boost, self.run_boost = wicket_boost, run_boost
-        self.openers_selected = False  # pre-match: names blank until this flips
-
-    # ── Engine ────────────────────────────────────────────────
-    def bowler_for_over(self, over_no):
-        end = over_no % 2
-        cycle = self.attack[end::2] or self.attack
-        return cycle[((over_no // 2) // 4) % len(cycle)]
-
-    @property
-    def current_over_no(self):
-        return self.legal_balls // 6
-
-    @property
-    def complete(self):
-        return (self.wkts >= 10 or self.legal_balls >= self.max_overs * 6
-                or (self.target is not None and self.total >= self.target))
 
     def _sample_outcome(self):
         w = self.wicket_boost
@@ -138,203 +85,32 @@ class InningsSim:
                 return kind
         return "dot"
 
-    def _dismiss(self, bowler):
-        pick = self.rng.uniform(0, sum(w for w, _ in WICKET_TYPES))
-        for w, kind in WICKET_TYPES:
-            pick -= w
-            if pick <= 0:
-                break
-        out = self.striker
-        b_sur = surname(bowler.name)
-        fielder = self.rng.choice([f for f in self.fielders if f != bowler.name])
-        f_sur = surname(fielder)
-        if kind == "caught":
-            howout, credit = f"C {f_sur} B {b_sur}", True
-        elif kind == "bowled":
-            howout, credit, fielder = f"B {b_sur}", True, ""
-        elif kind == "lbw":
-            howout, credit, fielder = f"LBW B {b_sur}", True, ""
-        elif kind == "stumped":
-            howout, credit = f"ST {f_sur} B {b_sur}", True
-        else:  # run out — not credited to the bowler
-            howout, credit = f"RUN OUT ({f_sur})", False
-        out.how_out = howout
-        self.wkts += 1
-        if credit:
-            bowler.wkts += 1
-        self.last_wicket = {"howout": howout,
-                            "batter": f"{surname(out.name)} {out.runs}",
-                            "bowler": bowler.name if credit else "",
-                            "fielder": fielder, "type": kind.upper()}
-        self.p_runs = self.p_balls = 0
-        if self.next_bat < 11:
-            self.striker = self.batters[self.next_bat]   # new batter takes strike
-            self.next_bat += 1
-
     def ball(self):
-        """Bowl one delivery; mutates state. Returns the ticker token (or '' if the
+        """Bowl one randomly sampled delivery; returns the ticker token ('' if the
         innings was already complete)."""
         if self.complete:
             return ""
         self.openers_selected = True
-        bowler = self.bowler_for_over(self.current_over_no)
         kind = self._sample_outcome()
-        token, team_runs, ran = "", 0, 0
-
         if kind == "W":
-            self.striker.balls += 1
-            bowler.legal += 1
-            self._dismiss(bowler)
-            token = "W"
-        elif kind == "wide":
-            ran = self.rng.choice([0, 0, 0, 1, 4])          # occasional w+1 / w+4
-            team_runs = 1 + ran
-            self.extras += team_runs
-            bowler.runs += team_runs
-            bowler._over_conceded += team_runs
-            token = f"w+{ran}" if ran else "w"
-        elif kind == "noball":
-            bat = self.rng.choice([0, 0, 1, 2, 4])
-            team_runs = 1 + bat
-            self.extras += 1
-            self.striker.runs += bat
-            self.striker.balls += 1
-            if bat == 4:
-                self.striker.fours += 1
-            bowler.runs += team_runs
-            bowler._over_conceded += team_runs
-            ran = bat if bat not in (4, 6) else 0
-            token = f"{bat}nb" if bat else "nb"
-        elif kind in ("bye", "legbye"):
-            ran = self.rng.choice([1, 1, 2, 4])
-            team_runs = ran
-            self.extras += ran
-            self.striker.balls += 1
-            bowler.legal += 1
-            token = f"{ran}{'lb' if kind == 'legbye' else 'b'}"
-            if ran == 4:
-                ran = 0                                     # boundary byes: no crossing
-        elif kind == "dot":
-            self.striker.balls += 1
-            bowler.legal += 1
-            token = "."
-        else:                                               # runs off the bat
-            n = int(kind)
-            team_runs = n
-            self.striker.runs += n
-            self.striker.balls += 1
-            if n == 4:
-                self.striker.fours += 1
-            if n == 6:
-                self.striker.sixes += 1
-            bowler.legal += 1
-            bowler.runs += n
-            bowler._over_conceded += n
-            ran = n if n not in (4, 6) else 0
-            token = str(n)
-
-        if kind not in ("wide", "noball"):
-            self.legal_balls += 1
-            if kind != "W":            # _dismiss just reset the NEW pair's partnership
-                self.p_balls += 1
-        self.total += team_runs
-        self.p_runs += team_runs
-        self.over_runs += team_runs
-        self.over_tokens.append(token)
-
-        if ran % 2 == 1:
-            self.striker, self.non_striker = self.non_striker, self.striker
-
-        # Over completed? Roll everything over — the FRAME after this ball must already
-        # show the cleared ticker (NV Play semantics; the overlay handles the missing
-        # final ball via the score delta).
-        if kind not in ("wide", "noball") and self.legal_balls % 6 == 0:
-            if bowler._over_conceded == 0:
-                bowler.maidens += 1
-            bowler._over_conceded = 0
-            self.over_history.append(self.over_runs)
-            self.token_history.append((list(self.over_tokens), self.over_runs))
-            self.over_tokens, self.over_runs = [], 0
-            self.striker, self.non_striker = self.non_striker, self.striker
-        return token
-
-    # ── Frame rendering ───────────────────────────────────────
-    def overs_str(self):
-        return f"{self.legal_balls // 6}.{self.legal_balls % 6}"
-
-    def frame(self, innings_no):
-        ov_float = self.legal_balls / 6
-        rr = round(self.total / ov_float, 2) if ov_float else 0.0
-        pre = not self.openers_selected
-        b1, b2 = self.striker, self.non_striker
-        bowler = self.bowler_for_over(self.current_over_no) if not pre else None
-        f = {
-            "batting_team": self.batting_name, "bowling_team": self.bowling_name,
-            "innings": str(innings_no),
-            "runs": str(self.total), "wickets": str(self.wkts), "overs": self.overs_str(),
-            "partnership_runs": str(self.p_runs), "partnership_balls": str(self.p_balls),
-            "last_ball": " ".join(self.over_tokens),
-            "last_over_runs": str(self.over_history[-1] if self.over_history else 0),
-            "run_rate": f"{rr:.2f}" if ov_float else "0.00",
-            # NB: no "over_history" key — scoreboard.template doesn't map one, so the
-            # real feed never carries it; the server tolerates its absence.
-            "last_wicket_howout": self.last_wicket["howout"],
-            "last_wicket_batter": self.last_wicket["batter"],
-            "last_wicket_bowler": self.last_wicket["bowler"],
-            "last_wicket_fielder": self.last_wicket["fielder"],
-            "last_wicket_type": self.last_wicket["type"],
-            "max_overs": str(self.max_overs),
-        }
-        for tag, b, strike in (("batter1", b1, True), ("batter2", b2, False)):
-            f[f"{tag}_name"] = "" if pre else b.name
-            f[f"{tag}_number"] = "" if pre else b.number
-            f[f"{tag}_runs"] = "0" if pre else str(b.runs)
-            f[f"{tag}_balls"] = "0" if pre else str(b.balls)
-            f[f"{tag}_strike"] = "" if pre else ("True" if strike else "False")
-            f[f"{tag}_fours"] = "0" if pre else str(b.fours)
-            f[f"{tag}_sixes"] = "0" if pre else str(b.sixes)
-            f[f"{tag}_sr"] = "0" if pre else str(b.sr)
-        f["bowler_name"] = "" if pre else bowler.name
-        f["bowler_overs"] = "0" if pre else bowler.overs_str
-        f["bowler_runs"] = "0" if pre else str(bowler.runs)
-        f["bowler_wickets"] = "0" if pre else str(bowler.wkts)
-        f["bowler_maidens"] = "0" if pre else str(bowler.maidens)
-        if self.target is not None:
-            need = max(0, self.target - self.total)
-            balls_left = max(0, self.max_overs * 6 - self.legal_balls)
-            f["target"] = str(self.target)
-            f["runs_required"] = str(need)
-            f["balls_remaining"] = str(balls_left)
-            f["req_rate"] = f"{(need / balls_left * 6):.2f}" if balls_left else "0.00"
-        else:
-            f["target"] = f["runs_required"] = f["balls_remaining"] = ""
-            f["req_rate"] = ""
-        # Full-card fields — every batter who has batted (or is in), bowlers with figures
-        batted = [b for b in self.batters[:max(self.next_bat, 2)]]
-        for i in range(1, 12):
-            if not pre and i <= len(batted):
-                b = batted[i - 1]
-                at_crease = b in (self.striker, self.non_striker) and not b.how_out
-                f[f"card_b{i}_name"] = b.name
-                f[f"card_b{i}_runs"] = str(b.runs)
-                f[f"card_b{i}_balls"] = str(b.balls)
-                f[f"card_b{i}_out"] = "" if at_crease or not b.how_out else b.how_out
-            else:
-                f[f"card_b{i}_name"] = f[f"card_b{i}_out"] = ""
-                f[f"card_b{i}_runs"] = f[f"card_b{i}_balls"] = ""
-        bowled = [w for w in self.attack if w.legal or w.runs]
-        for i in range(1, 12):
-            if not pre and i <= len(bowled):
-                w = bowled[i - 1]
-                f[f"card_w{i}_name"] = w.name
-                f[f"card_w{i}_o"] = w.overs_str
-                f[f"card_w{i}_m"] = str(w.maidens)
-                f[f"card_w{i}_r"] = str(w.runs)
-                f[f"card_w{i}_w"] = str(w.wkts)
-            else:
-                f[f"card_w{i}_name"] = ""
-                f[f"card_w{i}_o"] = f[f"card_w{i}_m"] = f[f"card_w{i}_r"] = f[f"card_w{i}_w"] = ""
-        return f
+            pick = self.rng.uniform(0, sum(w for w, _ in SIM_WICKET_WEIGHTS))
+            wtype = SIM_WICKET_WEIGHTS[-1][1]
+            for w, wtype in SIM_WICKET_WEIGHTS:
+                pick -= w
+                if pick <= 0:
+                    break
+            bowler = self.bowler_for_over(self.current_over_no)
+            fielder = ""
+            if wtype in ("caught", "stumped", "run out"):
+                fielder = self.rng.choice([f for f in self.fielders if f != bowler.name])
+            return self.apply_outcome("W", wicket_type=wtype, fielder=fielder)
+        if kind == "wide":
+            return self.apply_outcome("wide", runs=self.rng.choice([0, 0, 0, 1, 4]))
+        if kind == "noball":
+            return self.apply_outcome("noball", runs=self.rng.choice([0, 0, 1, 2, 4]))
+        if kind in ("bye", "legbye"):
+            return self.apply_outcome(kind, runs=self.rng.choice([1, 1, 2, 4]))
+        return self.apply_outcome(kind)
 
 
 class MatchSimulator:
@@ -359,7 +135,7 @@ class MatchSimulator:
     def _new_innings(self, second=False, target=None, max_overs=None, **tweaks):
         bat_xi, bowl_xi = (AWAY_XI, HOME_XI) if second else (HOME_XI, AWAY_XI)
         bat_nm, bowl_nm = (AWAY_TEAM, HOME_TEAM) if second else (HOME_TEAM, AWAY_TEAM)
-        inn = InningsSim(bat_xi, bowl_xi, bat_nm, bowl_nm, max_overs or self.max_overs,
+        inn = SimInnings(bat_xi, bowl_xi, bat_nm, bowl_nm, max_overs or self.max_overs,
                          self.rng, target=target, **tweaks)
         self.innings.append(inn)
         return inn

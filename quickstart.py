@@ -272,6 +272,22 @@ def main():
         log("Local mode — control panel accessible on this machine only", "ok")
     print()
 
+    # ── Data source ──
+    print("  How is today's match being scored?")
+    print()
+    print("    [1] NV Play / PCS Pro — the scorer's laptop writes the live feed (recommended)")
+    print("    [2] Manual scoring — score ball-by-ball from a phone/tablet at /scoring")
+    print()
+    try:
+        choice = input("  Enter 1 or 2 [1]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        choice = "1"
+    manual_mode = (choice == "2")
+    if manual_mode:
+        log("Manual scoring — set the match up at /scoring once the server starts", "ok")
+        log("Tip: remote access mode + Tailscale lets a volunteer score from the boundary", "")
+    print()
+
     # ── Load config ──
     log("Loading config.ini...")
     cfg = load_config()
@@ -331,15 +347,18 @@ def main():
         log(f"OBS setup skipped: {e}", "warn")
 
     # ── Validate PCS folder ──
-    pcs_folder = state["pcs_output_folder"]
-    if pcs_folder:
-        if os.path.isdir(pcs_folder):
-            log(f"PCS folder found: {pcs_folder}", "ok")
-        else:
-            log(f"PCS folder not found: {pcs_folder}", "warn")
-            log("Check pcs_output_folder in config.ini", "warn")
+    if manual_mode:
+        log("PCS folder checks skipped — scoring manually at /scoring today", "ok")
     else:
-        log("No PCS folder set — enter it in the control panel", "warn")
+        pcs_folder = state["pcs_output_folder"]
+        if pcs_folder:
+            if os.path.isdir(pcs_folder):
+                log(f"PCS folder found: {pcs_folder}", "ok")
+            else:
+                log(f"PCS folder not found: {pcs_folder}", "warn")
+                log("Check pcs_output_folder in config.ini", "warn")
+        else:
+            log("No PCS folder set — enter it in the control panel", "warn")
 
     # ── Summary ──
     print()
@@ -386,6 +405,9 @@ def main():
     print()
     print("  Control panel: http://localhost:5000/control")
     print("  Overlay:       http://localhost:5000/overlay")
+    if manual_mode:
+        print("  Manual scoring: http://localhost:5000/scoring  ← set the match up here")
+        log("(Any PCS feed warnings in the pre-flight check above are expected today)", "")
     if remote_mode:
         ts_ip = None
         try:
@@ -397,8 +419,12 @@ def main():
             pass
         if ts_ip:
             print(f"  Remote panel:  http://{ts_ip}:5000/control  (Tailscale)")
+            if manual_mode:
+                print(f"  Remote scoring: http://{ts_ip}:5000/scoring  (Tailscale)")
         else:
             print("  Remote panel:  http://<tailscale-ip>:5000/control")
+            if manual_mode:
+                print("  Remote scoring: http://<tailscale-ip>:5000/scoring")
     print()
     print("  Keep this window open while streaming.")
     print("  Press Ctrl+C to stop the server.")

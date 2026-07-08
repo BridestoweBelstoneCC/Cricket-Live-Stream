@@ -20,3 +20,6 @@ socials/
 
 # Match simulator output (rehearsal only)
 sim_pcs_output/
+
+# Manual scoring session (live match data, per-day)
+manual_scoring.json

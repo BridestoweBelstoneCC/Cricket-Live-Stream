@@ -57,6 +57,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import sqlite3
 from urllib.parse import urlparse, urlencode
 
+from scoring_engine import InningsEngine   # shared scorer's book — also drives simulate_match
+
 SERVER_START_TIME = time.time()
 
 # ── Auth ─────────────────────────────────────────────────────
@@ -2938,6 +2940,216 @@ def parse_pcs_json(data):
     return state
 
 
+# ── Manual scoring (/scoring) ─────────────────────────────────
+# For clubs (or match days) without NV Play/PCS Pro: a phone/tablet page of big buttons
+# drives the SAME InningsEngine the simulator uses, and manual_live_state() renders its
+# frames through parse_pcs_json — so the overlay, ball-by-ball DB, highlights tagging and
+# every graphic work unchanged, exactly as if a scorer's feed were present.
+#
+# Event-sourced: every button press is an event; undo pops the last event and replays the
+# rest through the (deterministic) engine, so the book after an undo is provably identical
+# to never having pressed the button. The event log persists to manual_scoring.json after
+# every action — a server restart or a dropped phone resumes mid-over.
+
+MANUAL_SCORING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "manual_scoring.json")
+_manual_lock = threading.Lock()
+_manual = {"session": None, "load_attempted": False}
+
+
+class ManualScoringSession:
+    def __init__(self, config):
+        cfg = dict(config or {})
+        cfg["home"] = (cfg.get("home") or "Home CC").strip()
+        cfg["away"] = (cfg.get("away") or "Opposition CC").strip()
+        cfg["max_overs"] = max(1, min(120, int(cfg.get("max_overs") or 40)))
+        cfg["batting_first"] = "away" if cfg.get("batting_first") == "away" else "home"
+        self.config = cfg
+        self.events = []
+        self.innings = []
+        self._start_innings()
+
+    # ── Teams ────────────────────────────────────────────────
+    @staticmethod
+    def _xi(names, side_label):
+        """Pad/trim a list of names to a full XI; blanks become 'Home CC 4' style
+        placeholders so the card and lineup graphics always have eleven rows."""
+        clean = [str(n).strip() for n in (names or []) if str(n).strip()]
+        while len(clean) < 11:
+            clean.append(f"{side_label} {len(clean) + 1}")
+        return [("", n) for n in clean[:11]]
+
+    def _sides(self, innings_no):
+        cfg = self.config
+        home_bats = (cfg["batting_first"] == "home") == (innings_no == 1)
+        if home_bats:
+            return (self._xi(cfg.get("home_xi"), cfg["home"]),
+                    self._xi(cfg.get("away_xi"), cfg["away"]), cfg["home"], cfg["away"])
+        return (self._xi(cfg.get("away_xi"), cfg["away"]),
+                self._xi(cfg.get("home_xi"), cfg["home"]), cfg["away"], cfg["home"])
+
+    def _start_innings(self):
+        n = len(self.innings) + 1
+        bat_xi, bowl_xi, bat_nm, bowl_nm = self._sides(n)
+        target = self.innings[0].total + 1 if n == 2 else None
+        self.innings.append(InningsEngine(
+            bat_xi, bowl_xi, bat_nm, bowl_nm, self.config["max_overs"],
+            target=target, openers_selected=True))
+
+    @property
+    def current(self):
+        return self.innings[-1]
+
+    @property
+    def innings_no(self):
+        return len(self.innings)
+
+    @property
+    def match_over(self):
+        return self.innings_no == 2 and self.current.complete
+
+    # ── Events ───────────────────────────────────────────────
+    def _apply(self, ev):
+        kind = ev.get("event")
+        inn = self.current
+        if kind == "ball":
+            inn.apply_outcome(ev.get("kind", ""), runs=int(ev.get("runs", 0) or 0),
+                              wicket_type=ev.get("wicket_type", "bowled"),
+                              fielder=(ev.get("fielder") or "").strip(),
+                              out_non_striker=bool(ev.get("out_non_striker")))
+        elif kind == "bowler":
+            name = (ev.get("name") or "").strip()
+            if not name:
+                raise ValueError("bowler name required")
+            inn.set_bowler(name)
+        elif kind == "batter":
+            inn.choose_next_batter((ev.get("name") or "").strip())
+        elif kind == "swap_strike":
+            inn.swap_strike()
+        elif kind == "end_innings":
+            inn.end()
+        elif kind == "start_innings":
+            if self.innings_no != 1:
+                raise ValueError("the second innings has already started")
+            if not inn.complete:
+                raise ValueError("end the first innings before starting the second")
+            self._start_innings()
+        else:
+            raise ValueError(f"unknown event {kind!r}")
+
+    def apply(self, ev):
+        """Validate + apply one operator action, record it, persist."""
+        self._apply(ev)                # raises before anything is recorded on bad input
+        self.events.append(ev)
+        self.save()
+
+    def undo(self):
+        if not self.events:
+            raise ValueError("nothing to undo")
+        dropped = self.events.pop()
+        self._rebuild()
+        self.save()
+        return dropped
+
+    def _rebuild(self):
+        """Replay the event log from a fresh book — the engine is deterministic, so this
+        is exact. Also how a saved session is restored after a server restart."""
+        events = self.events
+        self.events = []
+        self.innings = []
+        self._start_innings()
+        for ev in events:
+            self._apply(ev)            # was valid when first applied
+        self.events = events
+
+    # ── Persistence ──────────────────────────────────────────
+    def save(self):
+        try:
+            tmp = MANUAL_SCORING_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"config": self.config, "events": self.events}, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, MANUAL_SCORING_FILE)
+        except OSError as e:
+            # Scoring continues in memory — losing restart-resilience beats losing the ball
+            print(f"  ⚠  Manual scoring: could not save session ({e})")
+
+    @classmethod
+    def load(cls):
+        with open(MANUAL_SCORING_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        sess = cls(data.get("config") or {})
+        sess.events = list(data.get("events") or [])
+        sess._rebuild()
+        return sess
+
+
+def _manual_session_locked():
+    """Current session, lazily restoring a saved one after a restart. Caller holds the lock."""
+    if _manual["session"] is None and not _manual["load_attempted"]:
+        _manual["load_attempted"] = True
+        if os.path.exists(MANUAL_SCORING_FILE):
+            try:
+                _manual["session"] = ManualScoringSession.load()
+                s = _manual["session"]
+                print(f"  ✓  Manual scoring: resumed saved session — "
+                      f"{s.current.batting_name} {s.current.total}-{s.current.wkts} "
+                      f"({s.current.overs_str()} ov), innings {s.innings_no}")
+            except Exception as e:
+                print(f"  ⚠  Manual scoring: saved session unreadable ({e}) — ignoring it")
+    return _manual["session"]
+
+
+def manual_live_state():
+    """Overlay state from the manual scoring session, or None when not active. Rendered
+    through parse_pcs_json so it is EXACTLY what the PCS file path would produce."""
+    with _manual_lock:
+        sess = _manual_session_locked()
+        if not sess:
+            return None
+        frame = sess.current.frame(sess.innings_no)
+    return parse_pcs_json(frame)
+
+
+def manual_ui_state():
+    """Everything the /scoring page needs to draw itself."""
+    with _manual_lock:
+        sess = _manual_session_locked()
+        if not sess:
+            return {"active": False}
+        inn = sess.current
+        bowler = inn.bowler_for_over(inn.current_over_no)
+        arrived = None      # the auto-arrived new batter who hasn't faced a ball yet
+        for b in (inn.striker, inn.non_striker):
+            if (not b.how_out and b.balls == 0 and b.runs == 0 and inn.next_bat > 2
+                    and inn.batters.index(b) == inn.next_bat - 1):
+                arrived = b.name
+        return {
+            "active": True, "innings": sess.innings_no,
+            "batting": inn.batting_name, "bowling": inn.bowling_name,
+            "score": inn.total, "wickets": inn.wkts,
+            "overs": inn.overs_str(), "max_overs": inn.max_overs,
+            "striker": {"name": inn.striker.name, "runs": inn.striker.runs,
+                        "balls": inn.striker.balls},
+            "non_striker": {"name": inn.non_striker.name, "runs": inn.non_striker.runs,
+                            "balls": inn.non_striker.balls},
+            "bowler": {"name": bowler.name,
+                       "figs": f"{bowler.overs_str}-{bowler.maidens}-{bowler.runs}-{bowler.wkts}"},
+            "this_over": list(inn.over_tokens),
+            "target": inn.target,
+            "need": max(0, inn.target - inn.total) if inn.target else None,
+            "innings_complete": inn.complete,
+            "match_over": sess.match_over,
+            "awaiting_bowler": inn.awaiting_new_over,
+            "new_batter": arrived,
+            "yet_to_bat": [b.name for b in inn.batters[inn.next_bat:] if not b.how_out],
+            "bowling_xi": list(inn.fielders),
+            "last_wicket": inn.last_wicket["howout"],
+            "events": len(sess.events),
+        }
+
+
 # ── PlayCricket API — auto-detect today's match ──────────────────────────────
 def fetch_todays_match(api_key, site_id):
     """
@@ -4079,6 +4291,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False,
                             "error": f"control.html not found next to server.py ({e}) — "
                                      f"restore it from the repo"}, status=500)
+        elif path == "/scoring":
+            # Manual ball-by-ball scoring page — phones/tablets, no NV Play needed
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "scoring.html"), encoding="utf-8") as f:
+                    self._html(f.read())
+            except OSError as e:
+                self._json({"ok": False,
+                            "error": f"scoring.html not found next to server.py ({e})"},
+                           status=500)
+        elif path == "/scoring/state":
+            # Read-only view for the scoring page (no secrets — open, like /live/view)
+            self._json(manual_ui_state())
         elif path == "/state":
             st = load_state()
             # Add boolean flags so the overlay can gate features without seeing raw secrets
@@ -4758,9 +4983,13 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     self._json({"source":"api","error":str(e),"data":None})
             else:
-                # PCS Pro local file takes priority — instant, ball by ball
-                pcs_folder = s.get("pcs_output_folder","").strip()
-                pcs_state  = read_pcs_file(pcs_folder) if pcs_folder else None
+                # Manual scoring session (if one is live) outranks the PCS file; the PCS
+                # file outranks the widget. Manual state is rendered through the same
+                # parser, so downstream nothing can tell the difference — both report
+                # source "pcs" (the overlay's fast-poll signal), distinguished by "feed".
+                pcs_folder   = s.get("pcs_output_folder","").strip()
+                manual_state = manual_live_state()
+                pcs_state    = manual_state or (read_pcs_file(pcs_folder) if pcs_folder else None)
                 if pcs_state:
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
@@ -4782,7 +5011,9 @@ class Handler(BaseHTTPRequestHandler):
                         with _event_buffer_lock:
                             events = list(_event_buffer)
                             _event_buffer.clear()
-                    self._json({"source":"pcs","state":pcs_state,"club_id":club_id,"events":events})
+                    self._json({"source":"pcs","state":pcs_state,"club_id":club_id,
+                                "events":events,
+                                "feed": "manual" if manual_state else "file"})
                 elif pcs_folder:
                     # PCS Pro is configured but hasn't written a match yet (pre-match, or
                     # between innings) -- still report "pcs" so the overlay keeps fast-polling
@@ -5024,6 +5255,86 @@ class Handler(BaseHTTPRequestHandler):
             print(f"  \u26a0  All sessions revoked by [{ip}]")
             _auth_log_add("logout_all", ip)
             self._json({"ok": True})
+
+        elif path == "/scoring/setup":
+            # Create (or replace) the manual scoring session. Exact match BEFORE the
+            # /scoring/ prefix handler below \u2014 see the route-ordering gotcha.
+            try:
+                d = json.loads(body or "{}")
+                if not isinstance(d, dict):
+                    raise ValueError("setup must be a JSON object")
+                def _lines(v):
+                    return v if isinstance(v, list) else str(v or "").splitlines()
+                with _manual_lock:
+                    sess = _manual_session_locked()
+                    if sess and sess.events and not sess.match_over and not d.get("force"):
+                        raise ValueError("a scoring session is already in progress \u2014 "
+                                         "reset it (or pass force) first")
+                    _manual["session"] = ManualScoringSession({
+                        "home": d.get("home"), "away": d.get("away"),
+                        "home_xi": _lines(d.get("home_xi")),
+                        "away_xi": _lines(d.get("away_xi")),
+                        "max_overs": d.get("max_overs"),
+                        "batting_first": d.get("batting_first"),
+                    })
+                    _manual["session"].save()
+                    cfg_teams = _manual["session"].config
+                # Manual scoring implies: no demo data, no widget fallback, and the
+                # overlay's team names/colour mapping should match what's being scored.
+                st = load_state()
+                st.update({"demo_mode": False, "use_widget": False,
+                           "home_team": cfg_teams["home"], "away_team": cfg_teams["away"],
+                           "max_overs": cfg_teams["max_overs"]})
+                save_state(st)
+                print(f"  \u2713  Manual scoring: {cfg_teams['home']} v {cfg_teams['away']}, "
+                      f"{cfg_teams['max_overs']} overs")
+                self._json({"ok": True, "state": manual_ui_state()})
+            except (ValueError, json.JSONDecodeError) as e:
+                self._json({"ok": False, "error": str(e)}, status=400)
+
+        elif path.startswith("/scoring/"):
+            action = path[len("/scoring/"):]
+            try:
+                try:
+                    d = json.loads(body) if body else {}
+                except json.JSONDecodeError:
+                    d = {}
+                if not isinstance(d, dict):
+                    d = {}
+                with _manual_lock:
+                    sess = _manual_session_locked()
+                    if action == "reset":
+                        _manual["session"] = None
+                        _manual["load_attempted"] = True   # don't resurrect from the file
+                        try:
+                            os.remove(MANUAL_SCORING_FILE)
+                        except OSError:
+                            pass
+                    elif not sess:
+                        raise ValueError("no scoring session \u2014 set the match up first")
+                    elif action == "ball":
+                        sess.apply({"event": "ball", "kind": d.get("kind", ""),
+                                    "runs": d.get("runs", 0),
+                                    "wicket_type": d.get("wicket_type", "bowled"),
+                                    "fielder": d.get("fielder", ""),
+                                    "out_non_striker": bool(d.get("out_non_striker"))})
+                    elif action == "undo":
+                        sess.undo()
+                    elif action == "bowler":
+                        sess.apply({"event": "bowler", "name": d.get("name", "")})
+                    elif action == "batter":
+                        sess.apply({"event": "batter", "name": d.get("name", "")})
+                    elif action == "strike":
+                        sess.apply({"event": "swap_strike"})
+                    elif action == "innings":
+                        sess.apply({"event": "start_innings"
+                                    if d.get("action") == "start_next" else "end_innings"})
+                    else:
+                        self.send_response(404); self.end_headers()
+                        return
+                self._json({"ok": True, "state": manual_ui_state()})
+            except ValueError as e:
+                self._json({"ok": False, "error": str(e)}, status=400)
 
         else:
             self.send_response(404); self.end_headers()

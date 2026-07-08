@@ -13,6 +13,11 @@ is also a browser **control panel** (served by the server) for the match-day ope
 on every ball. `server.py` reads that file, parses it, and serves the live state on `/live`.
 `overlay.html` (an OBS browser source) polls `/live` every ~2.5s and renders the graphics.
 
+**No scoring software? `/scoring`** is a phone/tablet page of big buttons that drives the same
+pipeline: button presses feed the shared `scoring_engine.InningsEngine`, whose frames are
+rendered through the same PCS parser — so the overlay, ball DB, highlights and graphics work
+identically. While a manual session is live it OUTRANKS the PCS file in `/live`.
+
 ## Key files
 
 - **`server.py`** (~5000 lines) — the whole backend. HTTP server on port 5000
@@ -23,6 +28,14 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
   refresh without a server restart. It used to live INSIDE server.py as a Python string —
   see the (historical) backslash gotcha below.
 - **`overlay.html`** (~2600 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
+- **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
+  rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
+  it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is
+  load-bearing — `/scoring`'s undo replays the event log and must reproduce the book exactly.
+- **`scoring.html`** — the manual ball-by-ball scoring page (`/scoring`), mobile-first, for
+  clubs/days without NV Play. Event-sourced via `ManualScoringSession` in server.py; the
+  session persists to `manual_scoring.json` (git-ignored) after every ball, so a restart or
+  a dropped phone resumes mid-over. Same login/session token as the control panel.
 - **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test and a best-effort
   GitHub release check (`check_for_updates()` — compares `git describe --tags` against the
   latest release; purely informational, silently skipped if there's no git/internet).

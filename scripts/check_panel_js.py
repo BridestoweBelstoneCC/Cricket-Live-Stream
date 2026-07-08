@@ -98,7 +98,7 @@ def check_js(label, code):
 
 def main():
     all_ok = True
-    for fname in ("control.html", "overlay.html"):
+    for fname in ("control.html", "overlay.html", "scoring.html"):
         path = os.path.join(REPO_ROOT, fname)
         if not os.path.exists(path):
             print(f"  FAIL {fname}: file not found at {path}")

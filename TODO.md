@@ -28,6 +28,19 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       and the over-completing wicket the cleared ticker never shows (wickets-delta
       fallback). Logic exercised in a real JS engine by tests/test_bowler_milestones.py.
 
+## Features added on dev (2026-07-08)
+
+- [x] **Manual scoring page (`/scoring`)** — the adoption-blocker killer: score ball-by-ball
+      from a phone with no NV Play/PCS Pro, driving the full overlay/graphics/DB pipeline
+      (manual frames render through the same PCS parser and outrank the file feed in /live).
+      Shared `scoring_engine.py` extracted from the simulator; event-sourced with exact-replay
+      undo; persists to manual_scoring.json (restart-safe); wicket-type/fielder/run-out-end
+      pickers, per-over bowler picker, next-batter override, innings/target flow; same login
+      as the panel; selectable as the data source in quickstart. 19 new tests.
+      Known MVP limits: run outs don't record completed runs on the ball; changing the bowler
+      mid-over doesn't re-attribute earlier balls (undo → set bowler → re-enter instead).
+      TODO: a README section pitching this to non-NV Play clubs.
+
 ## Design warts fixed on dev (2026-07-08)
 
 - [x] **`/live` split**: the overlay's `/live` poll drives the pipeline (events, ball DB,
