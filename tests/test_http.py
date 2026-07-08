@@ -327,6 +327,29 @@ class TestLivePcsPipeline(HttpTestBase):
         self.assertEqual(rows[3][1], "W")
         self.assertEqual(rows[3][2], 1)
 
+    def test_live_view_is_read_only_and_never_eats_events(self):
+        # The control panel polls /live/view; it must see the same picture as the
+        # overlay but with NO side effects — before the split, whichever panel poll
+        # landed first ate the overlay's wicket events and ran the ball logger too.
+        self.write_pcs(time.time() - 10)
+        self.get_json("/live")                        # overlay poll 1: seeds + logs over
+        self.write_pcs(time.time() - 5, runs="16", wickets="1", overs="2.4",
+                       last_ball="1 4 . W")
+        for _ in range(3):                            # panel hammers /live/view first
+            status, body = self.get_json("/live/view")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["source"], "pcs")
+            self.assertEqual(body["state"]["score"], 16)
+            self.assertEqual(body["events"], [])
+        # no side effects ran: baseline not advanced, wicket ball not logged yet
+        self.assertEqual(server._prev_state["wickets"], 0)
+        with sqlite3.connect(server._db_path()) as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM balls WHERE over=2")
+                             .fetchone()[0], 3)
+        # ...and the overlay's own /live still gets the wicket event afterwards
+        _, body = self.get_json("/live")
+        self.assertEqual([e["type"] for e in body["events"]], ["wicket"])
+
     def test_configured_but_empty_folder_still_reports_pcs(self):
         # Pre-match: folder set, no file yet — source must stay 'pcs' (keeps the overlay
         # fast-polling instead of falling back to widget polling)

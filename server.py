@@ -1287,7 +1287,8 @@ def parse_rv_to_state(data, home_name, away_name):
     return state
 
 _prev_state    = {"score": None, "wickets": None, "overs": None}
-_event_buffer  = []   # queued boundary/wicket events for overlay to consume
+_event_buffer  = []   # queued wicket events for the overlay (and only the overlay) to consume
+_event_buffer_lock = threading.Lock()   # append (live thread) vs pop (overlay poll) race
 
 def buffer_pcs_events(state):
     """Detect boundaries/wickets from PCS state and buffer them for the overlay."""
@@ -1307,7 +1308,8 @@ def buffer_pcs_events(state):
     delta = score - prev_s
     dw    = wickets - prev_w
     if dw > 0:
-        _event_buffer.append({"type": "wicket", "score": score, "wickets": wickets})
+        with _event_buffer_lock:
+            _event_buffer.append({"type": "wicket", "score": score, "wickets": wickets})
         # Record for match report
         b1 = state.get("batter1",{}); b2 = state.get("batter2",{})
         out_name = b1.get("name","") if b1.get("onStrike") else b2.get("name","")
@@ -1325,9 +1327,9 @@ def buffer_pcs_events(state):
     # Update prev state HERE so it always advances, regardless of commentary toggle
     _prev_state.update({"score": score, "wickets": wickets,
                         "overs": state.get("overs", 0.0)})
-    # Cap buffer size
-    if len(_event_buffer) > 20:
-        _event_buffer = _event_buffer[-20:]
+    # Cap buffer size (trim in place — everyone must keep seeing the same list object)
+    with _event_buffer_lock:
+        del _event_buffer[:-20]
 
 def check_commentary_trigger(state):
     """
@@ -5487,7 +5489,7 @@ async function updatePCSMonitor() {
   try {
     const ctrl = new AbortController();
     const tout = setTimeout(() => ctrl.abort(), 8000);
-    const res  = await apiFetch('/live', {signal: ctrl.signal});
+    const res  = await apiFetch('/live/view', {signal: ctrl.signal});
     clearTimeout(tout);
     const data = await res.json();
 
@@ -5762,7 +5764,7 @@ async function autoCheck() {
 
   // Live data coming in → scorer has started
   try {
-    const live = await (await apiFetch('/live')).json();
+    const live = await (await apiFetch('/live/view')).json();
     if (live.state && live.state.score > 0 && !saved['scorer']) {
       saved['scorer'] = true; changed = true;
     }
@@ -5793,7 +5795,7 @@ async function checkLiveStatus() {
   try {
     const ctrl = new AbortController();
     const tout = setTimeout(() => ctrl.abort(), 8000);
-    const res  = await apiFetch('/live', {signal: ctrl.signal});
+    const res  = await apiFetch('/live/view', {signal: ctrl.signal});
     clearTimeout(tout);
     const data = await res.json();
     console.log('checkLiveStatus: /live source =', data.source, 'state =', !!data.state);
@@ -6847,8 +6849,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._bytes(png, "image/png")
 
-        elif path == "/live":
+        elif path in ("/live", "/live/view"):
             global _rv_cache
+            # /live is the OVERLAY's poll and drives the match pipeline: event buffering,
+            # ball logging, commentary triggers, and it consumes the event buffer.
+            # /live/view is the same picture for any OTHER consumer (the control panel's
+            # monitor/status/checklist pollers) with none of the side effects — before the
+            # split, whichever panel poll landed first would eat the overlay's wicket
+            # events and run the ball logger on its own cadence too.
+            mutate = (path == "/live")
             s    = load_state()
             home = s.get("home_team","Home CC")
             away = s.get("away_team","Opposition CC")
@@ -6904,19 +6913,23 @@ class Handler(BaseHTTPRequestHandler):
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
                     pcs_state["away_abbrev"] = s.get("away_abbrev","").strip().upper()
-                    # Commentary trigger MUST run before buffer_pcs_events: both diff the
-                    # state against _prev_state, but buffer_pcs_events advances _prev_state
-                    # when it's done. Running the trigger after it meant every delta it saw
-                    # was zero, so ball-event commentary could simply never fire.
-                    if s.get("graphics_commentary", True):
-                        check_commentary_trigger(pcs_state)
-                    # Buffer boundary/wicket events (this advances _prev_state)
-                    buffer_pcs_events(pcs_state)
-                    match_log_snapshot(pcs_state)
-                    log_ball_data(pcs_state)   # append to our own ball-by-ball database
-                    # Include buffered events in response and clear buffer
-                    events = list(_event_buffer)
-                    _event_buffer.clear()
+                    events = []
+                    if mutate:
+                        # Commentary trigger MUST run before buffer_pcs_events: both diff
+                        # the state against _prev_state, but buffer_pcs_events advances
+                        # _prev_state when it's done. Running the trigger after it meant
+                        # every delta it saw was zero — commentary could never fire.
+                        if s.get("graphics_commentary", True):
+                            check_commentary_trigger(pcs_state)
+                        # Buffer boundary/wicket events (this advances _prev_state)
+                        buffer_pcs_events(pcs_state)
+                        match_log_snapshot(pcs_state)
+                        log_ball_data(pcs_state)   # append to our own ball-by-ball database
+                        # Hand buffered events to the overlay and clear — under the lock,
+                        # so an event landing mid-pop can't be silently dropped
+                        with _event_buffer_lock:
+                            events = list(_event_buffer)
+                            _event_buffer.clear()
                     self._json({"source":"pcs","state":pcs_state,"club_id":club_id,"events":events})
                 elif pcs_folder:
                     # PCS Pro is configured but hasn't written a match yet (pre-match, or

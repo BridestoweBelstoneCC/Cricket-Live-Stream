@@ -496,7 +496,7 @@ def wait_for_server(timeout=20):
     deadline = _t.time() + timeout
     while _t.time() < deadline:
         try:
-            with urllib.request.urlopen("http://127.0.0.1:5000/live", timeout=2):
+            with urllib.request.urlopen("http://127.0.0.1:5000/health", timeout=2):
                 return True
         except Exception:
             _t.sleep(0.5)
