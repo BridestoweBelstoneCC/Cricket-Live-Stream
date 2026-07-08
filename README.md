@@ -20,6 +20,7 @@
 - [The problem](#the-problem)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
+- [No scoring software? Manual scoring](#no-scoring-software-manual-scoring)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Control panel](#control-panel)
@@ -39,7 +40,7 @@
 
 Professional cricket broadcast graphics cost thousands of pounds a season. Smaller clubs either go without, or settle for a static scoreboard that tells viewers nothing about what's actually happening on the pitch.
 
-CricketStream Overlay changes that. It gives any club — regardless of budget — the same quality of live graphics you see on broadcast cricket, driven by the scoring software your scorer already uses.
+CricketStream Overlay changes that. It gives any club — regardless of budget — the same quality of live graphics you see on broadcast cricket, driven by the scoring software your scorer already uses — or, if your club doesn't use scoring software, by a [free manual scoring page](#no-scoring-software-manual-scoring) on any phone.
 
 **All you need is a camera, a laptop and an internet connection.**
 
@@ -111,6 +112,49 @@ NV Play / PCS Pro  ───>  server.py (Python)  ───>  OBS Studio  ─�
 
 The scoring software writes a file on every ball. The server reads it and sends the data to an overlay running inside OBS. OBS mixes the overlay with your camera and streams to YouTube.
 
+No scoring software? A phone at `/scoring` takes the place of the scorer's laptop — same overlay, same graphics. See the next section.
+
+---
+
+## No scoring software? Manual scoring
+
+Not every club uses NV Play or PCS Pro — and even for clubs that do, the scorer's feed
+occasionally isn't available. **You can still stream with the full broadcast overlay.**
+
+Open **`http://localhost:5000/scoring`** on a phone or tablet and score the match ball by
+ball with big, tap-friendly buttons. Every press drives exactly the same pipeline the
+scoring software would — the scorebar and ticker, wicket cards with dismissals spelled out,
+milestones, boundary flashes, instant replays, the worm chart, the ball-by-ball database,
+and the highlights compiler all work identically.
+
+<b>Setup takes a minute:</b> enter the two team names, paste each XI (one name per line —
+or leave it blank and players are named automatically), set the overs, pick who bats first,
+and start scoring.
+
+- **Big buttons** — dot, 1, 2, 3, 4, 6; wides, no-balls, byes and leg byes with the runs
+  taken; a wicket flow that asks how out, who caught it, and (for run outs) which end.
+- **Undo anything** — every ball is recorded as an event, and undo replays the innings
+  without the last entry, so the book is always exactly right — even undoing back across
+  the innings break.
+- **Bowler and batter prompts** — at the end of each over the page asks who bowls next;
+  when a wicket falls it names the next batter in, with a one-tap change if the order
+  differs on the day.
+- **Restart-safe** — the session saves after every ball. If the laptop restarts or the
+  phone battery dies, reopen the page and carry on from the same delivery.
+- **Score from the boundary** — with remote access enabled (Tailscale, or
+  `bind_host = 0.0.0.0` on club Wi-Fi), a volunteer can score from a deckchair while the
+  laptop streams. The page is protected by the same club password as the control panel.
+
+On match day, the quickstart launcher asks how the game is being scored — choose **Manual
+scoring** and it prints the link to open. If your scorer does run NV Play, the file feed
+remains the better option (zero extra effort on your side) — but the manual page is also
+a ready-made **plan B if the scorer's feed drops out mid-match**.
+
+> PlayCricket-powered extras (auto fixture detection, season stats on player cards, club
+> badge matching) are optional either way — manual scoring works with none of them
+> configured, which also makes it the quickest way for clubs **outside the ECB/PlayCricket
+> ecosystem** to use this project.
+
 ---
 
 ## Requirements
@@ -124,6 +168,7 @@ The scoring software writes a file on every ball. The server reads it and sends 
 - [OBS Studio](https://obsproject.com) — streaming software
 - [Python 3](https://python.org/downloads) — runs the server (the setup wizard below can install this for you)
 - [NV Play](https://www.play-cricket.com/website/np_downloads) — scoring software (Windows) or PCS Pro
+  *(optional — the [manual scoring page](#no-scoring-software-manual-scoring) replaces it entirely)*
 
 **Optional:**
 - A PlayCricket API key — for automatic match detection
@@ -193,7 +238,8 @@ It lets you:
 
 | Feature | Requires |
 |---|---|
-| Scorebar with batter/bowler names | NV Play output file |
+| Manual ball-by-ball scoring from a phone | Nothing — just a browser at `/scoring` |
+| Scorebar with batter/bowler names | NV Play output file *(or manual scoring)* |
 | Ball-by-ball ticker | NV Play output file |
 | Fall-of-wicket card with dismissal detail | NV Play output file |
 | Player card with photo + season stats | NV Play output file + `headshots/` folder + PlayCricket API key |
@@ -314,9 +360,14 @@ inside a free Windows virtual machine while streaming natively from macOS.
 /
 ├── server.py                  Main server — runs everything
 ├── overlay.html               OBS browser source overlay (1920x1080)
+├── control.html               Operator control panel (served at /control)
+├── scoring.html               Manual ball-by-ball scoring page (served at /scoring)
+├── scoring_engine.py          The scorer's-book engine behind /scoring and the simulator
+├── simulate_match.py          Match simulator — rehearse the whole broadcast, no scorer needed
 ├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
 ├── quickstart.py              Match-day launcher script
 ├── obs_setup.py               OBS auto-configuration
+├── tests/                     Automated test suite (python3 -m unittest discover -s tests)
 ├── requirements.txt           Python package list
 ├── config.example.ini         Club configuration template — copy to config.ini and fill in
 ├── match_state.example.json   Settings template — copied to match_state.json on first run

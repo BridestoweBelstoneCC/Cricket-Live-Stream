@@ -39,7 +39,7 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       as the panel; selectable as the data source in quickstart. 19 new tests.
       Known MVP limits: run outs don't record completed runs on the ball; changing the bowler
       mid-over doesn't re-attribute earlier balls (undo → set bowler → re-enter instead).
-      TODO: a README section pitching this to non-NV Play clubs.
+      README now has a "No scoring software? Manual scoring" section pitching it.
 
 ## Design warts fixed on dev (2026-07-08)
 
