@@ -34,6 +34,11 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       `/highlights/status` and shows the real outcome (it used to fire-and-forget).
       ⚠ ffmpeg isn't on this Mac — run one compile on the Windows streaming machine
       before Saturday to verify drawtext there.
+- [x] **Bowler milestones**: five-wicket hauls (fires again for the 6th/7th) and
+      hat-tricks on the milestone panel, in bowling red. The hat-trick chain understands
+      cross-over hat-tricks, run outs (break, don't extend), chain-neutral wides/no-balls,
+      and the over-completing wicket the cleared ticker never shows (wickets-delta
+      fallback). Logic exercised in a real JS engine by tests/test_bowler_milestones.py.
 
 ## Fixed on dev (2026-07-06) — verify live on Saturday before merging to main
 

@@ -1174,6 +1174,20 @@ function triggerMilestone(name, runs, balls, milestone) {
   }
 }
 
+// ── Bowler milestone (five-for / hat-trick) ───────────────
+// Reuses the milestone panel, in bowling red instead of batting gold. No replay call —
+// the wicket that completes the milestone has already triggered the wicket replay.
+function triggerBowlerMilestone(bigText, name, sub) {
+  if (!cfg.graphics_milestones) return;
+  const mEl = el('milestone-runs');
+  mEl.textContent = bigText;                 // figures, not a score — no count-up
+  mEl.style.color = '#c0392b';
+  el('milestone-accent').style.background = '#c0392b';
+  el('milestone-name').textContent = name;
+  el('milestone-sub').textContent  = sub;
+  queueGraphic('milestone-panel', 9000);
+}
+
 // ── Lineup card ───────────────────────────────────────────
 function showLineup(teamName, players, inningsNum) {
   if (!cfg.graphics_lineup) return;
@@ -1627,6 +1641,54 @@ function showSponsorStripFor(panelId) {
   if (p) p.classList.add('sponsor-space-reserved');
 }
 
+// ── v2.2: bowler milestones — hat-trick chain + five-wicket haul ──
+// The chain tracks consecutive wicket-taking LEGAL deliveries per bowler. Another
+// bowler's over in between doesn't break it (that's how a hat-trick spans the bowler's
+// own consecutive overs); a legal non-wicket ball from the SAME bowler does. Wides and
+// no-balls are chain-neutral, and run outs break the chain without extending it (the
+// wicket isn't the bowler's). Fed from the same "newly appeared ticker tokens" stream
+// the boundary detector uses, plus a wickets-delta fallback for the one case the ticker
+// can never show: a wicket on the over-completing ball (the ticker clears on that write).
+function _chainWicket(bowlerName, isRunOut) {
+  if (isRunOut) { _hatTrick = { bowler: bowlerName, count: 0 }; return; }
+  if (_hatTrick.bowler === bowlerName) _hatTrick.count++;
+  else _hatTrick = { bowler: bowlerName, count: 1 };
+  if (_hatTrick.count >= 3) {
+    triggerBowlerMilestone('3 IN 3', _hatTrick.bowler, 'HAT-TRICK!');
+    _hatTrick.count = 0;
+  }
+}
+function _chainBreak(bowlerName) {
+  if (_hatTrick.bowler === bowlerName) _hatTrick.count = 0;
+}
+function updateHatTrickChain(newBalls, state) {
+  var bowlerName = fmtSurname((state.bowler && state.bowler.name) || '');
+  var wickets = parseInt(state.wickets || 0);
+  var sawW = 0;
+  var runOut = /run/i.test(state.lastWicketType || '');
+  newBalls.forEach(function(b) {
+    if (b.cls === 'wicket') { sawW++; _chainWicket(bowlerName, runOut); }
+    else if (b.cls !== 'wide' && b.cls !== 'noball') { _chainBreak(bowlerName); }
+  });
+  // A wicket the ticker never showed (fell on the over-completing write)
+  var dw = wickets - _htPrevWickets;
+  for (var i = 0; i < dw - sawW; i++) _chainWicket(bowlerName, runOut);
+  _htPrevWickets = wickets;
+}
+function checkBowlerFiveFor(state) {
+  if (!cfg.graphics_milestones) return;   // before the fired-flag, so toggling on mid-match still fires
+  var b = state.bowler || {};
+  if (!b.name || b.name === '—') return;
+  var w = parseInt(b.wickets || 0);
+  if (w < 5) return;
+  var key = b.name + '_' + _lastPCSinnings + '_' + w;   // re-fires for the 6th, 7th...
+  if (_bowlerFived[key]) return;
+  _bowlerFived[key] = true;
+  var figs = w + '-' + (parseInt(b.runs) || 0);
+  triggerBowlerMilestone(figs, fmtSurname(b.name),
+    w + ' wicket haul' + (b.overs ? ' (' + b.overs + ' ov)' : ''));
+}
+
 // ── v2.1: bowler spell tracker ────────────────────────────
 // A "spell" = consecutive overs from the same end (every 2nd over). Continue when the
 // bowler's previous over was exactly two ago; anything else starts a fresh spell.
@@ -1783,6 +1845,9 @@ function processPCSData(state) {
     _lastPCSovers = -1;
     _currentOverBalls = [];
     _spells = {};                       // v2.1: spells don't span innings
+    _hatTrick = { bowler: '', count: 0 };   // v2.2: nor do wicket chains / five-fors
+    _htPrevWickets = 0;
+    _bowlerFived = {};
     // v2.1: show the completed innings' full scorecard a moment after the break graphics.
     // _lastCard still holds the FINISHED innings here (it's refreshed at the end of this
     // function, after this block), so we capture and queue it before it's overwritten.
@@ -1877,16 +1942,25 @@ function processPCSData(state) {
   // genuine new ball always changes the ticker string with real content (a ball is appended,
   // or the first ball of the new over appears). The newest ball is the last token of the ticker.
   if (overStr !== _lastBallSig) {
-    if (_lastBallOver >= 0 && parsed.length > 0) {   // _lastBallOver<0 = first poll (seed): don't fire
+    if (_lastBallOver >= 0) {        // _lastBallOver<0 = first poll (seed): don't fire
       // Inspect every ball added since the last poll, not just the newest one. If NV Play's
       // file advances by more than one ball between polls (a quick sequence, or a slow/missed
       // poll), checking only the last token silently buries an earlier four/six under whatever
       // dot balls followed it — the replay would just never fire.
-      var newBalls = (currentOver === _lastBallOver) ? parsed.slice(_lastBallCount) : parsed;
-      newBalls.forEach(function(newBall) {
-        if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
-        else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
-      });
+      var newBalls = [];
+      if (parsed.length > 0) {       // empty on the over-rollover write — nothing new to show
+        newBalls = (currentOver === _lastBallOver) ? parsed.slice(_lastBallCount) : parsed;
+        newBalls.forEach(function(newBall) {
+          if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
+          else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
+        });
+      }
+      // v2.2: hat-trick chain feeds off the same new-token stream (with a wickets-delta
+      // fallback inside for the over-completing wicket the cleared ticker can't show)
+      try { updateHatTrickChain(newBalls, state); }
+      catch(e){ console.warn('hat-trick error:', e); }
+    } else {
+      _htPrevWickets = parseInt(state.wickets || 0);   // first poll: seed, never fire
     }
     _lastBallSig   = overStr;
     _lastBallCount = parsed.length;
@@ -1894,6 +1968,8 @@ function processPCSData(state) {
   }
 
   updateTicker(_currentOverBalls);
+  // v2.2: five-wicket haul — cheap check every poll against the live bowler figures
+  try { checkBowlerFiveFor(state); } catch(e){ console.warn('five-for error:', e); }
   // Monotonic legal-ball counter for the innings: O.B -> O*6 + B (e.g. 6.2 -> 38).
   // Using this instead of the per-over ticker length fixes a stuck card after a wicket on the
   // last ball of an over: the ticker resets to 0 each over, so a baseline captured during the
@@ -2209,6 +2285,9 @@ var _drinksWeatherShown = false;
 var _lastBallSig        = null; // last-seen ticker string (null = not yet seeded; '' is a real empty ticker)
 var _lastBallCount      = 0;   // ball count last poll (within current over)
 var _lastBallOver       = -1;  // over number last poll (-1 = not yet seeded)
+var _hatTrick           = { bowler: '', count: 0 }; // consecutive-wicket chain per bowler
+var _htPrevWickets      = 0;   // wickets at last ticker change — over-completing-W fallback
+var _bowlerFived        = {};  // five-for panels already shown (bowler+innings+wkts)
 // The bowler at the end of the LAST poll, i.e. before PCS Pro rotates state.bowler to whoever
 // is up next. scoreboard.template never actually maps a "prev bowler" field from NV Play (the
 // prev_bowler_* keys server.py reads don't exist in the template, so they're always blank) --
