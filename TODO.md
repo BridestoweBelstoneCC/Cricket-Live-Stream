@@ -41,6 +41,16 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       mid-over doesn't re-attribute earlier balls (undo → set bowler → re-enter instead).
       README now has a "No scoring software? Manual scoring" section pitching it.
 
+- [x] **Adaptive stream quality** for the ground's poor internet, two tiers:
+      (1) OBS's built-in Dynamic Bitrate now enabled automatically by obs_setup —
+      seamless encoder-level flexing with no disconnect; (2) a stream sentinel polls
+      congestion/dropped frames every 15s while live (negligible CPU), shows the picture
+      in the panel's Stream Health card, and can step bitrate down a 100/70/50/35% ladder —
+      manual buttons, or auto with a 60s evidence window + 150s cooldown (never steps up
+      on its own). A step = stop→reconfigure→start (~5-10s buffering; broadcast survives).
+      ⚠ Untested against a real congested link — on Saturday, verify Dynamic Bitrate shows
+      enabled in OBS settings, and try one manual "Reduce quality now" before play starts.
+
 ## Design warts fixed on dev (2026-07-08)
 
 - [x] **`/live` split**: the overlay's `/live` poll drives the pipeline (events, ball DB,

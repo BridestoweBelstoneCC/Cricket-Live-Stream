@@ -179,3 +179,8 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - `http://localhost:5000/obs/stream_check?force=1` (auth-required) — recommended bitrate from a
   real upload-speed test, and an encoder comparison from actual short OBS test recordings
   (never trust hardware specs alone for this — see `obs_stream_health_check()`).
+- `http://localhost:5000/stream/monitor` — live congestion/dropped-frame picture while
+  streaming, plus the quality-ladder position. Two-tier adaptive quality: OBS's Dynamic
+  Bitrate (enabled by obs_setup; seamless) + the sentinel's bitrate ladder
+  (stop→reconfigure→start, ~5-10s gap; auto mode is the `stream_auto_downshift` state key,
+  off by default, and only ever steps DOWN on its own).

@@ -200,6 +200,19 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
             err = r.get("requestStatus",{}).get("comment","") if r else "no response"
             log_msg(f"ReplayClip source issue: {err}", "warn")
 
+    # ── Enable OBS's Dynamic Bitrate (congestion handled without disconnects) ──
+    # Off by default in OBS and buried in Settings → Advanced → Network. With it on, the
+    # encoder bitrate flexes automatically when the connection struggles — the seamless
+    # first line of defence for grounds with poor internet. Applies from the next stream
+    # start. (The server's stream sentinel is the second line — see /stream/monitor.)
+    r = request("SetProfileParameter", {"parameterCategory": "Output",
+                                        "parameterName": "DynamicBitrate",
+                                        "parameterValue": "true"})
+    if r and r.get("requestStatus",{}).get("result"):
+        log_msg("Dynamic bitrate enabled — congestion managed without disconnects", "ok")
+    else:
+        log_msg("Could not enable dynamic bitrate — turn it on in OBS Settings → Advanced → Network", "warn")
+
     # ── Switch to Main scene ───────────────────────────────────
     request("SetCurrentProgramScene", {"sceneName": "Main"})
     log_msg("Active scene set to Main", "ok")

@@ -1431,6 +1431,7 @@ DEFAULT_STATE = {
     "max_clips":               500,
     "network_test_mbps":       None,
     "network_test_at":         0,
+    "stream_auto_downshift":   False,   # sentinel may auto-reduce bitrate on sustained congestion
     "youtube_title_template":  "LIVE: {home} vs {away}",
     "weather_api_key":         "",
     "logos_folder":           "",
@@ -3728,6 +3729,262 @@ def _clip_duration(path):
         return None
 
 
+# ── Shared one-shot OBS WebSocket call ─────────────────────────
+def _obs_call(state, requests_list, timeout=6):
+    """Connect, identify, run a list of (request_type, request_data) in order, disconnect.
+    Returns a list of responseData dicts (None per request on failure), or None if OBS
+    couldn't be reached/authenticated at all. Deliberately connection-per-call: callers
+    are all low-frequency (>=15s apart), and never holding a socket means a mid-match OBS
+    restart can't wedge anything."""
+    try:
+        import websocket
+    except ImportError:
+        return None
+    host, port = state.get("obs_host", "localhost"), state.get("obs_port", 4455)
+    password = state.get("obs_password", "")
+    mid = [0]
+    try:
+        ws = websocket.create_connection(f"ws://{host}:{port}", timeout=timeout)
+    except Exception:
+        return None
+    try:
+        ws.settimeout(timeout)
+        deadline = time.time() + timeout
+        hello = None
+        while time.time() < deadline:
+            msg = json.loads(ws.recv() or "{}")
+            if msg.get("op") == 0:
+                hello = msg
+                break
+        if not hello:
+            return None
+        identify = {"rpcVersion": 1}
+        auth = hello["d"].get("authentication")
+        if auth and password:
+            identify["authentication"] = _obs_auth_response(password, auth["salt"],
+                                                            auth["challenge"])
+        ws.send(json.dumps({"op": 1, "d": identify}))
+        deadline = time.time() + timeout
+        ok = False
+        while time.time() < deadline:
+            msg = json.loads(ws.recv() or "{}")
+            if msg.get("op") == 2:
+                ok = True
+                break
+        if not ok:
+            return None
+        results = []
+        for rt, rd in requests_list:
+            mid[0] += 1
+            rid = str(mid[0])
+            payload = {"requestType": rt, "requestId": rid}
+            if rd is not None:
+                payload["requestData"] = rd
+            ws.send(json.dumps({"op": 6, "d": payload}))
+            resp = None
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                msg = json.loads(ws.recv() or "{}")
+                if msg.get("op") == 7 and msg.get("d", {}).get("requestId") == rid:
+                    d = msg["d"]
+                    resp = (d.get("responseData") or {}) \
+                        if d.get("requestStatus", {}).get("result") else None
+                    if resp is None and d.get("requestStatus", {}).get("result"):
+                        resp = {}
+                    break
+            results.append(resp)
+        return results
+    except Exception:
+        return None
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+# ── Adaptive stream quality (congestion sentinel + bitrate ladder) ─────────────
+# Two tiers of defence against a struggling upload:
+#   1. OBS's own Dynamic Bitrate (enabled by obs_setup.py) nudges the encoder bitrate up
+#      and down seamlessly — no disconnect, no operator action. First line of defence.
+#   2. This sentinel watches the stream output's congestion + dropped-frame counters every
+#      STREAM_POLL_SEC while live. When trouble is sustained (not a blip), it can step the
+#      configured bitrate DOWN a ladder — manually from the panel, or automatically when
+#      the operator enables auto mode. A step requires stop → reconfigure → start (~5-10s
+#      ingest gap; YouTube keeps the broadcast alive and viewers just see a short buffer),
+#      so it is rate-limited by a cooldown and never "shifts up" on its own.
+STREAM_POLL_SEC          = 15
+STREAM_WINDOW_SEC        = 60     # judge over the last minute, not one bad sample
+STREAM_CONGESTION_TRIP   = 0.15   # avg congestion (0..1) that counts as "struggling"
+STREAM_DROPPED_PCT_TRIP  = 4.0    # % frames dropped across the window
+STREAM_SHIFT_COOLDOWN    = 150    # seconds between automatic downshifts
+STREAM_LADDER            = [1.0, 0.7, 0.5, 0.35]   # fractions of the baseline bitrate
+
+_stream_mon = {
+    "enabled_thread": False, "streaming": False, "reachable": None,
+    "samples": [],            # [{t, congestion, dropped, total}] ring, newest last
+    "baseline_kbps": None,    # VBitrate observed at step 0 while live
+    "step": 0,                # index into STREAM_LADDER
+    "current_kbps": None,
+    "last_shift_at": 0.0,
+    "shifts": [],             # [{t, kbps_from, kbps_to, reason, mode}] capped
+    "last_reason": "",
+}
+_stream_mon_lock = threading.Lock()
+
+
+def evaluate_stream_samples(samples, now, last_shift_at,
+                            window_sec=STREAM_WINDOW_SEC,
+                            congestion_trip=STREAM_CONGESTION_TRIP,
+                            dropped_pct_trip=STREAM_DROPPED_PCT_TRIP,
+                            cooldown_sec=STREAM_SHIFT_COOLDOWN):
+    """Pure decision: ('downshift'|'hold', reason). Needs sustained evidence across the
+    window, and respects the cooldown so a shift's own restart blip can't trigger the next."""
+    recent = [s for s in samples if now - s["t"] <= window_sec]
+    if len(recent) < 3:
+        return "hold", "not enough samples yet"
+    if now - last_shift_at < cooldown_sec:
+        return "hold", "cooling down after last quality change"
+    avg_congestion = sum(s["congestion"] for s in recent) / len(recent)
+    d_dropped = recent[-1]["dropped"] - recent[0]["dropped"]
+    d_total = recent[-1]["total"] - recent[0]["total"]
+    dropped_pct = (100.0 * d_dropped / d_total) if d_total > 0 else 0.0
+    if avg_congestion >= congestion_trip:
+        return "downshift", f"sustained congestion (avg {avg_congestion:.0%} over {window_sec}s)"
+    if dropped_pct >= dropped_pct_trip:
+        return "downshift", f"dropping frames ({dropped_pct:.1f}% over {window_sec}s)"
+    return "hold", f"healthy (congestion {avg_congestion:.0%}, drops {dropped_pct:.1f}%)"
+
+
+def _stream_ladder_kbps(baseline, step):
+    step = max(0, min(step, len(STREAM_LADDER) - 1))
+    return max(500, int(baseline * STREAM_LADDER[step]))
+
+
+def apply_stream_quality_step(new_step, reason, mode):
+    """Stop → set SimpleOutput bitrate → start. Returns (ok, message). Holds no locks
+    while talking to OBS; only called from the monitor thread or a panel action."""
+    st = load_state()
+    with _stream_mon_lock:
+        baseline = _stream_mon["baseline_kbps"]
+    if not baseline:
+        return False, "No baseline bitrate recorded yet — is the stream live?"
+    new_step = max(0, min(new_step, len(STREAM_LADDER) - 1))
+    target = _stream_ladder_kbps(baseline, new_step)
+    status = _obs_call(st, [("GetStreamStatus", None)])
+    if not status or status[0] is None:
+        return False, "Could not reach OBS"
+    was_live = bool(status[0].get("outputActive"))
+    steps = []
+    if was_live:
+        steps.append(("StopStream", None))
+    steps.append(("SetProfileParameter", {"parameterCategory": "SimpleOutput",
+                                          "parameterName": "VBitrate",
+                                          "parameterValue": str(target)}))
+    if was_live:
+        steps.append(("StartStream", None))
+    results = _obs_call(st, steps, timeout=12)
+    if results is None:
+        return False, "Lost OBS while changing quality — check OBS and restart the stream"
+    with _stream_mon_lock:
+        old = _stream_mon["current_kbps"] or baseline
+        _stream_mon["step"] = new_step
+        _stream_mon["current_kbps"] = target
+        _stream_mon["last_shift_at"] = time.time()
+        _stream_mon["samples"] = []          # judge the new setting on fresh evidence
+        _stream_mon["shifts"].append({"t": time.time(), "kbps_from": old, "kbps_to": target,
+                                      "reason": reason, "mode": mode})
+        _stream_mon["shifts"] = _stream_mon["shifts"][-20:]
+    pct = int(STREAM_LADDER[new_step] * 100)
+    msg = (f"Stream bitrate {'restored' if new_step == 0 else 'reduced'} to {target} kbps "
+           f"({pct}% of baseline){' — stream restarted' if was_live else ''}")
+    print(f"  📶  {msg} [{mode}: {reason}]")
+    return True, msg
+
+
+def _stream_monitor_tick():
+    st = load_state()
+    results = _obs_call(st, [("GetStreamStatus", None),
+                             ("GetProfileParameter", {"parameterCategory": "SimpleOutput",
+                                                      "parameterName": "VBitrate"})],
+                        timeout=5)
+    now = time.time()
+    with _stream_mon_lock:
+        if results is None or results[0] is None:
+            _stream_mon["reachable"] = False
+            _stream_mon["streaming"] = False
+            _stream_mon["samples"] = []
+            return None
+        _stream_mon["reachable"] = True
+        s0 = results[0]
+        live = bool(s0.get("outputActive"))
+        _stream_mon["streaming"] = live
+        if not live:
+            _stream_mon["samples"] = []
+            return None
+        # Baseline: the configured bitrate the first time we see the stream live at step 0
+        try:
+            vbitrate = int(str((results[1] or {}).get("parameterValue", "") or 0))
+        except ValueError:
+            vbitrate = 0
+        if _stream_mon["step"] == 0 and vbitrate:
+            _stream_mon["baseline_kbps"] = vbitrate
+            _stream_mon["current_kbps"] = vbitrate
+        _stream_mon["samples"].append({
+            "t": now,
+            "congestion": float(s0.get("outputCongestion") or 0.0),
+            "dropped": int(s0.get("outputSkippedFrames") or 0),
+            "total": int(s0.get("outputTotalFrames") or 0),
+        })
+        _stream_mon["samples"] = _stream_mon["samples"][-40:]
+        action, reason = evaluate_stream_samples(
+            _stream_mon["samples"], now, _stream_mon["last_shift_at"])
+        _stream_mon["last_reason"] = reason
+        step = _stream_mon["step"]
+        auto = bool(st.get("stream_auto_downshift"))
+    if action == "downshift" and auto and step < len(STREAM_LADDER) - 1:
+        return ("down", step + 1, reason)
+    return None
+
+
+def _stream_monitor_loop():
+    while True:
+        try:
+            decision = _stream_monitor_tick()
+            if decision:
+                _, new_step, reason = decision
+                apply_stream_quality_step(new_step, reason, mode="auto")
+        except Exception as e:
+            print(f"  ✗  Stream monitor tick failed (will retry): {e}")
+        time.sleep(STREAM_POLL_SEC)
+
+
+def start_stream_monitor():
+    with _stream_mon_lock:
+        if _stream_mon["enabled_thread"]:
+            return
+        _stream_mon["enabled_thread"] = True
+    threading.Thread(target=_stream_monitor_loop, daemon=True).start()
+
+
+def stream_monitor_status():
+    with _stream_mon_lock:
+        recent = list(_stream_mon["samples"][-4:])
+        return {
+            "ok": True,
+            "reachable": _stream_mon["reachable"],
+            "streaming": _stream_mon["streaming"],
+            "baseline_kbps": _stream_mon["baseline_kbps"],
+            "current_kbps": _stream_mon["current_kbps"],
+            "step": _stream_mon["step"],
+            "ladder_pct": [int(f * 100) for f in STREAM_LADDER],
+            "congestion": recent[-1]["congestion"] if recent else None,
+            "verdict": _stream_mon["last_reason"],
+            "shifts": list(_stream_mon["shifts"][-5:]),
+            "auto": bool(load_state().get("stream_auto_downshift")),
+        }
+
+
 # ── Stream health check ────────────────────────────────────────
 # Recommends OBS stream settings (bitrate/resolution/encoder) instead of expecting a
 # non-technical volunteer to know what any of that means. Two independent measurements, not
@@ -4908,6 +5165,10 @@ class Handler(BaseHTTPRequestHandler):
             out["encoder"] = obs_stream_health_check(s)
             self._json(out)
 
+        elif path == "/stream/monitor":
+            # Live congestion/quality picture for the panel (no secrets — open)
+            self._json(stream_monitor_status())
+
         elif path == "/remote/info":
             # Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that
             # URL is only reachable by a device already on the right network/tunnel anyway.
@@ -5256,6 +5517,32 @@ class Handler(BaseHTTPRequestHandler):
             _auth_log_add("logout_all", ip)
             self._json({"ok": True})
 
+        elif path == "/stream/quality":
+            # Manual quality control from the panel: step down, step back up, or restore.
+            # Involves a stop→reconfigure→start (~5-10s ingest gap, broadcast survives).
+            try:
+                d = json.loads(body or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            act = d.get("action", "")
+            with _stream_mon_lock:
+                step = _stream_mon["step"]
+            if act == "down":
+                target_step = min(step + 1, len(STREAM_LADDER) - 1)
+            elif act == "up":
+                target_step = max(step - 1, 0)
+            elif act == "restore":
+                target_step = 0
+            else:
+                self._json({"ok": False, "error": "action must be down/up/restore"}, status=400)
+                return
+            if target_step == step:
+                self._json({"ok": False, "error": "already at that quality step"})
+                return
+            ok, msg = apply_stream_quality_step(target_step, "operator request", mode="manual")
+            self._json({"ok": ok, "message" if ok else "error": msg,
+                        "state": stream_monitor_status()})
+
         elif path == "/scoring/setup":
             # Create (or replace) the manual scoring session. Exact match BEFORE the
             # /scoring/ prefix handler below \u2014 see the route-ordering gotcha.
@@ -5363,6 +5650,7 @@ if __name__ == "__main__":
     _seed_state_from_config()
     _ensure_control_token()
     start_watchdog()
+    start_stream_monitor()
 
     if _CLOUDFLARE_TUNNEL:
         if not _CLUB_PASSWORD:

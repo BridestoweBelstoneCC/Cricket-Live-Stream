@@ -239,6 +239,32 @@
           style="background:#2a6496;margin-top:10px;">
     &#128225; Check now
   </button>
+
+  <hr style="margin:14px 0;">
+  <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
+              font-weight:600;margin-bottom:8px;">Live quality scaling</div>
+  <p class="section-note">
+    OBS's dynamic bitrate (enabled automatically by setup) flexes with the connection
+    seamlessly. If the line struggles badly for a sustained period, quality can also be
+    stepped down a ladder — each step briefly restarts the stream (viewers see a few
+    seconds of buffering; the broadcast survives).
+  </p>
+  <div id="stream-monitor-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
+       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:32px;">
+    Waiting for the stream to start&hellip;
+  </div>
+  <div class="toggle-row" style="margin-top:8px;">
+    <div>
+      <div class="toggle-label">Auto quality scaling</div>
+      <div class="toggle-desc">Step bitrate down automatically on sustained congestion (never steps up on its own)</div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="stream_auto_downshift"
+           onchange="saveState()"><span class="track"></span></label>
+  </div>
+  <div class="btn-row" style="margin-top:8px;">
+    <button class="btn btn-test" onclick="streamQuality('down')" style="flex:1;">&#9660; Reduce quality now</button>
+    <button class="btn btn-test" onclick="streamQuality('restore')" style="flex:1;">&#9650; Restore full quality</button>
+  </div>
 </div>
 
 <!-- ── AI Commentary card ── -->
@@ -1054,6 +1080,56 @@ if (!sessionStorage.getItem('bbcc_stream_check_done')) {
   runStreamHealthCheck(false);
 }
 
+// ── Live stream quality monitor (congestion sentinel) ───────
+async function pollStreamMonitor() {
+  const body = document.getElementById('stream-monitor-body');
+  if (!body) return;
+  try {
+    const d = await (await apiFetch('/stream/monitor')).json();
+    if (d.reachable === false) {
+      body.innerHTML = '<span style="color:#8ba3c0;">OBS not reachable — monitor idle.</span>';
+      return;
+    }
+    if (!d.streaming) {
+      body.innerHTML = '<span style="color:#8ba3c0;">Not streaming — the monitor watches '
+        + 'congestion automatically once you go live.</span>';
+      return;
+    }
+    const pct = d.ladder_pct && d.ladder_pct[d.step] !== undefined ? d.ladder_pct[d.step] : 100;
+    const cong = d.congestion !== null && d.congestion !== undefined
+      ? Math.round(d.congestion * 100) + '%' : '—';
+    const healthy = d.step === 0 && d.congestion !== null && d.congestion < 0.1;
+    let html = '<div><strong style="color:' + (healthy ? '#3fb950' : '#d29922') + ';">LIVE — '
+      + (d.current_kbps || '?') + ' kbps (' + pct + '% of baseline)</strong>'
+      + ' &middot; congestion ' + cong + '</div>'
+      + '<div style="color:#8ba3c0;margin-top:3px;">' + (d.verdict || '') + '</div>';
+    (d.shifts || []).slice(-2).forEach(function (s) {
+      html += '<div style="color:#c8a84b;margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
+        + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
+    });
+    body.innerHTML = html;
+  } catch (e) {}
+}
+pollStreamMonitor();
+setInterval(pollStreamMonitor, 10000);
+
+async function streamQuality(action) {
+  const body = document.getElementById('stream-monitor-body');
+  const verb = action === 'restore' ? 'Restoring full quality' : 'Reducing quality';
+  if (!confirm(verb + ' briefly restarts the stream (~5-10s of buffering for viewers). Continue?')) return;
+  if (body) body.innerHTML = '<span style="color:#5b9bd5;">' + verb + '…</span>';
+  try {
+    const d = await (await apiFetch('/stream/quality', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action})})).json();
+    if (body) body.innerHTML = '<span style="color:' + (d.ok ? '#3fb950' : '#f85149') + ';">'
+      + (d.message || d.error || '') + '</span>';
+    setTimeout(pollStreamMonitor, 4000);
+  } catch (e) {
+    if (body) body.innerHTML = '<span style="color:#f85149;">Could not reach server</span>';
+  }
+}
+
 let _remoteTargets = [];
 const REMOTE_TAB_LABEL  = {tailscale: 'Tailscale', cloudflare: 'Cloudflare', lan: 'Same network'};
 const REMOTE_SCAN_NOTE  = {tailscale: 'over Tailscale', lan: 'on the same network',
@@ -1225,7 +1301,7 @@ const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget'];
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
