@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Syntax-checks the JavaScript embedded in server.py's CONTROL_HTML and in overlay.html.
+"""Syntax-checks the JavaScript embedded in control.html and overlay.html.
 
-Why this imports server.py instead of regexing the raw source: CONTROL_HTML is a plain
-Python triple-quoted string, so a single backslash meant for the embedded JS (e.g. an
-escaped quote inside a JS string literal) gets silently eaten by Python's own string
-escaping before the browser ever sees it. A text-based check over the raw source can't
-detect that -- it has to look at what Python actually produces at runtime. Importing the
-module gets us the real, evaluated CONTROL_HTML string.
+History note: the control panel used to live inside server.py as a triple-quoted Python
+string (CONTROL_HTML), where Python's own escaping could silently eat a backslash meant
+for the JS — so this script had to import server.py and check the *evaluated* string.
+The panel now lives in control.html as a plain file (normal JS escaping applies), so both
+pages are checked straight from disk, and running this has zero import side effects.
 
 Run with no arguments. Exits non-zero (and prints the JS engine's error) on any syntax error.
 """
@@ -98,29 +97,20 @@ def check_js(label, code):
 
 
 def main():
-    sys.path.insert(0, REPO_ROOT)
-    import server  # noqa: E402 -- import here so REPO_ROOT is on sys.path first
-
     all_ok = True
-
-    scripts = extract_scripts(server.CONTROL_HTML)
-    if not scripts:
-        print("  FAIL CONTROL_HTML: found no <script> blocks at all -- extraction is broken")
-        all_ok = False
-    for i, code in enumerate(scripts):
-        if not check_js(f"CONTROL_HTML script #{i+1}", code):
+    for fname in ("control.html", "overlay.html"):
+        path = os.path.join(REPO_ROOT, fname)
+        if not os.path.exists(path):
+            print(f"  FAIL {fname}: file not found at {path}")
             all_ok = False
-
-    overlay_path = os.path.join(REPO_ROOT, "overlay.html")
-    overlay_html = open(overlay_path, encoding="utf-8").read()
-    overlay_scripts = extract_scripts(overlay_html)
-    if not overlay_scripts:
-        print("  FAIL overlay.html: found no <script> blocks at all -- extraction is broken")
-        all_ok = False
-    for i, code in enumerate(overlay_scripts):
-        if not check_js(f"overlay.html script #{i+1}", code):
+            continue
+        scripts = extract_scripts(open(path, encoding="utf-8").read())
+        if not scripts:
+            print(f"  FAIL {fname}: found no <script> blocks at all -- extraction is broken")
             all_ok = False
-
+        for i, code in enumerate(scripts):
+            if not check_js(f"{fname} script #{i+1}", code):
+                all_ok = False
     sys.exit(0 if all_ok else 1)
 
 

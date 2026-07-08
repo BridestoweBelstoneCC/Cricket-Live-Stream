@@ -16,9 +16,13 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
 ## Key files
 
 - **`server.py`** (~5000 lines) — the whole backend. HTTP server on port 5000
-  (`ThreadingHTTPServer`). Also serves the control panel as an inline HTML string,
-  `CONTROL_HTML`, and builds the social-media images.
-- **`overlay.html`** (~2200 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
+  (`ThreadingHTTPServer`). Also builds the social-media images.
+- **`control.html`** (~2200 lines) — the operator's control panel, served by `/control`
+  with the kit-colour presets injected in place of the `/*__KIT_PRESETS__*/[]` placeholder
+  (see `control_html()` in server.py). Read from disk per request, so panel edits show on
+  refresh without a server restart. It used to live INSIDE server.py as a Python string —
+  see the (historical) backslash gotcha below.
+- **`overlay.html`** (~2600 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
 - **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test and a best-effort
   GitHub release check (`check_for_updates()` — compares `git describe --tags` against the
   latest release; purely informational, silently skipped if there's no git/internet).
@@ -52,18 +56,16 @@ stdlib-unittest suite (no test dependencies to install):
 # 1. Server must compile cleanly
 python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); print('OK')"
 
-# 2. The control panel JS (in server.py's CONTROL_HTML) and overlay.html's JS —
-#    syntax-check both. This imports server.py and reads the real, evaluated CONTROL_HTML
-#    string rather than regexing the raw source, because a naive text check can't see bugs
-#    where Python's own string-escaping silently eats a backslash meant for the JS (see
-#    gotcha below). Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
+# 2. Syntax-check the JS in control.html and overlay.html.
+#    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~80, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
-#    parsing, season-stats aggregation, session tokens, quickstart's state merge, a JS↔Python
-#    classifyBall parity check (node, or JavaScriptCore on macOS), and HTTP integration tests
+# 3. Automated tests (~125, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+#    parsing, season-stats aggregation, session tokens, quickstart's state merge, the match
+#    simulator's engine invariants, highlight tagging/planning, JS logic executed in a real
+#    engine (classifyBall parity, the bowler-milestone chain), and HTTP integration tests
 #    that spin up the real Handler on an ephemeral port (auth, redaction, path traversal,
-#    origin check, loopback carve-out, /live PCS pipeline + event buffer + ball DB).
+#    origin check, loopback carve-out, /live vs /live/view, event buffer, ball DB).
 python3 -m unittest discover -s tests
 
 # 4. Run it
@@ -78,16 +80,19 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 
 ## Critical gotchas (these have bitten us before)
 
-- **`CONTROL_HTML` is a plain triple-quoted string, NOT an f-string.** Any backslash in the
-  embedded JavaScript must be **doubled** — write `\\n`, `\\t`, `\\d` in regexes, etc. A single
-  backslash will break the panel silently, and the JS failure is confusing: the whole inline
-  `<script>` block fails to parse, so *every* function in it comes back "not defined" at the
-  call site, and any code before the broken point (like the "Checking connection..." polling
-  loop) just hangs with no visible error. `scripts/check_panel_js.py` (step 2 above) catches
-  this — run it after every panel edit; brace-counting or eyeballing the diff is not enough.
-  The panel also now has a `window.onerror` handler (top of the big `<script>` block) that
-  shows a visible red banner if this class of bug ever reaches a running server again, instead
-  of silently hanging.
+- **(Mostly historical) the panel used to live inside server.py as `CONTROL_HTML`**, a
+  triple-quoted Python string where every JS backslash had to be doubled — a single one
+  broke the whole `<script>` block silently (every function "not defined", the status line
+  hung on "Checking connection..."). The panel is now `control.html`, a plain file with
+  normal JS escaping, which kills that bug class — but two defenses remain and must stay:
+  `scripts/check_panel_js.py` (step 2 above; run after every panel edit) and the
+  `window.onerror` red-banner handler at the top of control.html's first `<script>` block.
+  The extraction wrote the *evaluated* string, so control.html has clean, normal JS
+  escaping throughout (`'\n'`, `/\d+/` — no doubling anywhere).
+- **The overlay's own poll is `/live`; everything else must use `/live/view`.** `/live` is
+  a mutating GET — it advances event detection, logs balls to the DB, and consumes the
+  wicket-event buffer, so exactly ONE client (the OBS overlay) may call it. Panel features
+  and any new tooling read `/live/view` (same response, no side effects).
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
 - **Logging must never raise.** `log_ball_data()` and anything in the match-day loop is wrapped

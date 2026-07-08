@@ -1,0 +1,2168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title id="page-title">Stream Control Panel</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#0d1b2e;color:#e8edf2;padding:20px;min-height:100vh}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px;
+         border-bottom:2px solid #1a3a5c;padding-bottom:14px}
+  .badge{width:42px;height:42px;background:#1a3a5c;border-radius:50%;border:2px solid #2a5a8c;
+         display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0}
+  h1{font-size:17px;font-weight:700;color:#fff}
+  h1 span{color:#5b9bd5;font-weight:400;font-size:12px;display:block;margin-top:2px}
+  #remote-pill{margin-left:auto;display:flex;align-items:center;gap:8px;background:#0a1628;
+      border:1px solid #1e3550;border-radius:20px;padding:6px 12px 6px 10px;cursor:pointer;
+      font-size:11px;color:#8ba3c0;white-space:nowrap}
+  #remote-pill:hover{border-color:#2a5a8c}
+  #remote-pill .dot{width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0}
+  #remote-pill.via-tailscale .dot{background:#5b9bd5}
+  #remote-pill.via-cloudflare .dot{background:#f5a623}
+  #remote-pill.via-local .dot{background:#8ba3c0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+  .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .side-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+  @media(max-width:768px){
+    body{padding:12px}
+    .grid,.split-grid,.half-grid,.side-grid{grid-template-columns:1fr}
+    .btn{padding:14px;font-size:15px;min-height:48px}
+    .btn-test,.btn-commentary{padding:12px;font-size:14px;min-height:44px;margin-top:6px}
+    .btn-row{flex-direction:column}
+    #live-status-bar{grid-template-columns:1fr !important}
+    h1{font-size:15px}
+  }
+  .card{background:#152237;border:1px solid #1e3550;border-radius:9px;padding:16px}
+  .pcs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:10px}
+  .pcs-cell{background:#0a1628;border:1px solid #1e3550;border-radius:6px;padding:8px 10px}
+  .pcs-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#3d5a7a;font-weight:600;margin-bottom:3px}
+  .pcs-cell-value{font-size:16px;font-weight:700;color:#e8edf2}
+  .pcs-cell-sub{font-size:10px;color:#3d5a7a;margin-top:1px}
+  .pcs-cell.live .pcs-cell-label{color:#4caf50}
+  .pcs-ball-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+  .pcs-ball{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            font-size:11px;font-weight:800;color:#fff;background:#1e3550}
+  .pcs-ball.four{background:#1a5fa8}
+  .pcs-ball.six{background:#7c3ab5}
+  .pcs-ball.wicket{background:#c0392b}
+  .pcs-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;
+                  padding:8px 10px;background:#0a1628;border-radius:6px;border:1px solid #1e3550}
+  .pcs-dot{width:8px;height:8px;border-radius:50%;background:#4a4a4a;flex-shrink:0}
+  .pcs-dot.live{background:#4caf50;animation:livePulse 1.5s infinite}
+    .card.highlight{border-color:#7c1a7c;background:#1a1230}
+  .card.highlight h2{color:#c060c0}
+  .btn-commentary{background:#5c1a7c;margin-top:8px;font-size:12px;padding:8px}
+  .btn-commentary:hover{background:#7c2a9c}
+  .commentary-preview{
+    margin-top:10px;padding:12px 14px;
+    background:#0a0818;border:1px solid #3a1a5c;border-left:3px solid #c060c0;
+    border-radius:5px;font-size:14px;font-style:italic;color:#e8e0f0;
+    min-height:44px;line-height:1.5;
+  }
+  .commentary-meta{font-size:10px;color:#5b3a7a;margin-top:5px;font-style:normal}
+  .card.full{grid-column:1/-1}
+  .card h2{font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:#5b9bd5;margin-bottom:12px;font-weight:600}
+  .field{margin-bottom:10px}
+  label{display:block;font-size:12px;color:#8aa8c4;margin-bottom:3px;font-weight:500}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:5px;
+    color:#e8edf2;font-size:13px;padding:7px 9px;outline:none;transition:border-color .2s;font-family:inherit}
+  input:focus,textarea:focus,select:focus{border-color:#5b9bd5}
+  textarea{resize:vertical;min-height:52px}
+  .hint{font-size:11px;color:#3d5a7a;margin-top:2px}
+  /* Colour picker */
+  .colour-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .colour-swatch{width:32px;height:32px;border-radius:4px;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;cursor:pointer}
+  .colour-hex{width:86px;background:#0d1b2e;border:1px solid #2a4060;border-radius:4px;
+              color:#e8edf2;font-size:12px;padding:6px 7px;outline:none;font-family:monospace}
+  .colour-hex:focus{border-color:#5b9bd5}
+  .presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .preset-btn{width:22px;height:22px;border-radius:3px;border:2px solid transparent;cursor:pointer;transition:border-color .15s,transform .1s}
+  .preset-btn:hover{border-color:#fff;transform:scale(1.15)}
+  .preset-btn.active{border-color:#fff}
+  .preview-bar{height:32px;border-radius:4px;display:flex;align-items:center;overflow:hidden;margin-top:8px;font-size:11px;font-weight:700}
+  .preview-home{padding:0 10px;color:#fff;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}
+  .preview-centre{flex:1;background:#d0d4db;display:flex;align-items:center;padding:0 8px;color:#0d1520;font-size:10px}
+  .preview-away{padding:0 8px;color:#fff;text-transform:uppercase;flex-shrink:0;font-size:10px}
+  .preview-bowler{padding:0 8px;color:#fff;font-size:10px;flex-shrink:0}
+  /* Toggle */
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1a2a40}
+  .toggle-row:last-child{border-bottom:none}
+  .toggle-label{font-size:13px;color:#e8edf2}
+  .toggle-desc{font-size:10px;color:#3d5a7a;margin-top:1px}
+  .toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0;position:absolute}
+  .track{position:absolute;inset:0;background:#2a4060;border-radius:11px;cursor:pointer;transition:background .2s}
+  .toggle input:checked+.track{background:#1a6ab5}
+  .track::after{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;
+               background:#fff;border-radius:50%;transition:transform .2s}
+  .toggle input:checked+.track::after{transform:translateX(18px)}
+  hr{border:none;border-top:1px solid #1e3550;margin:10px 0}
+  /* Buttons */
+  .btn{display:block;width:100%;padding:11px;border:none;border-radius:6px;
+       font-size:14px;font-weight:700;cursor:pointer;background:#1a5fa8;color:#fff;
+       transition:background .15s,transform .1s}
+  .btn:hover{background:#2272c0}
+  .btn:active{transform:scale(.98)}
+  .btn-test{background:#1a4a1a;margin-top:8px;font-size:12px;padding:8px}
+  .btn-test:hover{background:#256025}
+  .status{margin-top:10px;padding:8px 11px;border-radius:4px;font-size:12px;text-align:center;display:none}
+  .ok{background:#0d3a1a;color:#4caf50;border:1px solid #1e6b30;display:block}
+  .err{background:#3a0d0d;color:#f44336;border:1px solid #6b1e1e;display:block}
+  .links{margin-top:14px;font-size:11px;color:#3d5a7a;display:flex;gap:14px;flex-wrap:wrap}
+  .links a{color:#5b9bd5}
+  .section-note{font-size:11px;color:#3d5a7a;margin-bottom:10px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- ── Auth overlay — shown on first visit or after token rejection ── -->
+<div id="auth-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.97);
+     z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:32px 28px;
+       width:100%;max-width:380px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      CONTROL PANEL
+    </div>
+    <h2 style="font-size:15px;color:#e8edf2;margin-bottom:6px;">Enter club password</h2>
+    <p style="font-size:12px;color:#5b9bd5;margin-bottom:20px;">
+      Set as <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">club_password</code>
+      in <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">config.ini [Auth]</code>
+    </p>
+    <input type="password" id="auth-input" placeholder="Club password"
+           style="width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:6px;
+                  color:#e8edf2;font-size:14px;padding:10px 12px;outline:none;
+                  margin-bottom:10px;font-family:monospace;"
+           onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()"
+            style="width:100%;padding:11px;border:none;border-radius:6px;font-size:14px;
+                   font-weight:700;cursor:pointer;background:#1a5fa8;color:#fff;margin-bottom:8px;">
+      Unlock
+    </button>
+    <p id="auth-error" style="font-size:12px;color:#f44336;margin-bottom:10px;display:none;"></p>
+    <button onclick="doSkip()"
+            style="background:none;border:none;font-size:11px;color:#3d5a7a;cursor:pointer;
+                   text-decoration:underline;">
+      No token configured? Click to continue
+    </button>
+  </div>
+</div>
+
+<header>
+  <div class="badge" id="panel-club-badge">CC</div>
+  <h1>Stream Control Panel<span id="panel-club-name">Your Club</span></h1>
+  <div id="remote-pill" onclick="showRemoteOverlay()" title="Click for a QR code to open this panel on another device">
+    <span class="dot"></span><span id="remote-pill-label">This machine</span>
+  </div>
+  <div id="security-pill" onclick="showSecurityOverlay()" title="Recent sign-in activity and session controls"
+       style="margin-left:8px;display:flex;align-items:center;gap:6px;background:#0a1628;
+              border:1px solid #1e3550;border-radius:20px;padding:6px 12px;cursor:pointer;
+              font-size:11px;color:#8ba3c0;white-space:nowrap;">
+    &#128274; Security
+  </div>
+</header>
+
+<!-- ── Remote access overlay — QR code for pairing another device ── -->
+<div id="remote-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
+     z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideRemoteOverlay()">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+       width:100%;max-width:340px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      REMOTE ACCESS
+    </div>
+    <div id="remote-modal-body">
+      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+    </div>
+    <button onclick="hideRemoteOverlay()"
+            style="margin-top:16px;background:none;border:none;font-size:11px;color:#3d5a7a;
+                   cursor:pointer;text-decoration:underline;">
+      Close
+    </button>
+  </div>
+</div>
+
+<!-- ── Security overlay — recent auth activity + session revocation ── -->
+<div id="security-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
+     z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideSecurityOverlay()">
+  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+       width:100%;max-width:400px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+      SECURITY
+    </div>
+    <div id="security-modal-body" style="text-align:left;">
+      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+    </div>
+    <button onclick="logoutAllSessions()"
+            style="width:100%;margin-top:16px;padding:11px;border:none;border-radius:6px;
+                   font-size:13px;font-weight:700;cursor:pointer;background:#7a2020;color:#fff;">
+      Log out everyone
+    </button>
+    <p style="font-size:11px;color:#3d5a7a;margin-top:8px;">
+      Sessions also expire on their own after 12 hours, and restarting the server has the
+      same effect as this button — both invalidate every signed-in device at once.
+    </p>
+    <button onclick="hideSecurityOverlay()"
+            style="margin-top:10px;background:none;border:none;font-size:11px;color:#3d5a7a;
+                   cursor:pointer;text-decoration:underline;">
+      Close
+    </button>
+  </div>
+</div>
+
+<!-- ── Pre-match checklist ── -->
+<div id="checklist-bar" style="background:#0a1628;border:1px solid #1e3550;border-radius:9px;padding:16px 18px;margin-bottom:16px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:#5b9bd5;font-weight:600;">Pre-match checklist</span>
+    <button onclick="resetChecklist()" style="font-size:10px;color:#3d5a7a;background:none;border:none;cursor:pointer;padding:0;">Reset</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px;" id="checklist-items"></div>
+</div>
+
+<!-- ── Stream health check ── -->
+<div class="card" style="margin-bottom:14px;border-color:#2a6496;">
+  <h2 style="color:#5b9bd5;">&#128225; Stream Health Check</h2>
+  <p class="section-note">
+    Recommends a bitrate/resolution from your actual measured upload speed, and tests whether
+    your hardware video encoder is really performing better than plain CPU encoding — instead
+    of just guessing from your computer's specs. Runs automatically once OBS is detected;
+    briefly starts and stops a short throwaway test recording in OBS to measure it (never
+    while the real stream is live).
+  </p>
+  <div id="stream-check-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
+       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:36px;">
+    Waiting to detect OBS…
+  </div>
+  <button class="btn" onclick="runStreamHealthCheck(true)"
+          style="background:#2a6496;margin-top:10px;">
+    &#128225; Check now
+  </button>
+</div>
+
+<!-- ── AI Commentary card ── -->
+<div class="card highlight" style="margin-bottom:14px;">
+  <h2>&#129302; AI Commentary <span style="text-transform:none;letter-spacing:0;font-size:10px;
+      color:#5b3a7a;font-weight:400;">(NEW — test feature)</span></h2>
+  <p class="section-note" style="color:#8060a0;">
+    End-of-over AI commentary and new-batter player cards. Uses Claude Haiku — fast and
+    very cheap (fractions of a penny per line). Requires an Anthropic API key below.
+  </p>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">AI commentary (end of over)</div>
+      <div class="toggle-desc">4th panel after over summary, partnership, run rate</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="graphics_commentary_over">
+      <span class="track"></span>
+    </label>
+  </div>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Player card on new batter</div>
+      <div class="toggle-desc">Shows name + season stats when a new batter arrives</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="graphics_player_card">
+      <span class="track"></span>
+    </label>
+  </div>
+  <div class="field">
+    <label>Anthropic API key</label>
+    <input type="text" id="anthropic_api_key"
+           placeholder="sk-ant-api03-...">
+    <p class="hint">Get a free key at <a href="https://console.anthropic.com"
+       target="_blank" style="color:#5b9bd5;">console.anthropic.com</a> —
+       Claude Haiku costs ~$0.001 per commentary line</p>
+  </div>
+  <div class="commentary-preview" id="commentary-preview">
+    Commentary will appear here during the match...
+  </div>
+  <div class="commentary-meta" id="commentary-meta"></div>
+  <button class="btn btn-commentary" onclick="testCommentary()">
+    &#129302; Generate test commentary
+  </button>
+</div>
+
+<!-- PlayCricket API card -->
+<div class="card" style="margin-bottom:14px;border-color:#2a6496;">
+  <h2 style="color:#5b9bd5;">&#9889; PlayCricket API — Auto-fill</h2>
+  <p class="section-note">
+    Fetches today's fixture automatically — fills in opposition name,
+    umpires, competition, and ground coordinates for weather.
+    The API only works from your registered laptop.
+  </p>
+  <div class="split-grid" style="gap:10px;margin-bottom:10px;">
+    <div class="field" style="margin-bottom:0">
+      <label>PlayCricket API key</label>
+      <input type="text" id="playcricket_api_key" placeholder="Paste your API key here">
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Ground name filter</label>
+      <input type="text" id="ground_filter" placeholder="e.g. The Green">
+      <p class="hint">Only fetch home fixtures at this ground. Partial match, case-insensitive. Leave blank for any home ground.</p>
+    </div>
+    <button class="btn" onclick="fetchTodaysMatch()"
+            style="background:#2a6496;white-space:nowrap;height:38px;">
+      &#128203; Fetch today's match
+    </button>
+  </div>
+  <div id="pc-api-result" style="font-size:12px;color:#3d5a7a;padding:8px 10px;
+       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:36px;">
+    Enter your API key and click Fetch — opposition name, umpires and competition
+    will be filled in automatically.
+  </div>
+  <div id="pc-api-details" style="display:none;margin-top:10px;">
+    <div class="pcs-grid" id="pc-api-grid"></div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- Match -->
+  <div class="card">
+    <h2>Match</h2>
+    <div id="demo-row" class="toggle-row" style="margin-bottom:12px;padding:8px 10px;
+         background:#0a1a0a;border:1px solid #1a4a1a;border-radius:6px;">
+      <div>
+        <div class="toggle-label" id="demo-label" style="color:#4caf50;">Demo mode OFF</div>
+        <div class="toggle-desc">Shows dummy data on the overlay — must be OFF when streaming</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="demo_mode" onchange="updateDemoStyle(this.checked)">
+        <span class="track"></span>
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+      <div class="field" style="margin-bottom:0">
+        <label>Home team name</label>
+        <input type="text" id="home_team">
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Scorebar abbrev.</label>
+        <input type="text" id="home_abbrev" placeholder="e.g. HOME" maxlength="6"
+               style="width:70px;text-transform:uppercase;font-weight:700;">
+      </div>
+    </div>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      Abbreviation overrides the full name on the scorebar (max 6 chars). Leave blank to auto-shorten.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+      <div class="field" style="margin-bottom:0">
+        <label>Opposition name</label>
+        <input type="text" id="away_team" placeholder="e.g. Opposition CC">
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label>Scorebar abbrev.</label>
+        <input type="text" id="away_abbrev" placeholder="OPP" maxlength="6"
+               style="width:70px;text-transform:uppercase;font-weight:700;">
+      </div>
+    </div>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      e.g. "OPP", "TAUN", "EXTR" — shown in the coloured end blocks of the scorebar.
+    </p>
+    <div class="field">
+      <label>Max overs per innings</label>
+      <input type="number" id="max_overs" min="1" max="100" style="width:90px">
+    </div>
+
+    <div class="field" style="padding:10px;background:#0a1f0a;border:1px solid #1e4a1e;border-radius:5px;margin-bottom:10px;">
+      <label style="color:#4caf50;">&#9679; PCS Pro output folder <span style="color:#3d7a3d;font-size:10px;font-weight:400;">— recommended data source</span></label>
+      <input type="text" id="pcs_output_folder" placeholder="e.g. C:/Users/Scorer/Documents/Cricket Matches/_Scoreboards/Output">
+      <p class="hint" style="color:#3d7a3d;">Paste the scorer's PCS Pro output folder. Gives batter names, bowler, run rate — updated every ball. No internet needed.</p>
+    </div>
+    <div class="toggle-row" style="margin-top:8px;">
+      <div>
+        <div class="toggle-label">Use widget as fallback</div>
+        <div class="toggle-desc">Poll PlayCricket widget if PCS file not found. Disable if PCS is always in use.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="use_widget"><span class="track"></span></label>
+    </div>
+    <div class="field">
+      <label>Toss / match notes</label>
+      <textarea id="match_notes" placeholder="e.g. Home won toss, elected to bat"></textarea>
+      <p class="hint">Shown in the status segment of the scorebar</p>
+    </div>
+  </div>
+
+  <!-- Kit colours -->
+  <div class="card">
+    <h2>Kit Colours</h2>
+    <div class="field">
+      <label>Home kit</label>
+      <div class="colour-row">
+        <div class="colour-swatch" id="home-swatch"></div>
+        <input type="text" class="colour-hex" id="home_colour" maxlength="7">
+      </div>
+      <div class="presets" id="home-presets"></div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>Away kit</label>
+      <div class="colour-row">
+        <div class="colour-swatch" id="away-swatch"></div>
+        <input type="text" class="colour-hex" id="away_colour" maxlength="7">
+      </div>
+      <div class="presets" id="away-presets"></div>
+    </div>
+    <div class="preview-bar" id="colour-preview">
+      <div class="preview-home" id="prev-home">HOME</div>
+      <div class="preview-centre">147-4 &nbsp; 28.3/50</div>
+      <div class="preview-away" id="prev-away">OPP</div>
+      <div class="preview-bowler" id="prev-bowler">Harrison 1-34</div>
+    </div>
+
+    <!-- Logos folder -->
+    <div class="field" style="margin-top:14px;">
+      <label>Logos folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
+      <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
+      <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
+    </div>
+
+    <div class="field" style="margin-top:10px;">
+      <label>Headshots folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
+      <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
+      <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
+    </div>
+
+    <div class="field" style="margin-top:10px;">
+      <label>Season batting stats <span style="color:#3d5a7a;font-weight:400;">(pulled from PlayCricket, cached for the day)</span></label>
+      <button class="btn btn-test" onclick="refreshSeasonStats()" style="width:100%;margin-top:4px;">&#128202; Refresh season stats from PlayCricket</button>
+      <span id="season-stats-status" style="font-size:12px;color:#3d5a7a;display:block;margin-top:8px;">Builds player averages/best/innings from this season's scorecards. Click once before the match to pre-load. Uses your PlayCricket API key.</span>
+    </div>
+
+    <div class="field" style="margin-top:10px;">
+      <label>Socials folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
+      <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
+      <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
+    </div>
+
+    <div class="field" style="margin-top:10px;">
+      <label>Drinks break over <span style="color:#3d5a7a;font-weight:400;">(weather card shows at end of this over)</span></label>
+      <input type="number" id="drinks_over" placeholder="25" min="1" max="49">
+      <p class="hint">Set to 0 to disable. Weather card shows automatically at the end of this over.</p>
+    </div>
+
+    <!-- Club Badge Status -->
+    <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.07);padding-top:16px;">
+      <label style="font-size:11px;font-weight:700;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;display:block;margin-bottom:12px;">Club Badges</label>
+      <div class="half-grid" style="gap:12px;">
+
+        <!-- Home badge -->
+        <div style="display:flex;align-items:center;gap:10px;background:#0d1e35;border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
+          <div id="badge-home-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img id="badge-home-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('home')">
+            <span id="badge-home-icon" style="font-size:18px;color:#3d5a7a;">⚪</span>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-home-label">Home badge</div>
+            <div style="font-size:11px;margin-top:2px;" id="badge-home-status">Checking...</div>
+            <div style="font-size:10px;color:#3d5a7a;margin-top:1px;" id="badge-home-id"></div>
+          </div>
+        </div>
+
+        <!-- Away badge -->
+        <div style="display:flex;align-items:center;gap:10px;background:#0d1e35;border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
+          <div id="badge-away-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img id="badge-away-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('away')">
+            <span id="badge-away-icon" style="font-size:18px;color:#3d5a7a;">⚪</span>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-away-label">Away badge</div>
+            <div style="font-size:11px;margin-top:2px;" id="badge-away-status">Checking...</div>
+            <div style="font-size:10px;color:#3d5a7a;margin-top:1px;" id="badge-away-id"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Manual badge picker -->
+      <div class="half-grid" style="margin-top:12px;gap:12px;">
+        <div>
+          <label style="font-size:11px;color:#3d5a7a;display:block;margin-bottom:4px;">Home badge file</label>
+          <select id="home-logo-pick" onchange="applyBadgePick('home')" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:7px;font-size:12px;box-sizing:border-box;">
+            <option value="">— pick a logo —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#3d5a7a;display:block;margin-bottom:4px;">Away badge file</label>
+          <select id="away-logo-pick" onchange="applyBadgePick('away')" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:7px;font-size:12px;box-sizing:border-box;">
+            <option value="">— pick a logo —</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:8px;">Manually set each side's badge from your logos folder — handy when PlayCricket didn't supply the opposition's club ID. Picking a file sets that side's badge immediately.</p>
+    </div>
+  </div>
+
+  <!-- Squad roster (shirt number → player) -->
+  <div class="card">
+    <label>Squad Roster — tells brothers apart</label>
+    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
+    <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
+    <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
+    <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+
+  <!-- Graphics toggles -->
+  <div class="card">
+    <h2>Graphics</h2>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Fall of wicket card</div>
+           <div class="toggle-desc">Slides up when a wicket falls</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_fow"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Partnership milestones</div>
+           <div class="toggle-desc">Shows at 50, 100, 150... run partnerships</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_partnership"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Batting lineup card</div>
+           <div class="toggle-desc">Appears at start of each innings</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_lineup"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Boundary / six flash</div>
+           <div class="toggle-desc">FOUR! and SIX! banner on boundaries</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_boundary_flash"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Player milestones</div>
+           <div class="toggle-desc">Gold graphic at 50 and 100 runs</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_milestones"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Innings summary card</div>
+           <div class="toggle-desc">Top scorers &amp; bowlers at end of innings</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_innings_summary"><span class="track"></span></label>
+    </div>
+    <hr>
+    <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
+                font-weight:600;margin:6px 0 4px;">PCS Pro live features</div>
+
+    <div class="toggle-row">
+      <div><div class="toggle-label">Over summary card</div>
+           <div class="toggle-desc">Slides up at end of each over with runs &amp; bowler figures</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_over_summary"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Partnership display</div>
+           <div class="toggle-desc">Current partnership runs &amp; balls — bottom left</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_partnership_display"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Run rate trend</div>
+           <div class="toggle-desc">Bar chart of runs per over — top left corner</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_runrate_trend"><span class="track"></span></label>
+    </div>
+    <hr>
+    <div class="field">
+      <label>Weekend sponsor name</label>
+      <input type="text" id="sponsor_name" placeholder="e.g. Acme Builders — leave blank to disable">
+      <p class="hint">Shown after the over summary/partnership/AI commentary sequence at the end of each over (not with the run rate chart). Blank = off.</p>
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Weekend sponsor image ID</label>
+      <input type="text" id="sponsor_id" placeholder="e.g. 3 — matches sponsors/3.png">
+      <p class="hint">Matches an image in the sponsors/ folder next to server.py, named by this ID (sponsors/3.png, sponsors/3.jpg, ...). Optional — the name still shows on its own if no image is found.</p>
+    </div>
+  </div>
+
+  <!-- Instant replay -->
+  <div class="card">
+    <h2>Instant Replay</h2>
+    <p class="section-note">
+      Requires OBS WebSocket enabled (Tools → WebSocket Server Settings)
+      and a scene named <strong style="color:#e8edf2">Replay</strong> with a
+      Media Source named <strong style="color:#e8edf2">ReplayClip</strong>.
+      Also enable the Replay Buffer in OBS Settings → Output.
+    </p>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Enable instant replay</div>
+           <div class="toggle-desc">Auto-triggers on wickets &amp; boundaries</div></div>
+      <label class="toggle"><input type="checkbox" id="replay_enabled"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Replay on centuries</div>
+           <div class="toggle-desc">Always triggers a replay when a batter reaches 100+</div></div>
+      <!-- display-only (always on); no id — it must not shadow the real #replay_enabled above -->
+      <label class="toggle"><input type="checkbox" disabled checked style="opacity:0.4"></label>
+    </div>
+    <div class="toggle-row" style="margin-bottom:10px">
+      <div><div class="toggle-label">Replay on fifties</div>
+           <div class="toggle-desc">Also replay when a batter reaches 50, 150, 200...</div></div>
+      <label class="toggle"><input type="checkbox" id="replay_on_fifty"><span class="track"></span></label>
+    </div>
+    <hr>
+    <div class="field">
+      <label>OBS WebSocket password</label>
+      <input type="text" id="obs_password" placeholder="Set in OBS → Tools → WebSocket Server">
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>OBS host</label>
+        <input type="text" id="obs_host" placeholder="localhost">
+      </div>
+      <div class="field">
+        <label>Port</label>
+        <input type="number" id="obs_port" placeholder="4455" style="width:100%">
+      </div>
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>Main scene name</label>
+        <input type="text" id="obs_main_scene" placeholder="Main">
+      </div>
+      <div class="field">
+        <label>Replay scene name</label>
+        <input type="text" id="obs_replay_scene" placeholder="Replay">
+      </div>
+    </div>
+    <hr>
+    <div class="field">
+      <label>Camera RTSP URL <span style="color:#3d5a7a;font-weight:400;">(adds the match camera to OBS for you)</span></label>
+      <input type="text" id="camera_rtsp_url" placeholder="rtsp://user:pass@192.168.1.50:554/stream">
+    </div>
+    <div class="field">
+      <label>Camera source name</label>
+      <input type="text" id="obs_camera_name" placeholder="Cricket Camera">
+    </div>
+    <button class="btn btn-test" onclick="addCameraToObs()" style="width:100%;">&#128247; Add camera to OBS</button>
+    <div id="camera-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <div class="field">
+      <label>Replay folder path (leave blank to auto-detect)</label>
+      <input type="text" id="replay_folder" placeholder="C:/Users/You/Videos/Replays">
+      <p class="hint">Where OBS saves replay buffer clips. Max 100 clips — oldest deleted automatically.</p>
+    </div>
+    <div class="field">
+      <label>Replay scene duration (seconds)</label>
+      <input type="number" id="replay_duration" min="5" max="60" style="width:90px">
+      <p class="hint">How long to stay on the Replay scene before returning</p>
+    </div>
+    <button class="btn btn-test" onclick="testReplay()">&#9654; Test replay now</button>
+  </div>
+
+  <!-- YouTube title updater -->
+  <div class="card">
+    <h2>YouTube Title</h2>
+    <p class="section-note">
+      Automatically updates your YouTube stream title when you click the button.
+      Requires a one-time Google OAuth setup — see instructions below.
+    </p>
+    <div class="field">
+      <label>Title template</label>
+      <input type="text" id="youtube_title_template" placeholder="LIVE: {home} vs {away}">
+      <p class="hint">{home} and {away} are replaced with the team names automatically</p>
+    </div>
+    <button class="btn btn-test" onclick="updateYouTubeTitle()" style="margin-top:6px;">&#9654; Update YouTube title now</button>
+    <div style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:11px;color:#3d5a7a;line-height:1.6;">
+      <strong style="color:#5b9bd5;">One-time setup:</strong><br>
+      1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:#5b9bd5;">console.cloud.google.com</a><br>
+      2. Create a project → Enable YouTube Data API v3<br>
+      3. Create OAuth2 credentials (Desktop app) → Download JSON<br>
+      4. Rename file to <strong style="color:#e8edf2;">yt_credentials.json</strong> and place in the same folder as server.py<br>
+      5. Run: <code style="color:#e8edf2;">pip install google-api-python-client google-auth-oauthlib</code><br>
+      6. Click the button above — a browser window will open to authorise once
+    </div>
+  </div>
+
+  <!-- Weather widget -->
+  <div class="card">
+    <h2>Weather Widget</h2>
+    <p class="section-note">Shows current conditions at your ground in the top-left corner of the stream. Use during rain delays.</p>
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn btn-test" onclick="showWeather()" style="flex:1;">&#9728; Show weather</button>
+      <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
+      <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
+      <button class="btn btn-test" onclick="showPlayerCards()" style="flex:1;">&#9786; Show player cards</button>
+    </div>
+    <div id="weather-preview" style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:12px;color:#5b9bd5;">Click "Show weather" to fetch current conditions</div>
+  </div>
+
+  <!-- Match report & social posts -->
+  <div class="card" style="grid-column:1/-1;border-color:#2a6496;">
+    <h2>&#128221; Match Report &amp; Social Posts</h2>
+    <p class="section-note">Generate an AI-written match report or a short social media post from the match so far. Needs an Anthropic API key (set in the AI Commentary card). Best run at the end of the match.</p>
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn btn-test" onclick="generateReport('report')" style="flex:1;">&#128240; Generate match report</button>
+      <button class="btn btn-test" onclick="generateReport('social')" style="flex:1;">&#128241; Generate social post</button>
+    </div>
+    <textarea id="report-output" placeholder="Generated text will appear here — edit freely before copying." style="width:100%;margin-top:12px;min-height:140px;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+      <button class="btn btn-test" onclick="copyReport()" style="flex:0 0 auto;">&#128203; Copy</button>
+      <span id="report-status" style="font-size:12px;color:#3d5a7a;"></span>
+    </div>
+    <div id="social-photos" style="margin-top:12px;"></div>
+
+    <!-- Instagram result graphic -->
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08);">
+      <h2 style="font-size:15px;margin:0 0 4px;">&#128247; Instagram Result Graphic</h2>
+      <p class="section-note">Builds a ready-to-post 1080&times;1350 image using a photo from your socials folder as the backdrop, with the result and key match facts laid over it. Needs an Anthropic API key.</p>
+      <div class="field" style="margin-top:8px;">
+        <label>Match <span style="color:#3d5a7a;font-weight:400;">(pick a past result, or use the streamed match)</span></label>
+        <div class="split-grid">
+          <select id="ig-match" onchange="onMatchPick()" style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:8px;font-size:13px;box-sizing:border-box;">
+            <option value="">Streamed match (live data)</option>
+          </select>
+          <button class="btn btn-test" onclick="loadRecentMatches()" style="white-space:nowrap;">&#8635; Load results</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label>Backdrop photo <span style="color:#3d5a7a;font-weight:400;">(optional — newest photo used if blank)</span></label>
+        <select id="ig-photo" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:8px;font-size:13px;box-sizing:border-box;">
+          <option value="">Newest photo in socials folder</option>
+        </select>
+      </div>
+      <button class="btn btn-test" onclick="generateIgGraphic()" style="width:100%;margin-top:10px;">&#127919; Generate Instagram graphic</button>
+      <div id="ig-youth-note" style="display:none;margin-top:8px;padding:8px 10px;background:#2a2410;border:1px solid #5c4a18;border-radius:6px;font-size:11px;color:#d2c08a;line-height:1.5;">
+        &#9888;&#65039; Youth match selected. Backdrop photos are drawn from <b>socials/youth</b> (use club/ground stock images, not photos of children), and player names use the discreet first-name + initial form. Check your club's safeguarding/consent policy before posting.
+      </div>
+      <span id="ig-status" style="font-size:12px;color:#3d5a7a;display:block;margin-top:8px;"></span>
+      <div id="ig-preview-wrap" style="display:none;margin-top:12px;">
+        <img id="ig-preview" style="width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.1);" alt="Instagram graphic preview">
+        <div class="btn-row" style="margin-top:8px;">
+          <a id="ig-download" class="btn btn-test" download="bbcc_instagram.png" style="flex:1;text-align:center;text-decoration:none;">&#11015;&#65039; Download image</a>
+          <button class="btn btn-test" onclick="copyIgCaption()" style="flex:1;">&#128203; Copy caption</button>
+        </div>
+        <textarea id="ig-caption" placeholder="Caption will appear here." style="width:100%;margin-top:8px;min-height:70px;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>&#128202; Match data</h2>
+      <p class="section-note">Every ball is logged to a local database (<code>match_data.db</code>) as you stream — your own season-long dataset. The current over is rewritten live so scorer edits are captured; "Reconcile" then pulls the final scorecard from PlayCricket as the authoritative record.</p>
+      <div id="data-status" style="margin:8px 0;padding:10px;background:#0a1628;border-radius:6px;font-size:13px;color:#9fb3c8;">Loading…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-test" onclick="reconcileMatch()" style="flex:1;">&#10003; Reconcile latest</button>
+        <button class="btn btn-test" onclick="exportLatestCsv()" style="flex:1;">&#8681; Export CSV</button>
+        <button class="btn btn-test" onclick="loadDataStatus()" style="flex:1;">&#8635; Refresh</button>
+      </div>
+      <div id="data-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Highlights + PCS monitor side by side (full width row) -->
+  <div class="side-grid" style="grid-column:1/-1;">
+
+    <!-- Highlights compiler -->
+    <div class="card">
+      <h2>Post-match Highlights</h2>
+      <p class="section-note">
+        Stitches all saved replay clips into a single highlights reel.
+        Requires FFmpeg — <a href="https://ffmpeg.org/download.html" target="_blank" style="color:#5b9bd5;">download here</a> and add to PATH.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 10px;
+                  background:#0a1628;border-radius:5px;font-size:12px;">
+        <span style="color:#5b9bd5;">&#127916;</span>
+        <span id="clip-count-display" style="color:#e8edf2;">— clips saved</span>
+        <span style="color:#3d5a7a;margin-left:auto;font-size:10px;overflow:hidden;
+                     text-overflow:ellipsis;max-width:180px;" id="clip-folder-display"></span>
+      </div>
+      <div class="field">
+        <label>Max clips to keep (rolling buffer)</label>
+        <input type="number" id="max_clips" min="10" max="500" style="width:90px">
+        <p class="hint">Oldest deleted automatically once limit reached. Default: 100.</p>
+      </div>
+      <button class="btn btn-test" onclick="compileHighlights()" style="margin-top:4px;">
+        &#127916; Compile highlights reel
+      </button>
+      <div id="highlights-status" style="margin-top:8px;font-size:12px;color:#3d5a7a;"></div>
+    </div>
+
+    <!-- PCS Live Data monitor -->
+    <div class="card" id="pcs-monitor">
+      <h2>&#128200; PCS Pro — Live Data Feed</h2>
+      <p class="section-note">Live view of what is being received from the PCS Pro output file and sent to the overlay.</p>
+      <div id="pcs-monitor-body">
+        <div style="color:#3d5a7a;font-size:12px;padding:10px 0;">
+          Waiting for PCS data — set the output folder in the Match card above and start scoring.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ── Live status bar ── -->
+<div id="live-status-bar" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;">
+
+  <div id="live-status" style="
+    display:flex; align-items:center; gap:12px;
+    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
+    padding:12px 16px;
+  ">
+    <div id="status-dot" style="
+      width:10px; height:10px; border-radius:50%;
+      background:#4a4a4a; flex-shrink:0;
+      transition:background .3s;
+    "></div>
+    <div style="flex:1">
+      <div id="status-line1" style="font-size:13px;font-weight:600;color:#e8edf2;">Checking connection...</div>
+      <div id="status-line2" style="font-size:11px;color:#3d5a7a;margin-top:2px;"></div>
+    </div>
+    <div id="status-source" style="
+      font-size:10px; font-weight:700; text-transform:uppercase;
+      letter-spacing:1.2px; padding:3px 8px; border-radius:3px;
+      background:#1e3550; color:#5b9bd5; flex-shrink:0;
+    "></div>
+  </div>
+
+  <!-- Health strip: one dot per subsystem, refreshed every 10s from /health -->
+  <div id="health-strip" style="
+    display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
+    padding:8px 14px; margin:8px 0 0 0; font-size:11px; color:#9fb3c8;
+  ">
+    <span style="color:#3d5a7a;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-size:9px;">Health</span>
+    <span class="hl-item"><span class="hl-dot" id="hl-feed"></span>Feed: <b id="hl-feed-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-stats"></span>Stats: <b id="hl-stats-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
+  </div>
+  <style>
+    .hl-item { display:inline-flex; align-items:center; gap:6px; }
+    .hl-item b { color:#e8edf2; font-weight:600; }
+    .hl-dot { width:8px; height:8px; border-radius:50%; background:#4a4a4a; display:inline-block; }
+    .hl-ok   { background:#3fb950 !important; }
+    .hl-warn { background:#d29922 !important; }
+    .hl-bad  { background:#f85149 !important; }
+  </style>
+
+  <div style="
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
+    padding:10px 16px; min-width:110px; gap:2px;
+  ">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#3d5a7a;font-weight:600;">Uptime</div>
+    <div id="server-uptime" style="font-size:16px;font-weight:700;color:#4caf50;">—</div>
+    <div id="server-clips" style="font-size:10px;color:#3d5a7a;">— clips</div>
+  </div>
+
+</div>
+
+<button class="btn" onclick="saveState()">Save &amp; Update Overlay</button>
+<div class="status" id="status"></div>
+
+<div class="links">
+  <span>OBS browser source:</span>
+  <a id="overlay-link" href="/overlay" target="_blank">/overlay</a>
+</div>
+
+<!-- Separate, earlier script: if the big script block below fails to parse (e.g. a raw
+     backslash swallowed by CONTROL_HTML's Python string escaping -- see CLAUDE.md), that
+     whole block silently never runs, and the panel just hangs on "Checking connection...".
+     This registers a global handler first so a parse failure shows up as a visible banner
+     instead of a silent hang. Run scripts/check_panel_js.py after editing either script. -->
+<script>
+window.onerror = function (message, source, lineno, colno) {
+  var el = document.getElementById("panel-fatal-error");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "panel-fatal-error";
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;" +
+      "background:#3a0d0d;color:#ffb4b4;font:13px monospace;padding:10px 16px;" +
+      "border-bottom:2px solid #f44336;white-space:pre-wrap;";
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.textContent = "Control panel script error: " + message +
+    " (line " + lineno + ", col " + colno + ") -- the panel did not load correctly. " +
+    "Check the browser console, and server.py for a raw backslash inside CONTROL_HTML.";
+};
+</script>
+
+<script>
+const PRESETS = /*__KIT_PRESETS__*/[];
+
+// ── Auth helpers ─────────────────────────────────────────────
+// sessionStorage key 'bbcc_token' holds the control token for this tab session.
+// null  = not yet set (show login overlay on load)
+// ''    = user skipped (no auth configured on server)
+// value = token to send as Authorization: Bearer
+function getToken() { return sessionStorage.getItem('bbcc_token'); }
+
+async function apiFetch(url, opts) {
+  const t = getToken();
+  const baseHeaders = (opts && opts.headers) ? opts.headers : {'Content-Type':'application/json'};
+  const h = Object.assign({}, baseHeaders);
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(url, Object.assign({}, opts, {headers: h}));
+  if (r.status === 401) showLoginOverlay('Session expired — log in again');
+  return r;
+}
+
+function showLoginOverlay(msg) {
+  const ov  = document.getElementById('auth-overlay');
+  const err = document.getElementById('auth-error');
+  if (ov)  ov.style.display  = 'flex';
+  if (err) { err.textContent = msg || ''; err.style.display = msg ? 'block' : 'none'; }
+  setTimeout(function(){ const i = document.getElementById('auth-input'); if (i) i.focus(); }, 50);
+}
+
+async function doLogin() {
+  const val = (document.getElementById('auth-input').value || '').trim();
+  if (!val) {
+    const e = document.getElementById('auth-error');
+    if (e) { e.textContent = 'Enter the password first'; e.style.display = 'block'; }
+    return;
+  }
+  try {
+    const res = await fetch('/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: val})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      document.getElementById('auth-overlay').style.display = 'none';
+    } else {
+      const e = document.getElementById('auth-error');
+      if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
+    }
+  } catch (err) {
+    const e = document.getElementById('auth-error');
+    if (e) { e.textContent = 'Could not reach server'; e.style.display = 'block'; }
+  }
+}
+
+async function doSkip() {
+  try {
+    const res = await fetch('/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: ''})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      document.getElementById('auth-overlay').style.display = 'none';
+    } else {
+      const e = document.getElementById('auth-error');
+      if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
+    }
+  } catch (err) {
+    sessionStorage.setItem('bbcc_token', '');
+    document.getElementById('auth-overlay').style.display = 'none';
+  }
+}
+
+// Show login overlay on first load if no token is stored for this session.
+// Script is at the bottom of <body> so the DOM is ready — no DOMContentLoaded needed.
+if (getToken() === null) {
+  document.getElementById('auth-overlay').style.display = 'flex';
+}
+
+// ── Remote-access pill + QR overlay ────────────────────────────
+// How *this* page load reached the server, judged purely from the URL bar — no round
+// trip needed. Tailscale IPs are always in the 100.64.0.0/10 CGNAT range, so "starts
+// with 100." is a reliable, dependency-free check.
+function remoteVia() {
+  const h = location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') return 'local';
+  if (h.startsWith('100.')) return 'tailscale';
+  if (h.endsWith('.trycloudflare.com')) return 'cloudflare';
+  return 'lan';
+}
+(function initRemotePill() {
+  const via   = remoteVia();
+  const pill  = document.getElementById('remote-pill');
+  const label = document.getElementById('remote-pill-label');
+  const text  = {local: 'This machine', tailscale: 'Tailscale remote',
+                 cloudflare: 'Cloudflare remote', lan: 'Same network'}[via];
+  label.textContent = text;
+  pill.classList.add('via-' + via);
+})();
+
+// The OBS browser-source URL always matches whatever host/port this page was actually
+// loaded from — no hardcoded port to drift out of sync with PORT in server.py again.
+(function initOverlayLink() {
+  const url = location.origin + '/overlay';
+  const a = document.getElementById('overlay-link');
+  a.href = url;
+  a.textContent = url;
+})();
+
+// ── Stream health check ─────────────────────────────────────
+const STREAM_ENCODER_LABEL = {
+  x264: 'Software (x264 / CPU)', nvenc: 'NVIDIA NVENC', nvenc_hevc: 'NVIDIA NVENC (HEVC)',
+  amd: 'AMD hardware', amd_hevc: 'AMD hardware (HEVC)',
+  qsv: 'Intel QuickSync', qsv_hevc: 'Intel QuickSync (HEVC)',
+};
+function encoderLabel(id) { return STREAM_ENCODER_LABEL[id] || id || '—'; }
+
+async function runStreamHealthCheck(force) {
+  const body = document.getElementById('stream-check-body');
+  body.style.color = '#3d5a7a';
+  body.textContent = 'Checking your connection and OBS encoder — this takes a few seconds and '
+    + 'may briefly show REC in OBS (a throwaway test, deleted automatically)…';
+  try {
+    const res = await apiFetch('/obs/stream_check' + (force ? '?force=1' : ''));
+    const d = await res.json();
+    if (res.status === 429) {
+      body.innerHTML = '<span style="color:#8ba3c0;">' + (d.error || 'Checked recently — try again shortly.') + '</span>';
+      return;
+    }
+    let html = '';
+    const n = d.network || {};
+    if (n.error) {
+      html += '<div style="color:#f44336;margin-bottom:8px;">' + n.error + '</div>';
+    } else if (n.recommended_kbps) {
+      html += '<div style="margin-bottom:8px;"><strong style="color:#e8edf2;">Recommended: '
+        + n.recommended_kbps + ' kbps, ' + n.recommended_resolution + ' ' + n.recommended_fps + 'fps</strong><br>'
+        + '<span style="color:#8ba3c0;">Measured upload speed: ' + n.upload_mbps + ' Mbps'
+        + (n.freshly_tested ? '' : ' (cached from an earlier test)') + ' — ' + n.note + '</span></div>';
+    }
+    const enc = d.encoder || {};
+    if (enc.ok) {
+      const base = (enc.tests || {}).baseline || {};
+      const alt  = (enc.tests || {}).alternate;
+      html += '<div style="margin-bottom:4px;"><strong style="color:#e8edf2;">Encoder: '
+        + encoderLabel(enc.recommended_encoder) + ' recommended</strong></div>';
+      if (base.error) {
+        html += '<div style="color:#8ba3c0;">' + base.error + '</div>';
+      } else if (base.skip_pct !== undefined) {
+        html += '<div style="color:#8ba3c0;">' + encoderLabel(base.encoder) + ': '
+          + (base.skip_pct ?? 0) + '% of frames dropped in a short test</div>';
+      }
+      if (alt && !alt.error && alt.skip_pct !== undefined) {
+        html += '<div style="color:#8ba3c0;">' + encoderLabel(alt.encoder) + ': '
+          + (alt.skip_pct ?? 0) + '% of frames dropped in the same test</div>';
+      }
+      (enc.notes || []).forEach(function (note) {
+        html += '<div style="color:#8ba3c0;margin-top:4px;">' + note + '</div>';
+      });
+      (enc.caveats || []).forEach(function (c) {
+        html += '<div style="color:#c8a84b;margin-top:4px;">&#9888; ' + c + '</div>';
+      });
+    } else if (enc.error) {
+      html += '<div style="color:#8ba3c0;">' + enc.error + '</div>';
+    }
+    body.innerHTML = html || 'No data yet — click Check now.';
+  } catch (err) {
+    body.style.color = '#f44336';
+    body.textContent = 'Could not reach the server.';
+  }
+}
+
+// Auto-run once per browser session (a tab staying open through a match), not on every page
+// refresh — the check briefly starts/stops a real OBS recording, so it shouldn't fire
+// silently every time the panel reloads mid-match.
+if (!sessionStorage.getItem('bbcc_stream_check_done')) {
+  sessionStorage.setItem('bbcc_stream_check_done', '1');
+  runStreamHealthCheck(false);
+}
+
+let _remoteTargets = [];
+const REMOTE_TAB_LABEL  = {tailscale: 'Tailscale', cloudflare: 'Cloudflare', lan: 'Same network'};
+const REMOTE_SCAN_NOTE  = {tailscale: 'over Tailscale', lan: 'on the same network',
+                           cloudflare: 'over the public internet — password protected'};
+
+function renderRemoteTarget(via) {
+  const body = document.getElementById('remote-modal-body');
+  const t = _remoteTargets.find(x => x.via === via) || _remoteTargets[0];
+  if (!t) return;
+  const tabs = _remoteTargets.length <= 1 ? '' : '<div style="margin-bottom:12px;">' +
+    _remoteTargets.map(x => {
+      const active = x.via === t.via;
+      return '<button onclick="renderRemoteTarget(\'' + x.via + '\')" style="font-size:11px;' +
+        'padding:5px 10px;border-radius:14px;cursor:pointer;margin:0 3px;border:1px solid ' +
+        (active ? '#5b9bd5' : '#1e3550') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
+        ';color:#e8edf2;">' + REMOTE_TAB_LABEL[x.via] + '</button>';
+    }).join('') + '</div>';
+  body.innerHTML = tabs +
+    '<p style="font-size:12px;color:#8ba3c0;margin-bottom:12px;">Scan on a phone or tablet ' +
+    REMOTE_SCAN_NOTE[t.via] + ':</p>' +
+    '<img src="/remote/qr.png?via=' + t.via + '&t=' + Date.now() + '" style="width:200px;height:200px;' +
+    'background:#fff;border-radius:8px;padding:8px;" ' +
+    'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
+    '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
+    'style:\'font-size:12px;color:#8ba3c0\'}))">' +
+    '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + t.url + '</p>';
+}
+
+async function showRemoteOverlay() {
+  const ov   = document.getElementById('remote-overlay');
+  const body = document.getElementById('remote-modal-body');
+  ov.style.display = 'flex';
+  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  try {
+    const res = await fetch('/remote/info');
+    const d = await res.json();
+    _remoteTargets = d.targets || [];
+    if (!_remoteTargets.length) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;line-height:1.5;">' +
+        'Not reachable from another device yet — set <code style="background:#0d1b2e;' +
+        'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
+        '#0d1b2e;padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
+        'Tailscale, or enable <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">' +
+        'cloudflare_tunnel</code>, then restart the server.</p>';
+      return;
+    }
+    renderRemoteTarget(_remoteTargets[0].via);
+  } catch (err) {
+    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+  }
+}
+
+function hideRemoteOverlay() {
+  document.getElementById('remote-overlay').style.display = 'none';
+}
+
+// ── Security overlay — recent auth activity + session revocation ──
+function fmtAgo(ts) {
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (sec < 60) return sec + 's ago';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+  return Math.floor(sec / 3600) + 'h ago';
+}
+
+const AUTH_EVENT_LABEL = {
+  login_ok: 'Login succeeded', login_fail: 'Wrong password',
+  locked_out: 'Blocked (too many attempts)', logout_all: 'All sessions logged out',
+  '401': 'Rejected (no/invalid session)'
+};
+
+async function showSecurityOverlay() {
+  const ov   = document.getElementById('security-overlay');
+  const body = document.getElementById('security-modal-body');
+  ov.style.display = 'flex';
+  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  try {
+    const res = await apiFetch('/auth/log');
+    const d = await res.json();
+    if (!d.ok) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Could not load auth activity.</p>';
+      return;
+    }
+    if (!d.entries.length) {
+      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">No auth activity recorded yet this session.</p>';
+      return;
+    }
+    body.innerHTML = '<p style="font-size:11px;color:#5b9bd5;text-transform:uppercase;' +
+      'letter-spacing:1px;margin-bottom:8px;">Recent activity</p>' +
+      '<div style="max-height:220px;overflow-y:auto;">' +
+      d.entries.map(function(e) {
+        const label = AUTH_EVENT_LABEL[e.event] || e.event;
+        const color = (e.event === 'login_ok') ? '#4caf50' :
+                      (e.event === 'logout_all') ? '#5b9bd5' : '#f44336';
+        return '<div style="display:flex;justify-content:space-between;gap:10px;' +
+          'font-size:11px;padding:5px 0;border-bottom:1px solid #1e3550;">' +
+          '<span style="color:' + color + '">' + label + '</span>' +
+          '<span style="color:#3d5a7a;">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+  } catch (err) {
+    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+  }
+}
+
+function hideSecurityOverlay() {
+  document.getElementById('security-overlay').style.display = 'none';
+}
+
+async function logoutAllSessions() {
+  if (!confirm('Log out every device using this control panel, including this one? ' +
+               'You will need to log back in.')) return;
+  try {
+    await apiFetch('/auth/logout_all',
+      {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+  } catch (err) {}
+  sessionStorage.removeItem('bbcc_token');
+  hideSecurityOverlay();
+  showLoginOverlay('Signed out — log in again');
+}
+
+function buildPresets(cId, hexId, swId) {
+  const container = document.getElementById(cId);
+  const hex       = document.getElementById(hexId);
+  const sw        = document.getElementById(swId);
+  PRESETS.forEach(p => {
+    const btn = document.createElement('div');
+    btn.className = 'preset-btn'; btn.title = p.name;
+    btn.style.background = p.hex;
+    btn.onclick = () => {
+      hex.value = p.hex; updateSwatch(sw, p.hex); updatePreview();
+      container.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    container.appendChild(btn);
+  });
+  hex.addEventListener('input', () => { updateSwatch(sw, hex.value); updatePreview(); });
+}
+
+function updateSwatch(sw, hex) {
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) sw.style.background = hex;
+}
+
+function shade(hex, amt) {
+  const n = parseInt((hex||'#333').replace('#',''),16);
+  const r = Math.min(255,Math.max(0,(n>>16)+amt));
+  const g = Math.min(255,Math.max(0,((n>>8)&0xff)+amt));
+  const b = Math.min(255,Math.max(0,(n&0xff)+amt));
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+function updatePreview() {
+  const home = document.getElementById('home_colour').value || '#1a3a5c';
+  const away = document.getElementById('away_colour').value || '#7b2d2d';
+  document.getElementById('prev-home').style.background   = home;
+  document.getElementById('prev-away').style.background   = away;
+  document.getElementById('prev-bowler').style.background = shade(away,-30);
+  const homeAb = (document.getElementById('home_abbrev')?.value||'').trim().toUpperCase();
+  const awayAb = (document.getElementById('away_abbrev')?.value||'').trim().toUpperCase();
+  const hn = homeAb || (document.getElementById('home_team').value||'BRIDES').split(' ')[0].toUpperCase().slice(0,6);
+  const an = awayAb || (document.getElementById('away_team').value||'OPP').split(' ')[0].toUpperCase().slice(0,6);
+  document.getElementById('prev-home').textContent = hn;
+  document.getElementById('prev-away').textContent = an;
+}
+
+const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
+  'pcs_output_folder','match_url','match_notes','replay_folder',
+  'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
+  'youtube_title_template','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
+const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
+const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
+  'graphics_lineup','graphics_boundary_flash','graphics_milestones',
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget'];
+
+function badgeError(side) {
+  document.getElementById('badge-'+side+'-img').style.display = 'none';
+  document.getElementById('badge-'+side+'-icon').textContent = '—';
+  document.getElementById('badge-'+side+'-icon').style.color = '#3d5a7a';
+  document.getElementById('badge-'+side+'-status').textContent = 'No badge file found';
+  document.getElementById('badge-'+side+'-status').style.color = '#c87800';
+  document.getElementById('badge-'+side+'-circle').style.borderColor = '#4a3800';
+}
+
+function checkBadges(homeId, awayId, homeAbbrev, awayAbbrev) {
+  function check(side, id, abbrev) {
+    if (!id) {
+      document.getElementById('badge-'+side+'-status').textContent = 'No club ID set';
+      document.getElementById('badge-'+side+'-status').style.color = '#3d5a7a';
+      document.getElementById('badge-'+side+'-icon').textContent = '?';
+      return;
+    }
+    document.getElementById('badge-'+side+'-label').textContent = abbrev || (side === 'home' ? 'Home' : 'Away');
+    document.getElementById('badge-'+side+'-id').textContent = 'ID: ' + id;
+    document.getElementById('badge-'+side+'-status').textContent = 'Checking...';
+    document.getElementById('badge-'+side+'-status').style.color = '#3d5a7a';
+
+    const img = document.getElementById('badge-'+side+'-img');
+    img.onload = function() {
+      img.style.display = 'block';
+      document.getElementById('badge-'+side+'-icon').style.display = 'none';
+      document.getElementById('badge-'+side+'-status').textContent = '✓ Badge found';
+      document.getElementById('badge-'+side+'-status').style.color = '#4caf50';
+      document.getElementById('badge-'+side+'-circle').style.borderColor = '#2a5a2a';
+    };
+    img.onerror = function() { badgeError(side); };
+    img.src = '/logo/' + id + '?t=' + Date.now();
+  }
+  check('home', homeId, homeAbbrev);
+  check('away', awayId, awayAbbrev);
+}
+
+function parseRosterText(t) {
+  var r = {};
+  (t||'').split('\n').forEach(function(line){
+    var m = line.match(/^\s*(\d+)\s*[=,:\-\s]\s*(.+?)\s*$/);
+    if (m) r[m[1]] = m[2].trim();
+  });
+  return r;
+}
+function rosterToText(r) {
+  return Object.keys(r||{}).sort(function(a,b){return (+a)-(+b);})
+    .map(function(k){ return k + ' = ' + r[k]; }).join('\n');
+}
+async function loadRoster() {
+  try {
+    var s = await (await apiFetch('/state')).json();
+    var ta = document.getElementById('roster-text');
+    if (ta) ta.value = rosterToText(s.roster || {});
+  } catch(e){}
+}
+async function saveRoster() {
+  var ta = document.getElementById('roster-text');
+  var st = document.getElementById('roster-status');
+  if (!ta) return;
+  var roster = parseRosterText(ta.value);
+  try {
+    await apiFetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
+                           body: JSON.stringify({roster: roster})});
+    var n = Object.keys(roster).length;
+    if (st){ st.textContent = '✓ Saved ' + n + ' players'; st.style.color = '#34c759'; }
+  } catch(e){ if (st){ st.textContent = 'Error: ' + e.message; st.style.color = '#f44336'; } }
+}
+
+async function loadLogoOptions() {  try {
+    const d = await (await apiFetch('/logos/list')).json();
+    const opts = '<option value="">— pick a logo —</option>'
+      + (d.logos||[]).map(function(l){ return '<option value="'+l.id+'">'+l.file+'</option>'; }).join('');
+    ['home','away'].forEach(function(side){
+      const sel = document.getElementById(side+'-logo-pick');
+      if (sel) { const cur = sel.value; sel.innerHTML = opts; sel.value = cur; }
+    });
+  } catch(e) {}
+}
+
+async function applyBadgePick(side) {
+  const sel = document.getElementById(side+'-logo-pick');
+  if (!sel || !sel.value) return;
+  const field = (side === 'home') ? 'home_club_id' : 'away_club_id';
+  try {
+    // Partial POST is safe now that /state merges. Preserves everything else.
+    await apiFetch('/state', {method:'POST', headers:{'Content-Type':'application/json'},
+                           body: JSON.stringify({[field]: sel.value})});
+    const s = await (await apiFetch('/state')).json();
+    checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
+    showStatus((side==='home'?'Home':'Away')+' badge set to '+sel.value, 'ok');
+  } catch(e) { showStatus('Could not set badge: '+e.message, 'err'); }
+}
+
+async function loadState() {
+  const s = await (await apiFetch('/state')).json();
+  FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
+  NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
+  BOOL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.checked=!!s[id]; });
+  updateSwatch(document.getElementById('home-swatch'), s.home_colour||'#1a3a5c');
+  updateSwatch(document.getElementById('away-swatch'), s.away_colour||'#7b2d2d');
+  updatePreview();
+  updateDemoStyle(!!s.demo_mode);
+  checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
+  const clubName = s.home_team || 'Your Club';
+  const clubBadgeEl = document.getElementById('panel-club-badge');
+  const clubNameEl  = document.getElementById('panel-club-name');
+  if (clubBadgeEl) clubBadgeEl.textContent = (s.home_abbrev || clubName || 'CC').slice(0,2).toUpperCase();
+  if (clubNameEl)  clubNameEl.textContent  = clubName;
+  document.title = 'Stream Control — ' + clubName;
+}
+
+async function saveState() {
+  const state = {};
+  FIELDS.forEach(id     => { const el=document.getElementById(id); if(el) state[id]=el.value.trim(); });
+  NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) state[id]=parseInt(el.value)||0; });
+  BOOL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=el.checked; });
+  // Defaults for blank required fields
+  if (!state.home_team) state.home_team = 'Home CC';
+  if (!state.away_team) state.away_team = 'Opposition CC';
+  if (!state.obs_host)  state.obs_host  = 'localhost';
+  if (!state.obs_port)  state.obs_port  = 4455;
+  if (!state.obs_main_scene)   state.obs_main_scene   = 'Main';
+  if (!state.obs_replay_scene) state.obs_replay_scene = 'Replay';
+  if (!state.replay_duration)  state.replay_duration  = 18;
+  try {
+    const res = await apiFetch('/state', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    showStatus(res.ok ? 'Saved — overlay updates on its next poll' : 'Error saving', res.ok?'ok':'err');
+    if (res.ok) updatePreview();
+  } catch(e) { showStatus('Could not reach server: '+e.message,'err'); }
+}
+
+async function testReplay() {
+  showStatus('Triggering test replay...','ok');
+  try {
+    const res = await apiFetch('/replay', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Test'})});
+    const d = await res.json();
+    showStatus(d.ok ? 'Replay triggered — check OBS' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+
+function showStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent=msg; el.className='status '+cls;
+  setTimeout(()=>el.className='status',6000);
+}
+
+async function updateYouTubeTitle() {
+  const tmpl = document.getElementById('youtube_title_template').value;
+  showStatus('Updating YouTube title...','ok');
+  try {
+    const res = await apiFetch('/youtube/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:tmpl})});
+    const d = await res.json();
+    showStatus(d.ok ? d.title : 'Error: '+(d.error||'unknown'), d.ok?'ok':'err');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+
+async function showWeather() {
+  const prev = document.getElementById('weather-preview');
+  prev.textContent = 'Fetching...'; prev.style.color='#5b9bd5';
+  try {
+    const res  = await apiFetch('/weather');
+    const data = await res.json();
+    if (data.ok) {
+      prev.textContent = `${data.icon} ${data.temp}°C · ${data.description} · Wind ${data.wind} · Humidity ${data.humidity}%`;
+      prev.style.color = '#4caf50';
+      await apiFetch('/weather/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    } else {
+      prev.textContent = 'Error: ' + (data.error||'unknown');
+      prev.style.color = '#f44336';
+    }
+  } catch(e) { prev.textContent = 'Could not reach server'; prev.style.color='#f44336'; }
+}
+
+async function showScorecard() {
+  try {
+    await apiFetch('/scorecard/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('Scorecard showing on overlay','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function showPlayerCards() {
+  try {
+    await apiFetch('/cards/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('Player cards showing on overlay','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+
+// ── OBS camera auto-add ──
+async function addCameraToObs() {
+  const msg = document.getElementById('camera-msg');
+  const url = (document.getElementById('camera_rtsp_url') || {}).value || '';
+  if (!url.trim()) { if (msg) { msg.textContent = 'Enter the camera RTSP URL first'; msg.style.color = '#d29922'; } return; }
+  if (msg) { msg.textContent = 'Adding camera to OBS…'; msg.style.color = '#5b9bd5'; }
+  try {
+    await saveState();   // make sure the URL/name are persisted before we call OBS
+    const name = (document.getElementById('obs_camera_name') || {}).value || '';
+    const d = await (await apiFetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim(), name:name.trim()})})).json();
+    if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+}
+
+// ── Match data (ball-by-ball database) ──
+let _latestMatchId = '';
+async function loadDataStatus() {
+  const box = document.getElementById('data-status');
+  if (!box) return;
+  try {
+    const d = await (await apiFetch('/data/status')).json();
+    if (!d.ok) { box.textContent = 'Database error: ' + (d.error || ''); return; }
+    _latestMatchId = (d.recent && d.recent[0]) ? d.recent[0].match_id : '';
+    let html = '<b>' + (d.balls || 0).toLocaleString() + '</b> balls logged across <b>'
+             + (d.matches || 0) + '</b> match(es).';
+    if (d.recent && d.recent.length) {
+      html += '<div style="margin-top:6px;font-size:12px;line-height:1.6;">'
+        + d.recent.slice(0, 5).map(function(m){
+            return (m.date || '') + ' &nbsp;' + (m.home || '') + ' v ' + (m.away || '')
+              + (m.reconciled ? ' <span style="color:#3fb950;">&#10003; reconciled</span>'
+                              : ' <span style="color:#d29922;">live only</span>');
+          }).join('<br>')
+        + '</div>';
+    }
+    box.innerHTML = html;
+  } catch(e) { box.textContent = 'Could not reach server'; }
+}
+async function reconcileMatch() {
+  const msg = document.getElementById('data-msg');
+  if (msg) { msg.textContent = 'Reconciling with PlayCricket…'; msg.style.color = '#5b9bd5'; }
+  try {
+    const body = JSON.stringify(_latestMatchId ? { match_id: _latestMatchId } : {});
+    const d = await (await apiFetch('/data/reconcile', {method:'POST',headers:{'Content-Type':'application/json'},body:body})).json();
+    if (d.ok) { if (msg) { msg.textContent = 'Reconciled ✓ ' + (d.result || '') + ' (' + d.innings + ' innings)'; msg.style.color = '#3fb950'; } loadDataStatus(); }
+    else { if (msg) { msg.textContent = d.error || 'Could not reconcile'; msg.style.color = '#f85149'; } }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+}
+async function exportLatestCsv() {
+  const msg = document.getElementById('data-msg');
+  if (!_latestMatchId) { if (msg) { msg.textContent = 'No match logged yet'; msg.style.color = '#d29922'; } return; }
+  // Download via apiFetch + blob, NOT window.open: the endpoint is auth-gated and
+  // window.open can't carry the Bearer header, so it just 401'd once a password was set.
+  try {
+    const res = await apiFetch('/data/export?match_id=' + encodeURIComponent(_latestMatchId));
+    if (!res.ok) throw new Error('server returned ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'match_' + _latestMatchId + '_balls.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+    if (msg) { msg.textContent = 'CSV downloaded'; msg.style.color = '#3fb950'; }
+  } catch(e) {
+    if (msg) { msg.textContent = 'Export failed: ' + e.message; msg.style.color = '#f85149'; }
+  }
+}
+async function hideWeather() {
+  await apiFetch('/weather/hide', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const prev = document.getElementById('weather-preview');
+  prev.textContent = 'Weather widget hidden'; prev.style.color='#3d5a7a';
+}
+
+let _hlPollTimer = null;
+async function compileHighlights() {
+  const st = document.getElementById('highlights-status');
+  st.textContent = 'Starting compile...'; st.style.color='#5b9bd5';
+  try {
+    const res = await apiFetch('/highlights', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d = await res.json();
+    if (!d.ok) { st.textContent = 'Error: ' + (d.error||'unknown'); st.style.color='#f44336'; return; }
+    st.textContent = 'Compiling ' + d.clip_count + ' clip' + (d.clip_count!==1?'s':'')
+      + ' (' + (d.tagged||0) + ' auto-tagged with wicket/boundary captions)…';
+    // The compile runs server-side in the background — poll until it resolves
+    if (_hlPollTimer) clearInterval(_hlPollTimer);
+    _hlPollTimer = setInterval(async function() {
+      try {
+        const s2 = await (await apiFetch('/highlights/status')).json();
+        if (!s2.running && s2.message) {
+          clearInterval(_hlPollTimer); _hlPollTimer = null;
+          st.textContent = (s2.ok ? '✓ ' : '✗ ') + s2.message;
+          st.style.color = s2.ok ? '#4caf50' : '#f44336';
+        }
+      } catch(e) {}
+    }, 3000);
+  } catch(e) { st.textContent = 'Could not reach server'; st.style.color='#f44336'; }
+}
+
+async function generateReport(type) {
+  const out = document.getElementById('report-output');
+  const st  = document.getElementById('report-status');
+  out.value = 'Generating ' + (type==='social'?'social post':'match report') + '...';
+  st.textContent = ''; st.style.color = '#3d5a7a';
+  try {
+    const url = '/report/generate' + (type==='social' ? '?type=social' : '');
+    const d = await (await apiFetch(url)).json();
+    if (d.ok) {
+      out.value = d.text;
+      st.textContent = 'Generated ' + new Date().toLocaleTimeString() + ' · edit before posting';
+      st.style.color = '#4caf50';
+      if (type==='social') loadSocialPhotos();
+    } else {
+      out.value = '';
+      st.textContent = 'Error: ' + (d.error||'unknown');
+      st.style.color = '#f44336';
+    }
+  } catch(e) {
+    out.value = '';
+    st.textContent = 'Could not reach server';
+    st.style.color = '#f44336';
+  }
+}
+
+function copyReport() {
+  const out = document.getElementById('report-output');
+  const st  = document.getElementById('report-status');
+  out.select();
+  try {
+    document.execCommand('copy');
+    st.textContent = 'Copied to clipboard';
+    st.style.color = '#4caf50';
+  } catch(e) {
+    if (navigator.clipboard) navigator.clipboard.writeText(out.value);
+    st.textContent = 'Copied';
+    st.style.color = '#4caf50';
+  }
+}
+
+async function loadSocialPhotos() {
+  const box = document.getElementById('social-photos');
+  if (!box) return;
+  try {
+    const d = await (await apiFetch('/social/photos')).json();
+    if (d.photos && d.photos.length) {
+      box.innerHTML = '<p class="hint" style="margin-bottom:6px;">Photos in your socials folder ('
+        + d.photos.length + ') — attach one when posting:</p>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+        + d.photos.map(function(p){ return '<span style="font-size:11px;background:#0d1e35;'
+          + 'border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:3px 8px;color:#5b9bd5;">'
+          + p + '</span>'; }).join('')
+        + '</div>';
+    } else {
+      box.innerHTML = '<p class="hint">No photos found in socials folder. Add JPG/PNG files to use with posts.</p>';
+    }
+  } catch(e) { box.innerHTML = ''; }
+  // Also populate the Instagram backdrop dropdown
+  try {
+    const sel = document.getElementById('ig-photo');
+    if (sel) {
+      const d2 = await (await apiFetch('/social/photos')).json();
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Newest photo in socials folder</option>'
+        + (d2.photos || []).map(function(p){
+            return '<option value="'+p+'">'+p+'</option>'; }).join('');
+      sel.value = cur;
+    }
+  } catch(e) {}
+}
+
+let _matchTeams = {};   // match_id -> team_key (1st/2nd/3rd), for per-team photo folders
+async function loadRecentMatches() {
+  const sel = document.getElementById('ig-match');
+  const status = document.getElementById('ig-status');
+  if (status) { status.textContent = 'Loading recent results from PlayCricket…'; status.style.color = '#5b9bd5'; }
+  try {
+    const d = await (await apiFetch('/social/recent')).json();
+    if (!d.ok) { if (status) { status.textContent = d.error || 'Could not load results'; status.style.color = '#f85149'; } return; }
+    _matchTeams = {};
+    (d.matches || []).forEach(function(m){ _matchTeams[m.id] = m.team_key || ''; });
+    sel.innerHTML = '<option value="">Streamed match (live data)</option>'
+      + (d.matches || []).map(function(m){
+          var tag = m.team_key ? (' [' + m.team_key + ' XI]') : '';
+          return '<option value="' + m.id + '">' + (m.label || m.id) + tag + '</option>';
+        }).join('');
+    if (status) { status.textContent = (d.matches || []).length + ' recent match(es) loaded — pick one above'; status.style.color = '#3fb950'; }
+  } catch(e) { if (status) { status.textContent = 'Could not reach server'; status.style.color = '#f85149'; } }
+}
+
+// When the chosen match changes, reload the backdrop list from that team's photo folder
+async function onMatchPick() {
+  const matchEl = document.getElementById('ig-match');
+  const team = matchEl ? (_matchTeams[matchEl.value] || '') : '';
+  const note = document.getElementById('ig-youth-note');
+  if (note) note.style.display = (team === 'youth') ? 'block' : 'none';
+  try {
+    const sel = document.getElementById('ig-photo');
+    if (!sel) return;
+    const d = await (await apiFetch('/social/photos?team=' + encodeURIComponent(team))).json();
+    const label = team ? ('Newest photo in socials/' + team) : 'Newest photo in socials folder';
+    sel.innerHTML = '<option value="">' + label + '</option>'
+      + (d.photos || []).map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
+  } catch(e) {}
+}
+
+async function generateIgGraphic() {
+  const status  = document.getElementById('ig-status');
+  const wrap    = document.getElementById('ig-preview-wrap');
+  const photoEl = document.getElementById('ig-photo');
+  const photo   = photoEl ? photoEl.value : '';
+  const matchEl = document.getElementById('ig-match');
+  const matchId = matchEl ? matchEl.value : '';
+  const team    = matchEl ? (_matchTeams[matchId] || '') : '';
+  if (status) { status.textContent = matchId ? 'Building graphic from PlayCricket result…' : 'Generating graphic (distilling match facts with Claude)...'; status.style.color = '#8060a0'; }
+  try {
+    const params = [];
+    if (photo)   params.push('photo='   + encodeURIComponent(photo));
+    if (matchId) params.push('match_id=' + encodeURIComponent(matchId));
+    if (team)    params.push('team='     + encodeURIComponent(team));
+    const url = '/social/image/generate' + (params.length ? ('?' + params.join('&')) : '');
+    const res = await apiFetch(url);   // GET — the endpoint reads ?photo= and ignores any body
+    // Parse defensively: an empty or non-JSON body should give a readable error,
+    // not a cryptic "Unexpected end of JSON input".
+    const text = await res.text();
+    let d;
+    try {
+      d = JSON.parse(text);
+    } catch (parseErr) {
+      const snippet = (text || '').trim().slice(0, 200);
+      throw new Error('Server returned ' + res.status + ' ' + res.statusText
+        + (snippet ? (' — ' + snippet) : ' (empty response)'));
+    }
+    if (d.ok) {
+      const bust = '/social/image/latest?t=' + Date.now();   // cache-bust the preview
+      const img = document.getElementById('ig-preview');
+      const dl  = document.getElementById('ig-download');
+      const cap = document.getElementById('ig-caption');
+      if (img) img.src = bust;
+      if (dl)  dl.href = bust;
+      if (cap) cap.value = d.caption || '';
+      if (wrap) wrap.style.display = 'block';
+      if (status) {
+        status.textContent = 'Done' + (d.used_photo ? (' — backdrop: ' + d.used_photo) : ' — plain backdrop (no photo found)');
+        status.style.color = '#4caf50';
+      }
+    } else {
+      if (status) { status.textContent = 'Error: ' + (d.error || 'unknown'); status.style.color = '#f44336'; }
+    }
+  } catch(e) {
+    if (status) { status.textContent = 'Request failed: ' + e; status.style.color = '#f44336'; }
+  }
+}
+
+function copyIgCaption() {
+  const cap = document.getElementById('ig-caption');
+  if (!cap) return;
+  cap.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  if (navigator.clipboard) { navigator.clipboard.writeText(cap.value).catch(function(){}); }
+  const status = document.getElementById('ig-status');
+  if (status) { status.textContent = 'Caption copied to clipboard'; status.style.color = '#4caf50'; }
+}
+
+async function refreshSeasonStats() {
+  const s = document.getElementById('season-stats-status');
+  if (s) { s.textContent = 'Pulling this season’s scorecards from PlayCricket (one-off, please wait)…'; s.style.color = '#8060a0'; }
+  try {
+    const res = await apiFetch('/player/stats/refresh?force=1');   // GET — endpoint lives in do_GET
+    const text = await res.text();
+    let d;
+    try { d = JSON.parse(text); }
+    catch (pe) { throw new Error('Server returned ' + res.status + ' ' + res.statusText + (text ? (' — ' + text.slice(0,200)) : ' (empty)')); }
+    if (s) {
+      if (d.error) {
+        s.textContent = 'Done with a warning: ' + d.error + ' (built ' + (d.players||0) + ' players from ' + (d.matches_used||0) + ' matches)';
+        s.style.color = '#c47d00';
+      } else {
+        s.textContent = 'Loaded ' + (d.players||0) + ' players from ' + (d.matches_used||0) + ' matches (' + (d.api_calls||0) + ' API calls). Cached for today.';
+        s.style.color = '#4caf50';
+      }
+    }
+  } catch(e) {
+    if (s) { s.textContent = 'Request failed: ' + e; s.style.color = '#f44336'; }
+  }
+}
+
+async function testCommentary() {
+  const prev = document.getElementById('commentary-preview');
+  const meta = document.getElementById('commentary-meta');
+  if (prev) { prev.textContent = 'Generating...'; prev.style.color='#8060a0'; }
+  try {
+    const res = await apiFetch('/commentary/test', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    if (d.ok) {
+      if (prev) { prev.textContent = d.text; prev.style.color='#e8e0f0'; }
+      if (meta) meta.textContent = `Generated ${new Date().toLocaleTimeString()} · Claude Haiku`;
+    } else {
+      if (prev) { prev.textContent = 'Error: '+(d.error||'unknown'); prev.style.color='#f44336'; }
+    }
+  } catch(e) { if(prev) { prev.textContent='Could not reach server'; prev.style.color='#f44336'; } }
+}
+
+async function pollCommentary() {
+  try {
+    const data = await (await apiFetch('/commentary/latest')).json();
+    const prev = document.getElementById('commentary-preview');
+    const meta = document.getElementById('commentary-meta');
+    if (data.text && prev) {
+      prev.textContent = data.text;
+      prev.style.color = '#e8e0f0';
+      if (meta) meta.textContent = `Last generated: ${new Date().toLocaleTimeString()} · Claude Haiku`;
+    }
+  } catch(e) {}
+}
+
+setInterval(pollCommentary, 5000);
+
+// ── PCS Live Data Monitor ──────────────────────────────────
+async function updatePCSMonitor() {
+  const body = document.getElementById('pcs-monitor-body');
+  if (!body) return;
+  try {
+    const ctrl = new AbortController();
+    const tout = setTimeout(() => ctrl.abort(), 8000);
+    const res  = await apiFetch('/live/view', {signal: ctrl.signal});
+    clearTimeout(tout);
+    const data = await res.json();
+
+    if (data.source !== 'pcs' || !data.state) {
+      const source = data.source === 'widget' ? 'Widget (score only — no PCS)' :
+                     data.source === 'pcs'    ? 'PCS Pro' : 'None';
+      body.innerHTML = `<div class="pcs-status-bar">
+        <div class="pcs-dot"></div>
+        <span style="font-size:12px;color:#3d5a7a;">
+          Source: <strong style="color:#e8edf2;">${source}</strong>
+          — Set the PCS output folder and start scoring to see live data here.
+        </span></div>`;
+      return;
+    }
+
+    const s = data.state;
+    const b1sr = s.batter1?.balls > 0 ? ((s.batter1.runs / s.batter1.balls)*100).toFixed(0) : '—';
+    const b2sr = s.batter2?.balls > 0 ? ((s.batter2.runs / s.batter2.balls)*100).toFixed(0) : '—';
+
+    // Build ball ticker from last_ball if available
+    let ballsHtml = '';
+    if (s.last_ball && !s.last_ball.startsWith('{{')) {
+      const ballClass = s.last_ball.toLowerCase().includes('6') ? 'six'
+                      : s.last_ball.toLowerCase().includes('4') && !s.last_ball.includes('14') ? 'four'
+                      : s.last_ball.toLowerCase().includes('w') ? 'wicket' : '';
+      ballsHtml = `<div class="pcs-ball-row">
+        <div style="font-size:10px;color:#3d5a7a;align-self:center;margin-right:4px;">Last ball:</div>
+        <div class="pcs-ball ${ballClass}">${s.last_ball.replace(/[^0-9WwNnBb]/g,'').slice(0,2)||'·'}</div>
+        <div style="font-size:11px;color:#8aa8c4;align-self:center;margin-left:4px;">${s.last_ball}</div>
+      </div>`;
+    }
+
+    body.innerHTML = `
+      <div class="pcs-status-bar">
+        <div class="pcs-dot live"></div>
+        <span style="font-size:12px;color:#4caf50;font-weight:600;">PCS Pro connected — live data</span>
+        <span style="font-size:10px;color:#3d5a7a;margin-left:auto;">Updated: ${new Date().toLocaleTimeString()}</span>
+      </div>
+
+      <div class="pcs-grid">
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Batting</div>
+          <div class="pcs-cell-value" style="font-size:13px;">${s.battingTeamName||'—'}</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Score</div>
+          <div class="pcs-cell-value">${s.score}-${s.wickets}</div>
+          <div class="pcs-cell-sub">${s.overs} overs · RR ${parseFloat(s.statusText?.replace('RR:','')||0).toFixed(2)||'—'}</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Innings</div>
+          <div class="pcs-cell-value">${s.innings||1}</div>
+          <div class="pcs-cell-sub">of ${s.max_overs||50} overs</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Partnership</div>
+          <div class="pcs-cell-value">${s.partnership_runs??'—'}</div>
+          <div class="pcs-cell-sub">${s.partnership_balls??'—'} balls</div>
+        </div>
+      </div>
+
+      <div class="pcs-grid">
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">&#9998; ${s.batter1?.onStrike ? 'On strike' : 'Batter 1'}</div>
+          <div class="pcs-cell-value">${s.batter1?.name||'—'}</div>
+          <div class="pcs-cell-sub">${s.batter1?.runs??0} (${s.batter1?.balls??0}b) · SR ${b1sr}</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">&#9998; ${!s.batter1?.onStrike ? 'On strike' : 'Batter 2'}</div>
+          <div class="pcs-cell-value">${s.batter2?.name||'—'}</div>
+          <div class="pcs-cell-sub">${s.batter2?.runs??0} (${s.batter2?.balls??0}b) · SR ${b2sr}</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Bowler</div>
+          <div class="pcs-cell-value">${s.bowler?.name||'—'}</div>
+          <div class="pcs-cell-sub">${s.bowler?.overs||0}-${s.bowler?.maidens||0}-${s.bowler?.runs||0}-${s.bowler?.wickets||0}</div>
+        </div>
+        <div class="pcs-cell">
+          <div class="pcs-cell-label">Bowling</div>
+          <div class="pcs-cell-value" style="font-size:13px;">${s.bowlingTeamName||'—'}</div>
+        </div>
+      </div>
+
+      ${ballsHtml}
+
+      ${s.targetRuns > 0 ? `
+      <div class="pcs-grid" style="margin-top:8px;">
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Target</div>
+          <div class="pcs-cell-value">${s.targetRuns}</div>
+        </div>
+        <div class="pcs-cell live">
+          <div class="pcs-cell-label">Required</div>
+          <div class="pcs-cell-value">${s.runsRequired}</div>
+          <div class="pcs-cell-sub">RRR ${s.req_rate||'—'}</div>
+        </div>
+      </div>` : ''}
+    `;
+  } catch(e) {
+    const body = document.getElementById('pcs-monitor-body');
+    if (body) body.innerHTML = '<div style="color:#f44336;font-size:12px;padding:8px 0;">Cannot reach server</div>';
+  }
+}
+
+updatePCSMonitor();
+setInterval(updatePCSMonitor, 3000);
+
+function updateDemoStyle(on) {
+  const row   = document.getElementById('demo-row');
+  const label = document.getElementById('demo-label');
+  if (!row || !label) return;
+  if (on) {
+    row.style.background  = '#1a0a0a';
+    row.style.borderColor = '#6a1a1a';
+    label.style.color     = '#f44336';
+    label.textContent     = 'Demo mode ON';
+  } else {
+    row.style.background  = '#0a1a0a';
+    row.style.borderColor = '#1a4a1a';
+    label.style.color     = '#4caf50';
+    label.textContent     = 'Demo mode OFF';
+  }
+}
+
+async function fetchTodaysMatch() {
+  const key = document.getElementById('playcricket_api_key').value.trim();
+  if (!key) { alert('Enter your API key first'); return; }
+
+  // Save key first
+  await saveState();
+
+  const result_el  = document.getElementById('pc-api-result');
+  const details_el = document.getElementById('pc-api-details');
+  const grid_el    = document.getElementById('pc-api-grid');
+
+  result_el.textContent  = "Fetching today's fixture...";
+  result_el.style.color  = '#5b9bd5';
+
+  try {
+    const res  = await apiFetch('/match/fetch');
+    const data = await res.json();
+
+    if (!data.ok) {
+      result_el.textContent = '✗ ' + (data.result?.error || 'Unknown error');
+      result_el.style.color = '#f44336';
+      details_el.style.display = 'none';
+      return;
+    }
+
+    const r = data.result;
+    result_el.style.color = '#4caf50';
+    result_el.textContent = `✓ Found: ${r.home_team} vs ${r.away_team} — ${r.competition} (${r.match_date} ${r.match_time})`;
+
+    // Show details grid
+    const cells = [
+      {label:'Opposition',  value: r.away_team},
+      {label:'Abbreviation',value: r.away_abbrev},
+      {label:'Competition', value: r.competition},
+      {label:'Ground',      value: r.ground},
+      {label:'Umpire 1',    value: r.umpire1 || '—'},
+      {label:'Umpire 2',    value: r.umpire2 || '—'},
+      {label:'Scorer',      value: r.scorer1 || '—'},
+      {label:'Match ID',    value: r.match_id},
+    ];
+    grid_el.innerHTML = cells.map(c =>
+      `<div class="pcs-cell live">
+        <div class="pcs-cell-label">${c.label}</div>
+        <div class="pcs-cell-value" style="font-size:13px;">${c.value}</div>
+      </div>`
+    ).join('');
+    details_el.style.display = 'block';
+
+    // Reload state so fields update
+    await loadState();
+    checkBadges('', '', r.home_team, r.away_team);  // badges re-check after loadState
+
+    if (r.all_today > 1) {
+      result_el.textContent += ` (${r.all_today} matches today — loaded first home match)`;
+    }
+
+  } catch(e) {
+    result_el.textContent = '✗ Could not reach server: ' + e.message;
+    result_el.style.color = '#f44336';
+  }
+}
+
+buildPresets('home-presets','home_colour','home-swatch');
+buildPresets('away-presets','away_colour','away-swatch');
+document.getElementById('home_team').addEventListener('input',updatePreview);
+document.getElementById('away_team').addEventListener('input',updatePreview);
+document.getElementById('home_abbrev')?.addEventListener('input',updatePreview);
+document.getElementById('away_abbrev')?.addEventListener('input',updatePreview);
+loadState();
+loadLogoOptions();
+loadRoster();
+loadDataStatus();
+
+// ── Pre-match checklist ──────────────────────────────────────
+const CHECKLIST = [
+  { id:'obs',     label:'OBS is open',              hint:'Open OBS Studio' },
+  { id:'buffer',  label:'Replay Buffer started',    hint:'Controls panel → Start Replay Buffer' },
+  { id:'stream',  label:'Streaming started',        hint:'Controls panel → Start Streaming' },
+  { id:'server',  label:'server.py is running',     hint:'Run: python.exe server.py' },
+  { id:'opp',     label:'Opposition name set',      hint:'Enter opposition in the Match section' },
+  { id:'pcs',     label:'PCS Pro output connected', hint:'Set PCS output folder in Match section' },
+  { id:'scorer',  label:'Scorer has started PCS',   hint:'Scorer begins ball-by-ball on first delivery' },
+  { id:'camera',  label:'Camera feed visible',      hint:'Check RTSP source is connected in OBS' },
+];
+
+function buildChecklist() {
+  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
+  const grid  = document.getElementById('checklist-items');
+  grid.innerHTML = '';
+  CHECKLIST.forEach(item => {
+    const checked = !!saved[item.id];
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 8px;border-radius:5px;transition:background .15s;';
+    div.style.background = checked ? 'rgba(76,175,80,0.1)' : 'rgba(255,255,255,0.03)';
+    div.innerHTML = `
+      <div style="width:18px;height:18px;border-radius:4px;border:2px solid ${checked?'#4caf50':'#2a4060'};
+           background:${checked?'#4caf50':'transparent'};display:flex;align-items:center;justify-content:center;
+           flex-shrink:0;transition:all .15s;">
+        ${checked ? '<svg width=10 height=10 viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>' : ''}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:${checked?'#4caf50':'#e8edf2'};">${item.label}</div>
+        <div style="font-size:10px;color:#3d5a7a;">${item.hint}</div>
+      </div>`;
+    div.onclick = () => toggleCheck(item.id);
+    div.onmouseenter = () => { if (!saved[item.id]) div.style.background='rgba(255,255,255,0.06)'; };
+    div.onmouseleave = () => { div.style.background = saved[item.id]?'rgba(76,175,80,0.1)':'rgba(255,255,255,0.03)'; };
+    grid.appendChild(div);
+  });
+  // Update header count
+  const done  = Object.values(saved).filter(Boolean).length;
+  const total = CHECKLIST.length;
+  const pct   = Math.round((done/total)*100);
+  const bar   = document.querySelector('#checklist-bar span');
+  if (bar) bar.textContent = `Pre-match checklist (${done}/${total})`;
+  // Flash green border when all done
+  const box = document.getElementById('checklist-bar');
+  box.style.borderColor = done === total ? '#4caf50' : '#1e3550';
+}
+
+function toggleCheck(id) {
+  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
+  saved[id] = !saved[id];
+  localStorage.setItem('bbcc_checklist', JSON.stringify(saved));
+  buildChecklist();
+}
+
+function resetChecklist() {
+  localStorage.removeItem('bbcc_checklist');
+  buildChecklist();
+}
+
+// Auto-check items we can detect programmatically
+async function autoCheck() {
+  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
+  let changed = false;
+
+  // server.py running — if we're here, it is
+  if (!saved['server']) { saved['server'] = true; changed = true; }
+
+  try {
+    const s = await (await apiFetch('/state')).json();
+    const hasOpp = !!(s.away_team && s.away_team !== 'Opposition CC');
+    const hasPCS = !!(s.pcs_output_folder && s.pcs_output_folder.trim());
+    if (hasOpp !== !!saved['opp']) { saved['opp'] = hasOpp; changed = true; }
+    if (hasPCS !== !!saved['pcs']) { saved['pcs'] = hasPCS; changed = true; }
+  } catch(e) {}
+
+  // Live data coming in → scorer has started
+  try {
+    const live = await (await apiFetch('/live/view')).json();
+    if (live.state && live.state.score > 0 && !saved['scorer']) {
+      saved['scorer'] = true; changed = true;
+    }
+  } catch(e) {}
+
+  if (changed) {
+    localStorage.setItem('bbcc_checklist', JSON.stringify(saved));
+    buildChecklist();
+  }
+}
+
+buildChecklist();
+setInterval(autoCheck, 10000);
+autoCheck();
+
+// ── Live status polling ───────────────────────────────────────
+const dot   = document.getElementById('status-dot');
+const line1 = document.getElementById('status-line1');
+const line2 = document.getElementById('status-line2');
+const src   = document.getElementById('status-source');
+
+async function checkLiveStatus() {
+  console.log('[CP] checkLiveStatus called at', new Date().toLocaleTimeString());
+  const s = await (await apiFetch('/state').catch(()=>null))?.json().catch(()=>null);
+  if (!s) { console.error('checkLiveStatus: /state fetch failed'); return; }
+  console.log('checkLiveStatus: state ok, fetching /live...');
+
+  try {
+    const ctrl = new AbortController();
+    const tout = setTimeout(() => ctrl.abort(), 8000);
+    const res  = await apiFetch('/live/view', {signal: ctrl.signal});
+    clearTimeout(tout);
+    const data = await res.json();
+    console.log('checkLiveStatus: /live source =', data.source, 'state =', !!data.state);
+
+    if (data.source === 'pcs') {
+      if (!data.state) { line1.textContent='PCS connected — no data yet'; return; }
+      dot.style.background='#4caf50';
+      line1.textContent=`PCS LIVE — ${data.state.battingTeamName} ${data.state.score}-${data.state.wickets} (${data.state.overs} ov)`;
+      line2.textContent=`Ball-by-ball · ${new Date().toLocaleTimeString()}`;
+      src.textContent='PCS';src.style.background='#0d3a1a';src.style.color='#4caf50';
+    } else if (data.source === 'widget') {
+      if (data.state) {
+        // Live match found via widget
+        const st = data.state;
+        dot.style.background = '#4caf50';
+        dot.style.animation  = 'livePulse 1.5s infinite';
+        line1.textContent    = `LIVE — ${st.battingTeamName || 'Batting'} ${st.score}-${st.wickets} (${st.overs} ov)`;
+        line2.textContent    = `Last updated: ${new Date().toLocaleTimeString()}`;
+        src.textContent      = 'Widget';
+        src.style.background = '#0d3a1a';
+        src.style.color      = '#4caf50';
+      } else {
+        // Widget reachable but no live match today
+        dot.style.background = '#c87800';
+        dot.style.animation  = 'none';
+        line1.textContent    = s.demo_mode ? 'Demo mode active' : 'Connected — no live match today';
+        line2.textContent    = `Widget reachable · Club ID ${data.club_id || 'not set'}`;
+        src.textContent      = 'Widget';
+        src.style.background = '#2a1a00';
+        src.style.color      = '#c87800';
+      }
+
+    } else if (data.source === 'none' || !data.source) {
+      dot.style.background = '#f5c842';
+      dot.style.animation  = 'none';
+      line1.textContent    = 'Connected — waiting for match to start';
+      line2.textContent    = 'Score a ball in NV Play to begin';
+      src.textContent      = 'PCS';
+      src.style.background = '#2a2000';
+      src.style.color      = '#f5c842';
+    }
+  } catch(e) {
+    dot.style.background = '#f44336';
+    dot.style.animation  = 'none';
+    line1.textContent    = e.name === 'AbortError' ? 'Server slow — retrying' : 'Cannot reach server';
+    line2.textContent    = 'Make sure server.py is running';
+    src.textContent      = 'Offline';
+    src.style.background = '#3a0d0d';
+    src.style.color      = '#f44336';
+  }
+}
+
+// Inject pulse animation
+const style = document.createElement('style');
+style.textContent = '@keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.4} }';
+document.head.appendChild(style);
+
+checkLiveStatus();
+setInterval(checkLiveStatus, 15000);
+
+// ── Server status / uptime polling ──────────────────────
+async function checkServerStatus() {
+  try {
+    const res  = await apiFetch('/status');
+    const data = await res.json();
+    document.getElementById('server-uptime').textContent = data.uptime || '—';
+    document.getElementById('server-uptime').style.color = '#4caf50';
+    document.getElementById('server-clips').textContent  =
+      `${data.clip_count} / ${data.max_clips} clips`;
+    // Update clip count display in highlights card
+    const cd = document.getElementById('clip-count-display');
+    const cf = document.getElementById('clip-folder-display');
+    if (cd) cd.textContent = `${data.clip_count} clip${data.clip_count!==1?'s':''} saved`;
+    if (cf) cf.textContent = data.folder || '';
+  } catch(e) {
+    document.getElementById('server-uptime').textContent = 'offline';
+    document.getElementById('server-uptime').style.color = '#f44336';
+  }
+}
+
+checkServerStatus();
+setInterval(checkServerStatus, 10000);
+
+// ── Health strip ──────────────────────────────────────────
+function hlSet(id, cls, text) {
+  var d = document.getElementById(id); var t = document.getElementById(id + '-t');
+  if (d) d.className = 'hl-dot ' + cls;
+  if (t) t.textContent = text;
+}
+async function pollHealth() {
+  try {
+    var h = await (await apiFetch('/health')).json();
+    // Feed: green = fresh file, amber = found but stale (or demo), red = missing
+    if (h.demo_mode) { hlSet('hl-feed','hl-warn','demo mode'); }
+    else if (!h.pcs.folder_set) { hlSet('hl-feed','hl-bad','no folder set'); }
+    else if (!h.pcs.file_found) { hlSet('hl-feed','hl-bad','file not found'); }
+    else if (h.pcs.fresh) { hlSet('hl-feed','hl-ok', h.pcs.age_sec + 's ago'); }
+    else {
+      var m = Math.floor(h.pcs.age_sec / 60);
+      hlSet('hl-feed','hl-warn','stale (' + (m > 99 ? '99+' : m) + 'm)');
+    }
+    // Season stats
+    if (h.stats.building) hlSet('hl-stats','hl-warn','building…');
+    else if (h.stats.built) hlSet('hl-stats','hl-ok', h.stats.players + ' players');
+    else if (h.stats.error) hlSet('hl-stats','hl-bad','error');
+    else hlSet('hl-stats','hl-warn','not built');
+    // Assets
+    hlSet('hl-photos', h.assets.headshots > 0 ? 'hl-ok' : 'hl-warn', String(h.assets.headshots));
+    hlSet('hl-badges', h.match.badges ? 'hl-ok' : 'hl-warn', h.match.badges ? 'both set' : 'incomplete');
+    // AI key
+    hlSet('hl-ai', h.keys.anthropic ? 'hl-ok' : 'hl-warn', h.keys.anthropic ? 'key set' : 'no key');
+  } catch(e) {
+    ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai'].forEach(function(id){ hlSet(id,'','—'); });
+  }
+}
+pollHealth();
+setInterval(pollHealth, 10000);
+</script>
+</body>
+</html>

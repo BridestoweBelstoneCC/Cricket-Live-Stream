@@ -3,23 +3,11 @@
 Full review of server.py, overlay.html, quickstart.py, setup_wizard.py, obs_setup.py,
 scripts/, and CI. Work on `dev`; merge to `main` only once tested.
 
-## Open — design warts (need a decision, not just a patch)
+## Open
 
-- [ ] **`/live` is a mutating GET consumed by two clients.** The control panel polls it
-      every 3s/10s/15s, so it randomly eats buffered wicket events meant for the overlay
-      (today only affects player-card timing) and runs the DB logger / event detection on
-      every consumer's cadence. There's also a small append-vs-clear race on
-      `_event_buffer` under the threaded server. Consider: only pop events for the overlay
-      (e.g. `?consume=1`), or move panel polling to a read-only endpoint.
 - [ ] **`obs_setup()` accepts `replay_folder` but never applies it to OBS** — quickstart
       passes it in and it's silently ignored. Setting it means touching the Simple-output
       FilePath (shared with recordings), so decide deliberately.
-- [ ] **Importing server.py has side effects** — `scripts/check_panel_js.py` imports it to
-      read CONTROL_HTML, and `_load_auth_config()` can *write* a generated control_token
-      into config.ini during what should be a read-only syntax check. Guard the persist.
-- [ ] **CONTROL_HTML is ~2,100 lines of the ~7,000-line server.py.** Consider extracting
-      the panel to its own file served from disk (would also simplify the JS check and
-      kill the backslash-escaping gotcha class). CLAUDE.md's "~5000 lines" note is stale.
 
 ## Features added on dev (2026-07-07)
 
@@ -39,6 +27,19 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       cross-over hat-tricks, run outs (break, don't extend), chain-neutral wides/no-balls,
       and the over-completing wicket the cleared ticker never shows (wickets-delta
       fallback). Logic exercised in a real JS engine by tests/test_bowler_milestones.py.
+
+## Design warts fixed on dev (2026-07-08)
+
+- [x] **`/live` split**: the overlay's `/live` poll drives the pipeline (events, ball DB,
+      commentary) and consumes the event buffer; the panel's three pollers moved to a
+      side-effect-free `GET /live/view`. Event-buffer pop/append now under a lock.
+- [x] **Control panel extracted to `control.html`** — a plain file with normal JS escaping
+      (backslash-doubling gotcha class eliminated), served with kit presets injected at
+      request time; panel edits show on refresh without a server restart. Verified
+      byte-identical to the old inline-string output. server.py is back to ~5,100 lines.
+- [x] **Importing server.py no longer writes config.ini** — token generation moved to
+      `_ensure_control_token()` (called at startup only), and `scripts/check_panel_js.py`
+      now reads control.html from disk instead of importing server at all.
 
 ## Fixed on dev (2026-07-06) — verify live on Saturday before merging to main
 

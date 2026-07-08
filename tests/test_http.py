@@ -101,6 +101,13 @@ class TestRoutesOpen(HttpTestBase):
             self.assertEqual(status, 200, path)
             self.assertTrue(data.startswith(expect), path)
 
+    def test_control_panel_served_from_file_with_presets_injected(self):
+        status, _, data = self.request("GET", "/control")
+        self.assertEqual(status, 200)
+        self.assertNotIn(b"__KIT_PRESETS__", data)     # placeholder replaced at serve time
+        self.assertIn(b'"Navy"', data)                 # ...with the real kit presets
+        self.assertIn(b"apiFetch", data)               # the big script block made it intact
+
     def test_unknown_routes_404(self):
         for path in ("/nope", "/commentary/test", "/commentary/over/generate"):
             status, _, _ = self.request("GET", path)
