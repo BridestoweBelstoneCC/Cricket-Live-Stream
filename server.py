@@ -896,8 +896,11 @@ def fetch_weather_data():
 # "Manage Broadcast" panel disappears, so the broadcast's title, description, privacy,
 # "made for kids" flag and category all have to be set through the YouTube Data API
 # instead. This does that over the same OAuth the title updater always used.
-YT_TOKEN_FILE = "yt_token.json"
-YT_CREDS_FILE = "yt_credentials.json"
+# Resolve relative to server.py (like STATE_FILE / config.ini / the DB), NOT the current
+# working directory — the launch scripts cd elsewhere, so a bare filename could be looked
+# up in the wrong place and "put it next to server.py" (what every doc says) would fail.
+YT_TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yt_token.json")
+YT_CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yt_credentials.json")
 YT_SCOPES     = ["https://www.googleapis.com/auth/youtube"]
 YT_PRIVACY    = ("public", "unlisted", "private")
 # The categories worth offering a grassroots cricket stream (id → label). 17 = Sports is
