@@ -4,10 +4,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased — on `dev`
+## v2.6 — 2026-07-09
 
-*Manual-scoring improvements and YouTube broadcast controls from live use. Automated
-coverage is complete; awaiting a human run-through before merging to `main`.*
+*Manual-scoring improvements and YouTube broadcast controls, shaped by live testing
+against a real stream. 203 automated tests; manually verified before release.*
 
 - **YouTube broadcast manager** (was "YouTube Title"). Streaming with a stream key
   (recommended) removes OBS's "Manage Broadcast" panel, so the control panel now sets the
@@ -39,6 +39,22 @@ coverage is complete; awaiting a human run-through before merging to `main`.*
 - **Fixed:** the session rebuild left the event log clobbered if a replay raised midway
   (e.g. a rejected edit), which could corrupt a live scoring session — the rebuild is now
   exception-safe.
+
+### Fixed during live testing
+
+- **YouTube "made for kids" 403.** Sending `selfDeclaredMadeForKids` on an update — even
+  its current value — is rejected by YouTube (it's only settable at broadcast creation).
+  It's no longer sent; the panel directs you to set it in Studio.
+- **YouTube broadcast targeting.** The finder no longer refuses when YouTube's status
+  isn't "active" this instant — with a stream key a broadcast can be ready/testing or a
+  persistent "Stream now" broadcast can read as "complete" while OBS is happily streaming.
+  It now targets the newest real broadcast and names which one it updated.
+- **Stale control panel.** The panel, scoring page and overlay were served with no
+  `Cache-Control`, so a browser could run old JS against a new server (a toggle looking
+  "stuck", etc.). They're now `no-store`. *(One-time: hard-refresh to clear the old cache.)*
+- **OBS Dynamic Bitrate** is enabled automatically and verified live in the panel — the
+  seamless first line of defence for a poor connection, distinct from the manual quality
+  ladder.
 
 ## v2.5 — 2026-07-09
 
