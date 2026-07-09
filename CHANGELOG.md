@@ -55,6 +55,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   five balls. The logger now recovers the invisible delivery from the score/wicket delta,
   and a new full-match soak test drives a complete simulated game through the real server
   and reconciles the DB against the engine's book, ball for ball, both innings.
+- **The quality ladder could leave the stream down while reporting success** — OBS stops
+  outputs asynchronously, so firing StartStream straight after StopStream could be
+  rejected unnoticed. Each step is now verified: stop confirmed, bitrate set, restart
+  retried, and honest failure messages if OBS misbehaves (concurrent shifts serialized).
+- **Replay captions during manual scoring used stale PCS data** — the tagger now uses the
+  same source precedence as the live feed (manual session first).
+- **A leftover manual-scoring session silently outranked the scorer's feed** — quickstart
+  now warns and offers to clear it when NV Play is the chosen source, and the panel shows
+  an unmissable amber MANUAL badge whenever the manual session is driving the overlay.
+- **State reads cached** — `load_state()` was re-reading and re-parsing the settings file
+  from disk several times per overlay poll (thousands of reads per match); it's now
+  mtime-cached (16× faster, zero steady-state disk I/O).
 - **quickstart no longer wipes panel-entered state** (squad roster, sponsor fields, away
   colour, toggle edits, a manually entered opposition) — it merges over the existing file
   instead of rewriting it.

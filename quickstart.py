@@ -286,6 +286,24 @@ def main():
     if manual_mode:
         log("Manual scoring — set the match up at /scoring once the server starts", "ok")
         log("Tip: remote access mode + Tailscale lets a volunteer score from the boundary", "")
+    else:
+        # Foot-gun guard: a saved manual-scoring session OUTRANKS the scorer's feed in
+        # /live — a leftover test session would silently replace NV Play on the overlay.
+        manual_file = os.path.join(script_dir, "manual_scoring.json")
+        if os.path.exists(manual_file):
+            log("A saved manual-scoring session exists — it would OVERRIDE the scorer's feed!", "warn")
+            try:
+                ans = input("  Clear it so NV Play drives the overlay today? [Y/n]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ans = ""
+            if ans in ("", "y", "yes"):
+                try:
+                    os.remove(manual_file)
+                    log("Manual session cleared", "ok")
+                except OSError as e:
+                    log(f"Could not remove it ({e}) — delete manual_scoring.json by hand", "err")
+            else:
+                log("Keeping it — the overlay will show the MANUAL session, not the scorer", "warn")
     print()
 
     # ── Load config ──

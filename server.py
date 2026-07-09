@@ -1498,23 +1498,43 @@ SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
                "control_token", "club_password")
 SECRET_SENTINEL = "••••••••"
 
+# mtime-keyed cache: load_state() is called several times per overlay poll (the /live
+# handler, the ball logger, the match-id lookup, /state itself, the panel's pollers, the
+# watchdog, the stream sentinel...). The file only actually changes on a panel save, so
+# re-reading + re-parsing it from disk each time is pure waste — it matters on the old
+# streaming laptop that's also running the encoder. Keyed on (path, mtime_ns, size):
+# save_state()'s os.replace always bumps the key, and tests that repoint STATE_FILE at a
+# temp dir miss the cache naturally.
+_state_cache = {"key": None, "data": None}
+_state_cache_lock = threading.Lock()
+
 def load_state():
     global _last_good_state
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE) as f:
-                loaded = json.load(f)
-            if not isinstance(loaded, dict):
-                raise ValueError(f"state file holds {type(loaded).__name__}, expected object")
-            state = {**DEFAULT_STATE, **loaded}
-            _last_good_state = state
-            return state
-        except (json.JSONDecodeError, OSError, ValueError) as e:
-            # File was mid-write or corrupt — don't crash /state. Use the last good copy
-            # if we have one, otherwise fall back to defaults.
-            print(f"  ⚠  state read failed ({e}); using last-good")
-            return dict(_last_good_state) if _last_good_state else DEFAULT_STATE.copy()
-    return DEFAULT_STATE.copy()
+    try:
+        stt = os.stat(STATE_FILE)
+        key = (STATE_FILE, stt.st_mtime_ns, stt.st_size)
+    except OSError:
+        return DEFAULT_STATE.copy()
+    with _state_cache_lock:
+        if _state_cache["key"] == key:
+            # Shallow copy: callers mutate the top level (s.update(...)) before saving
+            return dict(_state_cache["data"])
+    try:
+        with open(STATE_FILE) as f:
+            loaded = json.load(f)
+        if not isinstance(loaded, dict):
+            raise ValueError(f"state file holds {type(loaded).__name__}, expected object")
+        state = {**DEFAULT_STATE, **loaded}
+        _last_good_state = state
+        with _state_cache_lock:
+            _state_cache["key"] = key
+            _state_cache["data"] = state
+        return dict(state)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        # File was mid-write or corrupt — don't crash /state. Use the last good copy
+        # if we have one, otherwise fall back to defaults.
+        print(f"  ⚠  state read failed ({e}); using last-good")
+        return dict(_last_good_state) if _last_good_state else DEFAULT_STATE.copy()
 
 def save_state(s):
     # Atomic write: a reader (overlay polling /state) must never see a half-written file.
@@ -1527,6 +1547,13 @@ def save_state(s):
         os.fsync(f.fileno())
     os.replace(tmp, STATE_FILE)
     _last_good_state = dict(s)
+    try:
+        stt = os.stat(STATE_FILE)
+        with _state_cache_lock:
+            _state_cache["key"] = (STATE_FILE, stt.st_mtime_ns, stt.st_size)
+            _state_cache["data"] = dict(s)
+    except OSError:
+        pass
 
 
 def _seed_state_from_config():
@@ -3367,8 +3394,10 @@ def obs_trigger_replay(state, reason=""):
 
     # Caption is built from the match state NOW, at trigger time — by the time OBS has
     # saved the clip a few seconds from here, the strike may have rotated or a new
-    # batter walked in, and the caption would describe the wrong moment.
-    clip_caption = make_clip_caption(reason, _pcs_last_state)
+    # batter walked in, and the caption would describe the wrong moment. Same source
+    # precedence as /live: a live manual-scoring session outranks the PCS file state
+    # (which manual mode never updates — using it here captioned clips with stale data).
+    clip_caption = make_clip_caption(reason, manual_live_state() or _pcs_last_state)
 
     host     = state.get("obs_host", "localhost")
     port     = state.get("obs_port", 4455)
@@ -3951,9 +3980,22 @@ def _stream_ladder_kbps(baseline, step):
     return max(500, int(baseline * STREAM_LADDER[step]))
 
 
+_quality_shift_lock = threading.Lock()
+
+
 def apply_stream_quality_step(new_step, reason, mode):
-    """Stop → set SimpleOutput bitrate → start. Returns (ok, message). Holds no locks
-    while talking to OBS; only called from the monitor thread or a panel action."""
+    """Stop → wait → set SimpleOutput bitrate → start, verified at each step.
+    Returns (ok, message). Serialized: a manual panel press and the auto path must never
+    interleave two stop/start cycles."""
+    if not _quality_shift_lock.acquire(blocking=False):
+        return False, "A quality change is already in progress — wait for it to finish"
+    try:
+        return _apply_quality_step_locked(new_step, reason, mode)
+    finally:
+        _quality_shift_lock.release()
+
+
+def _apply_quality_step_locked(new_step, reason, mode):
     st = load_state()
     with _stream_mon_lock:
         baseline = _stream_mon["baseline_kbps"]
@@ -3975,17 +4017,50 @@ def apply_stream_quality_step(new_step, reason, mode):
                        "the default Simple mode (OBS's own dynamic bitrate still works). "
                        "Change the bitrate manually in OBS Settings → Output.")
     was_live = bool(status[0].get("outputActive"))
-    steps = []
+    # OBS stops outputs ASYNCHRONOUSLY: firing StartStream straight after StopStream on
+    # one connection gets rejected ("output still stopping") — which would leave the
+    # stream DOWN while we report success. So: stop, wait for the output to actually go
+    # inactive, reconfigure, then start — verifying each step.
     if was_live:
-        steps.append(("StopStream", None))
-    steps.append(("SetProfileParameter", {"parameterCategory": "SimpleOutput",
-                                          "parameterName": "VBitrate",
-                                          "parameterValue": str(target)}))
+        r = _obs_call(st, [("StopStream", None)], timeout=8)
+        if r is None or r[0] is None:
+            return False, "Could not stop the stream — no quality change made"
+        stopped = False
+        for _ in range(20):                       # up to ~10s for the output to wind down
+            time.sleep(0.5)
+            s2 = _obs_call(st, [("GetStreamStatus", None)], timeout=5)
+            if s2 and s2[0] is not None and not s2[0].get("outputActive") \
+                    and not s2[0].get("outputReconnecting"):
+                stopped = True
+                break
+        if not stopped:
+            return False, ("Stream did not stop cleanly — no quality change made; "
+                           "check OBS")
+    r = _obs_call(st, [("SetProfileParameter", {"parameterCategory": "SimpleOutput",
+                                                "parameterName": "VBitrate",
+                                                "parameterValue": str(target)})], timeout=8)
+    if r is None or r[0] is None:
+        if was_live:
+            _obs_call(st, [("StartStream", None)], timeout=8)   # best effort: get back on air
+        return False, "Could not set the new bitrate — stream restarted at the old quality"
     if was_live:
-        steps.append(("StartStream", None))
-    results = _obs_call(st, steps, timeout=12)
-    if results is None:
-        return False, "Lost OBS while changing quality — check OBS and restart the stream"
+        started = False
+        for attempt in range(4):                  # OBS can still be settling — retry briefly
+            r = _obs_call(st, [("StartStream", None)], timeout=8)
+            if r is not None and r[0] is not None:
+                started = True
+                break
+            time.sleep(1.5)
+        if not started:
+            # The bitrate DID change — record it so the ladder/restore stay truthful even
+            # though the operator has to press Start Streaming themselves
+            with _stream_mon_lock:
+                _stream_mon["step"] = new_step
+                _stream_mon["current_kbps"] = target
+                _stream_mon["last_shift_at"] = time.time()
+                _stream_mon["samples"] = []
+            return False, (f"Bitrate set to {target} kbps but the stream DID NOT restart — "
+                           f"press Start Streaming in OBS now")
     with _stream_mon_lock:
         old = _stream_mon["current_kbps"] or baseline
         _stream_mon["step"] = new_step

@@ -2155,10 +2155,17 @@ async function checkLiveStatus() {
 
     if (data.source === 'pcs') {
       if (!data.state) { line1.textContent='PCS connected — no data yet'; return; }
-      dot.style.background='#4caf50';
-      line1.textContent=`PCS LIVE — ${data.state.battingTeamName} ${data.state.score}-${data.state.wickets} (${data.state.overs} ov)`;
-      line2.textContent=`Ball-by-ball · ${new Date().toLocaleTimeString()}`;
-      src.textContent='PCS';src.style.background='#0d3a1a';src.style.color='#4caf50';
+      // A live manual-scoring session outranks the scorer's file — make that IMPOSSIBLE
+      // to miss, or a leftover test session could silently replace the real feed
+      const manualFeed = (data.feed === 'manual');
+      dot.style.background = manualFeed ? '#c87800' : '#4caf50';
+      line1.textContent=`${manualFeed ? 'MANUAL SCORING' : 'PCS'} LIVE — ${data.state.battingTeamName} ${data.state.score}-${data.state.wickets} (${data.state.overs} ov)`;
+      line2.textContent = manualFeed
+        ? `Scored at /scoring — outranks the PCS file · ${new Date().toLocaleTimeString()}`
+        : `Ball-by-ball · ${new Date().toLocaleTimeString()}`;
+      src.textContent = manualFeed ? 'MANUAL' : 'PCS';
+      src.style.background = manualFeed ? '#2a1a00' : '#0d3a1a';
+      src.style.color = manualFeed ? '#c87800' : '#4caf50';
     } else if (data.source === 'widget') {
       if (data.state) {
         // Live match found via widget

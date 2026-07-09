@@ -152,38 +152,47 @@ class TestApplyStepMockedObs(unittest.TestCase):
         with server._stream_mon_lock:
             server._stream_mon.update(self._saved)
 
+    def run_shift(self, responses, *args):
+        """Drive apply_stream_quality_step against a scripted OBS. Returns (ok, msg, calls)
+        where calls is the per-connection list of (request_type, request_data) pairs."""
+        calls = []
+        def fake(state, reqs, timeout=6):
+            calls.append([(r[0], r[1]) for r in reqs])
+            return responses.pop(0) if responses else None
+        with mock.patch.object(server, "_obs_call", side_effect=fake), \
+             mock.patch("time.sleep"):
+            ok, msg = server.apply_stream_quality_step(*args)
+        return ok, msg, calls
+
     def test_advanced_output_mode_refused_before_any_restart(self):
         # In Advanced mode SimpleOutput/VBitrate is ignored — a shift would restart the
         # stream for NO quality change. Must refuse without ever sending StopStream.
-        calls = []
-        def fake(state, reqs, timeout=6):
-            calls.append([r[0] for r in reqs])
-            return [{"outputActive": True}, {"parameterValue": "Advanced"}]
-        with mock.patch.object(server, "_obs_call", side_effect=fake):
-            ok, msg = server.apply_stream_quality_step(1, "test", "manual")
+        ok, msg, calls = self.run_shift(
+            [[{"outputActive": True}, {"parameterValue": "Advanced"}]],
+            1, "test", "manual")
         self.assertFalse(ok)
         self.assertIn("Advanced", msg)
         self.assertEqual(len(calls), 1)                # status check only
-        self.assertNotIn("StopStream", calls[0])
+        self.assertNotIn("StopStream", [r[0] for r in calls[0]])
         with server._stream_mon_lock:
             self.assertEqual(server._stream_mon["step"], 0)   # unchanged
 
-    def test_simple_mode_shift_stops_reconfigures_restarts(self):
-        calls = []
-        responses = [
-            [{"outputActive": True}, {"parameterValue": "Simple"}],
-            [{}, {}, {}],
-        ]
-        def fake(state, reqs, timeout=6):
-            calls.append([(r[0], r[1]) for r in reqs])
-            return responses.pop(0)
-        with mock.patch.object(server, "_obs_call", side_effect=fake):
-            ok, msg = server.apply_stream_quality_step(1, "sustained congestion", "auto")
+    def test_simple_mode_shift_stops_waits_reconfigures_restarts(self):
+        # OBS stops outputs asynchronously — the shift must WAIT for the output to go
+        # inactive before reconfiguring, and verify the restart actually happened.
+        ok, msg, calls = self.run_shift([
+            [{"outputActive": True}, {"parameterValue": "Simple"}],   # status + mode
+            [{}],                                                     # StopStream
+            [{"outputActive": False}],                                # wind-down confirmed
+            [{}],                                                     # SetProfileParameter
+            [{}],                                                     # StartStream
+        ], 1, "sustained congestion", "auto")
         self.assertTrue(ok, msg)
         self.assertIn("2800", msg)                     # 70% of the 4000 baseline
-        self.assertEqual([c[0] for c in calls[1]],
-                         ["StopStream", "SetProfileParameter", "StartStream"])
-        self.assertEqual(calls[1][1][1]["parameterValue"], "2800")
+        self.assertEqual([[r[0] for r in c] for c in calls],
+                         [["GetStreamStatus", "GetProfileParameter"], ["StopStream"],
+                          ["GetStreamStatus"], ["SetProfileParameter"], ["StartStream"]])
+        self.assertEqual(calls[3][0][1]["parameterValue"], "2800")
         with server._stream_mon_lock:
             self.assertEqual(server._stream_mon["step"], 1)
             self.assertEqual(server._stream_mon["current_kbps"], 2800)
@@ -192,21 +201,49 @@ class TestApplyStepMockedObs(unittest.TestCase):
             self.assertEqual(server._stream_mon["shifts"][-1]["mode"], "auto")
             self.assertEqual(server._stream_mon["samples"], [])   # fresh evidence window
 
-    def test_shift_while_not_live_skips_stop_start(self):
+    def test_stop_failure_makes_no_change(self):
+        ok, msg, calls = self.run_shift([
+            [{"outputActive": True}, {"parameterValue": "Simple"}],
+            [None],                                    # StopStream rejected
+        ], 1, "test", "manual")
+        self.assertFalse(ok)
+        self.assertIn("no quality change", msg)
+        self.assertNotIn("SetProfileParameter",
+                         [r[0] for c in calls for r in c])   # bitrate never touched
+        with server._stream_mon_lock:
+            self.assertEqual(server._stream_mon["step"], 0)
+
+    def test_failed_restart_reports_honestly(self):
+        # Bitrate changed but StartStream keeps failing: the operator must be TOLD the
+        # stream is down (the old code reported success), and the ladder must record the
+        # new bitrate so a later restore is truthful.
         responses = [
-            [{"outputActive": False}, {"parameterValue": "Simple"}],
+            [{"outputActive": True}, {"parameterValue": "Simple"}],
             [{}],
-        ]
-        calls = []
-        def fake(state, reqs, timeout=6):
-            calls.append([r[0] for r in reqs])
-            return responses.pop(0)
-        with mock.patch.object(server, "_obs_call", side_effect=fake):
-            ok, msg = server.apply_stream_quality_step(2, "test", "manual")
+            [{"outputActive": False}],
+            [{}],
+        ] + [[None]] * 4                               # every StartStream attempt fails
+        ok, msg, calls = self.run_shift(responses, 1, "test", "manual")
+        self.assertFalse(ok)
+        self.assertIn("DID NOT restart", msg)
+        with server._stream_mon_lock:
+            self.assertEqual(server._stream_mon["current_kbps"], 2800)
+
+    def test_shift_while_not_live_skips_stop_start(self):
+        ok, msg, calls = self.run_shift([
+            [{"outputActive": False}, {"parameterValue": "Simple"}],
+            [{}],                                      # just SetProfileParameter
+        ], 2, "test", "manual")
         self.assertTrue(ok, msg)
-        self.assertEqual(calls[1], ["SetProfileParameter"])       # no restart needed
+        self.assertEqual([r[0] for r in calls[1]], ["SetProfileParameter"])
         with server._stream_mon_lock:
             self.assertEqual(server._stream_mon["current_kbps"], 2000)
+
+    def test_concurrent_shifts_are_serialized(self):
+        with server._quality_shift_lock:               # a shift is "in progress"
+            ok, msg = server.apply_stream_quality_step(1, "test", "manual")
+        self.assertFalse(ok)
+        self.assertIn("already in progress", msg)
 
 
 class TestStreamAuth(StreamMonBase):
