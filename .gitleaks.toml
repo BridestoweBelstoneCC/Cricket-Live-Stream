@@ -12,3 +12,12 @@ id = "anthropic-api-key"
 description = "Anthropic API key"
 regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
 tags = ["key", "anthropic"]
+
+# Google OAuth client secret (newer format) — the value inside yt_credentials.json.
+# yt_credentials.json is git-ignored, but this catches the secret if it's ever pasted
+# somewhere it shouldn't be (a config, an issue, a commit message).
+[[rules]]
+id = "google-oauth-client-secret"
+description = "Google OAuth client secret"
+regex = '''GOCSPX-[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "google", "youtube"]

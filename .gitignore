@@ -10,6 +10,11 @@ __pycache__/
 
 # Runtime-generated files
 season_stats_cache.json
+
+# YouTube OAuth — NEVER commit these. yt_credentials.json is your Google OAuth client
+# secret; yt_token.json is the authorised access/refresh token. Either one leaking lets
+# someone act as your channel.
+yt_credentials.json
 yt_token.json
 
 # Club-specific asset folders (different for every club)

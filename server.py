@@ -932,8 +932,27 @@ def _yt_broadcast_payload(cur_snippet, cur_status, title=None, description=None,
     return snippet, status
 
 
-def _youtube_service():
-    """Authorise and return (service, None) or (None, error_message)."""
+def _write_token_private(creds):
+    """Persist the OAuth token with owner-only permissions (0600) — it grants channel
+    access, so it must not be world-readable on a shared machine."""
+    fd = os.open(YT_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(creds.to_json())
+    try:
+        os.chmod(YT_TOKEN_FILE, 0o600)   # tighten even if the file pre-existed at 0644
+    except OSError:
+        pass
+
+
+def _youtube_service(allow_interactive=True):
+    """Authorise and return (service, None) or (None, error_message).
+
+    allow_interactive: the FIRST authorisation opens a browser on THIS machine (the
+    streaming laptop) and blocks for the Google login. A remote operator (Tailscale/
+    Cloudflare) can't complete that — the browser would open on the wrong computer and
+    tie up the request. So the endpoint passes allow_interactive only for genuine
+    loopback callers; a remote first-run gets a clear "authorise once locally" message
+    instead of a hung browser popup on the host."""
     if not os.path.exists(YT_CREDS_FILE):
         return None, ("yt_credentials.json not found — see YouTube setup instructions in "
                       "the control panel")
@@ -950,22 +969,28 @@ def _youtube_service():
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-        else:
+            _write_token_private(creds)
+        elif allow_interactive:
             flow = InstalledAppFlow.from_client_secrets_file(YT_CREDS_FILE, YT_SCOPES)
             creds = flow.run_local_server(port=8091, open_browser=True)
-        open(YT_TOKEN_FILE, "w").write(creds.to_json())
+            _write_token_private(creds)
+        else:
+            return None, ("YouTube isn't authorised yet — do it once ON THE STREAMING "
+                          "LAPTOP (the control panel there), not remotely: the Google "
+                          "login opens a browser on the machine running the server.")
     return build("youtube", "v3", credentials=creds), None
 
 
 def update_youtube_broadcast(title=None, description=None, privacy=None,
-                             made_for_kids=None, category_id=None):
+                             made_for_kids=None, category_id=None, allow_interactive=True):
     """Update the active (else upcoming) broadcast's metadata. Any argument left None is
     unchanged. Returns (ok, message). category is on the underlying video, updated
-    separately; a category failure is reported but doesn't fail the rest."""
+    separately; a category failure is reported but doesn't fail the rest.
+    allow_interactive False blocks the first-run browser auth (see _youtube_service)."""
     try:
         if privacy is not None and privacy not in YT_PRIVACY:
             return False, f"privacy must be one of {', '.join(YT_PRIVACY)}"
-        yt, err = _youtube_service()
+        yt, err = _youtube_service(allow_interactive=allow_interactive)
         if err:
             return False, err
         resp = yt.liveBroadcasts().list(part="id,snippet,status", broadcastStatus="active",
@@ -5861,7 +5886,10 @@ class Handler(BaseHTTPRequestHandler):
                             else bool(s.get("youtube_made_for_kids", False)))
                 ok, msg = update_youtube_broadcast(
                     title=title, description=desc, privacy=privacy,
-                    made_for_kids=bool(mfk), category_id=category)
+                    made_for_kids=bool(mfk), category_id=category,
+                    # First-run browser auth only for a real same-machine operator — a
+                    # remote (tunnelled) request must not pop a browser on the host.
+                    allow_interactive=self._is_trusted_loopback())
                 print(f"  {'✓' if ok else '✗'}  YouTube: {msg}")
                 self._json({"ok": ok, "title": title,
                             "message": msg if ok else "", "error": msg if not ok else ""})

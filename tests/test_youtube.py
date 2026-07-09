@@ -79,6 +79,34 @@ class TestNoCredsGuardrails(unittest.TestCase):
         self.assertIn("yt_credentials.json", msg)
 
 
+class TestRemoteAuthGuard(unittest.TestCase):
+    """A remote (tunnelled) first-run must NOT open a browser on the host — it should
+    return a clear 'authorise locally' message instead of hanging."""
+
+    def setUp(self):
+        self.tmp = __import__("tempfile").mkdtemp()
+        self._creds, self._token = server.YT_CREDS_FILE, server.YT_TOKEN_FILE
+        # A creds file that EXISTS (so we get past that check) but no token yet
+        server.YT_CREDS_FILE = os.path.join(self.tmp, "yt_credentials.json")
+        server.YT_TOKEN_FILE = os.path.join(self.tmp, "yt_token.json")
+        with open(server.YT_CREDS_FILE, "w") as f:
+            f.write('{"installed": {"client_id": "x", "client_secret": "y"}}')
+
+    def tearDown(self):
+        server.YT_CREDS_FILE, server.YT_TOKEN_FILE = self._creds, self._token
+        __import__("shutil").rmtree(self.tmp, ignore_errors=True)
+
+    def test_non_interactive_first_run_refuses_cleanly(self):
+        # allow_interactive=False and no token → must not attempt the browser flow
+        yt, err = server._youtube_service(allow_interactive=False)
+        self.assertIsNone(yt)
+        self.assertIn("STREAMING LAPTOP", err)
+        # and the same via the public entry point
+        ok, msg = server.update_youtube_broadcast(title="X", allow_interactive=False)
+        self.assertFalse(ok)
+        self.assertIn("authoris", msg.lower())
+
+
 class TestYoutubeEndpoint(HttpTestBase):
     def setUp(self):
         server._last_good_state = None
