@@ -226,6 +226,72 @@ On a 2015 MacBook Pro 13":
 
 ---
 
+## Slimming the VM down (scoring-only Windows)
+
+The VM has exactly one job: run NV Play and write the scoreboard file to the shared
+folder. Everything else Windows does in there is stealing CPU from OBS on the Mac side.
+Stripped down, the VM idles near 0% instead of chattering away at 5-15% doing Microsoft
+things nobody asked for.
+
+**Take a VMware snapshot first** (Virtual Machine → Snapshots → Take Snapshot) — every
+change below is easily undone by rolling back.
+
+### The big wins, in order
+
+1. **Kill everything in Startup.** Inside the VM: Task Manager → **Startup apps** →
+   disable every single entry. NV Play you open yourself on match day.
+2. **Uninstall the consumer junk.** Settings → Apps → Installed apps: remove OneDrive,
+   Teams, Xbox (all of it), News, Weather, Solitaire, Spotify/Disney promos, Copilot,
+   and anything else you didn't install. None of it is needed to score cricket.
+3. **Disable the background churn services.** Run `services.msc`, set these to
+   **Disabled** (right-click → Properties → Startup type):
+   - **Windows Search** — file indexing; you'll never search inside this VM
+   - **SysMain** — prefetching that actively hurts VMs
+   - **Delivery Optimization** — uploads Windows updates to strangers
+   - **Print Spooler** — unless you genuinely print from the VM
+   - **Xbox Live** services (all of them, if the app removal left any behind)
+4. **Turn off the eye candy.** Search "performance" → *Adjust the appearance and
+   performance of Windows* → **Adjust for best performance**. Also Settings →
+   Personalisation → turn off transparency and animation effects.
+5. **Background apps and tips.** Settings → Privacy → General: everything off.
+   Settings → System → Notifications: off, including "tips and suggestions".
+
+### Windows Update: pause it, don't fight it
+
+Don't disable updates permanently (that fight always ends badly). Instead, make a
+**pre-match ritual** of it: Settings → Windows Update → **Pause updates for 1 week**
+every Friday. That guarantees no surprise "Restarting to finish updates…" at 40-2 off
+15 overs. Let it catch up on a weekday.
+
+Leave **Microsoft Defender alone** — it's not worth the risk to remove, and its idle
+cost is small. Just check Task Scheduler isn't running a full scan on Saturdays.
+
+### VMware Fusion side (Settings, VM shut down)
+
+- **Disable 3D acceleration** (Display settings) — NV Play doesn't need it, and it
+  contends with OBS for the Mac's GPU
+- **Remove/disconnect** the sound card, camera, and printer sharing — the VM needs none
+  of them (keep the network: NV Play uses it for licensing and Play-Cricket sync, and
+  keep the **shared folder** — that's the whole point)
+- In Windows, run `powercfg /h off` in an admin prompt — deletes the multi-GB
+  hibernation file the VM will never use
+
+### What NOT to remove
+
+- **The network adapter** — NV Play licensing and Play-Cricket publishing need it
+- **The shared folder / VMware Tools** — that's how the Mac reads the scoreboard file
+- **Defender / the firewall** — not worth it for the pennies of CPU
+
+Nothing from CricketStream Overlay runs inside the VM — no Python, no server, nothing to
+install or maintain there. If Python or project files ended up in the VM during earlier
+experiments, they can be uninstalled.
+
+*(Community "debloat" scripts like Chris Titus's WinUtil can do steps 1-5 in one pass —
+fine if you're comfortable with them, but take the snapshot first and stick to the
+standard/recommended tweaks, not the aggressive ones.)*
+
+---
+
 ## Troubleshooting
 
 ### NV Play output file not appearing in the shared folder
