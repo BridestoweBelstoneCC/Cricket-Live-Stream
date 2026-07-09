@@ -48,8 +48,10 @@ scripts/, and CI. Work on `dev`; merge to `main` only once tested.
       in the panel's Stream Health card, and can step bitrate down a 100/70/50/35% ladder —
       manual buttons, or auto with a 60s evidence window + 150s cooldown (never steps up
       on its own). A step = stop→reconfigure→start (~5-10s buffering; broadcast survives).
-      ⚠ Untested against a real congested link — on Saturday, verify Dynamic Bitrate shows
-      enabled in OBS settings, and try one manual "Reduce quality now" before play starts.
+      Dynamic Bitrate status is now verified live in the panel (green tick / amber warning
+      with a one-click Enable), so no need to open OBS settings to check.
+      ⚠ Untested against a real congested link — on Saturday, confirm the green
+      dynamic-bitrate tick in the panel and try one manual "Reduce quality now" before play.
 
 ## Design warts fixed on dev (2026-07-08)
 

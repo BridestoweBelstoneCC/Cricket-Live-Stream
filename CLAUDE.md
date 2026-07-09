@@ -73,12 +73,14 @@ python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); pr
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~125, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+# 3. Automated tests (~160, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
 #    parsing, season-stats aggregation, session tokens, quickstart's state merge, the match
-#    simulator's engine invariants, highlight tagging/planning, JS logic executed in a real
-#    engine (classifyBall parity, the bowler-milestone chain), and HTTP integration tests
-#    that spin up the real Handler on an ephemeral port (auth, redaction, path traversal,
-#    origin check, loopback carve-out, /live vs /live/view, event buffer, ball DB).
+#    simulator's engine invariants, highlight tagging/planning, manual scoring (engine,
+#    exact-replay undo, /scoring end-to-end), stream-quality downshift decisions, JS logic
+#    executed in a real engine (classifyBall parity, the bowler-milestone chain), and HTTP
+#    integration tests that spin up the real Handler on an ephemeral port (auth, redaction,
+#    path traversal, origin check, loopback carve-out, /live vs /live/view, event buffer,
+#    ball DB).
 python3 -m unittest discover -s tests
 
 # 4. Run it

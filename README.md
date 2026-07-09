@@ -66,6 +66,9 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Partnership display** — live partnership runs and balls.
 - **Worm chart** — two-innings cumulative run chart ("the worm"), each innings drawn as a climbing line in its team's colours with red wicket markers and the running total labelled at the head of each worm.
 - **Player milestones** — automatic graphics for 50s and 100s.
+- **Bowler milestones** *(new)* — five-wicket hauls get their own graphic in bowling red
+  (updating again for the 6th and 7th), and hat-tricks are detected automatically —
+  including across the bowler's consecutive overs, with run outs correctly not counting.
 - **Innings summary** — top scorers and bowler figures at the end of each innings.
 - **Batting lineup** — starting XI graphic at the beginning of an innings.
 - **AI over commentary** *(new in v2)* — an optional Sky Sports-style line of analysis appears as a fourth end-of-over panel (after the over summary, partnership, and run rate), generated live by Claude AI from the actual match situation.
@@ -81,6 +84,10 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Instant replay** — automatically saves and replays wickets, boundaries, and milestones via the OBS replay buffer.
 - **Replay transition** — full-screen animated transition before each replay.
 - **Highlights compiler** — stitches all replay clips into a post-match highlights reel automatically with FFmpeg.
+- **Auto-tagged highlights** *(new)* — every replay clip is tagged with why it fired and the
+  match situation at that moment ("WICKET · WALKER 22 · C JONES B HARRISON · 84-3"). The
+  reel gets those captions burned in as lower-thirds, test clips are skipped, and a
+  YouTube-ready description with chapter timestamps is written alongside the video.
 
 ### Match data & social posts *(expanded in v2.1)*
 
@@ -97,6 +104,16 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **One-click camera** *(new in v2.1)* — enter your camera's RTSP URL in the control panel and the overlay adds it to OBS as a media source for you, with auto-reconnect if the feed drops.
 - **YouTube title updater** — updates the stream title automatically when the match starts.
 - **Weather widget** — current conditions at the ground on demand or at the drinks break.
+- **Adaptive stream quality** *(new)* — built for grounds where the internet is the weak
+  link. OBS's dynamic bitrate is enabled automatically (the connection is managed
+  seamlessly, with no disconnects), and a live congestion monitor in the control panel can
+  step the stream quality down a ladder when the line is genuinely struggling — manually,
+  or automatically with safeguards against flapping. Stepping down also reduces CPU load
+  on older laptops.
+- **Match simulator** *(new)* — `python3 simulate_match.py` rehearses the entire broadcast
+  without a scorer: a realistic simulated match (full game, tense chase, century chase, or
+  batting collapse) drives every graphic, replay and database exactly as a real feed would.
+  Perfect for testing your setup the night before a stream.
 
 ---
 
@@ -258,6 +275,10 @@ It lets you:
 | Result post for any past match | PlayCricket API key |
 | Per-team / youth social photo folders | `socials/1st`, `socials/2nd`, `socials/3rd`, `socials/youth` |
 | One-click RTSP camera into OBS | OBS WebSocket |
+| Bowler milestones (five-fors, hat-tricks) | NV Play output file *(or manual scoring)* |
+| Auto-tagged, captioned highlights with chapters | FFmpeg + OBS WebSocket |
+| Adaptive stream quality / congestion monitor | OBS WebSocket |
+| Match simulator for rehearsals | Nothing — runs offline |
 | Auto match detection | PlayCricket API key |
 | YouTube title update | Google OAuth |
 | Club badges in scorebar | PNG/SVG files in `logos/` folder |
@@ -421,6 +442,13 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**Unreleased (on `dev`)** — Manual scoring page (`/scoring`) for clubs without scoring
+software; adaptive stream quality (auto dynamic bitrate + congestion monitor with a
+quality ladder); match simulator for full broadcast rehearsals; auto-tagged, captioned
+highlights with YouTube chapters; bowler milestone graphics (five-fors, hat-tricks); a
+159-test automated suite wired into CI; and a batch of match-day fixes. Full detail in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 **v2.1.1** — **Responsive control panel** (stacks to a single column with touch-friendly buttons at phone width, so a Wi-Fi phone operator can run the stream comfortably). **config.ini auto-seeding** — `server.py` now reads all `config.ini` sections on startup and pre-populates any fields still at their defaults, so API keys, club name, kit colour, and folder paths load automatically without needing to re-enter them in the control panel.
 

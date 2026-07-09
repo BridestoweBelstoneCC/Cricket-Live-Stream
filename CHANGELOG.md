@@ -4,6 +4,78 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased — on `dev`, 2026-07-06 → 2026-07-09
+
+*Pending the 2026-07-11 live match test before merging to `main`.*
+
+### New features
+
+- **Manual scoring page (`/scoring`).** Score a match ball-by-ball from a phone or tablet
+  with big tap-friendly buttons — no NV Play/PCS Pro needed — and the entire overlay,
+  graphics, ball database and highlights pipeline works identically (manual frames render
+  through the same parser as the scorer's feed, and outrank the file while a session is
+  live). Event-sourced with exact-replay undo (even across the innings break), wicket-type
+  / fielder / run-out-end pickers, per-over bowler prompts, next-batter override, and a
+  session file that survives server restarts and dead phone batteries. Same club-password
+  login as the control panel; selectable as the data source in quickstart. Also the plan B
+  if the scorer's feed drops mid-match.
+- **Adaptive stream quality** for grounds with poor internet, two tiers: OBS's built-in
+  **Dynamic Bitrate** is now enabled automatically (seamless encoder-level flexing on
+  congestion — no disconnects) and its status is verified live in the panel with a
+  one-click enable; plus a **stream sentinel** that polls congestion/dropped frames every
+  15s while live and can step the bitrate down a 100/70/50/35% ladder — manual panel
+  buttons, or an off-by-default auto mode with a 60s evidence window and 150s anti-flap
+  cooldown that never raises quality on its own. (A ladder step briefly restarts the
+  stream; the YouTube broadcast survives with a few seconds of buffering.)
+- **Match simulator (`simulate_match.py`).** Rehearse the whole broadcast without a
+  scorer: a deterministic ball-by-ball engine writes NV Play-style frames to a fake PCS
+  folder, faithful to the real feed's trickiest behaviours (ticker clearing on the
+  over-completing write, blank pre-match names, `runs_required`-driven innings detection).
+  Scenarios: full / chase / century / collapse; `--configure` points the running server at
+  it; `--chaos` injects mid-write and stall failures.
+- **Auto-tagged highlights.** Every replay clip is tagged at capture with why it fired and
+  the match context; manually saved clips are tagged by correlating file times against the
+  ball log. The highlights compiler burns captions in as lower-thirds, skips test clips,
+  and writes a YouTube-ready description with chapter timestamps. The panel now reports
+  the compile's real outcome instead of fire-and-forget.
+- **Bowler milestone graphics**: five-wicket hauls (re-firing for the 6th/7th) and
+  hat-tricks — including cross-over hat-tricks, with run outs breaking (not extending) the
+  chain and wides/no-balls neutral.
+- **Automated test suite**: 159 tests (stdlib unittest, no dependencies), wired into CI
+  (which now also runs on `dev` pushes). Parsing, season stats, auth, quickstart merge,
+  simulator invariants, highlights, manual scoring, stream-quality decisions, JS logic
+  executed in a real engine, and HTTP integration against a live in-process server.
+
+### Fixed
+
+- **quickstart no longer wipes panel-entered state** (squad roster, sponsor fields, away
+  colour, toggle edits, a manually entered opposition) — it merges over the existing file
+  instead of rewriting it.
+- **A non-numeric badge pick no longer kills the overlay** — `/live` crashed on every poll
+  if `home_club_id` was set to a logo filename.
+- **Weather now uses the ground's own coordinates** (saved from PlayCricket) instead of
+  hardcoded ones — other clubs were getting the original club's weather, which also drove
+  the DLS rain threshold.
+- **Wickets were never reaching the event buffer or fall-of-wickets log** unless the AI
+  ball-commentary toggle (off by default) was on — the detection baseline was only seeded
+  inside that toggled path. Match reports were missing FOW data because of this.
+- **CSV export worked only without a club password** (the panel used `window.open`, which
+  can't send the auth header); **the prematch scorer line never displayed** (operator
+  precedence bug); the ball-event commentary trigger compared state against an
+  already-updated baseline (never fired); a missing `control_token` line was appended into
+  the wrong config.ini section; the highlights concat file mis-declared every clip as
+  0.5s long; plus removed dead routes and duplicate dict keys.
+
+### Changed
+
+- **The control panel now lives in `control.html`** (was a 2,100-line Python string inside
+  server.py) — normal JS escaping, edits show on refresh without a server restart, and the
+  historical backslash-doubling bug class is gone. Importing server.py no longer has side
+  effects (token generation moved to startup).
+- **`/live` split**: the overlay's poll drives the match pipeline and consumes wicket
+  events; the panel polls a side-effect-free `/live/view`, so it can no longer eat the
+  overlay's events or triple-run the ball logger.
+
 ## v2.3 — 2026-07-02
 
 - **Remote access, phase 3.** A QR code — printed as ASCII art in the terminal at startup
