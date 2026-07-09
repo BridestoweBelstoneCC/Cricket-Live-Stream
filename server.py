@@ -1495,7 +1495,7 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # they're listed here anyway as a defensive backstop in case that ever changes.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
                "weather_api_key", "obs_password", "camera_rtsp_url",
-               "control_token", "club_password")
+               "control_token", "club_password", "youtube_stream_key")
 SECRET_SENTINEL = "••••••••"
 
 # mtime-keyed cache: load_state() is called several times per overlay poll (the /live

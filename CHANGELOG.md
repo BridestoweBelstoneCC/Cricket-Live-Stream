@@ -22,6 +22,10 @@ simulator carry full automated coverage but await their first human outing.*
   session file that survives server restarts and dead phone batteries. Same club-password
   login as the control panel; selectable as the data source in quickstart. Also the plan B
   if the scorer's feed drops mid-match.
+- **YouTube stream key managed by setup.** The wizard now asks for your stream key
+  (stored in git-ignored config.ini, redacted like every other secret) and OBS setup
+  applies it automatically — making key-based streaming, which survives restarts and
+  quality changes, the default path. Never touched while a stream is live.
 - **Adaptive stream quality** for grounds with poor internet, two tiers: OBS's built-in
   **Dynamic Bitrate** is now enabled automatically (seamless encoder-level flexing on
   congestion — no disconnects) and its status is verified live in the panel with a

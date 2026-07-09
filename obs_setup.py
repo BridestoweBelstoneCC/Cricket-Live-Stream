@@ -14,7 +14,7 @@ Or called from quickstart.py automatically.
 import json, time, sys, hashlib, base64, os
 
 def obs_setup(host="localhost", port=4455, password="", replay_folder="",
-              server_port=5000, verbose=True):
+              server_port=5000, verbose=True, stream_key=""):
     """
     Full OBS setup via WebSocket v5.
     Returns (success, list_of_messages).
@@ -221,6 +221,28 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
         else:
             log_msg(f"Replay folder doesn't exist and couldn't be created: {replay_folder}", "warn")
 
+    # ── Apply the YouTube stream key (key-based streaming) ─────────────────────
+    # Key-based streaming survives restarts and quality changes; OBS's "connect account"
+    # mode with auto-stop ENDS the broadcast whenever the stream stops (learned the hard
+    # way in the 2026-07-09 test). Never touched while a stream is actually live.
+    if stream_key:
+        live = request("GetStreamStatus")
+        if live and live.get("responseData", {}).get("outputActive"):
+            log_msg("Stream is LIVE — leaving OBS's stream settings alone", "warn")
+        else:
+            r = request("SetStreamServiceSettings", {
+                "streamServiceType": "rtmp_common",
+                "streamServiceSettings": {
+                    "service": "YouTube - RTMPS",
+                    "server":  "rtmps://a.rtmps.youtube.com:443/live2",
+                    "key":     stream_key,
+                }})
+            if r and r.get("requestStatus",{}).get("result"):
+                log_msg("YouTube stream key applied — key-based streaming "
+                        "(survives restarts and quality changes)", "ok")
+            else:
+                log_msg("Could not apply the stream key — set it in OBS Settings → Stream", "warn")
+
     # ── Enable OBS's Dynamic Bitrate (congestion handled without disconnects) ──
     # Off by default in OBS and buried in Settings → Advanced → Network. With it on, the
     # encoder bitrate flexes automatically when the connection struggles — the seamless
@@ -272,6 +294,7 @@ if __name__ == "__main__":
     password      = cfg.get("OBS", "obs_password",   fallback="")
     replay_folder = cfg.get("OBS", "replay_folder",  fallback="")
     replay_folder = os.path.expanduser(replay_folder)
+    stream_key    = cfg.get("Stream", "youtube_stream_key", fallback="").strip()
 
     print()
     print("OBS Auto-Setup — CricketStream Overlay")
@@ -279,6 +302,7 @@ if __name__ == "__main__":
     ok, messages = obs_setup(
         password      = password,
         replay_folder = replay_folder,
+        stream_key    = stream_key,
     )
     print()
     if ok:

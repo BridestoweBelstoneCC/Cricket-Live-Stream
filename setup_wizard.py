@@ -197,6 +197,12 @@ def configure():
     heading("Stream")
     yt_title = ask("YouTube title template", default="LIVE: {home} vs {away}")
     max_overs = ask("Overs per innings", default="50")
+    print("\n  Your YouTube STREAM KEY (YouTube Studio -> Go Live -> Stream settings).")
+    print("  Recommended: key-based streaming survives restarts and quality changes --")
+    print("  OBS's 'connect account' mode ends the whole broadcast if the stream stops.")
+    print("  The key is applied to OBS automatically on match day. Treat it like a")
+    print("  password (anyone with it can stream to your channel).\n")
+    yt_key = ask("YouTube stream key", secret=True)
 
     heading("AI commentary (optional)")
     print("  Powers live over commentary, match reports and social posts.")
@@ -218,7 +224,7 @@ def configure():
         name=name, abbrev=abbrev, colour=colour, motto=motto,
         pc_id=pc_id, pc_key=pc_key,
         pcs_folder=pcs_folder, obs_pw=obs_pw, replay_folder=replay_folder,
-        yt_title=yt_title, max_overs=max_overs,
+        yt_title=yt_title, yt_key=yt_key, max_overs=max_overs,
         anthropic_key=anthropic_key,
         club_password=club_password, control_token=control_token,
         bind_host=bind_host,
@@ -247,8 +253,9 @@ def write_config(v):
         "replay_folder": v["replay_folder"],
     }
     cfg["Stream"] = {
-        "youtube_title": v["yt_title"],
-        "max_overs":     v["max_overs"],
+        "youtube_title":      v["yt_title"],
+        "youtube_stream_key": v["yt_key"],
+        "max_overs":          v["max_overs"],
     }
     cfg["Auth"] = {
         "control_token": v["control_token"],

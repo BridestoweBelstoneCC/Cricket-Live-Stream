@@ -355,7 +355,9 @@ def main():
         # Import obs_setup from same directory
         sys.path.insert(0, script_dir)
         from obs_setup import obs_setup
-        ok, messages = obs_setup(password=obs_pw, replay_folder=replay_dir, verbose=False)
+        ok, messages = obs_setup(password=obs_pw, replay_folder=replay_dir, verbose=False,
+                                 stream_key=cfg["Stream"].get("youtube_stream_key",
+                                                              "").strip())
         if ok:
             log("OBS configured — scenes and sources ready", "ok")
         else:

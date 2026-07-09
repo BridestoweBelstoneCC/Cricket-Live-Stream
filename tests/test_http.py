@@ -134,13 +134,16 @@ class TestRoutesOpen(HttpTestBase):
     def test_state_secret_redaction_and_sentinel_roundtrip(self):
         st = server.load_state()
         st["anthropic_api_key"] = "sk-ant-SUPERSECRET"
+        st["youtube_stream_key"] = "abcd-STREAMKEY-1234"   # anyone with this can stream
         server.save_state(st)
 
         status, body = self.get_json("/state")
         self.assertEqual(status, 200)
         self.assertEqual(body["anthropic_api_key"], server.SECRET_SENTINEL)
+        self.assertEqual(body["youtube_stream_key"], server.SECRET_SENTINEL)
         self.assertTrue(body["anthropic_key_set"])
         self.assertNotIn("SUPERSECRET", json.dumps(body))
+        self.assertNotIn("STREAMKEY", json.dumps(body))
 
         # Posting the sentinel back must leave the stored key untouched
         status, _ = self.post_json("/state", {"anthropic_api_key": server.SECRET_SENTINEL,
