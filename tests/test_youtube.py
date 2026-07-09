@@ -97,14 +97,23 @@ class TestRemoteAuthGuard(unittest.TestCase):
         __import__("shutil").rmtree(self.tmp, ignore_errors=True)
 
     def test_non_interactive_first_run_refuses_cleanly(self):
-        # allow_interactive=False and no token → must not attempt the browser flow
-        yt, err = server._youtube_service(allow_interactive=False)
-        self.assertIsNone(yt)
-        self.assertIn("STREAMING LAPTOP", err)
-        # and the same via the public entry point
-        ok, msg = server.update_youtube_broadcast(title="X", allow_interactive=False)
-        self.assertFalse(ok)
-        self.assertIn("authoris", msg.lower())
+        # allow_interactive=False and no token → must not attempt the browser flow.
+        # Stub the Google modules into sys.modules so the guard path runs deterministically
+        # whether or not the libraries are installed (CI runs dependency-free), instead of
+        # short-circuiting on ImportError.
+        stub = {name: mock.MagicMock() for name in (
+            "google", "google.oauth2", "google.oauth2.credentials",
+            "google_auth_oauthlib", "google_auth_oauthlib.flow",
+            "google.auth", "google.auth.transport", "google.auth.transport.requests",
+            "googleapiclient", "googleapiclient.discovery")}
+        with mock.patch.dict("sys.modules", stub):
+            yt, err = server._youtube_service(allow_interactive=False)
+            self.assertIsNone(yt)
+            self.assertIn("STREAMING LAPTOP", err)
+            # and the same via the public entry point
+            ok, msg = server.update_youtube_broadcast(title="X", allow_interactive=False)
+            self.assertFalse(ok)
+            self.assertIn("authoris", msg.lower())
 
 
 class TestYoutubeEndpoint(HttpTestBase):
