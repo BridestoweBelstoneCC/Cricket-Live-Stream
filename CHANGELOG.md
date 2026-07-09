@@ -11,10 +11,16 @@ coverage is complete; awaiting a human run-through before merging to `main`.*
 
 - **YouTube broadcast manager** (was "YouTube Title"). Streaming with a stream key
   (recommended) removes OBS's "Manage Broadcast" panel, so the control panel now sets the
-  broadcast's **title, description, privacy (public/unlisted/private), category, and the
-  "made for kids" declaration** over the YouTube Data API — everything that panel used to
-  do. One button pushes the lot to the active (or upcoming) broadcast. Uses the same
-  one-time Google OAuth as the old title updater; the title-only path still works.
+  broadcast's **title, description, privacy (public/unlisted/private), and category** over
+  the YouTube Data API — most of what that panel did. One button pushes the lot to the
+  active (or upcoming) broadcast; each part is a separate call so one failing doesn't sink
+  the others, and the result reports exactly what applied. Uses the same one-time Google
+  OAuth as the old title updater; the title-only path still works. **"Made for kids" is
+  set in YouTube Studio when you create the broadcast** — YouTube's API rejects changing
+  it afterwards, so the panel points you there rather than pretending to control it.
+  Credential handling hardened for remote use: `yt_credentials.json` git-ignored (was
+  not), token written 0600, remote first-run auth refused with a "do it on the streaming
+  laptop" message instead of a hung browser, and paths resolved relative to server.py.
 
 - **End-of-over recap on the scoring page.** When an over completes, the scorer sees a
   banner with the over's runs and ball-by-ball tokens, and a choice: confirm and pick the

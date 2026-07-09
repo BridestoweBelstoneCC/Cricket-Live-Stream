@@ -12,45 +12,38 @@ import server
 from test_http import HttpTestBase   # noqa: E402
 
 
-class TestPayloadBuilder(unittest.TestCase):
+class TestSnippetPayloadBuilder(unittest.TestCase):
     CUR_SNIP = {"title": "Old title", "description": "old desc",
                 "scheduledStartTime": "2026-07-11T13:00:00Z"}
-    CUR_STAT = {"privacyStatus": "public", "selfDeclaredMadeForKids": True}
 
     def test_preserves_current_when_nothing_changes(self):
-        snip, stat = server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT)
+        snip = server._yt_snippet_payload(self.CUR_SNIP)
         self.assertEqual(snip["title"], "Old title")
         self.assertEqual(snip["description"], "old desc")
         self.assertEqual(snip["scheduledStartTime"], "2026-07-11T13:00:00Z")
-        self.assertEqual(stat["privacyStatus"], "public")
-        self.assertTrue(stat["selfDeclaredMadeForKids"])
 
-    def test_applies_all_changes(self):
-        snip, stat = server._yt_broadcast_payload(
-            self.CUR_SNIP, self.CUR_STAT, title="New", description="ND",
-            privacy="private", made_for_kids=False)
+    def test_applies_changes_and_carries_scheduled_start(self):
+        snip = server._yt_snippet_payload(self.CUR_SNIP, title="New", description="ND")
         self.assertEqual(snip["title"], "New")
         self.assertEqual(snip["description"], "ND")
-        self.assertEqual(snip["scheduledStartTime"], "2026-07-11T13:00:00Z")  # still carried
-        self.assertEqual(stat["privacyStatus"], "private")
-        self.assertFalse(stat["selfDeclaredMadeForKids"])
+        self.assertEqual(snip["scheduledStartTime"], "2026-07-11T13:00:00Z")
 
-    def test_invalid_privacy_raises(self):
-        with self.assertRaises(ValueError):
-            server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT, privacy="secret")
+    def test_never_includes_made_for_kids(self):
+        # The whole point of the fix: selfDeclaredMadeForKids must NEVER be in the payload —
+        # YouTube 403s any attempt to modify it via update.
+        snip = server._yt_snippet_payload(self.CUR_SNIP, title="X")
+        self.assertNotIn("selfDeclaredMadeForKids", snip)
+        self.assertNotIn("status", snip)
 
     def test_defaults_when_broadcast_is_bare(self):
-        snip, stat = server._yt_broadcast_payload({}, {})
+        snip = server._yt_snippet_payload({})
         self.assertEqual(snip["title"], "")
         self.assertEqual(snip["description"], "")
         self.assertNotIn("scheduledStartTime", snip)          # nothing to carry
-        self.assertEqual(stat["privacyStatus"], "unlisted")   # safe default
-        self.assertFalse(stat["selfDeclaredMadeForKids"])
 
     def test_empty_string_title_and_description_apply(self):
         # "" is a real value (clear the field), distinct from None (leave unchanged)
-        snip, _ = server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT,
-                                               title="", description="")
+        snip = server._yt_snippet_payload(self.CUR_SNIP, title="", description="")
         self.assertEqual(snip["title"], "")
         self.assertEqual(snip["description"], "")
 
@@ -116,6 +109,99 @@ class TestRemoteAuthGuard(unittest.TestCase):
             self.assertIn("authoris", msg.lower())
 
 
+class _Req:
+    def __init__(self, result, fail=None):
+        self._result, self._fail = result, fail
+    def execute(self):
+        if self._fail:
+            raise self._fail
+        return self._result
+
+
+class _Resource:
+    def __init__(self, parent, kind):
+        self.parent, self.kind = parent, kind
+    def list(self, **kw):
+        self.parent.calls.append((self.kind, "list", kw))
+        if self.kind == "liveBroadcasts":
+            items = self.parent.broadcast if kw.get("broadcastStatus") == "active" else []
+            return _Req({"items": items})
+        return _Req({"items": self.parent.video})
+    def update(self, **kw):
+        self.parent.calls.append((self.kind, "update", kw))
+        return _Req({}, fail=self.parent.fail.get((self.kind, kw.get("part"))))
+
+
+class FakeYT:
+    """Minimal stand-in for the googleapiclient youtube service."""
+    def __init__(self, broadcast, video, fail=None):
+        self.broadcast, self.video, self.fail = broadcast, video, (fail or {})
+        self.calls = []
+    def liveBroadcasts(self):
+        return _Resource(self, "liveBroadcasts")
+    def videos(self):
+        return _Resource(self, "videos")
+
+
+class TestUpdateLogicMocked(unittest.TestCase):
+    """The real update_youtube_broadcast logic against a fake YouTube service — this is
+    what proves the selfDeclaredMadeForKids 403 fix."""
+
+    def make(self, fail=None):
+        return FakeYT(
+            broadcast=[{"id": "B1", "snippet": {"title": "Old",
+                                                "scheduledStartTime": "2026-07-11T13:00:00Z"}}],
+            video=[{"snippet": {"title": "Old", "categoryId": "1"}}],
+            fail=fail)
+
+    def test_never_sends_made_for_kids_and_splits_calls(self):
+        fake = self.make()
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(
+                title="New", description="D", privacy="unlisted", category_id="17")
+        self.assertTrue(ok, msg)
+        updates = [c for c in fake.calls if c[1] == "update"]
+
+        # NOTHING sent anywhere may mention selfDeclaredMadeForKids
+        self.assertNotIn("selfDeclaredMadeForKids", str(fake.calls))
+
+        # title/description → a snippet-only broadcast update, scheduledStartTime carried
+        snip = [c for c in updates if c[0] == "liveBroadcasts" and c[2]["part"] == "snippet"]
+        self.assertEqual(len(snip), 1)
+        body = snip[0][2]["body"]
+        self.assertNotIn("status", body)
+        self.assertEqual(body["snippet"]["title"], "New")
+        self.assertEqual(body["snippet"]["scheduledStartTime"], "2026-07-11T13:00:00Z")
+
+        # privacy → a status update carrying ONLY privacyStatus
+        stat = [c for c in updates if c[0] == "liveBroadcasts" and c[2]["part"] == "status"]
+        self.assertEqual(len(stat), 1)
+        self.assertEqual(stat[0][2]["body"]["status"], {"privacyStatus": "unlisted"})
+
+        # category → the video resource
+        vid = [c for c in updates if c[0] == "videos"]
+        self.assertEqual(len(vid), 1)
+        self.assertEqual(vid[0][2]["body"]["snippet"]["categoryId"], "17")
+
+    def test_partial_failure_is_reported_not_swallowed(self):
+        # privacy fails (as the real 403 would), title/description + category still apply
+        fake = self.make(fail={("liveBroadcasts", "status"): Exception("some API error")})
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(
+                title="New", privacy="private", category_id="17")
+        self.assertFalse(ok)                       # a part failed → overall not-ok
+        self.assertIn("FAILED", msg)
+        self.assertIn("privacy", msg)
+        self.assertIn("title/description", msg)    # this one succeeded, still reported
+
+    def test_no_broadcast_found(self):
+        fake = FakeYT(broadcast=[], video=[])
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(title="X")
+        self.assertFalse(ok)
+        self.assertIn("No active or upcoming broadcast", msg)
+
+
 class TestYoutubeEndpoint(HttpTestBase):
     def setUp(self):
         server._last_good_state = None
@@ -123,14 +209,13 @@ class TestYoutubeEndpoint(HttpTestBase):
                            "home_team": "Alpha CC", "away_team": "Beta CC",
                            "youtube_title_template": "LIVE: {home} vs {away}",
                            "youtube_description": "Watch {home} v {away}.",
-                           "youtube_privacy": "public", "youtube_category": "17",
-                           "youtube_made_for_kids": False})
+                           "youtube_privacy": "public", "youtube_category": "17"})
 
     def test_fills_templates_and_uses_state_defaults(self):
         captured = {}
         def fake(**kw):
             captured.update(kw)
-            return True, "Updated: metadata, category"
+            return True, "Updated: title/description, privacy=public, category"
         with mock.patch.object(server, "update_youtube_broadcast", side_effect=fake):
             status, d = self.post_json("/youtube/update", {})
         self.assertEqual(status, 200)
@@ -139,7 +224,7 @@ class TestYoutubeEndpoint(HttpTestBase):
         self.assertEqual(captured["description"], "Watch Alpha CC v Beta CC.")
         self.assertEqual(captured["privacy"], "public")
         self.assertEqual(captured["category_id"], "17")
-        self.assertFalse(captured["made_for_kids"])
+        self.assertNotIn("made_for_kids", captured)   # never sent — API can't set it
 
     def test_explicit_payload_overrides_state(self):
         captured = {}
@@ -149,12 +234,11 @@ class TestYoutubeEndpoint(HttpTestBase):
         with mock.patch.object(server, "update_youtube_broadcast", side_effect=fake):
             self.post_json("/youtube/update", {
                 "title": "Cup Final", "description": "Big one",
-                "privacy": "private", "category": "24", "made_for_kids": True})
+                "privacy": "private", "category": "24"})
         self.assertEqual(captured["title"], "Cup Final")
         self.assertEqual(captured["description"], "Big one")
         self.assertEqual(captured["privacy"], "private")
         self.assertEqual(captured["category_id"], "24")
-        self.assertTrue(captured["made_for_kids"])
 
     def test_failure_reported_as_ok_false(self):
         with mock.patch.object(server, "update_youtube_broadcast",

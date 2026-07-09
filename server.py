@@ -910,12 +910,13 @@ YT_CATEGORIES = [("17", "Sports"), ("24", "Entertainment"), ("22", "People & Blo
                  ("25", "News & Politics"), ("20", "Gaming")]
 
 
-def _yt_broadcast_payload(cur_snippet, cur_status, title=None, description=None,
-                          privacy=None, made_for_kids=None):
-    """Pure: merge requested changes onto the broadcast's CURRENT snippet/status and return
-    (snippet, status) for liveBroadcasts.update part='snippet,status'. Preserving current
-    values matters — an update replaces the whole part, so anything omitted is wiped.
-    scheduledStartTime is required by the API and always carried through."""
+def _yt_snippet_payload(cur_snippet, title=None, description=None):
+    """Pure: merge requested title/description onto the broadcast's CURRENT snippet and
+    return it for liveBroadcasts.update part='snippet'. An update replaces the whole part,
+    so current values (and the API-required scheduledStartTime) are always carried through.
+    NB: 'made for kids' (selfDeclaredMadeForKids) is deliberately NOT handled here — YouTube
+    rejects modifying it via update (it can only be set when the broadcast is created, in
+    Studio), so sending it at all — even its current value — 403s."""
     snippet = {"title": cur_snippet.get("title", "")}
     if cur_snippet.get("scheduledStartTime"):
         snippet["scheduledStartTime"] = cur_snippet["scheduledStartTime"]
@@ -924,15 +925,7 @@ def _yt_broadcast_payload(cur_snippet, cur_status, title=None, description=None,
         snippet["title"] = title
     if description is not None:
         snippet["description"] = description
-    status = {"privacyStatus": cur_status.get("privacyStatus", "unlisted"),
-              "selfDeclaredMadeForKids": bool(cur_status.get("selfDeclaredMadeForKids", False))}
-    if privacy is not None:
-        if privacy not in YT_PRIVACY:
-            raise ValueError(f"privacy must be one of {YT_PRIVACY}")
-        status["privacyStatus"] = privacy
-    if made_for_kids is not None:
-        status["selfDeclaredMadeForKids"] = bool(made_for_kids)
-    return snippet, status
+    return snippet
 
 
 def _write_token_private(creds):
@@ -985,51 +978,75 @@ def _youtube_service(allow_interactive=True):
 
 
 def update_youtube_broadcast(title=None, description=None, privacy=None,
-                             made_for_kids=None, category_id=None, allow_interactive=True):
+                             category_id=None, allow_interactive=True):
     """Update the active (else upcoming) broadcast's metadata. Any argument left None is
-    unchanged. Returns (ok, message). category is on the underlying video, updated
-    separately; a category failure is reported but doesn't fail the rest.
-    allow_interactive False blocks the first-run browser auth (see _youtube_service)."""
+    unchanged. Returns (ok, message).
+
+    Each piece is a SEPARATE API call (title/description, then privacy, then category) so
+    one part failing doesn't sink the others — the message reports exactly what did and
+    didn't apply. 'Made for kids' isn't here: YouTube only allows it at broadcast creation
+    (Studio → Go Live), not via update, so we never touch it. allow_interactive False
+    blocks the first-run browser auth (see _youtube_service)."""
     try:
         if privacy is not None and privacy not in YT_PRIVACY:
             return False, f"privacy must be one of {', '.join(YT_PRIVACY)}"
         yt, err = _youtube_service(allow_interactive=allow_interactive)
         if err:
             return False, err
-        resp = yt.liveBroadcasts().list(part="id,snippet,status", broadcastStatus="active",
+        resp = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus="active",
                                         broadcastType="all").execute()
         items = resp.get("items", [])
         if not items:
-            resp = yt.liveBroadcasts().list(part="id,snippet,status", broadcastStatus="upcoming",
+            resp = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus="upcoming",
                                             broadcastType="all").execute()
             items = resp.get("items", [])
         if not items:
             return False, "No active or upcoming broadcast found on this YouTube account"
-        bc  = items[0]
-        bid = bc["id"]
-        snippet, status = _yt_broadcast_payload(
-            bc.get("snippet", {}), bc.get("status", {}),
-            title=title, description=description, privacy=privacy, made_for_kids=made_for_kids)
-        yt.liveBroadcasts().update(part="snippet,status",
-                                   body={"id": bid, "snippet": snippet, "status": status}).execute()
-        done = ["metadata"]
-        # Category lives on the video resource, not the broadcast — update it separately.
-        cat_note = ""
+        bc   = items[0]
+        bid  = bc["id"]
+        done, failed = [], []
+
+        # 1) Title / description — on the broadcast snippet
+        if title is not None or description is not None:
+            try:
+                snippet = _yt_snippet_payload(bc.get("snippet", {}),
+                                              title=title, description=description)
+                yt.liveBroadcasts().update(
+                    part="snippet", body={"id": bid, "snippet": snippet}).execute()
+                done.append("title/description")
+            except Exception as se:
+                failed.append(f"title/description ({se})")
+
+        # 2) Privacy — on the broadcast status (send ONLY privacyStatus; never
+        #    selfDeclaredMadeForKids, which update rejects)
+        if privacy is not None:
+            try:
+                yt.liveBroadcasts().update(
+                    part="status", body={"id": bid, "status": {"privacyStatus": privacy}}).execute()
+                done.append(f"privacy={privacy}")
+            except Exception as pe:
+                failed.append(f"privacy ({pe})")
+
+        # 3) Category — on the underlying video resource, not the broadcast
         if category_id:
             try:
-                vresp = yt.videos().list(part="snippet", id=bid).execute()
+                vresp  = yt.videos().list(part="snippet", id=bid).execute()
                 vitems = vresp.get("items", [])
                 if vitems:
                     vsnip = vitems[0]["snippet"]
                     vsnip["categoryId"] = str(category_id)
-                    if title is not None:
-                        vsnip["title"] = title       # keep in sync with the broadcast update
                     yt.videos().update(part="snippet", body={"id": bid, "snippet": vsnip}).execute()
                     done.append("category")
             except Exception as ce:
-                cat_note = f" (category not set: {ce})"
-        print(f"  ✓  YouTube broadcast updated: {', '.join(done)}")
-        return True, (f"Updated: {', '.join(done)}{cat_note}")
+                failed.append(f"category ({ce})")
+
+        if not done and not failed:
+            return True, "Nothing to update"
+        note = ("Updated: " + ", ".join(done) if done else "Nothing updated")
+        if failed:
+            note += " — FAILED: " + "; ".join(failed)
+        print(f"  {'✓' if done and not failed else '⚠'}  YouTube: {note}")
+        return (not failed), note
     except Exception as e:
         return False, str(e)
 
@@ -1579,7 +1596,6 @@ DEFAULT_STATE = {
     "youtube_title_template":  "LIVE: {home} vs {away}",
     "youtube_description":      "Live grassroots cricket. {home} v {away}.",
     "youtube_privacy":          "unlisted",
-    "youtube_made_for_kids":    False,
     "youtube_category":         "17",
     "weather_api_key":         "",
     "logos_folder":           "",
@@ -5885,11 +5901,8 @@ class Handler(BaseHTTPRequestHandler):
                               else s.get("youtube_description", ""))
                 privacy  = data.get("privacy")  or s.get("youtube_privacy", "unlisted")
                 category = data.get("category") or s.get("youtube_category", "17")
-                mfk      = (data.get("made_for_kids") if "made_for_kids" in data
-                            else bool(s.get("youtube_made_for_kids", False)))
                 ok, msg = update_youtube_broadcast(
-                    title=title, description=desc, privacy=privacy,
-                    made_for_kids=bool(mfk), category_id=category,
+                    title=title, description=desc, privacy=privacy, category_id=category,
                     # First-run browser auth only for a real same-machine operator — a
                     # remote (tunnelled) request must not pop a browser on the host.
                     allow_interactive=self._is_trusted_loopback())

@@ -714,13 +714,11 @@
         </select>
       </div>
     </div>
-    <div class="toggle-row" style="margin-top:4px;">
-      <div>
-        <div class="toggle-label">Made for kids</div>
-        <div class="toggle-desc">YouTube requires this declaration. Grassroots cricket is normally "No".</div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="youtube_made_for_kids"><span class="track"></span></label>
-    </div>
+    <p class="hint" style="margin-top:8px;padding:8px 10px;background:#2a2410;border:1px solid #5c4a18;border-radius:5px;color:#d2c08a;">
+      <strong>"Made for kids"</strong> can't be changed here — YouTube only allows it when
+      the broadcast is created. Set it in <em>YouTube Studio → Go Live</em> (grassroots
+      cricket is normally "No, not made for kids").
+    </p>
     <button class="btn btn-test" onclick="updateYouTubeBroadcast()" style="margin-top:8px;">&#9654; Update YouTube broadcast now</button>
     <div id="youtube-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:11px;color:#3d5a7a;line-height:1.6;">
@@ -1369,7 +1367,7 @@ const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','youtube_made_for_kids'];
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -1521,11 +1519,10 @@ function showStatus(msg, cls) {
 async function updateYouTubeBroadcast() {
   const msg = document.getElementById('youtube-msg');
   const payload = {
-    title:         document.getElementById('youtube_title_template').value,
-    description:   document.getElementById('youtube_description').value,
-    privacy:       document.getElementById('youtube_privacy').value,
-    category:      document.getElementById('youtube_category').value,
-    made_for_kids: document.getElementById('youtube_made_for_kids').checked,
+    title:       document.getElementById('youtube_title_template').value,
+    description: document.getElementById('youtube_description').value,
+    privacy:     document.getElementById('youtube_privacy').value,
+    category:    document.getElementById('youtube_category').value,
   };
   if (msg) { msg.textContent = 'Updating YouTube broadcast…'; msg.style.color = '#5b9bd5'; }
   try {
