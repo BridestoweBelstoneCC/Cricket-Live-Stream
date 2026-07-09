@@ -4,9 +4,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased — on `dev`, 2026-07-06 → 2026-07-09
+## v2.5 — 2026-07-09
 
-*Pending the 2026-07-11 live match test before merging to `main`.*
+*Manually tested against a live NV Play feed on 2026-07-09 — replays and auto-tagging,
+the full graphics run including bowler milestones, and the quality ladder (which found
+and fixed the connected-account issue below). The manual scoring page and the match
+simulator carry full automated coverage but await their first human outing.*
 
 ### New features
 
@@ -59,6 +62,14 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   outputs asynchronously, so firing StartStream straight after StopStream could be
   rejected unnoticed. Each step is now verified: stop confirmed, bitrate set, restart
   retried, and honest failure messages if OBS misbehaves (concurrent shifts serialized).
+  Found live in testing: **OBS's connected-YouTube-account mode ends the broadcast on
+  StopStream** — the shift now detects a restart into a dead broadcast and says so, and
+  the panel states the plain-stream-key requirement up front.
+- **Milestone cards were hidden by their own replay** — the fifty/century replay switched
+  OBS to the Replay scene while the gold card was still airing. The replay is now delayed
+  (as wicket replays already were) so the card plays first.
+- **Clip tagging was invisible** — tags live in the database, not filenames, so the panel
+  now shows "N clips saved · M tagged for highlights" live.
 - **Replay captions during manual scoring used stale PCS data** — the tagger now uses the
   same source precedence as the live feed (manual session first).
 - **A leftover manual-scoring session silently outranked the scorer's feed** — quickstart
@@ -94,6 +105,19 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - **`/live` split**: the overlay's poll drives the match pipeline and consumes wicket
   events; the panel polls a side-effect-free `/live/view`, so it can no longer eat the
   overlay's events or triple-run the ball logger.
+
+## v2.4 — 2026-07-06
+
+*(Tagged without a changelog entry at the time — backfilled.)*
+
+- Weekend sponsor strap overlaid on the end-of-over graphics sequence; a long-standing
+  over-transition timing bug fixed (end-of-over graphics fired one poll late); startup
+  update check against the latest GitHub release.
+- Pre-match and crediting fixes: split opening-batter cards no longer collapse to one,
+  pre-match graphics persist until play actually starts (not until the match is merely
+  configured), over commentary/summary credits the bowler who actually bowled the over,
+  and the real cause of replays never firing (a hardcoded origin mismatch in
+  overlay.html) resolved.
 
 ## v2.3 — 2026-07-02
 

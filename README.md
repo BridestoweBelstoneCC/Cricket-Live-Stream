@@ -8,7 +8,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.3-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.5-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
@@ -448,12 +448,16 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
-**Unreleased (on `dev`)** — Manual scoring page (`/scoring`) for clubs without scoring
-software; adaptive stream quality (auto dynamic bitrate + congestion monitor with a
-quality ladder); match simulator for full broadcast rehearsals; auto-tagged, captioned
-highlights with YouTube chapters; bowler milestone graphics (five-fors, hat-tricks); a
-159-test automated suite wired into CI; and a batch of match-day fixes. Full detail in
+**v2.5** — Manual scoring page (`/scoring`) for clubs without scoring software; adaptive
+stream quality (auto dynamic bitrate + congestion monitor with a quality ladder); match
+simulator for full broadcast rehearsals; auto-tagged, captioned highlights with YouTube
+chapters; bowler milestone graphics (five-fors, hat-tricks); a 169-test automated suite
+wired into CI; and a batch of match-day fixes — including the ball-by-ball database no
+longer losing the final delivery of every over. Full detail in
 [`CHANGELOG.md`](CHANGELOG.md).
+
+**v2.4** — Weekend sponsor strap, over-transition timing fix, startup update check, and
+pre-match/crediting fixes (see changelog).
 
 **v2.1.1** — **Responsive control panel** (stacks to a single column with touch-friendly buttons at phone width, so a Wi-Fi phone operator can run the stream comfortably). **config.ini auto-seeding** — `server.py` now reads all `config.ini` sections on startup and pre-populates any fields still at their defaults, so API keys, club name, kit colour, and folder paths load automatically without needing to re-enter them in the control panel.
 

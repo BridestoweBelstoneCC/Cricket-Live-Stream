@@ -1168,9 +1168,14 @@ function triggerMilestone(name, runs, balls, milestone) {
   el('milestone-name').textContent = fmtSurname(name);
   el('milestone-sub').textContent  = `${runs} off ${balls} ball${balls!==1?'s':''}`;
   queueGraphic('milestone-panel', isCent ? 10000 : 7000);
-  // Trigger replay — centuries get one, fifties only if cfg says so
+  // Trigger replay — centuries get one, fifties only if cfg says so. DELAYED (same trick
+  // as the wicket path) so the milestone card airs on the Main scene BEFORE OBS switches
+  // to the Replay scene — firing immediately hid the card behind its own replay
+  // (2026-07-09 manual test, issue #2). 8s + OBS's ~3s save = switch after the card.
   if (isCent || cfg.replay_on_fifty) {
-    triggerReplay(isCent ? `Century - ${fmtSurname(name)}` : `Fifty - ${fmtSurname(name)}`);
+    setTimeout(function() {
+      triggerReplay(isCent ? `Century - ${fmtSurname(name)}` : `Fifty - ${fmtSurname(name)}`);
+    }, 8000);
   }
 }
 
