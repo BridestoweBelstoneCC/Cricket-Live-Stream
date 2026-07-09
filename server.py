@@ -5279,10 +5279,16 @@ class Handler(BaseHTTPRequestHandler):
             patterns = ["*.mkv","*.mp4","*.flv","*.mov"]
             clips = [c for p in patterns for c in glob.glob(os.path.join(folder,p))
                      if "highlights" not in os.path.basename(c).lower()]
+            # Tagged = clips with a real reason on record (replay-test clips excluded) —
+            # surfaced in the panel so nobody needs a terminal to confirm tagging works
+            tags = clip_tags(clips)
+            tagged = sum(1 for t in tags.values()
+                         if (t.get("reason") or "").lower() != "test")
             self._json({
                 "uptime":     uptime_str,
                 "uptime_sec": uptime_secs,
                 "clip_count": len(clips),
+                "tagged":     tagged,
                 "max_clips":  int(st.get("max_clips", 100)),
                 "folder":     folder,
             })

@@ -2231,7 +2231,8 @@ async function checkServerStatus() {
     // Update clip count display in highlights card
     const cd = document.getElementById('clip-count-display');
     const cf = document.getElementById('clip-folder-display');
-    if (cd) cd.textContent = `${data.clip_count} clip${data.clip_count!==1?'s':''} saved`;
+    if (cd) cd.textContent = `${data.clip_count} clip${data.clip_count!==1?'s':''} saved`
+      + (data.tagged !== undefined ? ` · ${data.tagged} tagged for highlights` : '');
     if (cf) cf.textContent = data.folder || '';
   } catch(e) {
     document.getElementById('server-uptime').textContent = 'offline';
