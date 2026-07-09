@@ -3830,6 +3830,7 @@ _stream_mon = {
     "shifts": [],             # [{t, kbps_from, kbps_to, reason, mode}] capped
     "last_reason": "",
     "dynamic_bitrate": None,  # OBS's own Dynamic Bitrate setting (None = not yet read)
+    "simple_mode": None,      # ladder needs Simple output mode; None = not yet read
 }
 _stream_mon_lock = threading.Lock()
 
@@ -3872,9 +3873,19 @@ def apply_stream_quality_step(new_step, reason, mode):
         return False, "No baseline bitrate recorded yet — is the stream live?"
     new_step = max(0, min(new_step, len(STREAM_LADDER) - 1))
     target = _stream_ladder_kbps(baseline, new_step)
-    status = _obs_call(st, [("GetStreamStatus", None)])
+    status = _obs_call(st, [("GetStreamStatus", None),
+                            ("GetProfileParameter", {"parameterCategory": "Output",
+                                                     "parameterName": "Mode"})])
     if not status or status[0] is None:
         return False, "Could not reach OBS"
+    # The ladder writes SimpleOutput/VBitrate — in Advanced output mode that parameter is
+    # ignored, so a shift would restart the stream for NO quality change. Refuse instead.
+    # (named output_mode: `mode` is this function's auto/manual parameter)
+    output_mode = str((status[1] or {}).get("parameterValue") or "Simple")
+    if output_mode != "Simple":
+        return False, ("OBS is in Advanced output mode — the quality ladder only supports "
+                       "the default Simple mode (OBS's own dynamic bitrate still works). "
+                       "Change the bitrate manually in OBS Settings → Output.")
     was_live = bool(status[0].get("outputActive"))
     steps = []
     if was_live:
@@ -3909,7 +3920,9 @@ def _stream_monitor_tick():
                              ("GetProfileParameter", {"parameterCategory": "SimpleOutput",
                                                       "parameterName": "VBitrate"}),
                              ("GetProfileParameter", {"parameterCategory": "Output",
-                                                      "parameterName": "DynamicBitrate"})],
+                                                      "parameterName": "DynamicBitrate"}),
+                             ("GetProfileParameter", {"parameterCategory": "Output",
+                                                      "parameterName": "Mode"})],
                         timeout=5)
     now = time.time()
     with _stream_mon_lock:
@@ -3923,6 +3936,9 @@ def _stream_monitor_tick():
         # surfaced in the panel so nobody has to dig through OBS settings to check)
         dyn_raw = str(((results[2] or {}).get("parameterValue")) or "").lower()
         _stream_mon["dynamic_bitrate"] = (dyn_raw == "true")
+        # Ladder support: SimpleOutput only (an unset Mode parameter means Simple)
+        mode_raw = str(((results[3] or {}).get("parameterValue")) or "Simple")
+        _stream_mon["simple_mode"] = (mode_raw == "Simple")
         s0 = results[0]
         live = bool(s0.get("outputActive"))
         _stream_mon["streaming"] = live
@@ -3934,7 +3950,7 @@ def _stream_monitor_tick():
             vbitrate = int(str((results[1] or {}).get("parameterValue", "") or 0))
         except ValueError:
             vbitrate = 0
-        if _stream_mon["step"] == 0 and vbitrate:
+        if _stream_mon["simple_mode"] and _stream_mon["step"] == 0 and vbitrate:
             _stream_mon["baseline_kbps"] = vbitrate
             _stream_mon["current_kbps"] = vbitrate
         _stream_mon["samples"].append({
@@ -3948,8 +3964,9 @@ def _stream_monitor_tick():
             _stream_mon["samples"], now, _stream_mon["last_shift_at"])
         _stream_mon["last_reason"] = reason
         step = _stream_mon["step"]
+        simple = _stream_mon["simple_mode"]
         auto = bool(st.get("stream_auto_downshift"))
-    if action == "downshift" and auto and step < len(STREAM_LADDER) - 1:
+    if action == "downshift" and auto and simple and step < len(STREAM_LADDER) - 1:
         return ("down", step + 1, reason)
     return None
 
@@ -3990,6 +4007,7 @@ def stream_monitor_status():
             "shifts": list(_stream_mon["shifts"][-5:]),
             "auto": bool(load_state().get("stream_auto_downshift")),
             "dynamic_bitrate": _stream_mon["dynamic_bitrate"],
+            "simple_mode": _stream_mon["simple_mode"],
         }
 
 

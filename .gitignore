@@ -23,3 +23,6 @@ sim_pcs_output/
 
 # Manual scoring session (live match data, per-day)
 manual_scoring.json
+
+# Private working notes (maintainer's local checklist, not shipped)
+TODO.md

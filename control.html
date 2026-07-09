@@ -1100,9 +1100,13 @@ async function pollStreamMonitor() {
         + 'margin-left:6px;border:none;border-radius:4px;background:#2a6496;color:#fff;'
         + 'cursor:pointer;">Enable now</button></div>'
       : '';
+    const modeNote = d.simple_mode === false
+      ? '<div style="color:#d29922;margin-top:4px;">&#9888; OBS is in Advanced output mode — '
+        + 'the quality ladder is disabled (OBS dynamic bitrate still applies)</div>'
+      : '';
     if (!d.streaming) {
       body.innerHTML = '<span style="color:#8ba3c0;">Not streaming — the monitor watches '
-        + 'congestion automatically once you go live.</span>' + dyn;
+        + 'congestion automatically once you go live.</span>' + dyn + modeNote;
       return;
     }
     const pct = d.ladder_pct && d.ladder_pct[d.step] !== undefined ? d.ladder_pct[d.step] : 100;
@@ -1117,7 +1121,7 @@ async function pollStreamMonitor() {
       html += '<div style="color:#c8a84b;margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
         + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
     });
-    body.innerHTML = html + dyn;
+    body.innerHTML = html + dyn + modeNote;
   } catch (e) {}
 }
 

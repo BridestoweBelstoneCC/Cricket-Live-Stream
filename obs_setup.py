@@ -200,6 +200,27 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
             err = r.get("requestStatus",{}).get("comment","") if r else "no response"
             log_msg(f"ReplayClip source issue: {err}", "warn")
 
+    # ── Point OBS's recording/replay output at the configured folder ──────────
+    # config.ini's replay_folder is where the server LOOKS for saved clips; without this,
+    # OBS could be SAVING them somewhere else entirely and the replay would silently never
+    # find a clip. Simple output mode shares this path between recordings and the replay
+    # buffer — that's expected (the config comment describes it as the clips folder).
+    if replay_folder:
+        try:
+            os.makedirs(replay_folder, exist_ok=True)
+        except OSError:
+            pass
+        if os.path.isdir(replay_folder):
+            r = request("SetProfileParameter", {"parameterCategory": "SimpleOutput",
+                                                "parameterName": "FilePath",
+                                                "parameterValue": replay_folder})
+            if r and r.get("requestStatus",{}).get("result"):
+                log_msg(f"Replay/recording folder set to {replay_folder}", "ok")
+            else:
+                log_msg("Could not set the replay folder — set it in OBS Settings → Output", "warn")
+        else:
+            log_msg(f"Replay folder doesn't exist and couldn't be created: {replay_folder}", "warn")
+
     # ── Enable OBS's Dynamic Bitrate (congestion handled without disconnects) ──
     # Off by default in OBS and buried in Settings → Advanced → Network. With it on, the
     # encoder bitrate flexes automatically when the connection struggles — the seamless
