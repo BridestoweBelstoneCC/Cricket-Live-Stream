@@ -3829,6 +3829,7 @@ _stream_mon = {
     "last_shift_at": 0.0,
     "shifts": [],             # [{t, kbps_from, kbps_to, reason, mode}] capped
     "last_reason": "",
+    "dynamic_bitrate": None,  # OBS's own Dynamic Bitrate setting (None = not yet read)
 }
 _stream_mon_lock = threading.Lock()
 
@@ -3906,7 +3907,9 @@ def _stream_monitor_tick():
     st = load_state()
     results = _obs_call(st, [("GetStreamStatus", None),
                              ("GetProfileParameter", {"parameterCategory": "SimpleOutput",
-                                                      "parameterName": "VBitrate"})],
+                                                      "parameterName": "VBitrate"}),
+                             ("GetProfileParameter", {"parameterCategory": "Output",
+                                                      "parameterName": "DynamicBitrate"})],
                         timeout=5)
     now = time.time()
     with _stream_mon_lock:
@@ -3916,6 +3919,10 @@ def _stream_monitor_tick():
             _stream_mon["samples"] = []
             return None
         _stream_mon["reachable"] = True
+        # Tier-1 defence status: is OBS's own Dynamic Bitrate on? (obs_setup enables it;
+        # surfaced in the panel so nobody has to dig through OBS settings to check)
+        dyn_raw = str(((results[2] or {}).get("parameterValue")) or "").lower()
+        _stream_mon["dynamic_bitrate"] = (dyn_raw == "true")
         s0 = results[0]
         live = bool(s0.get("outputActive"))
         _stream_mon["streaming"] = live
@@ -3982,6 +3989,7 @@ def stream_monitor_status():
             "verdict": _stream_mon["last_reason"],
             "shifts": list(_stream_mon["shifts"][-5:]),
             "auto": bool(load_state().get("stream_auto_downshift")),
+            "dynamic_bitrate": _stream_mon["dynamic_bitrate"],
         }
 
 
@@ -5516,6 +5524,28 @@ class Handler(BaseHTTPRequestHandler):
             print(f"  \u26a0  All sessions revoked by [{ip}]")
             _auth_log_add("logout_all", ip)
             self._json({"ok": True})
+
+        elif path == "/stream/dynamic":
+            # One-click enable of OBS's Dynamic Bitrate from the panel — same WebSocket
+            # write obs_setup does. OBS reads the setting at stream START, so if you're
+            # already live it applies from the next stream.
+            st = load_state()
+            results = _obs_call(st, [
+                ("SetProfileParameter", {"parameterCategory": "Output",
+                                         "parameterName": "DynamicBitrate",
+                                         "parameterValue": "true"}),
+                ("GetStreamStatus", None)])
+            if results is None or results[0] is None:
+                self._json({"ok": False, "error": "Could not reach OBS — is it running "
+                                                  "with the WebSocket server enabled?"})
+                return
+            live = bool((results[1] or {}).get("outputActive"))
+            with _stream_mon_lock:
+                _stream_mon["dynamic_bitrate"] = True
+            self._json({"ok": True,
+                        "message": "Dynamic bitrate enabled"
+                                   + (" — takes effect when the stream next starts"
+                                      if live else "")})
 
         elif path == "/stream/quality":
             # Manual quality control from the panel: step down, step back up, or restore.

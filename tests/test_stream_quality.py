@@ -95,7 +95,7 @@ class StreamMonBase(HttpTestBase):
                                        "samples": [], "baseline_kbps": None,
                                        "step": 0, "current_kbps": None,
                                        "last_shift_at": 0.0, "shifts": [],
-                                       "last_reason": ""})
+                                       "last_reason": "", "dynamic_bitrate": None})
 
 
 class TestStreamHttp(StreamMonBase):
@@ -106,6 +106,13 @@ class TestStreamHttp(StreamMonBase):
         self.assertFalse(body["streaming"])
         self.assertEqual(body["ladder_pct"], [100, 70, 50, 35])
         self.assertFalse(body["auto"])
+        self.assertIsNone(body["dynamic_bitrate"])     # not yet read from OBS
+
+    def test_dynamic_bitrate_enable_fails_cleanly_without_obs(self):
+        status, body = self.post_json("/stream/dynamic", {})
+        self.assertEqual(status, 200)
+        self.assertFalse(body["ok"])
+        self.assertIn("OBS", body["error"])
 
     def test_quality_bad_action_rejected(self):
         status, body = self.post_json("/stream/quality", {"action": "sideways"})
@@ -130,6 +137,8 @@ class TestStreamAuth(StreamMonBase):
 
     def test_quality_is_token_gated_but_monitor_is_open(self):
         status, _ = self.post_json("/stream/quality", {"action": "down"})
+        self.assertEqual(status, 401)
+        status, _ = self.post_json("/stream/dynamic", {})
         self.assertEqual(status, 401)
         status, _, _ = self.request("GET", "/stream/monitor")
         self.assertEqual(status, 200)

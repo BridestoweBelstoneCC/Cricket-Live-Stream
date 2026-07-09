@@ -1090,9 +1090,19 @@ async function pollStreamMonitor() {
       body.innerHTML = '<span style="color:#8ba3c0;">OBS not reachable — monitor idle.</span>';
       return;
     }
+    // Tier-1 status: OBS's own Dynamic Bitrate (verified live, not assumed from setup)
+    const dyn = d.dynamic_bitrate === true
+      ? '<div style="color:#3fb950;margin-top:4px;">&#10003; OBS dynamic bitrate: on — '
+        + 'congestion handled seamlessly, no disconnects</div>'
+      : d.dynamic_bitrate === false
+      ? '<div style="color:#d29922;margin-top:4px;">&#9888; OBS dynamic bitrate: OFF '
+        + '<button onclick="enableDynamicBitrate()" style="font-size:11px;padding:3px 10px;'
+        + 'margin-left:6px;border:none;border-radius:4px;background:#2a6496;color:#fff;'
+        + 'cursor:pointer;">Enable now</button></div>'
+      : '';
     if (!d.streaming) {
       body.innerHTML = '<span style="color:#8ba3c0;">Not streaming — the monitor watches '
-        + 'congestion automatically once you go live.</span>';
+        + 'congestion automatically once you go live.</span>' + dyn;
       return;
     }
     const pct = d.ladder_pct && d.ladder_pct[d.step] !== undefined ? d.ladder_pct[d.step] : 100;
@@ -1107,8 +1117,21 @@ async function pollStreamMonitor() {
       html += '<div style="color:#c8a84b;margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
         + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
     });
-    body.innerHTML = html;
+    body.innerHTML = html + dyn;
   } catch (e) {}
+}
+
+async function enableDynamicBitrate() {
+  const body = document.getElementById('stream-monitor-body');
+  try {
+    const d = await (await apiFetch('/stream/dynamic', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'})).json();
+    if (body) body.innerHTML = '<span style="color:' + (d.ok ? '#3fb950' : '#f85149') + ';">'
+      + (d.message || d.error || '') + '</span>';
+    setTimeout(pollStreamMonitor, 2500);
+  } catch (e) {
+    if (body) body.innerHTML = '<span style="color:#f85149;">Could not reach server</span>';
+  }
 }
 pollStreamMonitor();
 setInterval(pollStreamMonitor, 10000);
