@@ -276,6 +276,26 @@ cost is small. Just check Task Scheduler isn't running a full scan on Saturdays.
 - In Windows, run `powercfg /h off` in an admin prompt — deletes the multi-GB
   hibernation file the VM will never use
 
+### Using UTM instead of Fusion?
+
+Everything in "The big wins" and the Windows Update ritual is identical — that's 90% of
+the benefit. The hypervisor-side steps map like this:
+
+- **Snapshot → duplicate.** UTM has no snapshot button: shut the VM down, right-click it
+  in UTM's sidebar → **Duplicate** (or copy the `.utm` file in Finder). That copy is your
+  rollback.
+- **Guest tools:** UTM's equivalent of VMware Tools is the **SPICE guest tools** — they
+  drive the shared folder, so do NOT remove them from Windows.
+- **Sound/camera:** VM settings (edit while shut down) → delete the **Sound** device;
+  UTM doesn't share cameras/printers by default, so nothing to do there.
+- **Display:** there's no 3D-acceleration box to untick — just don't *enable* the
+  experimental "GPU acceleration" option, and leave the display device as UTM's default.
+- **One UTM-specific check that outweighs all debloating:** open the VM's settings and
+  confirm it says **Virtualize**, not **Emulate**. An emulated Windows (wrong
+  architecture for your Mac) burns 5-10× the CPU — no amount of service-disabling
+  recovers from that. If it's emulating, rebuild the VM with the Windows build that
+  matches your Mac (ARM Windows on Apple Silicon, x86 Windows on Intel).
+
 ### What NOT to remove
 
 - **The network adapter** — NV Play licensing and Play-Cricket publishing need it
