@@ -1,0 +1,140 @@
+"""YouTube broadcast manager: the pure payload builder (fully testable), the no-creds
+guardrails, and the endpoint wiring (template fill, state fallback, explicit overrides).
+The live Google API path can't run here — no credentials — same as it always has."""
+import os
+import sys
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import server
+from test_http import HttpTestBase   # noqa: E402
+
+
+class TestPayloadBuilder(unittest.TestCase):
+    CUR_SNIP = {"title": "Old title", "description": "old desc",
+                "scheduledStartTime": "2026-07-11T13:00:00Z"}
+    CUR_STAT = {"privacyStatus": "public", "selfDeclaredMadeForKids": True}
+
+    def test_preserves_current_when_nothing_changes(self):
+        snip, stat = server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT)
+        self.assertEqual(snip["title"], "Old title")
+        self.assertEqual(snip["description"], "old desc")
+        self.assertEqual(snip["scheduledStartTime"], "2026-07-11T13:00:00Z")
+        self.assertEqual(stat["privacyStatus"], "public")
+        self.assertTrue(stat["selfDeclaredMadeForKids"])
+
+    def test_applies_all_changes(self):
+        snip, stat = server._yt_broadcast_payload(
+            self.CUR_SNIP, self.CUR_STAT, title="New", description="ND",
+            privacy="private", made_for_kids=False)
+        self.assertEqual(snip["title"], "New")
+        self.assertEqual(snip["description"], "ND")
+        self.assertEqual(snip["scheduledStartTime"], "2026-07-11T13:00:00Z")  # still carried
+        self.assertEqual(stat["privacyStatus"], "private")
+        self.assertFalse(stat["selfDeclaredMadeForKids"])
+
+    def test_invalid_privacy_raises(self):
+        with self.assertRaises(ValueError):
+            server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT, privacy="secret")
+
+    def test_defaults_when_broadcast_is_bare(self):
+        snip, stat = server._yt_broadcast_payload({}, {})
+        self.assertEqual(snip["title"], "")
+        self.assertEqual(snip["description"], "")
+        self.assertNotIn("scheduledStartTime", snip)          # nothing to carry
+        self.assertEqual(stat["privacyStatus"], "unlisted")   # safe default
+        self.assertFalse(stat["selfDeclaredMadeForKids"])
+
+    def test_empty_string_title_and_description_apply(self):
+        # "" is a real value (clear the field), distinct from None (leave unchanged)
+        snip, _ = server._yt_broadcast_payload(self.CUR_SNIP, self.CUR_STAT,
+                                               title="", description="")
+        self.assertEqual(snip["title"], "")
+        self.assertEqual(snip["description"], "")
+
+
+class TestNoCredsGuardrails(unittest.TestCase):
+    def setUp(self):
+        self._orig = server.YT_CREDS_FILE
+        server.YT_CREDS_FILE = "/nonexistent/yt_credentials.json"
+
+    def tearDown(self):
+        server.YT_CREDS_FILE = self._orig
+
+    def test_missing_credentials_is_a_clean_error(self):
+        ok, msg = server.update_youtube_broadcast(title="X")
+        self.assertFalse(ok)
+        self.assertIn("yt_credentials.json", msg)
+
+    def test_invalid_privacy_short_circuits_before_any_api(self):
+        ok, msg = server.update_youtube_broadcast(title="X", privacy="nope")
+        self.assertFalse(ok)
+        self.assertIn("privacy", msg)
+
+    def test_title_wrapper_still_works(self):
+        ok, msg = server.update_youtube_title("Hello")
+        self.assertFalse(ok)                                  # no creds → fails cleanly
+        self.assertIn("yt_credentials.json", msg)
+
+
+class TestYoutubeEndpoint(HttpTestBase):
+    def setUp(self):
+        server._last_good_state = None
+        server.save_state({**server.DEFAULT_STATE,
+                           "home_team": "Alpha CC", "away_team": "Beta CC",
+                           "youtube_title_template": "LIVE: {home} vs {away}",
+                           "youtube_description": "Watch {home} v {away}.",
+                           "youtube_privacy": "public", "youtube_category": "17",
+                           "youtube_made_for_kids": False})
+
+    def test_fills_templates_and_uses_state_defaults(self):
+        captured = {}
+        def fake(**kw):
+            captured.update(kw)
+            return True, "Updated: metadata, category"
+        with mock.patch.object(server, "update_youtube_broadcast", side_effect=fake):
+            status, d = self.post_json("/youtube/update", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(d["ok"])
+        self.assertEqual(captured["title"], "LIVE: Alpha CC vs Beta CC")
+        self.assertEqual(captured["description"], "Watch Alpha CC v Beta CC.")
+        self.assertEqual(captured["privacy"], "public")
+        self.assertEqual(captured["category_id"], "17")
+        self.assertFalse(captured["made_for_kids"])
+
+    def test_explicit_payload_overrides_state(self):
+        captured = {}
+        def fake(**kw):
+            captured.update(kw)
+            return True, "ok"
+        with mock.patch.object(server, "update_youtube_broadcast", side_effect=fake):
+            self.post_json("/youtube/update", {
+                "title": "Cup Final", "description": "Big one",
+                "privacy": "private", "category": "24", "made_for_kids": True})
+        self.assertEqual(captured["title"], "Cup Final")
+        self.assertEqual(captured["description"], "Big one")
+        self.assertEqual(captured["privacy"], "private")
+        self.assertEqual(captured["category_id"], "24")
+        self.assertTrue(captured["made_for_kids"])
+
+    def test_failure_reported_as_ok_false(self):
+        with mock.patch.object(server, "update_youtube_broadcast",
+                               return_value=(False, "No active or upcoming broadcast found")):
+            status, d = self.post_json("/youtube/update", {})
+        self.assertEqual(status, 200)
+        self.assertFalse(d["ok"])
+        self.assertIn("broadcast", d["error"])
+
+
+class TestYoutubeAuth(HttpTestBase):
+    CLUB_PASSWORD = "testpw"
+
+    def test_update_is_token_gated(self):
+        status, _ = self.post_json("/youtube/update", {"title": "x"})
+        self.assertEqual(status, 401)
+
+
+if __name__ == "__main__":
+    unittest.main()

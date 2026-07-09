@@ -6,8 +6,15 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased — on `dev`
 
-*Manual-scoring improvements from live use of the page. Automated coverage is complete;
-awaiting a human run-through before merging to `main`.*
+*Manual-scoring improvements and YouTube broadcast controls from live use. Automated
+coverage is complete; awaiting a human run-through before merging to `main`.*
+
+- **YouTube broadcast manager** (was "YouTube Title"). Streaming with a stream key
+  (recommended) removes OBS's "Manage Broadcast" panel, so the control panel now sets the
+  broadcast's **title, description, privacy (public/unlisted/private), category, and the
+  "made for kids" declaration** over the YouTube Data API — everything that panel used to
+  do. One button pushes the lot to the active (or upcoming) broadcast. Uses the same
+  one-time Google OAuth as the old title updater; the title-only path still works.
 
 - **End-of-over recap on the scoring page.** When an over completes, the scorer sees a
   banner with the over's runs and ball-by-ball tokens, and a choice: confirm and pick the

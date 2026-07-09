@@ -673,19 +673,56 @@
     <button class="btn btn-test" onclick="testReplay()">&#9654; Test replay now</button>
   </div>
 
-  <!-- YouTube title updater -->
+  <!-- YouTube broadcast manager -->
   <div class="card">
-    <h2>YouTube Title</h2>
+    <h2>YouTube Broadcast</h2>
     <p class="section-note">
-      Automatically updates your YouTube stream title when you click the button.
-      Requires a one-time Google OAuth setup — see instructions below.
+      Sets your live broadcast's title, description, privacy, category and "made for kids"
+      flag over the YouTube API — the settings you'd normally use OBS's <em>Manage
+      Broadcast</em> panel for, which disappears when you stream with a stream key.
+      Requires the one-time Google OAuth setup below.
     </p>
     <div class="field">
       <label>Title template</label>
       <input type="text" id="youtube_title_template" placeholder="LIVE: {home} vs {away}">
       <p class="hint">{home} and {away} are replaced with the team names automatically</p>
     </div>
-    <button class="btn btn-test" onclick="updateYouTubeTitle()" style="margin-top:6px;">&#9654; Update YouTube title now</button>
+    <div class="field">
+      <label>Description</label>
+      <textarea id="youtube_description" rows="3" placeholder="Live grassroots cricket. {home} v {away}."></textarea>
+      <p class="hint">{home} and {away} work here too</p>
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>Privacy</label>
+        <select id="youtube_privacy">
+          <option value="unlisted">Unlisted (link only)</option>
+          <option value="public">Public</option>
+          <option value="private">Private</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="youtube_category">
+          <option value="17">Sports</option>
+          <option value="24">Entertainment</option>
+          <option value="22">People &amp; Blogs</option>
+          <option value="19">Travel &amp; Events</option>
+          <option value="28">Science &amp; Technology</option>
+          <option value="25">News &amp; Politics</option>
+          <option value="20">Gaming</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row" style="margin-top:4px;">
+      <div>
+        <div class="toggle-label">Made for kids</div>
+        <div class="toggle-desc">YouTube requires this declaration. Grassroots cricket is normally "No".</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="youtube_made_for_kids"><span class="track"></span></label>
+    </div>
+    <button class="btn btn-test" onclick="updateYouTubeBroadcast()" style="margin-top:8px;">&#9654; Update YouTube broadcast now</button>
+    <div id="youtube-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:11px;color:#3d5a7a;line-height:1.6;">
       <strong style="color:#5b9bd5;">One-time setup:</strong><br>
       1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:#5b9bd5;">console.cloud.google.com</a><br>
@@ -693,7 +730,8 @@
       3. Create OAuth2 credentials (Desktop app) → Download JSON<br>
       4. Rename file to <strong style="color:#e8edf2;">yt_credentials.json</strong> and place in the same folder as server.py<br>
       5. Run: <code style="color:#e8edf2;">pip install google-api-python-client google-auth-oauthlib</code><br>
-      6. Click the button above — a browser window will open to authorise once
+      6. Click the button above — a browser window will open to authorise once<br>
+      <span style="color:#c8a84b;">Tip: create the broadcast first (YouTube Studio → Go Live → Stream), then click Update to fill in its details.</span>
     </div>
   </div>
 
@@ -1327,11 +1365,11 @@ function updatePreview() {
 const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
   'pcs_output_folder','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
-  'youtube_title_template','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
+  'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','youtube_made_for_kids'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -1480,14 +1518,28 @@ function showStatus(msg, cls) {
   setTimeout(()=>el.className='status',6000);
 }
 
-async function updateYouTubeTitle() {
-  const tmpl = document.getElementById('youtube_title_template').value;
-  showStatus('Updating YouTube title...','ok');
+async function updateYouTubeBroadcast() {
+  const msg = document.getElementById('youtube-msg');
+  const payload = {
+    title:         document.getElementById('youtube_title_template').value,
+    description:   document.getElementById('youtube_description').value,
+    privacy:       document.getElementById('youtube_privacy').value,
+    category:      document.getElementById('youtube_category').value,
+    made_for_kids: document.getElementById('youtube_made_for_kids').checked,
+  };
+  if (msg) { msg.textContent = 'Updating YouTube broadcast…'; msg.style.color = '#5b9bd5'; }
   try {
-    const res = await apiFetch('/youtube/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:tmpl})});
+    // Save first so the settings persist for next time, then push to YouTube
+    await saveState();
+    const res = await apiFetch('/youtube/update', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     const d = await res.json();
-    showStatus(d.ok ? d.title : 'Error: '+(d.error||'unknown'), d.ok?'ok':'err');
-  } catch(e) { showStatus('Could not reach server','err'); }
+    if (msg) {
+      msg.textContent = d.ok ? ('✓ ' + (d.title || '') + ' — ' + (d.message || 'updated'))
+                             : ('✗ ' + (d.error || 'unknown error'));
+      msg.style.color = d.ok ? '#3fb950' : '#f85149';
+    }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
 }
 
 async function showWeather() {
