@@ -124,7 +124,15 @@ class _Resource:
     def list(self, **kw):
         self.parent.calls.append((self.kind, "list", kw))
         if self.kind == "liveBroadcasts":
-            items = self.parent.broadcast if kw.get("broadcastStatus") == "active" else []
+            p = self.parent
+            if kw.get("mine"):
+                items = p.mine if p.mine is not None else (p.broadcast + p.upcoming)
+            elif kw.get("broadcastStatus") == "active":
+                items = p.broadcast
+            elif kw.get("broadcastStatus") == "upcoming":
+                items = p.upcoming
+            else:
+                items = []
             return _Req({"items": items})
         return _Req({"items": self.parent.video})
     def update(self, **kw):
@@ -134,9 +142,13 @@ class _Resource:
 
 class FakeYT:
     """Minimal stand-in for the googleapiclient youtube service."""
-    def __init__(self, broadcast, video, fail=None):
-        self.broadcast, self.video, self.fail = broadcast, video, (fail or {})
-        self.calls = []
+    def __init__(self, broadcast=None, video=None, upcoming=None, mine=None, fail=None):
+        self.broadcast = broadcast or []   # returned for broadcastStatus=active
+        self.upcoming  = upcoming or []    # returned for broadcastStatus=upcoming
+        self.mine      = mine              # returned for mine=True (None → active+upcoming)
+        self.video     = video or []
+        self.fail      = fail or {}
+        self.calls     = []
     def liveBroadcasts(self):
         return _Resource(self, "liveBroadcasts")
     def videos(self):
@@ -199,7 +211,45 @@ class TestUpdateLogicMocked(unittest.TestCase):
         with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
             ok, msg = server.update_youtube_broadcast(title="X")
         self.assertFalse(ok)
-        self.assertIn("No active or upcoming broadcast", msg)
+        self.assertIn("No broadcast found", msg)
+
+    def test_fallback_finds_a_transitional_broadcast(self):
+        # active + upcoming both empty, but the channel has a 'testing' broadcast — the
+        # mine=True fallback must find it (this is the 'no active stream' timing case).
+        fake = FakeYT(broadcast=[], upcoming=[],
+                      mine=[{"id": "B9", "status": {"lifeCycleStatus": "testing"},
+                             "snippet": {"title": "T",
+                                         "scheduledStartTime": "2026-07-11T13:00:00Z"}}],
+                      video=[{"snippet": {"title": "T", "categoryId": "1"}}])
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(title="New", privacy="unlisted")
+        self.assertTrue(ok, msg)
+        self.assertTrue(any(c[1] == "list" and c[2].get("mine") for c in fake.calls))
+
+    def test_only_finished_broadcasts_gives_a_clear_message(self):
+        fake = FakeYT(broadcast=[], upcoming=[],
+                      mine=[{"id": "old", "status": {"lifeCycleStatus": "complete"},
+                             "snippet": {"title": "done"}}],
+                      video=[])
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(title="X")
+        self.assertFalse(ok)
+        self.assertIn("already finished", msg)
+
+    def test_picks_newest_usable_when_several_exist(self):
+        fake = FakeYT(broadcast=[], upcoming=[], video=[{"snippet": {"categoryId": "1"}}],
+                      mine=[
+                          {"id": "older", "status": {"lifeCycleStatus": "ready"},
+                           "snippet": {"scheduledStartTime": "2026-07-10T10:00:00Z"}},
+                          {"id": "newer", "status": {"lifeCycleStatus": "ready"},
+                           "snippet": {"scheduledStartTime": "2026-07-11T13:00:00Z"}},
+                      ])
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            server.update_youtube_broadcast(title="New")
+        # the snippet update must target the NEWER broadcast id
+        upd = [c for c in fake.calls if c[1] == "update" and c[0] == "liveBroadcasts"]
+        self.assertTrue(upd)
+        self.assertEqual(upd[0][2]["body"]["id"], "newer")
 
 
 class TestYoutubeEndpoint(HttpTestBase):

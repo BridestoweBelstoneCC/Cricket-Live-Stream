@@ -977,10 +977,43 @@ def _youtube_service(allow_interactive=True):
     return build("youtube", "v3", credentials=creds), None
 
 
+def _find_live_broadcast(yt):
+    """Find the broadcast to update, tolerant of YouTube's transitional states. Returns
+    (broadcast_dict, None) or (None, diagnostic_message).
+
+    The active/upcoming filters only catch two states — a broadcast that's mid-transition
+    ('testing'/'ready') or freshly created can slip between them, and a stream that just
+    ended is 'complete'. So after those, fall back to listing ALL of the channel's
+    broadcasts (mine=True) and pick the newest one that hasn't finished. This is why a
+    perfectly real stream could report 'none found' from one moment to the next."""
+    for status in ("active", "upcoming"):
+        items = yt.liveBroadcasts().list(
+            part="id,snippet", broadcastStatus=status, broadcastType="all",
+            maxResults=10).execute().get("items", [])
+        if items:
+            return items[0], None
+    # Fallback: everything the channel owns, newest usable first
+    allb = yt.liveBroadcasts().list(
+        part="id,snippet,status", mine=True, broadcastType="all",
+        maxResults=50).execute().get("items", [])
+    dead = ("complete", "completeStarting", "revoked")
+    usable = [b for b in allb
+              if b.get("status", {}).get("lifeCycleStatus") not in dead]
+    usable.sort(key=lambda b: b.get("snippet", {}).get("scheduledStartTime")
+                or b.get("snippet", {}).get("publishedAt") or "", reverse=True)
+    if usable:
+        return usable[0], None
+    if allb:
+        return None, ("Your only broadcast(s) have already finished — create a new one in "
+                      "YouTube Studio (Go Live), then try again.")
+    return None, ("No broadcast found on this YouTube account — create one first in "
+                  "YouTube Studio (Go Live). It doesn't need to be streaming yet.")
+
+
 def update_youtube_broadcast(title=None, description=None, privacy=None,
                              category_id=None, allow_interactive=True):
-    """Update the active (else upcoming) broadcast's metadata. Any argument left None is
-    unchanged. Returns (ok, message).
+    """Update the current broadcast's metadata. Any argument left None is unchanged.
+    Returns (ok, message).
 
     Each piece is a SEPARATE API call (title/description, then privacy, then category) so
     one part failing doesn't sink the others — the message reports exactly what did and
@@ -993,16 +1026,9 @@ def update_youtube_broadcast(title=None, description=None, privacy=None,
         yt, err = _youtube_service(allow_interactive=allow_interactive)
         if err:
             return False, err
-        resp = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus="active",
-                                        broadcastType="all").execute()
-        items = resp.get("items", [])
-        if not items:
-            resp = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus="upcoming",
-                                            broadcastType="all").execute()
-            items = resp.get("items", [])
-        if not items:
-            return False, "No active or upcoming broadcast found on this YouTube account"
-        bc   = items[0]
+        bc, find_err = _find_live_broadcast(yt)
+        if find_err:
+            return False, find_err
         bid  = bc["id"]
         done, failed = [], []
 
