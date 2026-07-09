@@ -247,7 +247,10 @@
     OBS's dynamic bitrate (enabled automatically by setup) flexes with the connection
     seamlessly. If the line struggles badly for a sustained period, quality can also be
     stepped down a ladder — each step briefly restarts the stream (viewers see a few
-    seconds of buffering; the broadcast survives).
+    seconds of buffering; the broadcast survives). <b style="color:#c8a84b;">Requires
+    streaming with a plain stream key</b> — OBS's connected-YouTube-account mode with
+    auto-stop ENDS the broadcast when the stream stops, so a quality step would kill it.
+    In YouTube Studio copy the stream key and paste it into OBS Settings &rarr; Stream.
   </p>
   <div id="stream-monitor-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
        background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:32px;">

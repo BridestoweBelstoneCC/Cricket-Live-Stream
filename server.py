@@ -4061,6 +4061,22 @@ def _apply_quality_step_locked(new_step, reason, mode):
                 _stream_mon["samples"] = []
             return False, (f"Bitrate set to {target} kbps but the stream DID NOT restart — "
                            f"press Start Streaming in OBS now")
+        # OBS accepting StartStream is not the same as the stream surviving: with the
+        # connected-YouTube-account integration + auto-stop, StopStream ENDS the broadcast
+        # on YouTube, and the restart goes out into a dead broadcast. Verify it stayed up.
+        time.sleep(3)
+        s3 = _obs_call(st, [("GetStreamStatus", None)], timeout=5)
+        if not (s3 and s3[0] is not None and s3[0].get("outputActive")):
+            with _stream_mon_lock:
+                _stream_mon["step"] = new_step
+                _stream_mon["current_kbps"] = target
+                _stream_mon["last_shift_at"] = time.time()
+                _stream_mon["samples"] = []
+            return False, (f"Bitrate set to {target} kbps and OBS restarted, but the stream "
+                           f"did not STAY up. If YouTube shows the broadcast as ENDED, OBS's "
+                           f"connected-account auto-stop ended it on StopStream — stream with "
+                           f"a persistent stream key instead (YouTube Studio → copy key → OBS "
+                           f"Settings → Stream), which survives quality changes.")
     with _stream_mon_lock:
         old = _stream_mon["current_kbps"] or baseline
         _stream_mon["step"] = new_step

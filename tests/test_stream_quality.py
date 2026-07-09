@@ -186,12 +186,14 @@ class TestApplyStepMockedObs(unittest.TestCase):
             [{"outputActive": False}],                                # wind-down confirmed
             [{}],                                                     # SetProfileParameter
             [{}],                                                     # StartStream
+            [{"outputActive": True}],                                 # ...and it STAYED up
         ], 1, "sustained congestion", "auto")
         self.assertTrue(ok, msg)
         self.assertIn("2800", msg)                     # 70% of the 4000 baseline
         self.assertEqual([[r[0] for r in c] for c in calls],
                          [["GetStreamStatus", "GetProfileParameter"], ["StopStream"],
-                          ["GetStreamStatus"], ["SetProfileParameter"], ["StartStream"]])
+                          ["GetStreamStatus"], ["SetProfileParameter"], ["StartStream"],
+                          ["GetStreamStatus"]])
         self.assertEqual(calls[3][0][1]["parameterValue"], "2800")
         with server._stream_mon_lock:
             self.assertEqual(server._stream_mon["step"], 1)
@@ -227,6 +229,23 @@ class TestApplyStepMockedObs(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("DID NOT restart", msg)
         with server._stream_mon_lock:
+            self.assertEqual(server._stream_mon["current_kbps"], 2800)
+
+    def test_restart_into_a_dead_broadcast_is_reported(self):
+        # OBS accepts StartStream but the stream doesn't STAY up — the signature of the
+        # connected-YouTube-account auto-stop having ENDED the broadcast on StopStream.
+        # This is issue #1 from the 2026-07-09 manual test.
+        ok, msg, calls = self.run_shift([
+            [{"outputActive": True}, {"parameterValue": "Simple"}],
+            [{}],
+            [{"outputActive": False}],
+            [{}],
+            [{}],                                      # StartStream accepted...
+            [{"outputActive": False}],                 # ...but the stream died
+        ], 1, "test", "manual")
+        self.assertFalse(ok)
+        self.assertIn("persistent stream key", msg)
+        with server._stream_mon_lock:                  # ladder stays truthful regardless
             self.assertEqual(server._stream_mon["current_kbps"], 2800)
 
     def test_shift_while_not_live_skips_stop_start(self):
