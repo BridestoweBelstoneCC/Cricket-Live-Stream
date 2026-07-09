@@ -4843,6 +4843,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type","text/html; charset=utf-8")
             self.send_header("Content-Length",str(len(body)))
+            # NEVER cache the panel/scoring page. They change with every update, and a
+            # browser serving a stale copy runs OLD JS against a NEW server — e.g. a
+            # control it doesn't know to save, so a toggle looks 'stuck'. no-store forces
+            # a fresh page each load.
+            self.send_header("Cache-Control", "no-store, must-revalidate")
             self._security_headers()
             # The panel is one self-contained page (inline <style>/<script>, no external
             # resources — verified: its only https:// references are plain <a href> links,
@@ -4865,12 +4870,16 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError): pass
 
-    def _file(self, path, mime):
+    def _file(self, path, mime, no_cache=False):
         try:
             with open(path,"rb") as f: body=f.read()
             self.send_response(200)
             self.send_header("Content-Type",mime)
             self.send_header("Content-Length",str(len(body)))
+            if no_cache:
+                # HTML (the overlay) must not be cached — OBS could otherwise run old
+                # graphics code after an update. Images served here stay cacheable.
+                self.send_header("Cache-Control", "no-store, must-revalidate")
             self.end_headers()
             self.wfile.write(body)
         except FileNotFoundError:
@@ -5002,7 +5011,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/","/overlay"):
-            self._file(os.path.join(os.path.dirname(os.path.abspath(__file__)),"overlay.html"),"text/html; charset=utf-8")
+            self._file(os.path.join(os.path.dirname(os.path.abspath(__file__)),"overlay.html"),"text/html; charset=utf-8", no_cache=True)
         elif path == "/control":
             try:
                 self._html(control_html())

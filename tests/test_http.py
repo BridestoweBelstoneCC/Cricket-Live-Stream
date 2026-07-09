@@ -117,6 +117,13 @@ class TestRoutesOpen(HttpTestBase):
         self.assertIn(b'"Navy"', data)                 # ...with the real kit presets
         self.assertIn(b"apiFetch", data)               # the big script block made it intact
 
+    def test_html_pages_are_not_cacheable(self):
+        # A cached panel/overlay runs OLD JS against a NEW server (e.g. a control it doesn't
+        # know to save, so a toggle looks 'stuck'). All three HTML pages must say no-store.
+        for path in ("/control", "/scoring", "/overlay"):
+            _, headers, _ = self.request("GET", path)
+            self.assertIn("no-store", headers.get("Cache-Control", ""), path)
+
     def test_unknown_routes_404(self):
         for path in ("/nope", "/commentary/test", "/commentary/over/generate"):
             status, _, _ = self.request("GET", path)
