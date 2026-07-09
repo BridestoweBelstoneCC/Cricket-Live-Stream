@@ -216,6 +216,8 @@ class TestScoringHttp(HttpTestBase):
         server._prev_state.update({"score": None, "wickets": None, "overs": None})
         server._event_buffer.clear()
         server._innings_latch = 1
+        server._ball_log_prev.update({"mid": None, "innings": None, "over": None,
+                                      "score": 0, "wickets": 0, "count": 0})
 
     def tearDown(self):
         server.MANUAL_SCORING_FILE = self._orig_file

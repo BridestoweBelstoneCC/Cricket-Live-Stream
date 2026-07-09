@@ -590,14 +590,22 @@ def current_match_id():
     away = (cfg.get("away_team") or "away").replace(" ", "")[:14]
     return f"{datetime.date.today().isoformat()}_{home}_v_{away}"
 
+# Tracks the last over whose ticker we saw, so the over-completing delivery can be
+# recovered. NV Play clears the ticker on the SAME write that completes an over (see
+# CLAUDE.md), so the final ball of every over never appears in any ticker — the overlay
+# recovers it from the score delta for the over-summary graphic, and this logger must do
+# the same or the ball DB (and every CSV export) silently loses ball 6 of every over.
+_ball_log_prev = {"mid": None, "innings": None, "over": None,
+                  "score": 0, "wickets": 0, "count": 0}
+
+
 def log_ball_data(state):
     """Capture the current over from the live ticker. Rewrites the whole current over each
     call (delete + reinsert) so scorer edits within the over are reflected; once the over
-    rolls on it freezes. Never raises — logging must not affect the stream."""
+    rolls on it freezes — after recovering the over-completing ball the cleared ticker can
+    never show (see _ball_log_prev). Never raises — logging must not affect the stream."""
     try:
-        balls = _parse_ticker(state.get("last_ball", ""))
-        if not balls:
-            return
+        balls    = _parse_ticker(state.get("last_ball", ""))
         innings  = int(state.get("innings", 1) or 1)
         over_idx = int(float(state.get("overs", 0) or 0))     # completed overs = current over no.
         score    = int(state.get("score", 0) or 0)
@@ -607,6 +615,36 @@ def log_ball_data(state):
         bowler   = (state.get("bowler", {}) or {}).get("name", "")
         striker, nonstriker = b1.get("name", ""), b2.get("name", "")
         mid      = current_match_id()
+        prev     = _ball_log_prev
+
+        # ── Recover the invisible over-completing delivery ──
+        # The over we were logging has rolled on (same match+innings, over advanced):
+        # whatever score/wickets moved beyond the balls we HAVE seen is the final
+        # delivery (or, across a missed poll, final deliveries — logged as one
+        # aggregate ball; totals stay exact even when the per-ball split is unknowable).
+        if (prev["mid"] == mid and prev["innings"] == innings
+                and prev["over"] is not None and over_idx > prev["over"]):
+            miss_runs = score - prev["score"] - sum(b["runs"] for b in balls)
+            miss_wkts = wkts - prev["wickets"] - sum(1 for b in balls if b["wicket"])
+            if miss_runs >= 0 and (miss_runs > 0 or miss_wkts > 0 or prev["count"] > 0):
+                synth_outcome = "W" if miss_wkts > 0 else (str(miss_runs) if miss_runs else "dot")
+                now_s = datetime.datetime.now().isoformat(timespec="seconds")
+                with _db_lock, _db() as c:
+                    c.execute(
+                        "INSERT OR REPLACE INTO balls(match_id,innings,over,ball,batting_team,"
+                        "batter,non_striker,bowler,outcome,runs,extra,is_wicket,legal,"
+                        "cum_runs,cum_wkts,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (mid, innings, prev["over"], prev["count"] + 1, bteam, striker,
+                         nonstriker, bowler, synth_outcome, miss_runs, None,
+                         int(miss_wkts > 0), 1, prev["score"] + miss_runs,
+                         prev["wickets"] + miss_wkts, now_s))
+            prev.update({"over": None, "count": 0, "score": score, "wickets": wkts})
+
+        if not balls:
+            # Between overs (or pre-match): remember the baseline so the next over's
+            # recovery is computed against the right score
+            prev.update({"mid": mid, "innings": innings, "score": score, "wickets": wkts})
+            return
         over_runs  = sum(b["runs"] for b in balls)
         over_start = score - over_runs
         cfg = load_state()
@@ -630,6 +668,8 @@ def log_ball_data(state):
                     (mid, innings, over_idx, i, bteam, striker, nonstriker, bowler,
                      b["outcome"], b["runs"], b["extra"], int(b["wicket"]), int(b["legal"]),
                      run, wkts, now))
+        prev.update({"mid": mid, "innings": innings, "over": over_idx,
+                     "score": score, "wickets": wkts, "count": len(balls)})
     except Exception:
         pass
 
@@ -2160,6 +2200,54 @@ def build_season_stats(force=False):
             _season_stats["error"]         = f"build crashed: {e}"
         print(f"  ✗  Season stats: build crashed — {e}")
         return _season_stats
+
+
+# ── Server self-metrics + error flight recorder ────────────────
+# The operator's machine also runs OBS's encoder, so "is the server staying lightweight?"
+# should be a number in /health, not a promise. And handler-thread exceptions print to a
+# console nobody reads mid-match — a small ring buffer makes "something's throwing"
+# visible in /health before it becomes "graphics stopped".
+_self_stat = {"t": SERVER_START_TIME, "cpu": 0.0}
+_server_errors = []
+_server_errors_lock = threading.Lock()
+
+
+def log_server_error(where, exc):
+    with _server_errors_lock:
+        _server_errors.append({"time": time.time(), "where": where,
+                               "error": str(exc)[:300]})
+        del _server_errors[:-30]
+
+
+def _thread_excepthook(args):
+    name = getattr(args.thread, "name", "?")
+    log_server_error(f"thread {name}", args.exc_value or args.exc_type)
+    print(f"  ✗  Unhandled error in thread {name}: {args.exc_value}")
+
+
+threading.excepthook = _thread_excepthook
+
+
+def _recent_server_errors(n=5):
+    with _server_errors_lock:
+        return list(_server_errors[-n:])
+
+
+def _self_metrics():
+    """CPU% of this process since the last /health call, peak memory, machine load."""
+    import resource
+    import sys as _sys
+    now, cpu = time.time(), time.process_time()
+    dt, dcpu = now - _self_stat["t"], cpu - _self_stat["cpu"]
+    _self_stat.update({"t": now, "cpu": cpu})
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    rss_mb = round(rss / (1e6 if _sys.platform == "darwin" else 1024.0), 1)
+    try:
+        load1 = round(os.getloadavg()[0], 2)
+    except (AttributeError, OSError):
+        load1 = None
+    return {"cpu_pct": round(100 * dcpu / dt, 1) if dt > 1 else None,
+            "max_rss_mb": rss_mb, "machine_load_1m": load1}
 
 
 # ── Self-healing watchdog ──────────────────────────────────────
@@ -5160,6 +5248,8 @@ class Handler(BaseHTTPRequestHandler):
                     "runs":          _watchdog_status["runs"],
                     "fixes_applied": _watchdog_status["fixes_applied"][-5:],
                 },
+                "server": _self_metrics(),
+                "errors": _recent_server_errors(),
             })
 
         elif path == "/auth/log":
@@ -5750,8 +5840,19 @@ if __name__ == "__main__":
     # must never block the overlay's /live and /state polling. daemon_threads lets the
     # process exit cleanly without waiting on in-flight requests.
     db_init()   # ensure the ball-by-ball database exists
-    httpd = ThreadingHTTPServer((_BIND_HOST, PORT), Handler)
-    httpd.daemon_threads = True
+
+    class _Server(ThreadingHTTPServer):
+        daemon_threads = True
+
+        def handle_error(self, request, client_address):
+            # Record handler-thread exceptions in the /health flight recorder as well
+            # as the console — mid-match, nobody is reading the terminal.
+            import sys as _sys
+            log_server_error(f"request from {client_address[0]}",
+                             _sys.exc_info()[1] or "unknown")
+            super().handle_error(request, client_address)
+
+    httpd = _Server((_BIND_HOST, PORT), Handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -48,6 +48,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ### Fixed
 
+- **The ball-by-ball database was silently losing the final delivery of every over.**
+  NV Play clears the ticker on the same write that completes an over, so ball 6 never
+  appears in any ticker — the overlay always compensated via the score delta, but the DB
+  logger just skipped it. Every over in `match_data.db` (and every CSV export) had at most
+  five balls. The logger now recovers the invisible delivery from the score/wicket delta,
+  and a new full-match soak test drives a complete simulated game through the real server
+  and reconciles the DB against the engine's book, ball for ball, both innings.
 - **quickstart no longer wipes panel-entered state** (squad roster, sponsor fields, away
   colour, toggle edits, a manually entered opposition) — it merges over the existing file
   instead of rewriting it.

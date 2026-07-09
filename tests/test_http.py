@@ -121,6 +121,10 @@ class TestRoutesOpen(HttpTestBase):
         status, body = self.get_json("/health")
         self.assertTrue(body["ok"])
         self.assertIn("pcs", body)
+        # self-metrics: the "is the server staying lightweight?" number, plus the
+        # error flight recorder (empty on a healthy server)
+        self.assertIn("max_rss_mb", body["server"])
+        self.assertIsInstance(body["errors"], list)
 
     def test_options_preflight(self):
         status, headers, _ = self.request("OPTIONS", "/state")
@@ -275,6 +279,8 @@ class TestLivePcsPipeline(HttpTestBase):
         server._innings_latch = 1
         server._prev_state.update({"score": None, "wickets": None, "overs": None})
         server._event_buffer.clear()
+        server._ball_log_prev.update({"mid": None, "innings": None, "over": None,
+                                      "score": 0, "wickets": 0, "count": 0})
         server.match_log_reset()
 
     def write_pcs(self, mtime, **fields):
@@ -333,6 +339,33 @@ class TestLivePcsPipeline(HttpTestBase):
         self.assertEqual(len(rows), 4)                 # not 3 + 4 appended
         self.assertEqual(rows[3][1], "W")
         self.assertEqual(rows[3][2], 1)
+
+    def test_over_completing_ball_recovered_into_db(self):
+        # NV Play clears the ticker on the SAME write that completes an over, so ball 6
+        # never appears in any ticker — without delta recovery, the ball DB (and every
+        # CSV export) silently loses the final delivery of every over.
+        self.write_pcs(time.time() - 10, runs="12", wickets="0", overs="2.5",
+                       last_ball="1 4 . . 2")
+        self.get_json("/live")
+        # the clearing write: over complete, ticker gone — the final ball was a FOUR
+        self.write_pcs(time.time() - 8, runs="16", wickets="0", overs="3.0", last_ball="")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            rows = c.execute("SELECT ball, outcome, runs FROM balls WHERE over=2 "
+                             "ORDER BY ball").fetchall()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[5], (6, "4", 4))
+        # ...and a WICKET on the over-completing ball is recovered too
+        self.write_pcs(time.time() - 6, runs="17", wickets="0", overs="3.5",
+                       last_ball="1 . . . .")
+        self.get_json("/live")
+        self.write_pcs(time.time() - 4, runs="17", wickets="1", overs="4.0", last_ball="")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            rows = c.execute("SELECT ball, outcome, is_wicket FROM balls WHERE over=3 "
+                             "ORDER BY ball").fetchall()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[5], (6, "W", 1))
 
     def test_live_view_is_read_only_and_never_eats_events(self):
         # The control panel polls /live/view; it must see the same picture as the

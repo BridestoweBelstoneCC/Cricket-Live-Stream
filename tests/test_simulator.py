@@ -155,6 +155,26 @@ class TestScenarios(unittest.TestCase):
             sim.MatchSimulator("nope")
 
 
+class TestFuzzManySeeds(unittest.TestCase):
+    """One seed is a spot check; twenty is a search party. Every seed is a different
+    complete match — the scorer's-book invariants must hold for all of them."""
+
+    def test_bookkeeping_holds_across_seeds(self):
+        for seed in range(20):
+            s, frames = run_scenario("full", seed=seed, overs=4)
+            self.assertTrue(frames, seed)
+            for inn in s.innings:
+                bat_runs = sum(b.runs for b in inn.batters)
+                self.assertEqual(inn.total, bat_runs + inn.extras, f"seed {seed}")
+                self.assertEqual(inn.wkts,
+                                 sum(1 for b in inn.batters if b.how_out), f"seed {seed}")
+                self.assertEqual(sum(w.legal for w in inn.all_bowlers()),
+                                 inn.legal_balls, f"seed {seed}")
+                for tokens, over_runs in inn.token_history:
+                    parsed = sum(server._classify_ball(t)["runs"] for t in tokens)
+                    self.assertEqual(parsed, over_runs, f"seed {seed}: {tokens}")
+
+
 class TestFrameFieldContract(unittest.TestCase):
     """The frame must carry exactly the fields scoreboard.template produces, so the
     rehearsal exercises the same parse paths as the real scorer's feed."""
