@@ -4,6 +4,29 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased — on `dev`
+
+*Manual-scoring improvements from live use of the page. Automated coverage is complete;
+awaiting a human run-through before merging to `main`.*
+
+- **End-of-over recap on the scoring page.** When an over completes, the scorer sees a
+  banner with the over's runs and ball-by-ball tokens, and a choice: confirm and pick the
+  next bowler, or step back into the over ("Undo last ball") to fix a mistake before
+  moving on.
+- **Edit any ball, not just the last one.** An "Edit a ball" button lists recent
+  deliveries by over and ball; pick one and the next outcome tap corrects it. Built on the
+  event-sourced log — the innings is replayed around the correction, exactly, and any
+  follow-on bowler/batter choice invalidated by the change is skipped rather than wedging
+  the session. A rejected correction rolls back with the session left fully usable.
+- **Scorecard export for Play-Cricket.** A "Scorecard" button (and one at match end)
+  produces a full plain-text card — both innings, batting with dismissals, bowling
+  figures, extras, and the result — to copy or download. Play-Cricket's API is read-only,
+  so results still can't be submitted automatically, but this turns the after-match entry
+  into a quick transcription rather than a reconstruction.
+- **Fixed:** the session rebuild left the event log clobbered if a replay raised midway
+  (e.g. a rejected edit), which could corrupt a live scoring session — the rebuild is now
+  exception-safe.
+
 ## v2.5 — 2026-07-09
 
 *Manually tested against a live NV Play feed on 2026-07-09 — replays and auto-tagging,

@@ -198,6 +198,100 @@ class TestSession(SessionBase):
         self.assertEqual(s.events, [])
 
 
+class TestEditAndScorecard(SessionBase):
+    def test_edit_a_ball_in_a_completed_over(self):
+        s = self.session()
+        for k in ("1", "dot", "dot", "dot", "dot", "dot"):   # over 1: 1 run
+            s.apply({"event": "ball", "kind": k})
+        s.apply({"event": "ball", "kind": "2"})              # over 2, ball 1
+        self.assertEqual(s.current.total, 3)
+        s.edit_ball(0, {"event": "ball", "kind": "4"})       # that "1" was really a 4
+        self.assertEqual(s.current.total, 6)
+        self.assertEqual(s.current.overs_str(), "1.1")       # position unchanged
+
+    def test_edit_can_remove_a_wicket(self):
+        s = self.session()
+        s.apply({"event": "ball", "kind": "W", "wicket_type": "bowled"})
+        s.apply({"event": "ball", "kind": "4"})
+        self.assertEqual(s.current.wkts, 1)
+        s.edit_ball(0, {"event": "ball", "kind": "dot"})     # not out — a dot
+        self.assertEqual(s.current.wkts, 0)
+        self.assertEqual(s.current.total, 4)
+
+    def test_edit_is_an_exact_replay(self):
+        s = self.session()
+        for k in ("1", "4", "dot", "2"):
+            s.apply({"event": "ball", "kind": k})
+        s.edit_ball(1, {"event": "ball", "kind": "6"})
+        # a fresh session built from the corrected event list must match frame-for-frame
+        ref = self.session()
+        for ev in ({"event": "ball", "kind": "1"}, {"event": "ball", "kind": "6"},
+                   {"event": "ball", "kind": "dot"}, {"event": "ball", "kind": "2"}):
+            ref.apply(dict(ev))
+        self.assertEqual(s.current.frame(1), ref.current.frame(1))
+
+    def test_edit_with_downstream_bowler_event_stays_valid(self):
+        s = self.session()
+        for _ in range(6):
+            s.apply({"event": "ball", "kind": "dot"})        # over 1 complete
+        s.apply({"event": "bowler", "name": "Bob Beta8"})    # bowler for over 2
+        s.apply({"event": "ball", "kind": "4"})
+        s.edit_ball(2, {"event": "ball", "kind": "1"})       # correct a dot in over 1
+        self.assertEqual(s.current.total, 5)                 # 1 + 4
+        self.assertEqual(s.current.bowler_for_over(1).name, "Bob Beta8")
+
+    def test_edit_to_invalid_ball_rolls_back(self):
+        s = self.session()
+        for k in ("1", "4", "2"):
+            s.apply({"event": "ball", "kind": k})
+        before = s.current.frame(1)
+        with self.assertRaises(ValueError):
+            s.edit_ball(1, {"event": "ball", "kind": "banana"})
+        self.assertEqual(s.current.frame(1), before)         # restored exactly
+        self.assertEqual([e.get("kind") for e in s.events], ["1", "4", "2"])
+        # regression: a rejected edit must leave the session fully usable, not a wrecked
+        # event log (the _rebuild clobber bug) — scoring must continue normally
+        s.apply({"event": "ball", "kind": "6"})
+        self.assertEqual(s.current.total, 13)                # 1+4+2+6
+
+    def test_edit_rejects_non_ball_index(self):
+        s = self.session()
+        s.apply({"event": "ball", "kind": "1"})
+        s.apply({"event": "swap_strike"})
+        with self.assertRaises(ValueError):
+            s.edit_ball(1, {"event": "ball", "kind": "4"})   # index 1 is a swap, not a ball
+        with self.assertRaises(ValueError):
+            s.edit_ball(9, {"event": "ball", "kind": "4"})   # out of range
+
+    def test_ball_list_positions(self):
+        s = self.session()
+        for k in ("1", "4", "dot", "2", "6", "dot"):         # over 1 (6 legal)
+            s.apply({"event": "ball", "kind": k})
+        s.apply({"event": "ball", "kind": "3"})              # over 2, ball 1
+        bl = s.ball_list()
+        self.assertEqual(len(bl), 7)
+        self.assertEqual((bl[0]["index"], bl[0]["over"], bl[0]["ball"], bl[0]["token"]),
+                         (0, 1, 1, "1"))
+        self.assertEqual((bl[-1]["over"], bl[-1]["ball"], bl[-1]["token"]), (2, 1, "3"))
+
+    def test_scorecard_text_has_both_disciplines_and_the_result(self):
+        s = self.session()
+        # innings 1: a boundary then a wicket, then declare and play innings 2 to a win
+        s.apply({"event": "ball", "kind": "4"})
+        s.apply({"event": "ball", "kind": "W", "wicket_type": "bowled"})
+        s.apply({"event": "end_innings"})
+        s.apply({"event": "start_innings"})
+        s.apply({"event": "ball", "kind": "6"})              # 6 > target of 5 → won
+        card = s.scorecard_text()
+        self.assertIn("Home CC v Rival CC", card)
+        self.assertIn("BATTING", card)
+        self.assertIn("BOWLING", card)
+        self.assertIn("Extras", card)
+        self.assertIn("Alan Alpha1", card)                  # home opener who batted
+        self.assertIn("RESULT:", card)
+        self.assertIn("won by", card)
+
+
 class TestScoringHttp(HttpTestBase):
     """The /scoring surface end-to-end against a live server — including manual frames
     flowing through /live into the overlay pipeline and the ball-by-ball DB."""
@@ -300,6 +394,56 @@ class TestScoringHttp(HttpTestBase):
         status, d = self.get_json("/scoring/state")
         self.assertEqual(d["score"], 0)
 
+    def test_edit_ball_over_http(self):
+        self.setup_match()
+        self.post_json("/scoring/ball", {"kind": "1"})
+        self.post_json("/scoring/ball", {"kind": "4"})
+        status, d = self.get_json("/scoring/balls")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(d["balls"]), 2)
+        # correct the first ball (1 → 6); the drive was really a six
+        status, d = self.post_json("/scoring/edit", {"index": 0, "kind": "6"})
+        self.assertEqual(status, 200, d)
+        self.assertEqual(d["state"]["score"], 10)            # 6 + 4
+        # the corrected over flows through to the ball DB via /live too
+        status, live = self.get_json("/live")
+        import sqlite3
+        with sqlite3.connect(server._db_path()) as c:
+            rows = c.execute("SELECT outcome FROM balls WHERE over=0 ORDER BY ball").fetchall()
+        self.assertEqual([r[0] for r in rows], ["6", "4"])
+
+    def test_edit_bad_index_is_400(self):
+        self.setup_match()
+        self.post_json("/scoring/ball", {"kind": "1"})
+        status, d = self.post_json("/scoring/edit", {"index": 9, "kind": "4"})
+        self.assertEqual(status, 400)
+
+    def test_last_over_recap_in_state(self):
+        self.setup_match()
+        for k in ("1", "dot", "2", "dot", "4", "dot"):       # over 1 = 7 runs
+            self.post_json("/scoring/ball", {"kind": k})
+        status, st = self.get_json("/scoring/state")
+        self.assertTrue(st["awaiting_bowler"])
+        self.assertEqual(st["last_over"]["num"], 1)
+        self.assertEqual(st["last_over"]["runs"], 7)
+        self.assertEqual(st["last_over"]["balls"], ["1", ".", "2", ".", "4", "."])
+
+    def test_scorecard_endpoint(self):
+        self.setup_match()
+        self.post_json("/scoring/ball", {"kind": "4"})
+        status, _, data = self.request("GET", "/scoring/scorecard")
+        self.assertEqual(status, 200)
+        self.assertIn(b"BATTING", data)
+        self.assertIn(b"Home CC", data)
+
+    def test_balls_and_scorecard_empty_before_setup(self):
+        status, d = self.get_json("/scoring/balls")
+        self.assertEqual(status, 200)
+        self.assertFalse(d["ok"])
+        self.assertEqual(d["balls"], [])
+        status, _, _ = self.request("GET", "/scoring/scorecard")
+        self.assertEqual(status, 404)
+
 
 class TestScoringAuth(HttpTestBase):
     CLUB_PASSWORD = "testpw"
@@ -310,11 +454,12 @@ class TestScoringAuth(HttpTestBase):
         self.assertEqual(status, 401)
         status, _ = self.post_json("/scoring/setup", {"home": "X"})
         self.assertEqual(status, 401)
-        # ...but the page itself and its read-only state stay open (login happens in-page)
-        status, _, _ = self.request("GET", "/scoring")
-        self.assertEqual(status, 200)
-        status, _, _ = self.request("GET", "/scoring/state")
-        self.assertEqual(status, 200)
+        status, _ = self.post_json("/scoring/edit", {"index": 0, "kind": "4"})
+        self.assertEqual(status, 401)
+        # ...but the page itself and its read-only views stay open (login happens in-page)
+        for path in ("/scoring", "/scoring/state", "/scoring/balls", "/scoring/scorecard"):
+            status, _, _ = self.request("GET", path)
+            self.assertIn(status, (200, 404), path)   # 404 only = no session yet, not auth
 
 
 if __name__ == "__main__":

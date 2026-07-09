@@ -33,12 +33,19 @@ class HttpTestBase(unittest.TestCase):
         cls._saved = {
             "STATE_FILE": server.STATE_FILE,
             "_db_path": server._db_path,
+            "MANUAL_SCORING_FILE": server.MANUAL_SCORING_FILE,
             "_CLUB_PASSWORD": server._CLUB_PASSWORD,
             "_CONTROL_TOKEN": server._CONTROL_TOKEN,
             "_last_good_state": server._last_good_state,
         }
         server.STATE_FILE = os.path.join(cls.tmp, "match_state.json")
         server._db_path = lambda: os.path.join(cls.tmp, "match_data.db")
+        # Isolate from any real leftover manual-scoring session (a live one outranks the
+        # PCS file feed in /live), so pipeline tests aren't polluted by a session the
+        # developer left on disk from actual match scoring.
+        server.MANUAL_SCORING_FILE = os.path.join(cls.tmp, "manual_scoring.json")
+        server._manual["session"] = None
+        server._manual["load_attempted"] = True
         server._CLUB_PASSWORD = cls.CLUB_PASSWORD
         server._CONTROL_TOKEN = "cd" * 32
         server._last_good_state = None
@@ -54,6 +61,8 @@ class HttpTestBase(unittest.TestCase):
         cls.httpd.server_close()
         for k, v in cls._saved.items():
             setattr(server, k, v)
+        server._manual["session"] = None
+        server._manual["load_attempted"] = False
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def request(self, method, path, body=None, headers=None):

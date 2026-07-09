@@ -173,18 +173,51 @@
     <button class="undo-btn" onclick="post('/scoring/undo')">&#8630; Undo last ball</button>
     <div class="foot-row">
       <button onclick="post('/scoring/strike')">Swap strike</button>
+      <button onclick="openEditSheet()">&#9998; Edit a ball</button>
+      <button onclick="showScorecard()">&#128203; Scorecard</button>
+    </div>
+    <div class="foot-row">
       <button onclick="endInnings()">End innings</button>
       <button class="danger" onclick="resetMatch()">Reset match</button>
     </div>
   </div>
 </div>
 
+<!-- Edit-mode banner: shown while the next tap will correct a chosen ball -->
+<div id="edit-mode-bar" style="display:none;position:fixed;left:12px;right:12px;bottom:14px;
+     z-index:600;max-width:536px;margin:0 auto;background:#2a1a4a;color:#d6c3f0;
+     border:1px solid #5b3a7a;border-radius:8px;padding:10px 14px;font-size:13px;">
+  <span id="edit-mode-text">Editing a ball — tap the correct outcome (or WICKET)</span>
+  <button onclick="cancelEdit()" style="float:right;font-size:12px;padding:4px 10px;border:none;
+          border-radius:5px;background:rgba(255,255,255,0.15);color:inherit;">Cancel</button>
+</div>
+
 <!-- Generic bottom sheet -->
-<div class="overlay" id="sheet-overlay" onclick="if(event.target===this)closeSheet()">
+<div class="overlay" id="sheet-overlay" onclick="if(event.target===this)cancelSheet()">
   <div class="sheet">
     <h2 id="sheet-title">—</h2>
     <div class="grid" id="sheet-grid"></div>
-    <button class="cancel" onclick="closeSheet()">Cancel</button>
+    <button class="cancel" onclick="cancelSheet()">Cancel</button>
+  </div>
+</div>
+
+<!-- Scorecard overlay — full plain-text card for Play-Cricket entry after the game -->
+<div class="overlay" id="scorecard-overlay" onclick="if(event.target===this)hideScorecard()"
+     style="align-items:center;">
+  <div class="sheet" style="border-radius:14px;max-width:560px;max-height:88vh;display:flex;
+       flex-direction:column;">
+    <h2>Scorecard</h2>
+    <p style="font-size:11px;color:#8ba3c0;margin:-6px 0 10px;text-align:center;">
+      Play-Cricket's API is read-only — copy or download this and enter it in the
+      Play-Cricket result form after the match.</p>
+    <pre id="scorecard-text" style="flex:1;overflow:auto;background:#0a1628;border:1px solid
+         #1e3550;border-radius:8px;padding:12px;font-size:11px;line-height:1.5;color:#c9d6e4;
+         white-space:pre;overflow-x:auto;"></pre>
+    <div class="grid" style="margin-top:10px;">
+      <button onclick="copyScorecard()">Copy</button>
+      <button onclick="downloadScorecard()">Download .txt</button>
+    </div>
+    <button class="cancel" onclick="hideScorecard()">Close</button>
   </div>
 </div>
 
@@ -254,9 +287,25 @@ async function post(path, body) {
     return true;
   } catch (e) { flash('Could not reach server'); return false; }
 }
+// When set, the next outcome tap CORRECTS that recorded ball instead of scoring a new one
+let _editIndex = null;
+function setEdit(idx, label) {
+  _editIndex = idx;
+  const bar = document.getElementById('edit-mode-bar');
+  if (bar) {
+    bar.style.display = (idx === null) ? 'none' : 'block';
+    if (idx !== null) document.getElementById('edit-mode-text').textContent =
+      'Correcting ' + (label || 'a ball') + ' — tap the right outcome, extra, or WICKET';
+  }
+}
+function cancelEdit() { setEdit(null); }
 function ball(kind, runs, extra) {
   const b = Object.assign({kind: kind, runs: runs || 0}, extra || {});
   if (navigator.vibrate) navigator.vibrate(15);
+  if (_editIndex !== null) {
+    const idx = _editIndex; setEdit(null);
+    return post('/scoring/edit', Object.assign({index: idx}, b));
+  }
   return post('/scoring/ball', b);
 }
 
@@ -275,6 +324,10 @@ function openSheet(title, options) {
   document.getElementById('sheet-overlay').classList.add('show');
 }
 function closeSheet() { document.getElementById('sheet-overlay').classList.remove('show'); }
+// Cancel closes the sheet but does NOT clear an in-progress edit target — chained sheets
+// (wicket → fielder) close and reopen mid-flow, and after picking a ball to edit the sheet
+// closes while we wait for the outcome tap. The edit-mode banner has its own Cancel.
+function cancelSheet() { closeSheet(); }
 
 function openExtras(kind) {
   const labels = {wide: 'Wide', noball: 'No-ball', bye: 'Byes', legbye: 'Leg byes'};
@@ -328,6 +381,54 @@ function openBatterSheet() {
   const opts = ((_state && _state.yet_to_bat) || []).map(n =>
       ({label: n, onpick: () => post('/scoring/batter', {name: n})}));
   openSheet('Next batter', opts);
+}
+
+// ── Edit any ball ────────────────────────────────────────────
+async function openEditSheet() {
+  let balls = [];
+  try {
+    const d = await (await apiFetch('/scoring/balls')).json();
+    balls = d.balls || [];
+  } catch (e) { flash('Could not load balls'); return; }
+  if (!balls.length) { flash('No balls scored yet'); return; }
+  // newest first, and label each with its over.ball position + what's recorded now
+  const opts = balls.slice().reverse().map(function (b) {
+    const tok = b.token === '.' ? '·' : b.token;
+    return {label: 'Inns ' + b.innings + ' · Over ' + b.over + ', ball ' + b.ball
+                   + '  [' + tok + ']',
+            onpick: function () { setEdit(b.index, 'over ' + b.over + ' ball ' + b.ball); }};
+  });
+  openSheet('Which ball to correct?', opts);
+}
+
+// ── Scorecard (for Play-Cricket entry after the game) ────────
+async function showScorecard() {
+  let text = '';
+  try {
+    const r = await apiFetch('/scoring/scorecard');
+    if (!r.ok) { flash('No scorecard yet'); return; }
+    text = await r.text();
+  } catch (e) { flash('Could not reach server'); return; }
+  const ov = document.getElementById('scorecard-overlay');
+  document.getElementById('scorecard-text').textContent = text;
+  ov.classList.add('show');
+}
+function hideScorecard() { document.getElementById('scorecard-overlay').classList.remove('show'); }
+function copyScorecard() {
+  const t = document.getElementById('scorecard-text');
+  const doFlash = function () { flash('Scorecard copied'); };
+  if (navigator.clipboard) { navigator.clipboard.writeText(t.textContent).then(doFlash).catch(function(){}); }
+  else { const r = document.createRange(); r.selectNodeContents(t);
+         const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+         try { document.execCommand('copy'); doFlash(); } catch (e) {} }
+}
+function downloadScorecard() {
+  const text = document.getElementById('scorecard-text').textContent;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+  a.download = 'scorecard.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
 }
 
 // ── Bigger actions ───────────────────────────────────────────
@@ -403,6 +504,7 @@ function render(s) {
     banners.innerHTML = '<div class="banner gold">Match over — ' + s.batting + ' ' +
         (s.need === 0 && s.target ? 'won' : 'finished') + ' on ' + s.score + '-' + s.wickets +
         '.</div>' +
+        '<button class="big-cta" onclick="showScorecard()">&#128203; Scorecard for Play-Cricket</button>' +
         '<button class="big-cta" style="background:#3a0d0d;color:#f08080;" ' +
         'onclick="resetMatch()">Reset for a new match</button>';
     return;
@@ -426,13 +528,23 @@ function render(s) {
     banners.appendChild(b);
   }
   if (s.awaiting_bowler) {
+    // End-of-over recap: what the over cost, ball by ball — confirm and move on, or
+    // step back into the over if something was entered wrong
     const b = document.createElement('div');
-    b.className = 'banner info';
-    b.innerHTML = 'End of over ' + Math.floor(parseFloat(s.overs)) + ' — pick the next bowler';
-    const btn = document.createElement('button');
-    btn.textContent = 'Choose';
-    btn.onclick = openBowlerSheet;
-    b.appendChild(btn);
+    b.className = 'banner gold';
+    const lo = s.last_over;
+    b.innerHTML = '<b>End of over ' + (lo ? lo.num : Math.floor(parseFloat(s.overs))) + '</b>'
+      + (lo ? ' — ' + lo.runs + ' run' + (lo.runs !== 1 ? 's' : '')
+              + ' <span style="opacity:.75;">(' + lo.balls.join(' ') + ')</span>' : '')
+      + '<br>';
+    const ok = document.createElement('button');
+    ok.textContent = 'Correct — next bowler';
+    ok.onclick = openBowlerSheet;
+    b.appendChild(ok);
+    const back = document.createElement('button');
+    back.textContent = 'Undo last ball';
+    back.onclick = function() { post('/scoring/undo'); };
+    b.appendChild(back);
     banners.appendChild(b);
     const overNo = Math.floor(parseFloat(s.overs));
     if (overNo !== _lastBowlerPromptOver) {   // auto-open once per over

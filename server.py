@@ -3125,9 +3125,22 @@ class ManualScoringSession:
         return self.innings_no == 2 and self.current.complete
 
     # ── Events ───────────────────────────────────────────────
-    def _apply(self, ev):
+    def _apply(self, ev, lenient=False):
+        """lenient=True is used when REPLAYING after an edit: a corrected ball can make
+        later auxiliary events impossible (a next-batter pick for someone who no longer
+        arrived, a bowler set for an over that moved) — those are skipped rather than
+        wedging the whole rebuild. Ball events themselves are never skipped."""
         kind = ev.get("event")
         inn = self.current
+        if lenient and kind in ("batter", "bowler", "swap_strike"):
+            try:
+                self._apply(ev)
+            except ValueError:
+                pass
+            return
+        if lenient and kind == "start_innings":
+            if self.innings_no == 1 and not inn.complete:
+                inn.end()          # the edit un-completed innings 1 — declare it closed
         if kind == "ball":
             inn.apply_outcome(ev.get("kind", ""), runs=int(ev.get("runs", 0) or 0),
                               wicket_type=ev.get("wicket_type", "bowled"),
@@ -3167,16 +3180,104 @@ class ManualScoringSession:
         self.save()
         return dropped
 
-    def _rebuild(self):
+    def _rebuild(self, lenient=False):
         """Replay the event log from a fresh book — the engine is deterministic, so this
-        is exact. Also how a saved session is restored after a server restart."""
+        is exact. Also how a saved session is restored after a server restart. Exception-
+        safe: if a replay raises (a rejected edit), self.events is left INTACT so the
+        caller can roll back — never clobbered to the partial rebuild list."""
         events = self.events
         self.events = []
         self.innings = []
         self._start_innings()
-        for ev in events:
-            self._apply(ev)            # was valid when first applied
-        self.events = events
+        try:
+            for ev in events:
+                self._apply(ev, lenient=lenient)   # was valid when first applied
+        finally:
+            self.events = events
+
+    def edit_ball(self, index, new_ev):
+        """Replace ball event `index` and replay the innings around it — the whole point
+        of event sourcing. Auxiliary events invalidated by the correction are skipped
+        (lenient replay); if the corrected BALL itself can't replay, everything is
+        restored untouched and the error raised."""
+        if not (0 <= index < len(self.events)) or self.events[index].get("event") != "ball":
+            raise ValueError("that isn't a ball that can be edited")
+        old = self.events[index]
+        self.events[index] = new_ev
+        try:
+            self._rebuild(lenient=True)
+        except ValueError:
+            self.events[index] = old
+            self._rebuild(lenient=True)
+            raise
+        self.save()
+
+    def ball_list(self, limit=30):
+        """The most recent ball events with their positions, for the edit-a-ball picker:
+        [{index, innings, over, ball, token}], newest last. Computed by replaying a fresh
+        book (cheap, deterministic, no side effects on this session)."""
+        temp = ManualScoringSession(dict(self.config))
+        out = []
+        for i, ev in enumerate(self.events):
+            if ev.get("event") == "ball":
+                inn = temp.current
+                pos = (temp.innings_no, inn.current_over_no, len(inn.over_tokens) + 1)
+                temp._apply(ev, lenient=True)
+                inn = temp.innings[pos[0] - 1]
+                token = (inn.over_tokens[-1] if inn.over_tokens
+                         else (inn.token_history[-1][0][-1] if inn.token_history else "?"))
+                out.append({"index": i, "innings": pos[0], "over": pos[1] + 1,
+                            "ball": pos[2], "token": token})
+            else:
+                temp._apply(ev, lenient=True)
+        return out[-limit:]
+
+    def scorecard_text(self):
+        """Plain-text scorecard for BOTH innings — everything Play-Cricket's manual result
+        entry asks for (their API is read-only, so transcription is the best possible)."""
+        cfg = self.config
+        lines = [f"{cfg['home']} v {cfg['away']} — {datetime.date.today().strftime('%d %B %Y')}",
+                 f"{cfg['max_overs']} overs per innings", ""]
+        for n, inn in enumerate(self.innings, 1):
+            lines.append(f"═══ Innings {n}: {inn.batting_name} "
+                         f"{inn.total}-{inn.wkts} ({inn.overs_str()} ov) ═══")
+            lines.append("")
+            lines.append(f"{'BATTING':<24} {'':28} {'R':>4} {'B':>4} {'4s':>3} {'6s':>3}")
+            for b in inn.batters:
+                if b.balls == 0 and b.runs == 0 and not b.how_out \
+                        and b not in (inn.striker, inn.non_striker):
+                    continue                       # didn't bat
+                how = b.how_out if b.how_out else "not out"
+                lines.append(f"{b.name:<24} {how.lower():<28} {b.runs:>4} {b.balls:>4} "
+                             f"{b.fours:>3} {b.sixes:>3}")
+            lines.append(f"{'Extras':<24} {'':28} {inn.extras:>4}")
+            lines.append(f"{'TOTAL':<24} {f'({inn.wkts} wkts, {inn.overs_str()} ov)':<28} "
+                         f"{inn.total:>4}")
+            lines.append("")
+            lines.append(f"{'BOWLING':<24} {'O':>6} {'M':>3} {'R':>4} {'W':>3}")
+            for w in inn.all_bowlers():
+                if not (w.legal or w.runs):
+                    continue
+                lines.append(f"{w.name:<24} {w.overs_str:>6} {w.maidens:>3} {w.runs:>4} "
+                             f"{w.wkts:>3}")
+            lines.append("")
+        if self.match_over:
+            inn1, inn2 = self.innings
+            if inn2.total >= (inn2.target or 0):
+                margin = 10 - inn2.wkts
+                lines.append(f"RESULT: {inn2.batting_name} won by {margin} wicket"
+                             f"{'s' if margin != 1 else ''}")
+            elif inn1.total > inn2.total:
+                diff = inn1.total - inn2.total
+                lines.append(f"RESULT: {inn1.batting_name} won by {diff} run"
+                             f"{'s' if diff != 1 else ''}")
+            else:
+                lines.append("RESULT: Match tied")
+        lines.append("")
+        lines.append("(Generated by CricketStream Overlay manual scoring — enter into "
+                     "Play-Cricket result entry; the API is read-only so this can't be "
+                     "submitted automatically.)")
+        return "\n".join(lines)
 
     # ── Persistence ──────────────────────────────────────────
     def save(self):
@@ -3258,6 +3359,12 @@ def manual_ui_state():
             "innings_complete": inn.complete,
             "match_over": sess.match_over,
             "awaiting_bowler": inn.awaiting_new_over,
+            # Recap of the just-completed over, for the scorer's end-of-over banner —
+            # confirm and pick the next bowler, or undo back into the over to fix a ball
+            "last_over": ({"num": len(inn.over_history),
+                           "runs": inn.over_history[-1],
+                           "balls": list(inn.token_history[-1][0])}
+                          if inn.token_history else None),
             "new_batter": arrived,
             "yet_to_bat": [b.name for b in inn.batters[inn.next_bat:] if not b.how_out],
             "bowling_xi": list(inn.fielders),
@@ -4766,6 +4873,21 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/scoring/state":
             # Read-only view for the scoring page (no secrets — open, like /live/view)
             self._json(manual_ui_state())
+        elif path == "/scoring/balls":
+            # Recent balls with positions, for the edit-a-ball picker
+            with _manual_lock:
+                sess = _manual_session_locked()
+                self._json({"ok": bool(sess),
+                            "balls": sess.ball_list() if sess else []})
+        elif path == "/scoring/scorecard":
+            # Full plain-text scorecard for transcribing into Play-Cricket after the game
+            with _manual_lock:
+                sess = _manual_session_locked()
+                text = sess.scorecard_text() if sess else ""
+            if text:
+                self._bytes(text.encode("utf-8"), "text/plain; charset=utf-8")
+            else:
+                self._json({"ok": False, "error": "no scoring session"}, status=404)
         elif path == "/state":
             st = load_state()
             # Add boolean flags so the overlay can gate features without seeing raw secrets
@@ -5842,6 +5964,13 @@ class Handler(BaseHTTPRequestHandler):
                                     "out_non_striker": bool(d.get("out_non_striker"))})
                     elif action == "undo":
                         sess.undo()
+                    elif action == "edit":
+                        sess.edit_ball(int(d.get("index", -1)),
+                                       {"event": "ball", "kind": d.get("kind", ""),
+                                        "runs": d.get("runs", 0),
+                                        "wicket_type": d.get("wicket_type", "bowled"),
+                                        "fielder": d.get("fielder", ""),
+                                        "out_non_striker": bool(d.get("out_non_striker"))})
                     elif action == "bowler":
                         sess.apply({"event": "bowler", "name": d.get("name", "")})
                     elif action == "batter":
