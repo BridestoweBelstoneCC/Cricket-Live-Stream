@@ -131,6 +131,10 @@ The scoring software writes a file on every ball. The server reads it and sends 
 
 No scoring software? A phone at `/scoring` takes the place of the scorer's laptop — same overlay, same graphics. See the next section.
 
+Interested in the internals? [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full picture —
+data sources, the journey of a single ball, module map and security model — with diagrams
+that render right on GitHub.
+
 ---
 
 ## No scoring software? Manual scoring
@@ -408,6 +412,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 │   └── start_server.sh        Server-only launcher
 ├── docs/                      GitHub Pages landing page
 ├── README.md                  This file
+├── ARCHITECTURE.md            System design with diagrams (for contributors)
 ├── CHANGELOG.md               Version history and upgrade notes
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute

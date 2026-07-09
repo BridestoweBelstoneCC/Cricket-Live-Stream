@@ -51,6 +51,9 @@ identically. While a manual session is live it OUTRANKS the PCS file in `/live`.
   server at it; `--chaos` injects mid-write/stall failures. Deterministic per `--seed`; the
   engine is imported by `tests/test_simulator.py` as a parser-consistency harness. Always
   rehearse graphics changes with it before match day.
+- **`ARCHITECTURE.md`** — contributor-facing design doc with Mermaid diagrams (data-flow,
+  one ball's journey, module map). If you change the architecture, update its diagrams in
+  the same commit.
 - **`config.ini`** / **`match_state.json`** — local settings (git-ignored, hold secrets).
   Templates: `config.example.ini`, `match_state.example.json`.
 - **`match_data.db`** — SQLite ball-by-ball log, created at runtime (git-ignored).
