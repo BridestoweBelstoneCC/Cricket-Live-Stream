@@ -226,30 +226,41 @@ class TestUpdateLogicMocked(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertTrue(any(c[1] == "list" and c[2].get("mine") for c in fake.calls))
 
-    def test_only_finished_broadcasts_gives_a_clear_message(self):
+    def test_completed_broadcast_is_still_targeted_when_streaming(self):
+        # 'OBS is streaming' but the persistent broadcast reads as complete after a
+        # restart — the finder must still target it (newest, non-revoked) rather than
+        # refusing, so the operator can update it. This is the reported case.
         fake = FakeYT(broadcast=[], upcoming=[],
-                      mine=[{"id": "old", "status": {"lifeCycleStatus": "complete"},
-                             "snippet": {"title": "done"}}],
-                      video=[])
+                      mine=[{"id": "persistent", "status": {"lifeCycleStatus": "complete"},
+                             "snippet": {"title": "My Match",
+                                         "scheduledStartTime": "2026-07-11T13:00:00Z"}}],
+                      video=[{"snippet": {"title": "My Match", "categoryId": "1"}}])
         with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
-            ok, msg = server.update_youtube_broadcast(title="X")
-        self.assertFalse(ok)
-        self.assertIn("already finished", msg)
+            ok, msg = server.update_youtube_broadcast(title="New", privacy="unlisted")
+        self.assertTrue(ok, msg)
+        self.assertIn("My Match", msg)   # names the broadcast it targeted
+        upd = [c for c in fake.calls if c[1] == "update" and c[0] == "liveBroadcasts"]
+        self.assertEqual(upd[0][2]["body"]["id"], "persistent")
 
-    def test_picks_newest_usable_when_several_exist(self):
+    def test_revoked_broadcasts_are_skipped(self):
         fake = FakeYT(broadcast=[], upcoming=[], video=[{"snippet": {"categoryId": "1"}}],
                       mine=[
-                          {"id": "older", "status": {"lifeCycleStatus": "ready"},
-                           "snippet": {"scheduledStartTime": "2026-07-10T10:00:00Z"}},
-                          {"id": "newer", "status": {"lifeCycleStatus": "ready"},
+                          {"id": "gone", "status": {"lifeCycleStatus": "revoked"},
+                           "snippet": {"scheduledStartTime": "2026-07-12T10:00:00Z"}},
+                          {"id": "real", "status": {"lifeCycleStatus": "ready"},
                            "snippet": {"scheduledStartTime": "2026-07-11T13:00:00Z"}},
                       ])
         with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
             server.update_youtube_broadcast(title="New")
-        # the snippet update must target the NEWER broadcast id
         upd = [c for c in fake.calls if c[1] == "update" and c[0] == "liveBroadcasts"]
-        self.assertTrue(upd)
-        self.assertEqual(upd[0][2]["body"]["id"], "newer")
+        self.assertEqual(upd[0][2]["body"]["id"], "real")   # revoked skipped despite newer
+
+    def test_no_broadcast_at_all_explains_go_live(self):
+        fake = FakeYT(broadcast=[], upcoming=[], mine=[], video=[])
+        with mock.patch.object(server, "_youtube_service", return_value=(fake, None)):
+            ok, msg = server.update_youtube_broadcast(title="X")
+        self.assertFalse(ok)
+        self.assertIn("Go Live", msg)
 
 
 class TestYoutubeEndpoint(HttpTestBase):

@@ -978,36 +978,34 @@ def _youtube_service(allow_interactive=True):
 
 
 def _find_live_broadcast(yt):
-    """Find the broadcast to update, tolerant of YouTube's transitional states. Returns
-    (broadcast_dict, None) or (None, diagnostic_message).
+    """Find the broadcast to update. Returns (broadcast_dict, None) or (None, message).
 
-    The active/upcoming filters only catch two states — a broadcast that's mid-transition
-    ('testing'/'ready') or freshly created can slip between them, and a stream that just
-    ended is 'complete'. So after those, fall back to listing ALL of the channel's
-    broadcasts (mine=True) and pick the newest one that hasn't finished. This is why a
-    perfectly real stream could report 'none found' from one moment to the next."""
+    YouTube's broadcast state and 'OBS is streaming' are only loosely coupled: with a
+    stream key a broadcast can be 'ready'/'testing' (data flowing, Go Live not yet
+    clicked), and a persistent 'Stream now' broadcast can read as 'complete' after a
+    stop/restart even though the key still works. The active/upcoming filters miss those.
+    So: try active, then upcoming, then fall back to the channel's NEWEST broadcast that
+    isn't deleted — targeting whatever the operator is most likely streaming to, rather
+    than refusing because YouTube's status doesn't say 'active' this instant."""
     for status in ("active", "upcoming"):
         items = yt.liveBroadcasts().list(
             part="id,snippet", broadcastStatus=status, broadcastType="all",
             maxResults=10).execute().get("items", [])
         if items:
             return items[0], None
-    # Fallback: everything the channel owns, newest usable first
     allb = yt.liveBroadcasts().list(
         part="id,snippet,status", mine=True, broadcastType="all",
         maxResults=50).execute().get("items", [])
-    dead = ("complete", "completeStarting", "revoked")
-    usable = [b for b in allb
-              if b.get("status", {}).get("lifeCycleStatus") not in dead]
-    usable.sort(key=lambda b: b.get("snippet", {}).get("scheduledStartTime")
-                or b.get("snippet", {}).get("publishedAt") or "", reverse=True)
-    if usable:
-        return usable[0], None
-    if allb:
-        return None, ("Your only broadcast(s) have already finished — create a new one in "
-                      "YouTube Studio (Go Live), then try again.")
-    return None, ("No broadcast found on this YouTube account — create one first in "
-                  "YouTube Studio (Go Live). It doesn't need to be streaming yet.")
+    allb = [b for b in allb
+            if b.get("status", {}).get("lifeCycleStatus") != "revoked"]
+    if not allb:
+        return None, ("No broadcast found on this YouTube account — create one in YouTube "
+                      "Studio (Go Live). If OBS is streaming but you see this, the broadcast "
+                      "may need 'Go Live' clicked in Studio, or auto-start enabled.")
+    # Newest by scheduled start (else publish time) — the operator's current/next stream
+    allb.sort(key=lambda b: b.get("snippet", {}).get("scheduledStartTime")
+              or b.get("snippet", {}).get("publishedAt") or "", reverse=True)
+    return allb[0], None
 
 
 def update_youtube_broadcast(title=None, description=None, privacy=None,
@@ -1066,9 +1064,13 @@ def update_youtube_broadcast(title=None, description=None, privacy=None,
             except Exception as ce:
                 failed.append(f"category ({ce})")
 
+        # Name the broadcast we targeted so the operator can confirm it's the right one
+        # (the finder picks the newest broadcast when none is 'active' this instant).
+        bc_title = (bc.get("snippet", {}).get("title") or "").strip()
+        on = f" on '{bc_title}'" if bc_title else ""
         if not done and not failed:
-            return True, "Nothing to update"
-        note = ("Updated: " + ", ".join(done) if done else "Nothing updated")
+            return True, f"Nothing to update{on}"
+        note = ("Updated" + on + ": " + ", ".join(done)) if done else ("Nothing updated" + on)
         if failed:
             note += " — FAILED: " + "; ".join(failed)
         print(f"  {'✓' if done and not failed else '⚠'}  YouTube: {note}")
