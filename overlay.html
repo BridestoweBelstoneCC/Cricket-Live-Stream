@@ -1666,7 +1666,7 @@ function _chainWicket(bowlerName, isRunOut) {
 function _chainBreak(bowlerName) {
   if (_hatTrick.bowler === bowlerName) _hatTrick.count = 0;
 }
-function updateHatTrickChain(newBalls, state) {
+function updateHatTrickChain(newBalls, state, prevOverBowler) {
   var bowlerName = fmtSurname((state.bowler && state.bowler.name) || '');
   var wickets = parseInt(state.wickets || 0);
   var sawW = 0;
@@ -1675,9 +1675,22 @@ function updateHatTrickChain(newBalls, state) {
     if (b.cls === 'wicket') { sawW++; _chainWicket(bowlerName, runOut); }
     else if (b.cls !== 'wide' && b.cls !== 'noball') { _chainBreak(bowlerName); }
   });
-  // A wicket the ticker never showed (fell on the over-completing write)
-  var dw = wickets - _htPrevWickets;
-  for (var i = 0; i < dw - sawW; i++) _chainWicket(bowlerName, runOut);
+  // Wickets the ticker never showed (fell on the over-completing write). On that write
+  // state.bowler has ALREADY rotated to the next over's bowler, so these belong to
+  // prevOverBowler (the caller's pre-rotation snapshot) -- crediting state.bowler here
+  // both fakes a hat-trick for the incoming bowler and loses a real one for the outgoing.
+  var dw = wickets - _htPrevWickets - sawW;
+  var db = (prevOverBowler && prevOverBowler.name) ? prevOverBowler : (state.bowler || {});
+  for (var i = 0; i < dw; i++) _chainWicket(fmtSurname(db.name || ''), runOut);
+  // The same unseen wicket can be a five-for the live figures will never show: the
+  // outgoing bowler's last state.bowler snapshot predates the final delivery, and by
+  // the next poll state.bowler is someone else. Synthesize the completed figures.
+  // (No overs field: the snapshot's overs predate the final ball, better omitted than wrong.)
+  if (dw > 0 && !runOut && prevOverBowler && prevOverBowler.name) {
+    checkBowlerFiveFor({ bowler: { name: prevOverBowler.name,
+                                   wickets: (parseInt(prevOverBowler.wickets) || 0) + dw,
+                                   runs: prevOverBowler.runs } });
+  }
   _htPrevWickets = wickets;
 }
 function checkBowlerFiveFor(state) {
@@ -1933,6 +1946,9 @@ function processPCSData(state) {
   _lastPCSovers = currentOver;  // always update, every poll, so detection isn't delayed
   // Snapshot AFTER this poll's over-transition check has used the previous snapshot --
   // next poll's "who just finished bowling" is this poll's "who's currently bowling".
+  // Keep this write's pre-rotation value around: the hat-trick/five-for fallback below
+  // runs later in this same poll and needs the bowler who actually finished the over.
+  const _preRotationBowler = _lastPolledBowler;
   _lastPolledBowler = state.bowler || _lastPolledBowler;
 
   // ── Ball-based boundary detection — runs EVERY poll (parsed is [] when ticker empty) ──
@@ -1961,8 +1977,9 @@ function processPCSData(state) {
         });
       }
       // v2.2: hat-trick chain feeds off the same new-token stream (with a wickets-delta
-      // fallback inside for the over-completing wicket the cleared ticker can't show)
-      try { updateHatTrickChain(newBalls, state); }
+      // fallback inside for the over-completing wicket the cleared ticker can't show --
+      // attributed to the pre-rotation bowler, since state.bowler has already moved on)
+      try { updateHatTrickChain(newBalls, state, _oversIncreased ? _preRotationBowler : null); }
       catch(e){ console.warn('hat-trick error:', e); }
     } else {
       _htPrevWickets = parseInt(state.wickets || 0);   // first poll: seed, never fire

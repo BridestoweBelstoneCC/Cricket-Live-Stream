@@ -39,10 +39,11 @@ var _hatTrick = { bowler: '', count: 0 };
 var _htPrevWickets = 0;
 var _bowlerFived = {};
 var _lastPCSinnings = 1;
-function poll(tokens, bowler, wickets, wicketType) {
+function poll(tokens, bowler, wickets, wicketType, prevOverBowler) {
   updateHatTrickChain(
     tokens.map(function(c){ return {cls: c}; }),
-    {bowler: {name: bowler}, wickets: wickets, lastWicketType: wicketType || ''});
+    {bowler: {name: bowler}, wickets: wickets, lastWicketType: wicketType || ''},
+    prevOverBowler || null);
 }
 """
 
@@ -115,12 +116,33 @@ poll(['wicket'], 'A Nother', 4);
     def test_over_completing_wicket_counts_via_delta_fallback(self):
         # Third wicket falls on the over-completing ball: the ticker clears on that
         # write, so newBalls is empty — the wickets delta must still extend the chain.
+        # On that write state.bowler has ALREADY rotated to the next bowler; the caller
+        # passes the pre-rotation snapshot, and the wicket must be credited from it.
         fired = self.run_scenario("""
 poll(['wicket'], 'A Nother', 1);
 poll(['wicket'], 'A Nother', 2);
-poll([], 'A Nother', 3);
+poll([], 'B Side', 3, '', {name: 'A Nother'});
 """)
         self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0]["name"], "Nother")
+
+    def test_over_completing_wicket_never_credits_the_incoming_bowler(self):
+        # B ended his own previous over on 2-in-2. A's over then ends with an unseen
+        # wicket while state.bowler already reads B (alternating ends): crediting B
+        # would fire a false hat-trick; the wicket is A's, and A's genuine hat-trick
+        # across his own two overs must still fire.
+        fired = self.run_scenario("""
+poll(['wicket'], 'B Side', 1);
+poll(['wicket'], 'B Side', 2);
+poll(['dot'], 'A Nother', 2);
+poll([], 'B Side', 3, '', {name: 'A Nother'});
+poll(['dot'], 'B Side', 3);
+poll(['wicket'], 'A Nother', 4);
+poll(['wicket'], 'A Nother', 5);
+""")
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0]["name"], "Nother")
+        self.assertEqual(fired[0]["sub"], "HAT-TRICK!")
 
     def test_two_bowlers_wickets_never_mix(self):
         fired = self.run_scenario("""
@@ -162,6 +184,26 @@ checkBowlerFiveFor({bowler: {name: 'A Nother', wickets: 5, runs: 21}});
 """)
         # toggled off: nothing fires AND the fired-flag isn't burned — firing once it's on
         self.assertEqual(len(fired), 1)
+
+    def test_five_for_on_the_over_completing_delivery(self):
+        # 5th wicket on the final ball of the over: the live figures can never show it
+        # (the last state.bowler snapshot predates the delivery, the next poll is the
+        # incoming bowler), so the delta fallback must synthesize the completed figures.
+        fired = self.run_scenario("""
+checkBowlerFiveFor({bowler: {name: 'A Nother', wickets: 4, runs: 18, overs: '6.5'}});
+_htPrevWickets = 4;
+poll([], 'B Side', 5, '', {name: 'A Nother', wickets: 4, runs: 18, overs: '6.5'});
+""")
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0]["big"], "5-18")
+        self.assertEqual(fired[0]["name"], "Nother")
+
+    def test_run_out_on_the_final_ball_is_not_a_five_for(self):
+        fired = self.run_scenario("""
+_htPrevWickets = 4;
+poll([], 'B Side', 5, 'RUN OUT', {name: 'A Nother', wickets: 4, runs: 18});
+""")
+        self.assertEqual(fired, [])
 
     def test_placeholder_bowler_ignored(self):
         fired = self.run_scenario("""
