@@ -223,8 +223,8 @@ def build_state(cfg, match, state_path=None):
         # YouTube
         "youtube_title_template": stream.get("youtube_title","LIVE: {home} vs {away}"),
 
-        # Weather — off
-        "weather_api_key":      "",
+        # Weather — panel-owned secret; a hard "" here silently wiped it every match day
+        "weather_api_key":      exist.get("weather_api_key", ""),
 
         # Misc
         "poll_interval":        exist.get("poll_interval", 20),

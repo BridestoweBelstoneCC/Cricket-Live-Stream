@@ -63,6 +63,7 @@ class TestBuildState(unittest.TestCase):
             "graphics_player_card": True,
             "network_test_mbps": 18.4, "network_test_at": 1751000000,
             "home_club_id": "29434",
+            "weather_api_key": "wk-secret-123",
         }
 
     def test_panel_state_survives_rerun_without_fixture(self):
@@ -82,6 +83,8 @@ class TestBuildState(unittest.TestCase):
         self.assertTrue(st["graphics_player_card"])
         # No fixture found → the manually entered opposition is kept
         self.assertEqual(st["away_team"], "Manually Entered CC")
+        # Panel-set secret survives a re-run (a hard "" used to wipe it every match day)
+        self.assertEqual(st["weather_api_key"], "wk-secret-123")
 
     def test_fixture_data_overrides_manual_entry(self):
         self.write_exist(self.panel_state())
