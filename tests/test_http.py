@@ -386,6 +386,35 @@ class TestLivePcsPipeline(HttpTestBase):
         self.assertEqual(len(rows), 6)
         self.assertEqual(rows[5], (6, "W", 1))
 
+    def test_recovered_ball_keeps_the_old_overs_personnel(self):
+        # On the over-completing write the feed has ALREADY rotated the bowler and
+        # swapped the batters for the next over — the recovered final delivery must
+        # be attributed to the people who were actually on for the over that ended.
+        self.write_pcs(time.time() - 10, runs="12", wickets="0", overs="2.5",
+                       last_ball="1 4 . . 2")
+        self.get_json("/live")
+        self.write_pcs(time.time() - 8, runs="16", wickets="1", overs="3.0", last_ball="",
+                       bowler_name="PATEL", bowler_overs="0.0", bowler_runs="0",
+                       batter1_name="JONES", batter2_name="BROWN")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            row = c.execute("SELECT bowler, batter, non_striker FROM balls "
+                            "WHERE over=2 AND ball=6").fetchone()
+        self.assertEqual(row, ("HARRISON", "SMITH", "JONES"))
+
+    def test_live_view_never_rebinds_the_pinned_match_cache(self):
+        # Clearing match_url must only take effect on the overlay's own /live poll —
+        # a panel /live/view poll landing first used to rebuild _rv_cache and drop
+        # the overlay's cached widget state mid-stream.
+        self.write_pcs(time.time() - 10)
+        server._rv_cache = {"rv_id": "rv1", "pc_id": "42", "club_id": 0,
+                            "last_rv_poll": 0, "last_state": {"score": 1}, "pinned": True}
+        self.get_json("/live/view")
+        self.assertTrue(server._rv_cache.get("pinned"))
+        self.assertEqual(server._rv_cache.get("rv_id"), "rv1")
+        self.get_json("/live")                    # the overlay's poll does the unpin
+        self.assertFalse(server._rv_cache.get("pinned"))
+
     def test_live_view_is_read_only_and_never_eats_events(self):
         # The control panel polls /live/view; it must see the same picture as the
         # overlay but with NO side effects — before the split, whichever panel poll

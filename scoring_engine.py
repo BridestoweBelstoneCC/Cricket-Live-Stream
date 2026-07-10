@@ -89,6 +89,7 @@ class InningsEngine:
         self.extras = 0
         self.over_tokens = []          # this over's ticker tokens
         self.over_runs = 0             # team runs this over
+        self._over_bowlers = set()     # who has bowled in the current over (maiden rules)
         self.over_history = []         # runs per completed over
         self.token_history = []        # (tokens, runs) per completed over — for tests
         self.p_runs = self.p_balls = 0
@@ -207,6 +208,7 @@ class InningsEngine:
             raise ValueError(f"runs out of range: {runs}")
         self.openers_selected = True
         bowler = self.bowler_for_over(self.current_over_no)
+        self._over_bowlers.add(bowler)     # a mid-over change (injury) means >1 per over
         token, team_runs, ran = "", 0, 0
 
         if kind == "W":
@@ -279,9 +281,15 @@ class InningsEngine:
         # show the cleared ticker (NV Play semantics; the overlay handles the missing
         # final ball via the score delta).
         if kind not in ("wide", "noball") and self.legal_balls % 6 == 0:
-            if bowler._over_conceded == 0:
+            # A maiden needs the WHOLE over from one bowler with nothing conceded —
+            # an over shared after a mid-over change is nobody's maiden (ACS convention).
+            if bowler._over_conceded == 0 and len(self._over_bowlers) == 1:
                 bowler.maidens += 1
-            bowler._over_conceded = 0
+            # Reset every bowler who bowled in the over, not just the finisher — a
+            # replaced bowler's stale count would suppress a genuine maiden later.
+            for w in self._over_bowlers:
+                w._over_conceded = 0
+            self._over_bowlers.clear()
             self.over_history.append(self.over_runs)
             self.token_history.append((list(self.over_tokens), self.over_runs))
             self.over_tokens, self.over_runs = [], 0

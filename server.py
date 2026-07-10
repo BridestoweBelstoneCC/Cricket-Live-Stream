@@ -596,7 +596,12 @@ def current_match_id():
 # recovers it from the score delta for the over-summary graphic, and this logger must do
 # the same or the ball DB (and every CSV export) silently loses ball 6 of every over.
 _ball_log_prev = {"mid": None, "innings": None, "over": None,
-                  "score": 0, "wickets": 0, "count": 0}
+                  "score": 0, "wickets": 0, "count": 0,
+                  # Personnel as of the last write we saw: on the over-completing write
+                  # the feed has already swapped the batters and rotated the bowler for
+                  # the NEXT over, so the recovered final delivery must be attributed
+                  # from here, never from the current poll's state.
+                  "striker": "", "nonstriker": "", "bowler": ""}
 
 
 def log_ball_data(state):
@@ -634,16 +639,20 @@ def log_ball_data(state):
                         "INSERT OR REPLACE INTO balls(match_id,innings,over,ball,batting_team,"
                         "batter,non_striker,bowler,outcome,runs,extra,is_wicket,legal,"
                         "cum_runs,cum_wkts,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (mid, innings, prev["over"], prev["count"] + 1, bteam, striker,
-                         nonstriker, bowler, synth_outcome, miss_runs, None,
+                        (mid, innings, prev["over"], prev["count"] + 1, bteam,
+                         prev["striker"] or striker, prev["nonstriker"] or nonstriker,
+                         prev["bowler"] or bowler, synth_outcome, miss_runs, None,
                          int(miss_wkts > 0), 1, prev["score"] + miss_runs,
                          prev["wickets"] + miss_wkts, now_s))
             prev.update({"over": None, "count": 0, "score": score, "wickets": wkts})
 
         if not balls:
             # Between overs (or pre-match): remember the baseline so the next over's
-            # recovery is computed against the right score
-            prev.update({"mid": mid, "innings": innings, "score": score, "wickets": wkts})
+            # recovery is computed against the right score. The names on this write
+            # already belong to the new over, which is what a whole-over-in-one-poll
+            # recovery would need.
+            prev.update({"mid": mid, "innings": innings, "score": score, "wickets": wkts,
+                         "striker": striker, "nonstriker": nonstriker, "bowler": bowler})
             return
         over_runs  = sum(b["runs"] for b in balls)
         over_start = score - over_runs
@@ -669,7 +678,8 @@ def log_ball_data(state):
                      b["outcome"], b["runs"], b["extra"], int(b["wicket"]), int(b["legal"]),
                      run, wkts, now))
         prev.update({"mid": mid, "innings": innings, "over": over_idx,
-                     "score": score, "wickets": wkts, "count": len(balls)})
+                     "score": score, "wickets": wkts, "count": len(balls),
+                     "striker": striker, "nonstriker": nonstriker, "bowler": bowler})
     except Exception:
         pass
 
@@ -2485,11 +2495,16 @@ def _watchdog_tick():
 
     # 4) PCS scorer feed freshness — visibility only. The server can't restart the scorer's
     # laptop, so this just logs the transition instead of silently sitting stale all match.
+    # A live manual scoring session outranks the PCS file in /live, so it counts as fresh —
+    # otherwise a manual match day gets "feed has gone stale" warnings all afternoon.
     try:
-        s        = load_state()
-        pcs_dir  = os.path.expanduser(s.get("pcs_output_folder","").strip())
-        pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
-        fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
+        if manual_session_active():
+            fresh = True
+        else:
+            s        = load_state()
+            pcs_dir  = os.path.expanduser(s.get("pcs_output_folder","").strip())
+            pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
+            fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
     except Exception:
         fresh = None
     with _watchdog_lock:
@@ -3328,7 +3343,10 @@ class ManualScoringSession:
         if not self.events:
             raise ValueError("nothing to undo")
         dropped = self.events.pop()
-        self._rebuild()
+        # Lenient: an earlier edit_ball() may have left auxiliary events in the log
+        # that only replay leniently — a strict replay would wedge mid-rebuild and
+        # leave the live innings truncated. On a never-edited log the two are identical.
+        self._rebuild(lenient=True)
         self.save()
         return dropped
 
@@ -3450,7 +3468,10 @@ class ManualScoringSession:
             data = json.load(f)
         sess = cls(data.get("config") or {})
         sess.events = list(data.get("events") or [])
-        sess._rebuild()
+        # Lenient for the same reason as undo(): a session saved after an edit_ball()
+        # holds events that only replay leniently, and a strict replay here would make
+        # the whole saved match "unreadable" after a restart.
+        sess._rebuild(lenient=True)
         return sess
 
 
@@ -3479,6 +3500,14 @@ def manual_live_state():
             return None
         frame = sess.current.frame(sess.innings_no)
     return parse_pcs_json(frame)
+
+
+def manual_session_active():
+    """True while a manual scoring session is live. It outranks the PCS file in /live,
+    so feed-freshness reporting (/health, the watchdog) must consult it too — a stale
+    or absent PCS file is not a problem while the overlay is being fed manually."""
+    with _manual_lock:
+        return _manual_session_locked() is not None
 
 
 def manual_ui_state():
@@ -5584,6 +5613,7 @@ class Handler(BaseHTTPRequestHandler):
             pcs_dir   = os.path.expanduser(s_h.get("pcs_output_folder","").strip())
             pcs_path  = find_pcs_output_file(pcs_dir) if pcs_dir else None
             pcs_age   = (now - os.path.getmtime(pcs_path)) if pcs_path else None
+            manual    = manual_session_active()
             # Asset folders
             here      = os.path.dirname(os.path.abspath(__file__))
             hs_dir    = os.path.expanduser(s_h.get("headshots_folder","").strip()) or os.path.join(here,"headshots")
@@ -5603,7 +5633,10 @@ class Handler(BaseHTTPRequestHandler):
                     "file_found": bool(pcs_path),
                     "file":       os.path.basename(pcs_path) if pcs_path else None,
                     "age_sec":    int(pcs_age) if pcs_age is not None else None,
-                    "fresh":      (pcs_age is not None and pcs_age < 120),
+                    # A live manual session IS the feed (it outranks the file in /live),
+                    # so the feed is healthy regardless of the PCS file's age.
+                    "fresh":      manual or (pcs_age is not None and pcs_age < 120),
+                    "manual_scoring": manual,
                 },
                 "stats": {
                     "built":    bool(_season_stats.get("built")),
@@ -5702,29 +5735,32 @@ class Handler(BaseHTTPRequestHandler):
             _club_raw = str(s.get("test_club_id") or s.get("home_club_id") or "").strip()
             club_id   = int(_club_raw) if _club_raw.isdigit() else 0
 
-            # match_url: pin to a specific match
+            # match_url: pin to a specific match. Cache maintenance (rebind on pin,
+            # rebuild on unpin) is a side effect, so it belongs to the overlay's /live
+            # only — a panel /live/view poll observing a cleared match_url must not
+            # drop the overlay's cached widget state out from under it.
             match_url   = s.get("match_url","").strip()
             pc_from_url = extract_pc_match_id(match_url) if match_url else None
-            if pc_from_url:
-                if _rv_cache.get("pc_id") != pc_from_url:
-                    _rv_cache.update({"pc_id": pc_from_url, "rv_id": None,
-                                      "club_id": club_id, "last_rv_poll": 0,
-                                      "last_state": None, "pinned": True})
-                # Use manually entered RV ID if available (bypasses mapping API)
-                manual_rv = s.get("rv_match_id","").strip()
-                if manual_rv and not _rv_cache.get("rv_id"):
-                    _rv_cache["rv_id"] = manual_rv
-                    print(f"  RV ID set manually: {manual_rv}")
-                elif not _rv_cache.get("rv_id"):
-                    now = time.time()
-                    if (now - _rv_cache.get("last_map_attempt",0)) > 300:
-                        _rv_cache["last_map_attempt"] = now
-                        rv_id = fetch_rv_mapping(pc_from_url)
-                        if rv_id:
-                            _rv_cache["rv_id"] = rv_id
-                            _rv_cache["last_rv_poll"] = 0
-            else:
-                if _rv_cache.get("pinned"):
+            if mutate:
+                if pc_from_url:
+                    if _rv_cache.get("pc_id") != pc_from_url:
+                        _rv_cache.update({"pc_id": pc_from_url, "rv_id": None,
+                                          "club_id": club_id, "last_rv_poll": 0,
+                                          "last_state": None, "pinned": True})
+                    # Use manually entered RV ID if available (bypasses mapping API)
+                    manual_rv = s.get("rv_match_id","").strip()
+                    if manual_rv and not _rv_cache.get("rv_id"):
+                        _rv_cache["rv_id"] = manual_rv
+                        print(f"  RV ID set manually: {manual_rv}")
+                    elif not _rv_cache.get("rv_id"):
+                        now = time.time()
+                        if (now - _rv_cache.get("last_map_attempt",0)) > 300:
+                            _rv_cache["last_map_attempt"] = now
+                            rv_id = fetch_rv_mapping(pc_from_url)
+                            if rv_id:
+                                _rv_cache["rv_id"] = rv_id
+                                _rv_cache["last_rv_poll"] = 0
+                elif _rv_cache.get("pinned"):
                     _rv_cache = {"rv_id": None, "pc_id": None, "club_id": club_id,
                                  "last_rv_poll": 0, "last_state": None, "pinned": False}
 
@@ -5981,7 +6017,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 d  = json.loads(body)
                 st = load_state()
-                ps = read_pcs_file(st.get("pcs_output_folder","")) or {}
+                # Same precedence as /live: a live manual session outranks the PCS file,
+                # otherwise the AI narrates a stale (or absent) NV Play match.
+                ps = manual_live_state() or read_pcs_file(st.get("pcs_output_folder","")) or {}
                 generate_over_commentary(
                     d.get("over_num",0), d.get("over_runs",0),
                     d.get("bowler_name",""), d.get("bowler_figs",""),

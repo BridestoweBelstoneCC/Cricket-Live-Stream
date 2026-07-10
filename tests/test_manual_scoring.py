@@ -100,6 +100,23 @@ class TestApplyOutcome(unittest.TestCase):
         self.assertEqual(e.get_bowler("Bob Beta2").legal, 6)
         self.assertEqual(e.get_bowler("Bob Beta9").legal, 1)
 
+    def test_mid_over_bowler_change_and_maidens(self):
+        e = engine()
+        e.set_bowler("Bob Beta2")
+        for k in ("1", "1", "dot"):                          # Beta2 concedes 2 off 3 balls
+            e.apply_outcome(k)
+        e.set_bowler("Bob Beta3")                            # injury — Beta3 finishes the over
+        for _ in range(3):
+            e.apply_outcome("dot")
+        # A shared over is nobody's maiden, even though the finisher conceded nothing
+        self.assertEqual(e.get_bowler("Bob Beta3").maidens, 0)
+        # When the replaced bowler returns and bowls six dots, the stale count from the
+        # interrupted over must not suppress the genuine maiden
+        e.set_bowler("Bob Beta2")
+        for _ in range(6):
+            e.apply_outcome("dot")
+        self.assertEqual(e.get_bowler("Bob Beta2").maidens, 1)
+
     def test_validation(self):
         e = engine()
         with self.assertRaises(ValueError):
@@ -253,6 +270,32 @@ class TestEditAndScorecard(SessionBase):
         # event log (the _rebuild clobber bug) — scoring must continue normally
         s.apply({"event": "ball", "kind": "6"})
         self.assertEqual(s.current.total, 13)                # 1+4+2+6
+
+    def test_undo_after_edit_that_orphaned_a_batter_pick(self):
+        # A wicket, a "someone else came in" pick, then the wicket is edited into runs:
+        # the 'batter' event is now lenient-only. Undo must replay leniently too, or it
+        # wedges mid-rebuild and leaves the live innings truncated.
+        s = self.session()
+        s.apply({"event": "ball", "kind": "W", "wicket_type": "bowled"})
+        s.apply({"event": "batter", "name": "Alan Alpha7"})
+        s.apply({"event": "ball", "kind": "1"})
+        s.edit_ball(0, {"event": "ball", "kind": "4"})       # not out after all
+        s.apply({"event": "ball", "kind": "2"})
+        s.undo()                                             # must not raise
+        self.assertEqual(s.current.total, 5)
+        self.assertEqual(s.current.wkts, 0)
+
+    def test_restore_after_edit_that_orphaned_a_batter_pick(self):
+        # Same log persisted then restored after a "restart": load() must replay
+        # leniently or the whole saved match is discarded as unreadable.
+        s = self.session()
+        s.apply({"event": "ball", "kind": "W", "wicket_type": "bowled"})
+        s.apply({"event": "batter", "name": "Alan Alpha7"})
+        s.apply({"event": "ball", "kind": "1"})
+        s.edit_ball(0, {"event": "ball", "kind": "4"})
+        restored = server.ManualScoringSession.load()
+        self.assertEqual(restored.current.frame(1), s.current.frame(1))
+        self.assertEqual(restored.current.wkts, 0)
 
     def test_edit_rejects_non_ball_index(self):
         s = self.session()
