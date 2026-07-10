@@ -983,6 +983,7 @@ async function doLogin() {
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
       document.getElementById('auth-overlay').style.display = 'none';
+      autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
@@ -1003,6 +1004,7 @@ async function doSkip() {
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
       document.getElementById('auth-overlay').style.display = 'none';
+      autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
@@ -1114,10 +1116,16 @@ async function runStreamHealthCheck(force) {
 // Auto-run once per browser session (a tab staying open through a match), not on every page
 // refresh — the check briefly starts/stops a real OBS recording, so it shouldn't fire
 // silently every time the panel reloads mid-match.
-if (!sessionStorage.getItem('bbcc_stream_check_done')) {
+// Deferred until logged in: /obs/stream_check is token-gated, so firing pre-login just
+// 401s — which used to burn the once-per-session flag AND stamp "Session expired" over
+// the fresh login overlay. doLogin/doSkip re-invoke this once a token exists.
+function autoStreamHealthCheck() {
+  if (getToken() === null) return;                     // login overlay still up
+  if (sessionStorage.getItem('bbcc_stream_check_done')) return;
   sessionStorage.setItem('bbcc_stream_check_done', '1');
   runStreamHealthCheck(false);
 }
+autoStreamHealthCheck();
 
 // ── Live stream quality monitor (congestion sentinel) ───────
 async function pollStreamMonitor() {
