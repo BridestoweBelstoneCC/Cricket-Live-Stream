@@ -16,7 +16,10 @@ on every ball. `server.py` reads that file, parses it, and serves the live state
 **No scoring software? `/scoring`** is a phone/tablet page of big buttons that drives the same
 pipeline: button presses feed the shared `scoring_engine.InningsEngine`, whose frames are
 rendered through the same PCS parser — so the overlay, ball DB, highlights and graphics work
-identically. While a manual session is live it OUTRANKS the PCS file in `/live`.
+identically. While a manual session is live it OUTRANKS the PCS file in `/live` — and every
+OTHER feed consumer must apply the same precedence (`manual_live_state()` for state,
+`manual_session_active()` for freshness): over-commentary, `/health`, and the watchdog each
+shipped without it and misreported a manual match day until fixed.
 
 ## Key files
 
@@ -32,6 +35,9 @@ identically. While a manual session is live it OUTRANKS the PCS file in `/live`.
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is
   load-bearing — `/scoring`'s undo replays the event log and must reproduce the book exactly.
+  Replays after any edit must be LENIENT (`_rebuild(lenient=True)`): `edit_ball()` leaves
+  edit-invalidated auxiliary events in the log by design, so a strict replay in undo/load
+  wedges mid-rebuild (truncated live innings; saved match dropped as "unreadable" on restart).
 - **`scoring.html`** — the manual ball-by-ball scoring page (`/scoring`), mobile-first, for
   clubs/days without NV Play. Event-sourced via `ManualScoringSession` in server.py; the
   session persists to `manual_scoring.json` (git-ignored) after every ball, so a restart or
@@ -76,7 +82,7 @@ python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); pr
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~160, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+# 3. Automated tests (~210, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
 #    parsing, season-stats aggregation, session tokens, quickstart's state merge, the match
 #    simulator's engine invariants, highlight tagging/planning, manual scoring (engine,
 #    exact-replay undo, /scoring end-to-end), stream-quality downshift decisions, JS logic
@@ -148,6 +154,12 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   Over-transition detection in `overlay.html`'s `processPCSData` (`_oversIncreased`) must run
   *every* poll regardless of whether the ticker string is currently populated, or it fires a
   whole poll late — on the first ball of the NEXT over instead of the instant the over ends.
+- **On that same over-completing write, `bowler` has ALREADY rotated to the next over's
+  bowler and the batter pair has swapped ends.** Anything attributing the over's final
+  (never-in-any-ticker) delivery must use the previous poll's snapshot — `_lastPolledBowler`
+  in the overlay (over summary, hat-trick/five-for fallback) and the personnel stashed in
+  `_ball_log_prev` in the ball logger — never that write's `state.bowler`/`batter1/2`. Three
+  separate features trusted the current write and misattributed every over-final wicket.
 - **`overlay.html`'s `SERVER` constant must be `location.origin`, never a hardcoded host.**
   The server rejects cross-origin POSTs by design (`_origin_ok()` compares the `Origin` header
   against `Host`, a CSRF defense). If the overlay is loaded via `localhost` but `SERVER` points

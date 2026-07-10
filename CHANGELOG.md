@@ -4,6 +4,47 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+*Ten bugs found by a deep code review of everything shipped between v2.4 and v2.6, all
+confirmed against the code and fixed with regression tests (suite now 211 tests). Verified
+end-to-end with a full simulator rehearsal against the live server.*
+
+- **Over-final wickets were credited to the wrong bowler.** On the write that completes an
+  over, NV Play has already rotated `bowler` to the next over's bowler (and swapped the
+  batter pair) — the same timing quirk as the ticker clearing. Three places trusted that
+  write's names and paid for it:
+  - the overlay's **hat-trick chain** could fire a false "3 IN 3" for the incoming bowler
+    and miss a genuine hat-trick for the outgoing one;
+  - a **five-wicket haul** taken on an over's final ball never fired its graphic (no later
+    poll ever shows the completed figures) — now synthesized from the pre-rotation snapshot;
+  - the **ball DB's recovered final delivery** was logged against the new over's bowler and
+    a swapped batter pair — wrong clip captions, wrong per-bowler exports, on 1 in 6 rows.
+- **Manual scoring: "Edit a ball" could poison undo and restart-recovery.** Correcting a
+  wicket into runs leaves follow-on events (a next-batter pick) that only replay leniently;
+  `undo` and the restart restore replayed them strictly, so an undo could truncate the live
+  innings and a server restart discarded the whole saved match as "unreadable". Both now
+  replay leniently, matching the edit path.
+- **Manual scoring: a mid-over bowler change corrupted maiden counts.** The replaced
+  bowler's conceded-this-over count was never reset, suppressing a genuine maiden when they
+  returned — and the finisher of a shared over could be credited a maiden that isn't theirs
+  (a shared over is nobody's maiden).
+- **A live manual session now counts as a healthy feed everywhere.** AI over-commentary
+  built its context from the PCS file even mid-manual-session (narrating a 0-0 non-match or
+  a stale previous game), and `/health` + the watchdog reported the feed stale all match on
+  a manual scoring day. All three now apply the same manual-outranks-PCS precedence as
+  `/live`; `/health` gains `pcs.manual_scoring`.
+- **The panel's automatic stream health check ran before login.** With a club password set,
+  opening the panel in a fresh tab 401'd the check, replaced the login prompt with a
+  misleading "Session expired — log in again", and burned its once-per-session flag so the
+  advertised auto-check never ran. It now waits for login and runs right after it.
+- **Quickstart wiped a panel-set weather API key on every run** — the one secret its state
+  merge didn't preserve. Weather then silently reported "unconfigured" on match day.
+- **A panel poll could drop the overlay's pinned-match cache.** `/live/view` is documented
+  as side-effect-free, but clearing a pinned match URL took effect on whichever poll saw it
+  first — including the panel's — rebinding the cache out from under the overlay
+  mid-stream. Cache maintenance now belongs to the overlay's `/live` poll alone.
+
 ## v2.6 — 2026-07-09
 
 *Manual-scoring improvements and YouTube broadcast controls, shaped by live testing
