@@ -8,7 +8,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.6-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.6.1-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
@@ -447,6 +447,13 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**v2.6.1** — Ten bugs found by a deep code review of everything shipped between v2.4 and
+v2.6, all fixed with regression tests (suite now 211): over-final wickets are credited to
+the right bowler everywhere (hat-trick chain, five-for graphic, ball database), manual
+scoring's edit/undo/restart recovery no longer wedges, and a live manual session now counts
+as a healthy feed in the AI commentary, `/health`, and the watchdog. Full detail in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 **v2.6** — Manual scoring gains an end-of-over recap, edit-any-ball, and a plain-text
 scorecard for Play-Cricket entry. The YouTube "title" updater becomes a full broadcast

@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.6.1 — 2026-07-10
 
 *Ten bugs found by a deep code review of everything shipped between v2.4 and v2.6, all
 confirmed against the code and fixed with regression tests (suite now 211 tests). Verified
