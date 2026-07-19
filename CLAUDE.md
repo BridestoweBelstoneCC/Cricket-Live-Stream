@@ -13,6 +13,13 @@ is also a browser **control panel** (served by the server) for the match-day ope
 on every ball. `server.py` reads that file, parses it, and serves the live state on `/live`.
 `overlay.html` (an OBS browser source) polls `/live` every ~2.5s and renders the graphics.
 
+**NV Play on separate hardware? `nvplay_bridge.py`** lets the scorer's machine be physically
+different from the streaming machine — originally built after a streaming Mac overheated and
+crashed the VM running NV Play, losing the scorer's progress mid-match. It serves the PCS file
+over HTTP from wherever NV Play actually is; `server.py` mirrors it into a local
+`.pcs_bridge_cache/` folder every ~2s, at which point it's an ordinary local file to
+everything downstream (see the `effective_pcs_folder()` gotcha below).
+
 **No scoring software? `/scoring`** is a phone/tablet page of big buttons that drives the same
 pipeline: button presses feed the shared `scoring_engine.InningsEngine`, whose frames are
 rendered through the same PCS parser — so the overlay, ball DB, highlights and graphics work
@@ -50,6 +57,16 @@ shipped without it and misreported a manual match day until fixed.
   `.github/workflows/build-setup-wizard.yml` (see gotchas below).
 - **`scoreboard.template`** — the template the scorer's software fills in. Deployed to the
   *scorer's* machine, not the streaming machine.
+- **`nvplay_bridge.py`** — standalone, stdlib-only script for when NV Play runs on hardware
+  separate from the streaming machine. Serves the scorer's PCS output file over HTTP
+  (`/pcs/latest`, token-gated; `/pcs/ping` open) from a `bridge_config.ini` it creates on
+  first run (folder path, port, random token). Deliberately not import-coupled to
+  `server.py` — it has to run standalone on a machine that may have nothing else from this
+  repo on it, so the small file-finder logic is duplicated by hand rather than shared.
+  Configured from the control panel's `pcs_bridge_url` / `pcs_bridge_token` fields (or
+  `config.ini`'s `[Scoring]` section) instead of `pcs_output_folder`; a Tailscale IP is the
+  recommended way to reach it. `/health`'s `pcs.bridge` block reports connectivity
+  separately from file freshness. Operator-facing setup/security/troubleshooting: `BRIDGE.md`.
 - **`simulate_match.py`** — match simulator for rehearsing the whole broadcast without a
   scorer: writes NV Play-style frames (faithful to the gotchas: ticker clears on the
   over-completing write, blank pre-match names, runs_required-driven innings 2) to a fake
@@ -140,7 +157,25 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   raw port directly — no TLS, no gating, worst option. A cloud relay (tiny VPS; the laptop
   opens a persistent outbound WebSocket to it, the relay forwards control messages back) was
   scoped but deliberately not built — only worth it if Tailscale and Cloudflare Tunnel are
-  both genuinely blocked on a club's network, which hasn't come up.
+  both genuinely blocked on a club's network, which hasn't come up. NV Play itself CAN now
+  run on separate hardware from the server via `nvplay_bridge.py` — this is different from
+  the point above, which is about remote *access to the panel*, not where the scorer sits.
+- **Every PCS-folder consumer must call `effective_pcs_folder()`, never read
+  `pcs_output_folder` directly** — same shape of bug class as the manual-scoring precedence
+  above. When `pcs_bridge_url` is set (NV Play on separate hardware), the folder to actually
+  scan is the local mirror (`PCS_BRIDGE_CACHE_DIR`), not the configured path.
+  `effective_pcs_folder()` is the one place that branches on it; `/live`, `/health`,
+  `/pcs/debug`, the watchdog's freshness check, and AI over-commentary all call it. A new
+  endpoint reading `pcs_output_folder` straight from state will work fine in local mode and
+  silently see nothing in bridge mode.
+- **`/health`'s `thermal` block and the watchdog's throttle warning read `pmset -g therm`,
+  not an actual temperature** — macOS doesn't expose real sensor readings without extra
+  tooling, but `CPU_Speed_Limit`/`CPU_Scheduler_Limit` dropping below 100 is the signal that
+  actually matters: it fires the moment the OS starts throttling for heat, which is well
+  before a crash. Built after a streaming Mac overheated running a scorer's VM alongside
+  OBS — moving NV Play off that machine (see `nvplay_bridge.py` above) is the real fix;
+  this is early warning, not a cooling system. Returns `{"available": false}` on non-macOS
+  by design (Windows/Linux thermal signals weren't scoped).
 - **Inside a frozen `setup_wizard.py` (PyInstaller), `sys.executable` is the exe itself, not a
   Python interpreter** — passing it to `subprocess` for `pip`/launching another script causes
   infinite self-relaunching. Use `find_python()`, which searches `PATH` instead. Same trap for
@@ -187,7 +222,8 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 
 ## Useful diagnostics
 
-- `http://localhost:5000/health` — feed freshness, photos, badges, AI key status.
+- `http://localhost:5000/health` — feed freshness, photos, badges, AI key status, NV Play
+  bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`).
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights

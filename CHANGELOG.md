@@ -4,6 +4,27 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+*A real match-day failure — slow internet stalling panel features, then a streaming Mac
+overheating and crashing the scorer's VM mid-match — drove two additions: a way to run NV
+Play off the streaming machine entirely, and an early-warning thermal check so the next
+overheat gets caught before it costs a match.*
+
+- **NV Play can now run on separate hardware from the streaming machine.** `nvplay_bridge.py`
+  is a standalone, stdlib-only script for the scorer's machine — it serves NV Play's output
+  file over HTTP; the server mirrors it into a local cache every ~2s, at which point it's an
+  ordinary local file to `/live`, `/health`, the watchdog, and AI commentary, all unchanged.
+  Configure it from the control panel's new "NV Play on separate hardware" fields (URL +
+  token) instead of the PCS output folder. A Tailscale IP is the recommended way to reach it.
+- **`/health` now reports Mac thermal throttling before it becomes a crash.** A new `thermal`
+  block reads `pmset -g therm` — macOS's own throttle signal, and a better one than a raw
+  temperature since it fires the moment the OS starts limiting CPU speed for heat, ahead of
+  any crash. The watchdog logs a warning on the transition into throttling, and the control
+  panel's health strip gets a red "Mac" indicator.
+
+---
+
 ## v2.6.1 — 2026-07-10
 
 *Ten bugs found by a deep code review of everything shipped between v2.4 and v2.6, all

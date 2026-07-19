@@ -178,6 +178,22 @@ a ready-made **plan B if the scorer's feed drops out mid-match**.
 
 ---
 
+## NV Play on separate hardware
+
+If NV Play has to run inside a Windows VM (common on a Mac), keeping that VM on the same
+machine that's also running OBS and the server can push it past its thermal limit — a VM
+crash mid-match takes the scorer's progress with it.
+
+**`nvplay_bridge.py`** lets NV Play run on a second, cheap machine instead (an old laptop, a
+mini PC — anything that can run NV Play). Run it there — first run asks for the NV Play
+output folder and prints a connection token — then paste that machine's URL and token into
+the control panel's "NV Play on separate hardware" fields instead of the PCS output folder.
+Works over the same Tailscale connection used for remote access.
+
+Full setup steps, a security rundown, and troubleshooting: **[`BRIDGE.md`](BRIDGE.md)**.
+
+---
+
 ## Requirements
 
 **Hardware:**
