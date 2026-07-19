@@ -29,5 +29,10 @@ sim_pcs_output/
 # Manual scoring session (live match data, per-day)
 manual_scoring.json
 
+# NV Play bridge (remote scorer machine): mirrored PCS files + the bridge's own config
+# (holds a local folder path and a secret token — machine-specific, never shared)
+.pcs_bridge_cache/
+bridge_config.ini
+
 # Private working notes (maintainer's local checklist, not shipped)
 TODO.md

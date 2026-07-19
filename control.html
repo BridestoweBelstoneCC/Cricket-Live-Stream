@@ -402,6 +402,14 @@
       <input type="text" id="pcs_output_folder" placeholder="e.g. C:/Users/Scorer/Documents/Cricket Matches/_Scoreboards/Output">
       <p class="hint" style="color:#3d7a3d;">Paste the scorer's PCS Pro output folder. Gives batter names, bowler, run rate — updated every ball. No internet needed.</p>
     </div>
+    <div class="field" style="padding:10px;background:#0a1428;border:1px solid #1e3550;border-radius:5px;margin-bottom:10px;">
+      <label style="color:#5b9bd5;">&#9679; NV Play on separate hardware <span style="color:#3d5a7a;font-size:10px;font-weight:400;">— optional, instead of the folder above</span></label>
+      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (run nvplay_bridge.py on that machine)" style="margin-bottom:6px;">
+      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (printed when nvplay_bridge.py starts)">
+      <p class="hint" style="color:#3d5a7a;">If NV Play runs on its own machine (not this one) so its heat/CPU doesn't share the
+      streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
+      IP is the recommended way to reach it.</p>
+    </div>
     <div class="toggle-row" style="margin-top:8px;">
       <div>
         <div class="toggle-label">Use widget as fallback</div>
@@ -887,6 +895,7 @@
     <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
+    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
   </div>
   <style>
     .hl-item { display:inline-flex; align-items:center; gap:6px; }
@@ -1369,7 +1378,7 @@ function updatePreview() {
 }
 
 const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
-  'pcs_output_folder','match_url','match_notes','replay_folder',
+  'pcs_output_folder','pcs_bridge_url','pcs_bridge_token','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
@@ -2170,7 +2179,8 @@ async function autoCheck() {
   try {
     const s = await (await apiFetch('/state')).json();
     const hasOpp = !!(s.away_team && s.away_team !== 'Opposition CC');
-    const hasPCS = !!(s.pcs_output_folder && s.pcs_output_folder.trim());
+    const hasPCS = !!((s.pcs_output_folder && s.pcs_output_folder.trim()) ||
+                      (s.pcs_bridge_url && s.pcs_bridge_url.trim()));
     if (hasOpp !== !!saved['opp']) { saved['opp'] = hasOpp; changed = true; }
     if (hasPCS !== !!saved['pcs']) { saved['pcs'] = hasPCS; changed = true; }
   } catch(e) {}
@@ -2311,6 +2321,9 @@ async function pollHealth() {
     var h = await (await apiFetch('/health')).json();
     // Feed: green = fresh file, amber = found but stale (or demo), red = missing
     if (h.demo_mode) { hlSet('hl-feed','hl-warn','demo mode'); }
+    else if (h.pcs.bridge && h.pcs.bridge.enabled && !h.pcs.bridge.connected) {
+      hlSet('hl-feed','hl-bad','bridge unreachable');
+    }
     else if (!h.pcs.folder_set) { hlSet('hl-feed','hl-bad','no folder set'); }
     else if (!h.pcs.file_found) { hlSet('hl-feed','hl-bad','file not found'); }
     else if (h.pcs.fresh) { hlSet('hl-feed','hl-ok', h.pcs.age_sec + 's ago'); }
@@ -2328,8 +2341,17 @@ async function pollHealth() {
     hlSet('hl-badges', h.match.badges ? 'hl-ok' : 'hl-warn', h.match.badges ? 'both set' : 'incomplete');
     // AI key
     hlSet('hl-ai', h.keys.anthropic ? 'hl-ok' : 'hl-warn', h.keys.anthropic ? 'key set' : 'no key');
+    // Thermal (macOS only — hidden entirely on other platforms, nothing to show)
+    var thermItem = document.getElementById('hl-thermal-item');
+    if (h.thermal && h.thermal.available) {
+      thermItem.style.display = '';
+      if (h.thermal.throttled) hlSet('hl-thermal','hl-bad', 'throttled (' + h.thermal.speed_limit_pct + '%) — cool it down');
+      else hlSet('hl-thermal','hl-ok','ok');
+    } else {
+      thermItem.style.display = 'none';
+    }
   } catch(e) {
-    ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai'].forEach(function(id){ hlSet(id,'','—'); });
+    ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai','hl-thermal'].forEach(function(id){ hlSet(id,'','—'); });
   }
 }
 pollHealth();

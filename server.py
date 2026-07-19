@@ -1645,6 +1645,8 @@ DEFAULT_STATE = {
     "home_club_id":           "",
     "ground_filter":          "",
     "away_club_id":           "",
+    "pcs_bridge_url":         "",   # NV Play on separate hardware — see nvplay_bridge.py
+    "pcs_bridge_token":       "",
 }
 
 _last_good_state = None   # cached last successful load, used if the file is mid-write/corrupt
@@ -1657,7 +1659,8 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # they're listed here anyway as a defensive backstop in case that ever changes.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
                "weather_api_key", "obs_password", "camera_rtsp_url",
-               "control_token", "club_password", "youtube_stream_key")
+               "control_token", "club_password", "youtube_stream_key",
+               "pcs_bridge_token")
 SECRET_SENTINEL = "••••••••"
 
 # mtime-keyed cache: load_state() is called several times per overlay poll (the /live
@@ -1743,6 +1746,8 @@ def _seed_state_from_config():
         ("API",     "playcricket_key",   "playcricket_api_key",   str),
         ("API",     "anthropic_key",     "anthropic_api_key",     str),
         ("Scoring", "pcs_output_folder", "pcs_output_folder",     str),
+        ("Scoring", "pcs_bridge_url",    "pcs_bridge_url",        str),
+        ("Scoring", "pcs_bridge_token",  "pcs_bridge_token",      str),
         ("Scoring", "logos_folder",      "logos_folder",          str),
         ("Scoring", "ground_filter",     "ground_filter",         str),
         ("OBS",     "obs_password",      "obs_password",          str),
@@ -1807,6 +1812,21 @@ PCS_OUTPUT_FILENAMES = [
 _pcs_last_mtime = 0
 _pcs_last_state = None
 _innings_latch  = 1   # latched innings number (see parse_pcs_json); survives the winning runs
+
+# NV Play running on separate hardware from this server (e.g. a dedicated Windows box, so the
+# streaming machine isn't also carrying a VM's heat/CPU load — see nvplay_bridge.py) mirrors
+# its PCS output file into this local folder every couple of seconds. Once mirrored, it's a
+# completely ordinary local file — every existing consumer (find_pcs_output_file,
+# read_pcs_file, /health, /pcs/debug, the watchdog) keeps working unchanged.
+PCS_BRIDGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pcs_bridge_cache")
+
+def effective_pcs_folder(state):
+    """Which local folder to scan for the PCS output file. Every /live-adjacent call site
+    must go through this (not read pcs_output_folder directly) so bridge mode and local mode
+    are interchangeable everywhere at once — see PCS_BRIDGE_CACHE_DIR above."""
+    if state.get("pcs_bridge_url", "").strip():
+        return PCS_BRIDGE_CACHE_DIR
+    return os.path.expanduser(state.get("pcs_output_folder", "").strip())
 
 def find_pcs_output_file(folder):
     """Find the PCS output file in the configured folder."""
@@ -1880,6 +1900,75 @@ def read_pcs_file(folder):
         print(f"  ✗  PCS file read error: {e}")
         # Transient read error mid-match — hold the last good frame rather than blanking.
         return _pcs_last_state
+
+
+# ── NV Play bridge sync (remote scorer machine) ────────────────
+# Pairs with nvplay_bridge.py, a standalone stdlib-only script an operator runs on the
+# machine that actually has NV Play open. That script serves the PCS output file over HTTP;
+# this loop polls it and mirrors the bytes into PCS_BRIDGE_CACHE_DIR. Deliberately a dumb
+# mirror rather than parsing the fetched bytes directly — reusing find_pcs_output_file /
+# read_pcs_file unchanged means bridge mode can't drift from local-file behaviour.
+PCS_BRIDGE_POLL_SEC = 2
+
+_pcs_bridge_status = {"connected": None, "last_sync": None, "last_error": None}
+_pcs_bridge_lock    = threading.Lock()
+
+def _pcs_bridge_tick(state):
+    url   = state.get("pcs_bridge_url", "").strip().rstrip("/")
+    token = state.get("pcs_bridge_token", "").strip()
+    if not url:
+        return
+    try:
+        req = urllib.request.Request(f"{url}/pcs/latest",
+                                     headers={"X-Bridge-Token": token})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        with _pcs_bridge_lock:
+            _pcs_bridge_status.update(connected=False, last_error=str(e)[:200])
+        return
+
+    if not data.get("ok") or not data.get("filename"):
+        # Bridge is reachable but hasn't found a PCS file yet — not an error, just nothing
+        # to mirror. Hold whatever was last mirrored (same "hold last good frame" rule as a
+        # mid-write empty read in read_pcs_file).
+        with _pcs_bridge_lock:
+            _pcs_bridge_status.update(connected=True, last_sync=time.time(), last_error=None)
+        return
+
+    try:
+        os.makedirs(PCS_BRIDGE_CACHE_DIR, exist_ok=True)
+        dest = os.path.join(PCS_BRIDGE_CACHE_DIR, os.path.basename(data["filename"]))
+        tmp  = dest + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(data.get("content", ""))
+        os.replace(tmp, dest)          # atomic — a reader must never see a half-written mirror
+        mtime = data.get("mtime")
+        if mtime:
+            os.utime(dest, (mtime, mtime))   # preserve the remote mtime so staleness checks
+                                              # reflect when NV Play actually wrote it, not
+                                              # merely when we last polled successfully
+        with _pcs_bridge_lock:
+            _pcs_bridge_status.update(connected=True, last_sync=time.time(), last_error=None)
+    except OSError as e:
+        with _pcs_bridge_lock:
+            _pcs_bridge_status.update(connected=False, last_error=str(e)[:200])
+
+def _pcs_bridge_sync_loop():
+    while True:
+        try:
+            state = load_state()
+            if state.get("pcs_bridge_url", "").strip():
+                _pcs_bridge_tick(state)
+        except Exception as e:
+            # Must never die — a dead sync thread would silently freeze the mirror with no
+            # indication beyond a growing last_sync age in /health.
+            print(f"  ✗  PCS bridge sync failed (will retry): {e}")
+        time.sleep(PCS_BRIDGE_POLL_SEC)
+
+def start_pcs_bridge_sync():
+    threading.Thread(target=_pcs_bridge_sync_loop, daemon=True).start()
+
 
 def generate_match_report(report_type="report"):
     """Generate an AI match report or social post from the match log.
@@ -2439,6 +2528,40 @@ def _self_metrics():
             "max_rss_mb": rss_mb, "machine_load_1m": load1}
 
 
+def _thermal_state():
+    """macOS thermal-pressure snapshot via `pmset -g therm` (no sudo needed). macOS doesn't
+    expose a real sensor temperature without extra tooling, but CPU_Speed_Limit /
+    CPU_Scheduler_Limit drop below 100 the moment the OS starts throttling for heat — that's
+    the signal that actually matters (a machine can crash from thermal throttling well before
+    any 'temperature' number would look alarming). Returns {'available': False} on any
+    non-Mac platform, missing binary, or parse failure — never raises, since this feeds both
+    the watchdog and /health and neither may break because of it."""
+    import sys
+    if sys.platform != "darwin":
+        return {"available": False}
+    try:
+        out = subprocess.run(["pmset", "-g", "therm"], capture_output=True,
+                             text=True, timeout=3).stdout
+    except Exception:
+        return {"available": False}
+    vals = {}
+    for key in ("CPU_Speed_Limit", "CPU_Scheduler_Limit", "CPU_Available_CPUs"):
+        m = re.search(rf"{key}\s*=\s*(\d+)", out)
+        if m:
+            vals[key] = int(m.group(1))
+    if "CPU_Speed_Limit" not in vals and "CPU_Scheduler_Limit" not in vals:
+        return {"available": False}
+    speed = vals.get("CPU_Speed_Limit", 100)
+    sched = vals.get("CPU_Scheduler_Limit", 100)
+    return {
+        "available":           True,
+        "speed_limit_pct":     speed,
+        "scheduler_limit_pct": sched,
+        "available_cpus":      vals.get("CPU_Available_CPUs"),
+        "throttled":           speed < 100 or sched < 100,
+    }
+
+
 # ── Self-healing watchdog ──────────────────────────────────────
 # Runs quietly in the background for the life of the process and periodically checks the
 # few things known to be able to get stuck during a long match day, fixing what it safely
@@ -2449,7 +2572,8 @@ SEASON_BUILD_STUCK_SEC  = 300   # defense in depth — build_season_stats' own t
                                 # should already prevent this; this is a second line of defense
 RATE_LIMIT_TS_MAX_AGE   = 3600  # drop old cooldown timestamps so the dict doesn't grow all day
 
-_watchdog_status = {"last_run": None, "runs": 0, "fixes_applied": [], "pcs_was_fresh": None}
+_watchdog_status = {"last_run": None, "runs": 0, "fixes_applied": [], "pcs_was_fresh": None,
+                    "was_throttled": None}
 _watchdog_lock   = threading.Lock()
 
 def _watchdog_log_fix(what):
@@ -2502,7 +2626,7 @@ def _watchdog_tick():
             fresh = True
         else:
             s        = load_state()
-            pcs_dir  = os.path.expanduser(s.get("pcs_output_folder","").strip())
+            pcs_dir  = effective_pcs_folder(s)
             pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
             fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
     except Exception:
@@ -2514,6 +2638,20 @@ def _watchdog_tick():
         elif was is False and fresh:
             print("  ✓  Watchdog: PCS scorer feed is fresh again")
         _watchdog_status["pcs_was_fresh"] = fresh
+
+    # 5) Thermal pressure — visibility only, same reasoning as PCS staleness: this machine
+    # can't cool itself down, but an operator who gets warned early can shut down other load
+    # (or the scorer's VM) before heat takes the whole rig out mid-match.
+    therm = _thermal_state()
+    throttled = therm.get("throttled") if therm.get("available") else None
+    with _watchdog_lock:
+        was_throttled = _watchdog_status["was_throttled"]
+        if throttled and not was_throttled:
+            print(f"  ⚠  Watchdog: Mac is thermally throttled (CPU speed limit "
+                  f"{therm.get('speed_limit_pct')}%) — reduce load or improve cooling now")
+        elif was_throttled and not throttled:
+            print("  ✓  Watchdog: thermal throttling has cleared")
+        _watchdog_status["was_throttled"] = throttled
         _watchdog_status["last_run"] = now
         _watchdog_status["runs"]    += 1
 
@@ -5134,19 +5272,23 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/pcs/debug":
             s2 = load_state()
-            pcs_folder = s2.get("pcs_output_folder","").strip()
+            bridge_mode = bool(s2.get("pcs_bridge_url","").strip())
+            pcs_folder = effective_pcs_folder(s2)
             raw = None
             found_path = None
             search_note = None
             if not pcs_folder:
                 search_note = "No pcs_output_folder set in the control panel / config.ini."
-            elif not os.path.isdir(os.path.expanduser(pcs_folder)):
-                search_note = f"Folder does not exist: {pcs_folder}"
+            elif not os.path.isdir(pcs_folder):
+                search_note = (f"NV Play bridge mirror folder doesn't exist yet: {pcs_folder} "
+                                "— the bridge sync hasn't written a file yet, check "
+                                "pcs_bridge_url/token and that nvplay_bridge.py is running"
+                                if bridge_mode else f"Folder does not exist: {pcs_folder}")
             else:
                 # Use the SAME finder as the live feed so we locate whatever NV Play actually
                 # writes — .json OR .xml OR a known filename (NV Play often writes JSON into a
                 # .xml file). The old code only globbed *.json and missed those.
-                found_path = find_pcs_output_file(os.path.expanduser(pcs_folder))
+                found_path = find_pcs_output_file(pcs_folder)
                 if not found_path:
                     listing = []
                     try:
@@ -5610,7 +5752,8 @@ class Handler(BaseHTTPRequestHandler):
             s_h  = load_state()
             now  = time.time()
             # PCS scorer feed: file present? how stale?
-            pcs_dir   = os.path.expanduser(s_h.get("pcs_output_folder","").strip())
+            bridge_url = s_h.get("pcs_bridge_url","").strip()
+            pcs_dir   = effective_pcs_folder(s_h)
             pcs_path  = find_pcs_output_file(pcs_dir) if pcs_dir else None
             pcs_age   = (now - os.path.getmtime(pcs_path)) if pcs_path else None
             manual    = manual_session_active()
@@ -5637,6 +5780,13 @@ class Handler(BaseHTTPRequestHandler):
                     # so the feed is healthy regardless of the PCS file's age.
                     "fresh":      manual or (pcs_age is not None and pcs_age < 120),
                     "manual_scoring": manual,
+                    "bridge": ({
+                        "enabled":          True,
+                        "connected":        _pcs_bridge_status["connected"],
+                        "last_sync_sec_ago": (int(now - _pcs_bridge_status["last_sync"])
+                                              if _pcs_bridge_status["last_sync"] else None),
+                        "last_error":       _pcs_bridge_status["last_error"],
+                    } if bridge_url else {"enabled": False}),
                 },
                 "stats": {
                     "built":    bool(_season_stats.get("built")),
@@ -5661,8 +5811,9 @@ class Handler(BaseHTTPRequestHandler):
                     "runs":          _watchdog_status["runs"],
                     "fixes_applied": _watchdog_status["fixes_applied"][-5:],
                 },
-                "server": _self_metrics(),
-                "errors": _recent_server_errors(),
+                "server":  _self_metrics(),
+                "thermal": _thermal_state(),
+                "errors":  _recent_server_errors(),
             })
 
         elif path == "/auth/log":
@@ -5780,7 +5931,7 @@ class Handler(BaseHTTPRequestHandler):
                 # file outranks the widget. Manual state is rendered through the same
                 # parser, so downstream nothing can tell the difference — both report
                 # source "pcs" (the overlay's fast-poll signal), distinguished by "feed".
-                pcs_folder   = s.get("pcs_output_folder","").strip()
+                pcs_folder   = effective_pcs_folder(s)
                 manual_state = manual_live_state()
                 pcs_state    = manual_state or (read_pcs_file(pcs_folder) if pcs_folder else None)
                 if pcs_state:
@@ -6019,7 +6170,7 @@ class Handler(BaseHTTPRequestHandler):
                 st = load_state()
                 # Same precedence as /live: a live manual session outranks the PCS file,
                 # otherwise the AI narrates a stale (or absent) NV Play match.
-                ps = manual_live_state() or read_pcs_file(st.get("pcs_output_folder","")) or {}
+                ps = manual_live_state() or read_pcs_file(effective_pcs_folder(st)) or {}
                 generate_over_commentary(
                     d.get("over_num",0), d.get("over_runs",0),
                     d.get("bowler_name",""), d.get("bowler_figs",""),
@@ -6226,6 +6377,7 @@ if __name__ == "__main__":
     _ensure_control_token()
     start_watchdog()
     start_stream_monitor()
+    start_pcs_bridge_sync()
 
     if _CLOUDFLARE_TUNNEL:
         if not _CLUB_PASSWORD:
