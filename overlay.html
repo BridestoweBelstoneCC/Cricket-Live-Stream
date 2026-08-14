@@ -1935,10 +1935,19 @@ function processPCSData(state) {
       }, seqDuration);
     }
   }
-  // Only replace the in-progress ticker once the new over actually has (possibly zero) real
-  // data -- an empty/placeholder poll just means "still between overs", not "over reset to
-  // nothing yet", so leave _currentOverBalls alone rather than clearing it prematurely.
-  if (overStrValid) {
+  // Clear the ticker the moment the over completes, not on the first ball of the next one.
+  // The ticker string can't be used to detect this: NV Play does NOT reliably blank last_ball
+  // at the end of an over -- measured against a full match's feed, 801 of 857 over-completions
+  // still carried the finished over's ticker -- so overStrValid stays true and the old balls
+  // would sit on screen until the next ball landed. `overs` sitting exactly on a whole number
+  // is the reliable signal: that only happens between overs. Guarded on currentOver > 0 so the
+  // start of an innings (0.0) isn't treated as a completed over.
+  // Display only: the over summary above already consumed the previous poll's snapshot before
+  // this runs, so its runs/ball-count arithmetic is untouched.
+  const _betweenOvers = (ballInOver === 0 && currentOver > 0);
+  if (_betweenOvers) {
+    _currentOverBalls = [];
+  } else if (overStrValid) {
     _currentOverBalls = parsed;
   } else if (_oversIncreased) {
     _currentOverBalls = [];
