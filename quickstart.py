@@ -438,6 +438,8 @@ def main():
     else:
         log("Server didn't respond in time — season stats will load on the first player card", "warn")
 
+    start_telemetry(script_dir, popen_kwargs)
+
     print()
     print("  Control panel: http://localhost:5000/control")
     print("  Overlay:       http://localhost:5000/overlay")
@@ -584,6 +586,32 @@ def get_session_token(cfg):
         return d.get("session_token", "") if d.get("ok") else ""
     except Exception:
         return ""
+
+
+def start_telemetry(script_dir, popen_kwargs):
+    """Start the match-day telemetry logger in the background.
+
+    Started here rather than left to the operator because it only has to be forgotten once
+    to lose a whole match's data — which is exactly what happened on 2026-08-01, leaving a
+    single match's telemetry to reason about the ground's connection from. Entirely
+    best-effort: a failure to start must never hold up match day, so anything unexpected is
+    logged and ignored.
+    """
+    import subprocess
+    path = os.path.join(script_dir, "stream_telemetry.py")
+    if not os.path.exists(path):
+        return
+    try:
+        env = os.environ.copy()
+        # The logger prints ✓/✗ and match text; Windows defaults piped stdout to cp1252,
+        # which raises UnicodeEncodeError on them and would kill the process on line one.
+        env["PYTHONIOENCODING"] = "utf-8"
+        subprocess.Popen([sys.executable, path],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         env=env, **popen_kwargs)
+        log("Telemetry logging to diagnostics/ (bandwidth, drops, match context)", "ok")
+    except Exception as e:
+        log(f"Telemetry didn't start ({e}) — not fatal, run stream_telemetry.py by hand", "warn")
 
 
 def pull_season_stats(api_key, token=""):

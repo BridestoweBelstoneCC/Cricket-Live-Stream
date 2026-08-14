@@ -49,7 +49,44 @@ FIELDS = [
     "batting_team", "score", "wickets", "overs", "last_ball",
     # --- server process ---
     "srv_cpu_pct", "srv_rss_mb", "srv_errors",
+    # --- headroom probe (blank on most rows; only populated when a probe ran) ---
+    "probe_mbps", "probe_skipped_why",
 ]
+
+# ── Headroom probe ────────────────────────────────────────────────────────────────
+# Passive monitoring cannot measure headroom you are not using: congestion sits at zero
+# whenever the stream is comfortably inside the line's capacity, which tells you nothing
+# about where the ceiling actually is. A small upload occasionally is the only way to find
+# out. Deliberately tiny — 512 KB is under a second of traffic against a 2.5 Mbps stream,
+# roughly 0.3% overhead at the default interval — and it refuses to run whenever the stream
+# is already struggling, so it can never be the cause of a problem it is meant to detect.
+PROBE_BYTES = 512 * 1024
+PROBE_URL = "https://speed.cloudflare.com/__up"
+PROBE_TIMEOUT = 20
+
+
+def probe_upload():
+    """Measure achievable upload in Mbps. Returns (mbps, None) or (None, reason)."""
+    payload = b"\0" * PROBE_BYTES
+    req = urllib.request.Request(
+        PROBE_URL, data=payload, method="POST",
+        # Cloudflare 403s urllib's default User-Agent.
+        headers={"Content-Type": "application/octet-stream",
+                 "User-Agent": "Mozilla/5.0 (CricketStreamOverlay telemetry-probe)"})
+    try:
+        ctx = None
+        try:                       # match server.py: certifi, or system certs if absent
+            import ssl, certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            pass
+        start = time.time()
+        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT, context=ctx) as r:
+            r.read()
+        elapsed = max(time.time() - start, 0.001)
+        return round((PROBE_BYTES * 8 / elapsed) / 1_000_000, 2), None
+    except Exception as e:
+        return None, f"{type(e).__name__}"
 
 
 def get_json(path, timeout=6):
@@ -120,13 +157,21 @@ class OBS:
 
 
 def sample(obs, prev):
-    """One row. prev carries the last (bytes, skipped, time) so rates can be differenced."""
+    """One row. prev carries the last (bytes, skipped, time) so rates can be differenced.
+
+    obs may be None: OBS is often not up yet when this starts on match day, and losing the
+    whole log to that would defeat the point. The server-side and match-context columns are
+    collected regardless; the OBS columns simply stay blank until it connects.
+    """
     now = time.time()
     row = {k: "" for k in FIELDS}
     row["iso_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    st = (obs.request("GetStreamStatus") or {}).get("responseData", {})
-    gs = (obs.request("GetStats") or {}).get("responseData", {})
+    if obs is None:
+        st = gs = {}
+    else:
+        st = (obs.request("GetStreamStatus") or {}).get("responseData", {})
+        gs = (obs.request("GetStats") or {}).get("responseData", {})
 
     b, sk = st.get("outputBytes", 0), st.get("outputSkippedFrames", 0)
     if prev:
@@ -259,6 +304,30 @@ def summarise(path):
     stale = [f for f in fresh if str(f).lower() == "false"]
     print(f"\nscorer feed")
     print(f"  stale samples: {len(stale)}/{len(fresh)}")
+
+    # Headroom probes: what the line could actually carry, versus what was being sent.
+    probes = [(r["iso_time"], float(r["probe_mbps"]))
+              for r in rows if (r.get("probe_mbps") or "").strip()]
+    skipped = [r.get("probe_skipped_why") for r in rows
+               if (r.get("probe_skipped_why") or "").strip()]
+    if probes or skipped:
+        print(f"\nheadroom probes")
+    if probes:
+        vals = [p[1] for p in probes]
+        print(f"  {len(probes)} probe(s): mean {statistics.mean(vals):.2f} "
+              f"| min {min(vals):.2f} | max {max(vals):.2f} Mbps")
+        print(f"  first {probes[0][0]} = {probes[0][1]:.2f}  ->  "
+              f"last {probes[-1][0]} = {probes[-1][1]:.2f}")
+        if mbps:
+            sent = statistics.median(mbps)
+            print(f"  median sent {sent:.2f} Mbps vs min measured {min(vals):.2f} Mbps "
+                  f"-> headroom ~{max(min(vals) - sent, 0):.2f} Mbps")
+        worst = min(probes, key=lambda p: p[1])
+        print(f"  worst probe: {worst[1]:.2f} Mbps at {worst[0]}")
+    if skipped:
+        from collections import Counter
+        for why, k in Counter(skipped).most_common():
+            print(f"  skipped x{k}: {why}")
     print()
 
 
@@ -267,6 +336,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--interval", type=float, default=10, help="seconds between samples")
     ap.add_argument("--summary", metavar="CSV", help="summarise an existing CSV and exit")
+    ap.add_argument("--probe-every", type=float, default=300,
+                    help="seconds between headroom probes; 0 disables (default 300)")
     args = ap.parse_args()
 
     if args.summary:
@@ -276,22 +347,62 @@ def main():
     os.makedirs(DIAG, exist_ok=True)
     path = os.path.join(DIAG, f"telemetry_{time.strftime('%Y%m%d_%H%M')}.csv")
 
+    # Never die because OBS isn't up yet. quickstart launches this automatically and sends
+    # its output to DEVNULL, so a crash here would be silent and cost the whole match's log.
     obs = OBS()
-    obs.connect()
+    try:
+        obs.connect()
+    except Exception as e:
+        print(f"  OBS not reachable ({type(e).__name__}) — logging server + match data,"
+              f" retrying OBS each sample", flush=True)
+        obs = None
     print(f"  logging to {path}")
     print(f"  sampling every {args.interval:.0f}s — Ctrl+C to stop\n", flush=True)
+
+    if args.probe_every:
+        print(f"  headroom probe: {PROBE_BYTES//1024} KB every {args.probe_every:.0f}s, "
+              f"skipped while congested", flush=True)
 
     start = time.time()
     prev = None
     n = 0
+    last_probe = time.time()      # don't probe immediately; let the stream settle first
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
         try:
             while True:
                 try:
+                    if obs is None:      # OBS wasn't up at launch — keep trying quietly
+                        try:
+                            obs = OBS()
+                            obs.connect()
+                            print(f"  {time.strftime('%H:%M:%S')}  OBS connected", flush=True)
+                        except Exception:
+                            obs = None
                     row, prev = sample(obs, prev)
                     row["elapsed_s"] = round(time.time() - start)
+
+                    # Headroom probe. Guarded so it can never worsen a struggling stream:
+                    # only while streaming, only with congestion and drops at zero.
+                    if args.probe_every and (time.time() - last_probe) >= args.probe_every:
+                        last_probe = time.time()
+                        cong = row.get("congestion") or 0
+                        drops = row.get("delta_skipped") or 0
+                        if not row.get("stream_active"):
+                            row["probe_skipped_why"] = "not streaming"
+                        elif float(cong) > 0:
+                            row["probe_skipped_why"] = f"congested ({cong})"
+                        elif float(drops) > 0:
+                            row["probe_skipped_why"] = f"dropping frames ({drops})"
+                        else:
+                            mbps, why = probe_upload()
+                            row["probe_mbps"] = mbps if mbps is not None else ""
+                            row["probe_skipped_why"] = why or ""
+                            print(f"  {row['iso_time']}  probe: "
+                                  f"{mbps if mbps is not None else 'failed - ' + str(why)} Mbps",
+                                  flush=True)
+
                     w.writerow(row)
                     f.flush()          # flush every row — a crash must not lose the log
                     n += 1
@@ -304,7 +415,8 @@ def main():
                 except Exception as e:
                     print(f"  sample failed: {type(e).__name__}: {e} — reconnecting",
                           flush=True)
-                    obs.close()
+                    if obs is not None:
+                        obs.close()
                     try:
                         obs = OBS()
                         obs.connect()
