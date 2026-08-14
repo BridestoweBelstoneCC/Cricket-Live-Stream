@@ -1,8 +1,11 @@
-config.ini
-match_state.json
-match_data.db
-match_data.db-shm
-match_data.db-wal
+# Trailing * on each of these is deliberate. The bare filename does not match a
+# timestamped copy, and every one of these files gets backed up by hand sooner or
+# later — config.ini.bak, match_data.db.bak-20260801_092409 and so on. Without the
+# glob a single `git add .` publishes a live PlayCricket key, Anthropic key, OBS
+# password and club password.
+config.ini*
+match_state.json*
+match_data.db*
 __pycache__/
 *.pyc
 *.log
@@ -13,9 +16,10 @@ season_stats_cache.json
 
 # YouTube OAuth — NEVER commit these. yt_credentials.json is your Google OAuth client
 # secret; yt_token.json is the authorised access/refresh token. Either one leaking lets
-# someone act as your channel.
-yt_credentials.json
-yt_token.json
+# someone act as your channel. Globbed for the same reason as above: re-authorising
+# leaves yt_token.json.bak-<date> behind, which the bare name does not match.
+yt_credentials.json*
+yt_token.json*
 
 # Club-specific asset folders (different for every club)
 sponsors/
@@ -30,9 +34,26 @@ sim_pcs_output/
 manual_scoring.json
 
 # NV Play bridge (remote scorer machine): mirrored PCS files + the bridge's own config
-# (holds a local folder path and a secret token — machine-specific, never shared)
+# (holds a local folder path and a secret token — machine-specific, never shared).
+# Globbed for the same reason as the entries above: the token survives in a hand-made
+# bridge_config.ini.bak, which the bare filename would not catch.
 .pcs_bridge_cache/
-bridge_config.ini
+bridge_config.ini*
+
+# Scorer's live output. If the scoreboard output folder is ever pointed at the repo
+# directory — easily done, and it was during setup here — these land in the working
+# tree every ball and carry team and player names.
+nvplay-scoreboard*.xml
+scoreboard-output.*
+pcs-output.json
+live.json
+
+# Match-day diagnostics: telemetry CSVs and quarantined clips. Local working data,
+# and the CSVs carry ball-by-ball match context.
+diagnostics/
+
+# Local agent/editor state
+.claude/
 
 # Private working notes (maintainer's local checklist, not shipped)
 TODO.md
