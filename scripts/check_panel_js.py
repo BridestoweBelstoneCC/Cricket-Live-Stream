@@ -24,7 +24,9 @@ def extract_scripts(html):
 
 
 def _check_with_node(code):
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+    # encoding must be pinned: the pages are read as UTF-8 and contain non-Latin-1
+    # characters, so on Windows the default cp1252 codec would raise on write.
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(code)
         path = f.name
     try:
@@ -37,7 +39,7 @@ def _check_with_node(code):
 def _check_with_jsc(code):
     """macOS fallback: run the code through a `new Function(...)` parse in JavaScriptCore
     via JXA, since it's a real, modern engine present on every Mac with no extra install."""
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(code)
         js_path = f.name
     jxa = """
