@@ -2422,21 +2422,69 @@ def _recent_server_errors(n=5):
         return list(_server_errors[-n:])
 
 
+def _peak_rss_mb():
+    """Peak RSS in MB, or None if the platform won't say.
+
+    `resource` is Unix-only — on Windows importing it raises ModuleNotFoundError, which
+    used to take the whole /health request down with it. Windows goes via the Win32 API
+    instead, and anything unexpected degrades to None rather than breaking diagnostics.
+    """
+    import sys as _sys
+    try:
+        import resource
+    except ImportError:
+        pass
+    else:
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # macOS reports bytes here; Linux reports kilobytes.
+        return round(rss / (1e6 if _sys.platform == "darwin" else 1024.0), 1)
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD),
+                        ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        # The signatures must be declared: GetCurrentProcess returns the (HANDLE)-1
+        # pseudo-handle, and ctypes' default int restype truncates it on 64-bit, so the
+        # call silently fails and reports 0 bytes.
+        kernel32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetCurrentProcess.argtypes = []
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE,
+                                               ctypes.POINTER(_ProcessMemoryCounters),
+                                               wintypes.DWORD]
+        counters = _ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(_ProcessMemoryCounters)
+        if psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(),
+                                      ctypes.byref(counters), counters.cb):
+            return round(counters.PeakWorkingSetSize / 1048576.0, 1)
+    except Exception:
+        pass
+    return None
+
+
 def _self_metrics():
     """CPU% of this process since the last /health call, peak memory, machine load."""
-    import resource
-    import sys as _sys
     now, cpu = time.time(), time.process_time()
     dt, dcpu = now - _self_stat["t"], cpu - _self_stat["cpu"]
     _self_stat.update({"t": now, "cpu": cpu})
-    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    rss_mb = round(rss / (1e6 if _sys.platform == "darwin" else 1024.0), 1)
     try:
         load1 = round(os.getloadavg()[0], 2)
     except (AttributeError, OSError):
         load1 = None
     return {"cpu_pct": round(100 * dcpu / dt, 1) if dt > 1 else None,
-            "max_rss_mb": rss_mb, "machine_load_1m": load1}
+            "max_rss_mb": _peak_rss_mb(), "machine_load_1m": load1}
 
 
 # ── Self-healing watchdog ──────────────────────────────────────
