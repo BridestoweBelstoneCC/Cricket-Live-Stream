@@ -208,13 +208,16 @@ class TestRoutesOpen(HttpTestBase):
 
     def test_oversized_body_rejected(self):
         # The server 413s and closes WITHOUT draining the body, so depending on socket
-        # timing the client sees either the 413 or a connection reset — both mean rejected.
+        # timing the client sees either the 413 or a dropped connection — both mean rejected.
+        # Catch ConnectionError rather than naming subclasses: Linux and macOS raise
+        # BrokenPipeError/ConnectionResetError, but Windows raises ConnectionAbortedError
+        # (WinError 10053), which slipped through and made this test flake on Windows.
         # What actually matters: the giant body must never be processed into state.
         big = b'{"home_team": "' + b"x" * server.MAX_BODY_BYTES + b'"}'
         try:
             status, _, _ = self.request("POST", "/state", body=big)
             self.assertEqual(status, 413)
-        except (BrokenPipeError, ConnectionResetError):
+        except ConnectionError:
             pass
         self.assertEqual(server.load_state()["home_team"], "Home CC")
         # ...and the server keeps serving normally afterwards
