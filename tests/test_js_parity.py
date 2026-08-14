@@ -43,12 +43,16 @@ def extract_classify_ball():
 def run_js(js_source):
     """Run a JS program that prints one line of JSON; returns the parsed value or None
     if no engine is available on this machine."""
+    # Both ends of the node round-trip must be pinned to UTF-8: the overlay's JS contains
+    # non-ASCII (the '—' placeholder, among others), and on Windows the default codec is
+    # cp1252 — which silently mangles it on the way in and again on the way out.
     if shutil.which("node"):
-        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
             f.write(js_source)
             path = f.name
         try:
-            r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
+            r = subprocess.run(["node", path], capture_output=True, text=True,
+                               encoding="utf-8", timeout=30)
             if r.returncode != 0:
                 raise AssertionError(f"node failed: {r.stderr}")
             return json.loads(r.stdout.strip())
@@ -56,7 +60,7 @@ def run_js(js_source):
             os.unlink(path)
     if sys.platform == "darwin":
         r = subprocess.run(["osascript", "-l", "JavaScript", "-e", js_source],
-                           capture_output=True, text=True, timeout=30)
+                           capture_output=True, text=True, encoding="utf-8", timeout=30)
         # osascript prints console.log to stderr and the final expression to stdout
         out = (r.stdout.strip() or r.stderr.strip())
         if r.returncode != 0 or not out:

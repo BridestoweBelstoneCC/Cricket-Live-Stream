@@ -7,6 +7,22 @@ the server. Double-click quickstart.bat (Windows) or quickstart.sh (Mac).
 """
 import configparser, json, os, sys, subprocess, urllib.request, datetime, platform
 
+# Use certifi's certificates to avoid CERTIFICATE_VERIFY_FAILED on the PlayCricket API.
+# server.py carries the same patch; without it here the fixture fetch fails outright and
+# the day silently starts on the placeholder opposition. Not Mac-only — a fresh Windows
+# Python hits it too.
+try:
+    import ssl, certifi
+    _ssl_ctx   = ssl.create_default_context(cafile=certifi.where())
+    _orig_open = urllib.request.urlopen
+    def _patched_urlopen(url, data=None, timeout=10, **kw):
+        if 'context' not in kw:
+            kw['context'] = _ssl_ctx
+        return _orig_open(url, data=data, timeout=timeout, **kw)
+    urllib.request.urlopen = _patched_urlopen
+except Exception:
+    pass  # certifi not installed or not needed — system certs used instead
+
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         CricketStream Overlay — Quick Start          ║
