@@ -52,6 +52,15 @@ live.json
 # and the CSVs carry ball-by-ball match context.
 diagnostics/
 
+# Video belongs on GitHub's CDN, not in the repository. The README's screenshot is already
+# a user-attachments URL, and the whole history is under 2 MB — one trailer committed here
+# would multiply that several times over, permanently, for everyone who clones. Drag the
+# file into the README editor on github.com instead: it renders as an inline player, which
+# a committed file does not. Stills (badges, diagrams) are small and stay tracked.
+graphics/*.mp4
+graphics/*.mov
+graphics/*.gif
+
 # Local agent/editor state
 .claude/
 
