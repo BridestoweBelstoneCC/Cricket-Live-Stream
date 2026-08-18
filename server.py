@@ -1647,6 +1647,13 @@ DEFAULT_STATE = {
     "away_club_id":           "",
     "pcs_bridge_url":         "",   # NV Play on separate hardware — see nvplay_bridge.py
     "pcs_bridge_token":       "",
+    # Two-laptop mode — see scorer_agent.py / TWO_LAPTOP_SETUP.md. Independent of the
+    # bridge above: "local" covers both a plain folder and a bridge-mirrored cache dir
+    # (see effective_pcs_folder()); "agent" reads over the network from scorer_agent.py
+    # running on the scoring laptop, found via UDP auto-discovery on the club wifi.
+    "pcs_source":             "local",
+    "agent_host":             "",   # manual override, "host" or "host:port"; blank = auto
+    "agent_last_seen":        "",   # remembered so a restart mid-match reconnects instantly
 }
 
 _last_good_state = None   # cached last successful load, used if the file is mid-write/corrupt
@@ -1748,6 +1755,8 @@ def _seed_state_from_config():
         ("Scoring", "pcs_output_folder", "pcs_output_folder",     str),
         ("Scoring", "pcs_bridge_url",    "pcs_bridge_url",        str),
         ("Scoring", "pcs_bridge_token",  "pcs_bridge_token",      str),
+        ("Scoring", "pcs_source",        "pcs_source",            str),
+        ("Scoring", "agent_host",        "agent_host",            str),
         ("Scoring", "logos_folder",      "logos_folder",          str),
         ("Scoring", "ground_filter",     "ground_filter",         str),
         ("OBS",     "obs_password",      "obs_password",          str),
@@ -1847,10 +1856,48 @@ def find_pcs_output_file(folder):
             return newest
     return None
 
+def _parse_scoreboard_raw(raw, name=""):
+    """
+    Turn the raw text of a scoreboard output file into an overlay state dict.
+
+    NV Play writes JSON even when the file is called .xml, so try JSON first and only
+    fall back to real XML. Returns None if it's neither, or the parse produced nothing
+    usable — callers decide what that means (hold last frame, report an error, ...).
+    Shared by read_pcs_file (local folder / bridge mirror) and read_agent_file (scorer
+    laptop over the network) so the two sources can never drift in what they accept.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(raw)
+            data = {child.tag.lower(): (child.text or "").strip() for child in root}
+        except Exception:
+            return None
+    try:
+        return parse_pcs_json(data)
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"  ✗  PCS parse error in {name or 'scoreboard file'}: {e}")
+        return None
+
+
+def _log_score(state, source="PCS"):
+    print(f"  {source}: {state['battingTeamName']} "
+          f"{state['score']}-{state['wickets']} ({state['overs']} ov) | "
+          f"{state['batter1']['name']} {state['batter1']['runs']} "
+          f"/ {state['batter2']['name']} {state['batter2']['runs']}")
+
+
 def read_pcs_file(folder):
     """
-    Read the PCS Pro scoreboard output file and return an overlay state dict.
-    Returns None if file not found, unreadable, or stale (>5 min old).
+    Read the PCS Pro scoreboard output file from a local folder (or a bridge-mirrored
+    cache dir — see effective_pcs_folder()) and return an overlay state dict.
+    Returns None if the file isn't found; holds the last good frame on a transient
+    read/parse error (mid-write, momentarily corrupt) rather than blanking the overlay.
     """
     global _pcs_last_mtime, _pcs_last_state
 
@@ -1860,46 +1907,298 @@ def read_pcs_file(folder):
 
     try:
         mtime = os.path.getmtime(path)
-
-        # Only re-parse if file has changed
         if mtime == _pcs_last_mtime and _pcs_last_state:
             return _pcs_last_state
-
         with open(path, encoding="utf-8", errors="replace") as f:
-            raw = f.read().strip()
+            raw = f.read()
+    except OSError as e:
+        print(f"  ✗  PCS file read error: {e}")
+        return _pcs_last_state
 
-        if not raw:
-            # File caught mid-write (empty) — hold the last good frame, don't blank the overlay
-            return _pcs_last_state
+    state = _parse_scoreboard_raw(raw, os.path.basename(path))
+    if state:
+        _pcs_last_mtime = mtime
+        _pcs_last_state = state
+        _log_score(state, "PCS")
+        return state
+    return _pcs_last_state
 
-        # NV Play writes JSON via template even with .xml extension — read as JSON
-        if path.endswith(".xml") or path.endswith(".json"):
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                # Fallback: try XML if JSON fails
+
+# ── Scorer agent: reading the score off the scoring laptop over the network ──────────
+#
+# Two-laptop mode (see scorer_agent.py / TWO_LAPTOP_SETUP.md). The scoring laptop runs
+# PCS Pro and scorer_agent.py and is otherwise left alone; this machine runs the overlay,
+# OBS and the stream, and collects the scoreboard file over the club wifi via UDP
+# auto-discovery — no address to type, unlike the nvplay_bridge.py URL/token pair above
+# (that one's built for reaching a scorer's machine off the local network entirely, e.g.
+# over Tailscale; this one's built for two laptops already on the same club wifi).
+
+AGENT_DEFAULT_PORT   = 8788
+AGENT_DISCOVERY_PORT = 8787
+AGENT_DISCOVERY_MAGIC = b"CRICKETSTREAM-DISCOVER"
+AGENT_SERVICE_NAME    = "cricketstream-scorer-agent"
+
+_agent_last_mtime    = 0
+_agent_last_state    = None
+_agent_resolved      = ""    # host:port we are currently talking to
+_agent_last_error    = ""    # human-readable, surfaced in the control panel
+_agent_last_ok       = 0.0   # when we last got a good response
+_agent_next_discover = 0.0
+
+# If the agent goes away mid-match we keep showing the last score we had, rather than
+# blanking the scorebar while someone walks over to restart it. After this long with no
+# contact we give up and return nothing, so the PlayCricket widget fallback (if enabled)
+# can take over instead of the overlay quietly freezing.
+AGENT_STALE_AFTER = 120  # seconds
+
+
+def _agent_normalise(addr):
+    """'192.168.1.40' or '192.168.1.40:8788' -> 'host:port'."""
+    addr = (addr or "").strip().rstrip("/")
+    if not addr:
+        return ""
+    if addr.startswith("http://"):
+        addr = addr[7:]
+    elif addr.startswith("https://"):
+        addr = addr[8:]
+    addr = addr.split("/")[0]
+    return addr if ":" in addr else f"{addr}:{AGENT_DEFAULT_PORT}"
+
+
+def _broadcast_addresses():
+    """
+    Addresses worth shouting at. The global broadcast address works on most club
+    networks; the per-interface one is needed on some Windows setups that drop
+    255.255.255.255.
+    """
+    addrs = ["255.255.255.255"]
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        subnet = ".".join(ip.split(".")[:3]) + ".255"
+        if subnet not in addrs:
+            addrs.append(subnet)
+    except Exception:
+        pass
+    return addrs
+
+
+def discover_agents(timeout=1.5):
+    """
+    Ask the network "is there a scorer agent out there?" and collect the replies.
+    Returns a list of dicts, each with at least host/address/hostname. Never raises —
+    on a locked-down network it simply returns [].
+    """
+    found = {}
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(0.3)
+        try:
+            sock.bind(("", 0))
+        except OSError:
+            pass
+
+        for addr in _broadcast_addresses():
+            for _ in range(2):  # UDP; a lost packet shouldn't cost us the match
                 try:
-                    import xml.etree.ElementTree as ET
-                    root = ET.fromstring(raw)
-                    data = {child.tag.lower(): (child.text or "").strip() for child in root}
-                except Exception:
-                    return _pcs_last_state
-        else:
-            data = json.loads(raw)
-        state = parse_pcs_json(data)
-        if state:
-            _pcs_last_mtime = mtime
-            _pcs_last_state = state
-            print(f"  PCS: {state['battingTeamName']} "
-                  f"{state['score']}-{state['wickets']} ({state['overs']} ov) | "
-                  f"{state['batter1']['name']} {state['batter1']['runs']} "
-                  f"/ {state['batter2']['name']} {state['batter2']['runs']}")
+                    sock.sendto(AGENT_DISCOVERY_MAGIC, (addr, AGENT_DISCOVERY_PORT))
+                except OSError:
+                    break
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                data, peer = sock.recvfrom(8192)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                info = json.loads(data.decode("utf-8", "replace"))
+            except Exception:
+                continue
+            if info.get("service") != AGENT_SERVICE_NAME:
+                continue
+            info["host"] = peer[0]
+            info["address"] = f"{peer[0]}:{info.get('port', AGENT_DEFAULT_PORT)}"
+            found[info["address"]] = info
+    except Exception as e:
+        print(f"  ✗  Agent discovery failed: {e}")
+    finally:
+        sock.close()
+
+    return list(found.values())
+
+
+def agent_ping(address, timeout=3):
+    """Ask one agent to identify itself. Returns (info_dict, error_string)."""
+    address = _agent_normalise(address)
+    if not address:
+        return None, "No address given"
+    try:
+        req = urllib.request.Request(f"http://{address}/ping",
+                                     headers={"User-Agent": "CricketStream-Overlay"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            info = json.loads(r.read().decode("utf-8", "replace"))
+        if info.get("service") != AGENT_SERVICE_NAME:
+            return None, f"Something is running at {address}, but it is not the scorer agent"
+        info["address"] = address
+        return info, ""
+    except socket.timeout:
+        return None, f"No answer from {address} (timed out)"
+    except urllib.error.URLError as e:
+        return None, f"Could not reach {address}: {getattr(e, 'reason', e)}"
+    except Exception as e:
+        return None, f"Could not reach {address}: {e}"
+
+
+def resolve_agent_address(s, force=False):
+    """
+    Work out which address to collect the score from.
+
+    Order: whatever the user typed in the control panel, then the address we were last
+    talking to, then a fresh broadcast. Discovery is rate-limited so a missing agent
+    doesn't flood the network every poll.
+    """
+    global _agent_resolved, _agent_next_discover, _agent_last_error
+
+    manual = _agent_normalise(s.get("agent_host", ""))
+    if manual:
+        _agent_resolved = manual
+        return manual
+
+    if _agent_resolved and not force:
+        return _agent_resolved
+
+    remembered = _agent_normalise(s.get("agent_last_seen", ""))
+    if remembered and not force:
+        info, err = agent_ping(remembered, timeout=2)
+        if info:
+            _agent_resolved = remembered
+            return remembered
+
+    if not force and time.time() < _agent_next_discover:
+        return _agent_resolved or ""
+
+    _agent_next_discover = time.time() + 15
+    agents = discover_agents()
+    if not agents:
+        _agent_last_error = ("No scorer agent found on the network. Is scorer_agent.py "
+                             "running on the scoring laptop, and are both laptops on "
+                             "the same wifi?")
+        return _agent_resolved or ""
+
+    address = agents[0]["address"]
+    if len(agents) > 1:
+        names = ", ".join(f"{a.get('hostname', '?')} ({a['address']})" for a in agents)
+        print(f"  ⚠  More than one scorer agent answered: {names}. Using {address}. "
+              f"Set the address by hand in the control panel to pick a different one.")
+    _agent_resolved = address
+
+    # Remember it so a restart mid-match reconnects without another broadcast.
+    try:
+        if s.get("agent_last_seen") != address:
+            fresh = load_state()
+            fresh["agent_last_seen"] = address
+            save_state(fresh)
+    except Exception:
+        pass
+
+    print(f"  ✓  Found scorer agent at {address} ({agents[0].get('hostname', 'unknown host')})")
+    return address
+
+
+def _agent_last_good():
+    """The last score we successfully collected — only while recent enough to still be
+    worth showing. See AGENT_STALE_AFTER."""
+    if not _agent_last_state:
+        return None
+    if _agent_last_ok and (time.time() - _agent_last_ok) > AGENT_STALE_AFTER:
+        return None
+    return _agent_last_state
+
+
+def read_agent_file(s):
+    """
+    Fetch the scoreboard from the scorer agent and parse it exactly as if it had been
+    read from a local folder. Returns None if the agent can't be reached — the caller
+    then falls back the same way it would for a missing local file.
+    """
+    global _agent_last_mtime, _agent_last_state, _agent_last_error, _agent_last_ok
+    global _agent_resolved
+
+    address = resolve_agent_address(s)
+    if not address:
+        return None
+
+    url = f"http://{address}/pcs?since={_agent_last_mtime}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "CricketStream-Overlay"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            payload = json.loads(r.read().decode("utf-8", "replace"))
+    except Exception as e:
+        _agent_last_error = f"Lost contact with the scorer laptop at {address}: {e}"
+        print(f"  ✗  {_agent_last_error}")
+        # Drop the cached address so the next poll can re-discover it — the scoring
+        # laptop may have picked up a new IP from the club router.
+        if not _agent_normalise(s.get("agent_host", "")):
+            _agent_resolved = ""
+        return _agent_last_good()
+
+    _agent_last_ok = time.time()
+
+    if not payload.get("ok"):
+        _agent_last_error = payload.get("detail") or payload.get("error") or "Agent reported a problem"
+        return _agent_last_good()
+
+    _agent_last_error = ""
+
+    if payload.get("unchanged"):
+        return _agent_last_state
+
+    state = _parse_scoreboard_raw(payload.get("content", ""), payload.get("name", ""))
+    if state:
+        _agent_last_mtime = payload.get("mtime", 0) or 0
+        _agent_last_state = state
+        _log_score(state, "PCS(net)")
         return state
 
-    except (json.JSONDecodeError, KeyError, OSError) as e:
-        print(f"  ✗  PCS file read error: {e}")
-        # Transient read error mid-match — hold the last good frame rather than blanking.
-        return _pcs_last_state
+    _agent_last_error = (f"Received {payload.get('name') or 'a file'} from the scorer laptop "
+                         f"but could not read it — is the right template loaded in PCS Pro?")
+    return _agent_last_good()
+
+
+def agent_status(s):
+    """Everything the control panel needs to explain the connection."""
+    address = (_agent_resolved or _agent_normalise(s.get("agent_host", ""))
+              or _agent_normalise(s.get("agent_last_seen", "")))
+    return {
+        "source": s.get("pcs_source", "local"),
+        "address": address,
+        "manual": bool(_agent_normalise(s.get("agent_host", ""))),
+        "connected": bool(_agent_last_ok and (time.time() - _agent_last_ok) < 60),
+        "last_ok_seconds_ago": (time.time() - _agent_last_ok) if _agent_last_ok else None,
+        "error": _agent_last_error,
+        "have_score": bool(_agent_last_state),
+    }
+
+
+def read_score_source(s):
+    """
+    Read the ball-by-ball score from whichever source this club has configured.
+
+    This is the door every /live-adjacent call site must come through instead of calling
+    read_pcs_file directly — same reasoning as effective_pcs_folder(): local (including
+    bridge-mirrored) and agent mode must be interchangeable everywhere at once.
+    """
+    if s.get("pcs_source", "local") == "agent":
+        return read_agent_file(s)
+    return read_pcs_file(effective_pcs_folder(s))
 
 
 # ── NV Play bridge sync (remote scorer machine) ────────────────
@@ -2673,10 +2972,13 @@ def _watchdog_tick():
         if manual_session_active():
             fresh = True
         else:
-            s        = load_state()
-            pcs_dir  = effective_pcs_folder(s)
-            pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
-            fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
+            s = load_state()
+            if s.get("pcs_source", "local") == "agent":
+                fresh = bool(_agent_last_ok) and (now - _agent_last_ok) < 120
+            else:
+                pcs_dir  = effective_pcs_folder(s)
+                pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
+                fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
     except Exception:
         fresh = None
     with _watchdog_lock:
@@ -5320,6 +5622,47 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/pcs/debug":
             s2 = load_state()
+            if s2.get("pcs_source", "local") == "agent":
+                # Two-laptop mode: the file lives on the scoring laptop, so ask the agent
+                # for it rather than hunting a folder that isn't on this machine.
+                info = agent_status(s2)
+                address = info.get("address", "")
+                if not address:
+                    self._json({"source": "agent", "address": "", "raw_pcs": None,
+                                "search_note": "No scorer laptop found yet. Start "
+                                "scorer_agent.py on the scoring laptop, then press "
+                                "Find scorer laptop in the control panel."})
+                    return
+                ping, err = agent_ping(address, timeout=4)
+                if not ping:
+                    self._json({"source": "agent", "address": address, "raw_pcs": None,
+                                "search_note": err})
+                    return
+                try:
+                    req = urllib.request.Request(f"http://{address}/pcs",
+                                                 headers={"User-Agent": "CricketStream-Overlay"})
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        payload = json.loads(r.read().decode("utf-8", "replace"))
+                except Exception as e:
+                    self._json({"source": "agent", "address": address, "raw_pcs": None,
+                                "search_note": f"Reached the scorer laptop but could not "
+                                               f"collect the file: {e}"})
+                    return
+                parsed = (_parse_scoreboard_raw(payload.get("content", ""), payload.get("name", ""))
+                         if payload.get("ok") else None)
+                self._json({
+                    "source": "agent",
+                    "address": address,
+                    "hostname": ping.get("hostname", ""),
+                    "remote_folder": ping.get("folder", ""),
+                    "file_found": payload.get("name"),
+                    "file_age": payload.get("age"),
+                    "raw_pcs": (payload.get("content") or "")[:1200],
+                    "parsed_ok": bool(parsed),
+                    "search_note": "" if payload.get("ok") else (
+                        payload.get("detail") or payload.get("error") or ""),
+                })
+                return
             bridge_mode = bool(s2.get("pcs_bridge_url","").strip())
             pcs_folder = effective_pcs_folder(s2)
             raw = None
@@ -5402,6 +5745,49 @@ class Handler(BaseHTTPRequestHandler):
                         "search_note": search_note,
                         "raw_pcs": raw,
                         "keys": sorted(raw.keys()) if isinstance(raw, dict) and "error" not in raw else None})
+
+        elif path == "/agent/status":
+            # How is the link to the scoring laptop doing? Called by the control panel
+            # every few seconds while the network source is selected. No secrets beyond
+            # LAN topology — open, like /pcs/debug.
+            st = load_state()
+            info = agent_status(st)
+            if info["address"]:
+                ping, err = agent_ping(info["address"], timeout=3)
+                if ping:
+                    info["connected"] = True
+                    info["hostname"]  = ping.get("hostname", "")
+                    info["folder"]    = ping.get("folder", "")
+                    info["file"]      = ping.get("file", "")
+                    info["file_age"]  = ping.get("file_age")
+                    info["error"]     = "" if ping.get("file") else (
+                        "Connected to the scoring laptop, but no scoreboard file has "
+                        "appeared yet. Check that scoreboard output is switched on in "
+                        "PCS Pro.")
+                else:
+                    info["connected"] = False
+                    info["error"] = err
+            self._json(info)
+
+        elif path == "/agent/discover":
+            # Shout on the local network and report every scorer agent that answers.
+            st = load_state()
+            agents = discover_agents(timeout=2.0)
+            chosen = ""
+            if agents and not _agent_normalise(st.get("agent_host", "")):
+                chosen = agents[0]["address"]
+                st["agent_last_seen"] = chosen
+                save_state(st)
+                globals()["_agent_resolved"] = chosen
+            self._json({
+                "ok": bool(agents),
+                "agents": agents,
+                "chosen": chosen,
+                "error": "" if agents else (
+                    "Nothing answered. Check that scorer_agent.py is running on the "
+                    "scoring laptop, that both laptops are on the same wifi, and that "
+                    "the scoring laptop's firewall is not blocking Python."),
+            })
 
         elif path == "/report/generate":
             if not self._check_token(): return
@@ -5800,9 +6186,10 @@ class Handler(BaseHTTPRequestHandler):
             s_h  = load_state()
             now  = time.time()
             # PCS scorer feed: file present? how stale?
-            bridge_url = s_h.get("pcs_bridge_url","").strip()
+            bridge_url  = s_h.get("pcs_bridge_url","").strip()
+            agent_mode  = s_h.get("pcs_source", "local") == "agent"
             pcs_dir   = effective_pcs_folder(s_h)
-            pcs_path  = find_pcs_output_file(pcs_dir) if pcs_dir else None
+            pcs_path  = find_pcs_output_file(pcs_dir) if (pcs_dir and not agent_mode) else None
             pcs_age   = (now - os.path.getmtime(pcs_path)) if pcs_path else None
             manual    = manual_session_active()
             # Asset folders
@@ -5820,13 +6207,16 @@ class Handler(BaseHTTPRequestHandler):
                 "uptime_sec": int(now - SERVER_START_TIME),
                 "demo_mode":  bool(s_h.get("demo_mode")),
                 "pcs": {
-                    "folder_set": bool(pcs_dir),
-                    "file_found": bool(pcs_path),
+                    "source":     s_h.get("pcs_source", "local"),
+                    "folder_set": bool(pcs_dir) if not agent_mode else None,
+                    "file_found": bool(pcs_path) if not agent_mode else bool(_agent_last_state),
                     "file":       os.path.basename(pcs_path) if pcs_path else None,
                     "age_sec":    int(pcs_age) if pcs_age is not None else None,
                     # A live manual session IS the feed (it outranks the file in /live),
                     # so the feed is healthy regardless of the PCS file's age.
-                    "fresh":      manual or (pcs_age is not None and pcs_age < 120),
+                    "fresh":      manual or (
+                        (bool(_agent_last_ok) and (now - _agent_last_ok) < 120) if agent_mode
+                        else (pcs_age is not None and pcs_age < 120)),
                     "manual_scoring": manual,
                     "bridge": ({
                         "enabled":          True,
@@ -5835,6 +6225,7 @@ class Handler(BaseHTTPRequestHandler):
                                               if _pcs_bridge_status["last_sync"] else None),
                         "last_error":       _pcs_bridge_status["last_error"],
                     } if bridge_url else {"enabled": False}),
+                    "agent": (agent_status(s_h) if agent_mode else {"enabled": False}),
                 },
                 "stats": {
                     "built":    bool(_season_stats.get("built")),
@@ -5979,9 +6370,13 @@ class Handler(BaseHTTPRequestHandler):
                 # file outranks the widget. Manual state is rendered through the same
                 # parser, so downstream nothing can tell the difference — both report
                 # source "pcs" (the overlay's fast-poll signal), distinguished by "feed".
-                pcs_folder   = effective_pcs_folder(s)
                 manual_state = manual_live_state()
-                pcs_state    = manual_state or (read_pcs_file(pcs_folder) if pcs_folder else None)
+                pcs_state    = manual_state or read_score_source(s)
+                # Agent mode has no local folder to check — "configured" just means the
+                # source is switched on; a missing/unreachable agent still reports "pcs"
+                # (below) rather than falling through to the widget with the wrong label.
+                source_configured = (s.get("pcs_source", "local") == "agent"
+                                     or bool(effective_pcs_folder(s)))
                 if pcs_state:
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
@@ -6006,7 +6401,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"source":"pcs","state":pcs_state,"club_id":club_id,
                                 "events":events,
                                 "feed": "manual" if manual_state else "file"})
-                elif pcs_folder:
+                elif source_configured:
                     # PCS Pro is configured but hasn't written a match yet (pre-match, or
                     # between innings) -- still report "pcs" so the overlay keeps fast-polling
                     # instead of falling back to slow widget polling and a mislabeled source.
@@ -6088,6 +6483,14 @@ class Handler(BaseHTTPRequestHandler):
                 # have no form input — notably home_club_id / away_club_id (badges), the season
                 # stats config, drinks_over, etc. Merging preserves them across saves.
                 current = load_state()
+                # If the user retyped the scorer laptop's address or switched source,
+                # forget where we thought the agent was so the next poll honours what
+                # they just asked for instead of a stale cached resolution.
+                if (incoming.get("agent_host") != current.get("agent_host")
+                        or incoming.get("pcs_source") != current.get("pcs_source")):
+                    globals()["_agent_resolved"] = ""
+                    globals()["_agent_last_error"] = ""
+                    globals()["_agent_next_discover"] = 0.0
                 current.update(incoming)
                 save_state(current)
                 self._json({"ok":True})
@@ -6218,7 +6621,7 @@ class Handler(BaseHTTPRequestHandler):
                 st = load_state()
                 # Same precedence as /live: a live manual session outranks the PCS file,
                 # otherwise the AI narrates a stale (or absent) NV Play match.
-                ps = manual_live_state() or read_pcs_file(effective_pcs_folder(st)) or {}
+                ps = manual_live_state() or read_score_source(st) or {}
                 generate_over_commentary(
                     d.get("over_num",0), d.get("over_runs",0),
                     d.get("bowler_name",""), d.get("bowler_figs",""),

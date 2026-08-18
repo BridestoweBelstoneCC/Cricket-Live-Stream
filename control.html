@@ -410,6 +410,29 @@
       streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
       IP is the recommended way to reach it.</p>
     </div>
+    <input type="hidden" id="pcs_source" value="local">
+    <div class="field" style="padding:10px;background:#1a1405;border:1px solid #4a3800;border-radius:5px;margin-bottom:10px;">
+      <div class="toggle-row" style="margin:0;">
+        <div>
+          <div class="toggle-label" style="color:#c8a000;">Run the stream from a second laptop</div>
+          <div class="toggle-desc">Scorer runs <code>scorer_agent.py</code> once at the start of the day and is otherwise left alone;
+          this laptop finds it on the club wifi automatically. See TWO_LAPTOP_SETUP.md.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="pcs_source_agent" onchange="onAgentToggle()"><span class="track"></span></label>
+      </div>
+      <div id="agent-box" style="display:none;margin-top:10px;">
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;">
+            <label>Scorer laptop address <span style="color:#8a6a20;font-size:10px;font-weight:400;">— leave blank to find it automatically</span></label>
+            <input type="text" id="agent_host" placeholder="found automatically — or type e.g. 192.168.1.40:8788">
+          </div>
+          <button type="button" onclick="discoverAgent()" style="white-space:nowrap;">Find scorer laptop</button>
+        </div>
+        <div id="agent-status" class="hint" style="margin-top:8px;padding:8px;border-radius:4px;background:#150f03;border:1px solid #3a2c00;color:#8a6a20;">
+          Checking&hellip;
+        </div>
+      </div>
+    </div>
     <div class="toggle-row" style="margin-top:8px;">
       <div>
         <div class="toggle-label">Use widget as fallback</div>
@@ -1378,7 +1401,7 @@ function updatePreview() {
 }
 
 const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
-  'pcs_output_folder','pcs_bridge_url','pcs_bridge_token','match_url','match_notes','replay_folder',
+  'pcs_output_folder','pcs_bridge_url','pcs_bridge_token','pcs_source','agent_host','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
@@ -1490,6 +1513,8 @@ async function loadState() {
   updatePreview();
   updateDemoStyle(!!s.demo_mode);
   checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
+  document.getElementById('pcs_source_agent').checked = (s.pcs_source === 'agent');
+  onAgentToggle();
   const clubName = s.home_team || 'Your Club';
   const clubBadgeEl = document.getElementById('panel-club-badge');
   const clubNameEl  = document.getElementById('panel-club-name');
@@ -1516,6 +1541,81 @@ async function saveState() {
     showStatus(res.ok ? 'Saved — overlay updates on its next poll' : 'Error saving', res.ok?'ok':'err');
     if (res.ok) updatePreview();
   } catch(e) { showStatus('Could not reach server: '+e.message,'err'); }
+}
+
+// ── Score source: local folder/bridge vs scorer laptop over the network ────
+let AGENT_POLL = null;
+
+function onAgentToggle() {
+  const on = document.getElementById('pcs_source_agent').checked;
+  document.getElementById('pcs_source').value = on ? 'agent' : 'local';
+  document.getElementById('agent-box').style.display = on ? '' : 'none';
+  if (on) {
+    refreshAgentStatus();
+    if (!AGENT_POLL) AGENT_POLL = setInterval(refreshAgentStatus, 5000);
+  } else if (AGENT_POLL) {
+    clearInterval(AGENT_POLL); AGENT_POLL = null;
+  }
+}
+
+function setAgentStatus(text, kind) {
+  const el = document.getElementById('agent-status');
+  if (!el) return;
+  el.innerHTML = text;
+  if (kind === 'ok')       { el.style.background='#071507'; el.style.borderColor='#1e4a1e'; el.style.color='#4caf50'; }
+  else if (kind === 'warn'){ el.style.background='#1a1405'; el.style.borderColor='#4a3800'; el.style.color='#c8a000'; }
+  else if (kind === 'err') { el.style.background='#1a0707'; el.style.borderColor='#4a1e1e'; el.style.color='#e06060'; }
+  else                     { el.style.background='#150f03'; el.style.borderColor='#3a2c00'; el.style.color='#8a6a20'; }
+}
+
+function describeAge(sec) {
+  if (sec === null || sec === undefined) return '';
+  if (sec < 30)  return 'updating live';
+  if (sec < 300) return 'last ball ' + Math.round(sec) + 's ago';
+  return 'last ball ' + Math.round(sec/60) + ' min ago';
+}
+
+async function refreshAgentStatus() {
+  if (!document.getElementById('pcs_source_agent').checked) return;
+  try {
+    const d = await (await apiFetch('/agent/status')).json();
+    if (!d.address) {
+      setAgentStatus('Not connected yet. Start <code>scorer_agent.py</code> on the scoring '
+                   + 'laptop, then press <b>Find scorer laptop</b>.', 'warn');
+      return;
+    }
+    if (d.connected && d.file) {
+      setAgentStatus('&#9679; Connected to <b>' + (d.hostname || d.address) + '</b> ('
+                   + d.address + ')<br>Reading <code>' + d.file + '</code> &mdash; '
+                   + describeAge(d.file_age), 'ok');
+    } else if (d.connected) {
+      setAgentStatus('&#9679; Connected to <b>' + (d.hostname || d.address) + '</b>, but '
+                   + 'no scoreboard file yet.<br>' + (d.error || 'Check that scoreboard '
+                   + 'output is switched on in PCS Pro.'), 'warn');
+    } else {
+      setAgentStatus('&#9679; ' + (d.error || 'Cannot reach ' + d.address)
+                   + (d.have_score ? '<br>Still showing the last score received.' : ''), 'err');
+    }
+  } catch(e) {
+    setAgentStatus('Could not ask the server about the connection: ' + e.message, 'err');
+  }
+}
+
+async function discoverAgent() {
+  setAgentStatus('Looking for the scoring laptop on this network&hellip;', '');
+  try {
+    const d = await (await apiFetch('/agent/discover')).json();
+    if (!d.ok) { setAgentStatus(d.error, 'err'); return; }
+    if (d.agents.length > 1) {
+      const list = d.agents.map(a => (a.hostname||'?') + ' (' + a.address + ')').join(', ');
+      setAgentStatus('Found more than one: ' + list + '. Using <b>' + d.chosen
+                   + '</b>. Type an address above to pick a different one.', 'warn');
+    }
+    if (d.chosen) document.getElementById('agent_host').placeholder = 'found automatically: ' + d.chosen;
+    await refreshAgentStatus();
+  } catch(e) {
+    setAgentStatus('Search failed: ' + e.message, 'err');
+  }
 }
 
 async function testReplay() {
@@ -2179,7 +2279,8 @@ async function autoCheck() {
   try {
     const s = await (await apiFetch('/state')).json();
     const hasOpp = !!(s.away_team && s.away_team !== 'Opposition CC');
-    const hasPCS = !!((s.pcs_output_folder && s.pcs_output_folder.trim()) ||
+    const hasPCS = (s.pcs_source === 'agent') ? true :
+                   !!((s.pcs_output_folder && s.pcs_output_folder.trim()) ||
                       (s.pcs_bridge_url && s.pcs_bridge_url.trim()));
     if (hasOpp !== !!saved['opp']) { saved['opp'] = hasOpp; changed = true; }
     if (hasPCS !== !!saved['pcs']) { saved['pcs'] = hasPCS; changed = true; }

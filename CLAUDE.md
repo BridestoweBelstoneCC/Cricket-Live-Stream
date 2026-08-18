@@ -67,6 +67,17 @@ shipped without it and misreported a manual match day until fixed.
   `config.ini`'s `[Scoring]` section) instead of `pcs_output_folder`; a Tailscale IP is the
   recommended way to reach it. `/health`'s `pcs.bridge` block reports connectivity
   separately from file freshness. Operator-facing setup/security/troubleshooting: `BRIDGE.md`.
+- **`scorer_agent.py`** — the other separate-hardware option, for two laptops already on
+  the SAME club wifi (`nvplay_bridge.py` above is for machines that aren't, reached over
+  Tailscale with a token). Standalone, stdlib-only, no import coupling to `server.py` for
+  the same reason as the bridge. Serves `/ping` and `/pcs` over HTTP, and answers a UDP
+  `CRICKETSTREAM-DISCOVER` broadcast on port 8787 so the streaming laptop's control panel
+  can find it with a button press instead of typing an IP — deliberately no token, since
+  discovery only works within the same broadcast domain anyway (don't run it on a public
+  network). Controlled by state's `pcs_source` ("local" | "agent") and `agent_host`;
+  `read_score_source()` in `server.py` is the dispatch point every /live-adjacent call
+  site must use — the same one-door pattern as `effective_pcs_folder()`. Operator-facing
+  setup/troubleshooting: `TWO_LAPTOP_SETUP.md`.
 - **`simulate_match.py`** — match simulator for rehearsing the whole broadcast without a
   scorer: writes NV Play-style frames (faithful to the gotchas: ticker clears on the
   over-completing write, blank pre-match names, runs_required-driven innings 2) to a fake
@@ -167,7 +178,12 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   `effective_pcs_folder()` is the one place that branches on it; `/live`, `/health`,
   `/pcs/debug`, the watchdog's freshness check, and AI over-commentary all call it. A new
   endpoint reading `pcs_output_folder` straight from state will work fine in local mode and
-  silently see nothing in bridge mode.
+  silently see nothing in bridge mode. Two-laptop mode (`pcs_source = "agent"`, see
+  `scorer_agent.py` above) is a THIRD source alongside local/bridge, one level up —
+  `read_score_source()` wraps `effective_pcs_folder()`+`read_pcs_file()` for local/bridge
+  and dispatches to `read_agent_file()` for agent mode. Same rule, one door higher: a new
+  call site must go through `read_score_source()`, not `read_pcs_file()` directly, or it
+  works in local/bridge mode and silently sees nothing when a club is running agent mode.
 - **`/health`'s `thermal` block and the watchdog's throttle warning read `pmset -g therm`,
   not an actual temperature** — macOS doesn't expose real sensor readings without extra
   tooling, but `CPU_Speed_Limit`/`CPU_Scheduler_Limit` dropping below 100 is the signal that
