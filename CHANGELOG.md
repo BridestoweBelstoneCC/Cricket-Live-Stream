@@ -6,10 +6,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
-*A real match-day failure — slow internet stalling panel features, then a streaming Mac
-overheating and crashing the scorer's VM mid-match — drove two additions: a way to run NV
-Play off the streaming machine entirely, and an early-warning thermal check so the next
-overheat gets caught before it costs a match.*
+*Two real match-day failures drove most of this: a streaming Mac overheating and crashing
+the scorer's VM mid-match (a way to run NV Play off the streaming machine, an early-warning
+thermal check), and an afternoon broadcast stuck at a third of its intended bitrate with
+nothing in the panel showing it (a pre-flight bitrate sanity check). Camera/telemetry
+tooling and CI hardening came out of the same run of match days.*
 
 - **NV Play can now run on separate hardware from the streaming machine.** `nvplay_bridge.py`
   is a standalone, stdlib-only script for the scorer's machine — it serves NV Play's output
@@ -22,6 +23,35 @@ overheat gets caught before it costs a match.*
   temperature since it fires the moment the OS starts limiting CPU speed for heat, ahead of
   any crash. The watchdog logs a warning on the transition into throttling, and the control
   panel's health strip gets a red "Mac" indicator.
+- **Match-day diagnostic and camera tooling**, written while commissioning a Reolink RTSP
+  camera over a season: `stream_telemetry.py` passively logs OBS/server/scorer-feed samples
+  to a CSV for post-match analysis (now auto-started by `quickstart.py`), plus an opt-in
+  headroom probe that measures spare upload capacity passive monitoring can't see;
+  `camera_encoder.py` reads the camera's own encoder settings, since OBS re-encoding a
+  low-bitrate camera source can't recover detail that was never captured; `refresh_cam.py`
+  reloads an OBS media source on a timer to stop long RTSP sessions drifting out of sync.
+  None are imported by `server.py`.
+- **A leftover downshifted bitrate can no longer hide.** A real 15 August broadcast ran an
+  entire match at 875 kbps instead of 2500 — invisible in the panel, because the quality
+  ladder's downshift persists in the OBS profile across a server restart while its own step
+  counter resets to 0. `/health`'s new `obs_bitrate` check compares OBS's currently
+  configured bitrate against the last network test's recommendation and flags a mismatch
+  before the operator goes live, surfaced as a new "Bitrate" dot in the health strip.
+- **Fixed: the scorebar's over ticker lagged a full over behind.** It stayed on the
+  finished over's balls until the first delivery of the next one, disagreeing with the
+  end-of-over graphics for the whole gap between overs — the clear was gated on NV Play's
+  ticker field going empty, which a full match's captured feed showed doesn't reliably
+  happen (801 of 857 over-completions still carried the stale ticker). Now keyed off the
+  over boundary itself.
+- **CI now runs on Windows as well as Ubuntu.** Every Windows-only bug fixed recently
+  (a Unix-only import crashing `/health`, a certifi failure in quickstart, two cp1252
+  encoding faults) was invisible to CI before this, despite Windows being the primary
+  target platform. Four such failures fixed alongside the matrix change.
+- **`.gitignore` hardened against secret leaks via backup files.** Entries like `config.ini`
+  only matched the bare filename, so a hand-made backup (`config.ini.bak`,
+  `match_data.db.bak-20260801`) fell straight through — closed by globbing every
+  secret-holding entry. Also ignores the scorer's live output if the output folder ever
+  points at the repo directory, and the `diagnostics/` folder the tools above write to.
 
 ---
 

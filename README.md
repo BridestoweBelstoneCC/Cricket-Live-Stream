@@ -408,6 +408,11 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
 ├── quickstart.py              Match-day launcher script
 ├── obs_setup.py               OBS auto-configuration
+├── nvplay_bridge.py           Standalone: serve NV Play's output when it's on separate hardware
+├── stream_telemetry.py        Standalone: passive match-day CSV logger + headroom probe
+├── camera_encoder.py          Standalone: read a Reolink camera's own encoder settings
+├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
+├── graphics/                  OBS-loaded graphic assets (e.g. instant_replay.png)
 ├── tests/                     Automated test suite (python3 -m unittest discover -s tests)
 ├── requirements.txt           Python package list
 ├── config.example.ini         Club configuration template — copy to config.ini and fill in
@@ -430,6 +435,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── README.md                  This file
 ├── ARCHITECTURE.md            System design with diagrams (for contributors)
 ├── CHANGELOG.md               Version history and upgrade notes
+├── BRIDGE.md                  NV Play on separate hardware — setup + security
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide

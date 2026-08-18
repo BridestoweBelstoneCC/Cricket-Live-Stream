@@ -1883,10 +1883,10 @@ function processPCSData(state) {
   var parsed = overStrValid ? parseOverString(overStr) : [];  // declared here so card-hide logic can access it
 
   // Over transition: fires when completed overs counter increases. Deliberately NOT gated on
-  // overStrValid -- NV Play clears the ticker back to "" the instant the over completes,
-  // before any ball of the new over is recorded. Gating this whole check on the ticker being
-  // populated delayed the entire end-of-over sequence to the first ball of the NEXT over,
-  // since _lastPCSovers never got the chance to update on the poll where overs actually ticked
+  // overStrValid -- NV Play does NOT reliably clear the ticker when the over completes (see
+  // the _betweenOvers comment below), so gating this whole check on the ticker being empty
+  // would delay the entire end-of-over sequence to the first ball of the NEXT over, since
+  // _lastPCSovers never gets the chance to update on the poll where overs actually ticks
   // over. _currentOverBalls (the just-finished over, captured on an earlier poll while the
   // ticker was still populated) is what's used below regardless of this poll's ticker state.
   const _oversIncreased = (currentOver > _lastPCSovers && _lastPCSovers >= 0);

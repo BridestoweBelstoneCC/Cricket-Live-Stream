@@ -67,13 +67,29 @@ shipped without it and misreported a manual match day until fixed.
   `config.ini`'s `[Scoring]` section) instead of `pcs_output_folder`; a Tailscale IP is the
   recommended way to reach it. `/health`'s `pcs.bridge` block reports connectivity
   separately from file freshness. Operator-facing setup/security/troubleshooting: `BRIDGE.md`.
+- **`stream_telemetry.py`** / **`camera_encoder.py`** / **`refresh_cam.py`** — standalone
+  match-day diagnostic tools, written while commissioning a Reolink RTSP camera over a
+  season. None are imported by `server.py`. `stream_telemetry.py` passively samples OBS +
+  the server + the scorer's feed to a CSV every few seconds (deliberately no active
+  bandwidth test — that would compete with the live stream and cause the stalls it exists to
+  measure; reads `/live/view`, never `/live`) plus an opt-in headroom probe (a tiny upload
+  every 5 min, only when the stream is already congestion-free, to measure spare capacity
+  passive monitoring can't see) — `quickstart.py` now auto-starts it, best-effort.
+  `camera_encoder.py` reads a Reolink camera's own encoder settings over its HTTP API, since
+  OBS re-encoding a low-bitrate camera source can't recover detail that was never captured.
+  `refresh_cam.py` reloads an OBS media source on a timer to stop a long-running RTSP feed
+  drifting out of sync with the overlay.
 - **`simulate_match.py`** — match simulator for rehearsing the whole broadcast without a
-  scorer: writes NV Play-style frames (faithful to the gotchas: ticker clears on the
-  over-completing write, blank pre-match names, runs_required-driven innings 2) to a fake
-  PCS folder. Scenarios: full / chase / century / collapse; `--configure` points the running
-  server at it; `--chaos` injects mid-write/stall failures. Deterministic per `--seed`; the
-  engine is imported by `tests/test_simulator.py` as a parser-consistency harness. Always
-  rehearse graphics changes with it before match day.
+  scorer: writes NV Play-style frames (faithful to the gotchas: blank pre-match names,
+  runs_required-driven innings 2) to a fake PCS folder. Scenarios: full / chase / century /
+  collapse; `--configure` points the running server at it; `--chaos` injects mid-write/stall
+  failures. Deterministic per `--seed`; the engine is imported by `tests/test_simulator.py`
+  as a parser-consistency harness. Always rehearse graphics changes with it before match day.
+  **Known fidelity gap:** its own docstring still claims the ticker clears on the
+  over-completing write — the opposite of what real NV Play does (see the ticker gotcha
+  below), discovered by measuring a real match's feed, not by rehearsing against this
+  simulator. The simulator's frames haven't been updated to match; a bug that depends on the
+  stale-ticker behavior won't currently show up in a simulated rehearsal.
 - **`ARCHITECTURE.md`** — contributor-facing design doc with Mermaid diagrams (data-flow,
   one ball's journey, module map). If you change the architecture, update its diagrams in
   the same commit.
@@ -148,7 +164,10 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - **Secrets never reach the browser.** `/state` redacts secret keys; POST `/state` drops
   sentinel values. Keep any new secret field in that redaction list.
 - **Never commit `config.ini`, `match_state.json`, or `match_data.db`.** They're git-ignored;
-  check `git status` before committing.
+  check `git status` before committing. The `.gitignore` entries are globbed
+  (`config.ini*`, not `config.ini`) so a hand-made backup copy (`config.ini.bak`,
+  `match_data.db.bak-20260801`) doesn't fall through and get published by a bare `git add .`
+  — extend any new secret-holding filename the same way, not as a bare name.
 - **The server reads the scorer's LOCAL file.** It must run on a machine that can see the
   scorer's output folder, so it can never move to a cloud host — remote *operation* (not the
   server itself) is what's exposed. Built: Tailscale (private, recommended first) and a
@@ -184,11 +203,23 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - **No hardcoded club identity in defaults.** `DEFAULT_STATE`, `config.example.ini`, and
   `match_state.example.json` must stay club-agnostic (e.g. `"Home CC"`, blank `ground_filter`/
   `home_club_id`) — this project is used by clubs other than the original maintainer's.
-- **NV Play clears its ball-ticker field (`last_ball`) back to `""` the instant an over
-  completes** — it does NOT keep showing the finished over's ticker for one extra poll first.
-  Over-transition detection in `overlay.html`'s `processPCSData` (`_oversIncreased`) must run
-  *every* poll regardless of whether the ticker string is currently populated, or it fires a
-  whole poll late — on the first ball of the NEXT over instead of the instant the over ends.
+- **NV Play does NOT reliably clear its ball-ticker field (`last_ball`) when an over
+  completes** — this was long documented here as the opposite ("clears back to `""` the
+  instant an over completes") until measured against a full match's captured feed: of 857
+  polls where `overs` sat on a whole number, 801 still carried the finished over's stale
+  ticker. Two separate things in `overlay.html`'s `processPCSData` depend on this and must
+  NOT use the ticker string to detect the boundary:
+  - **Over-transition detection** (`_oversIncreased`) keys off the completed-overs counter
+    increasing (`currentOver > _lastPCSovers`), deliberately not gated on the ticker being
+    populated — gating on it delays the whole end-of-over sequence to the first ball of the
+    NEXT over, since `_lastPCSovers` never gets the chance to update on the poll where
+    `overs` actually ticks over.
+  - **The visible ticker itself** used to only clear once the new over's ticker string
+    replaced it — which, given the above, usually never happened until the next ball, so
+    the scorebar showed the finished over's balls through the whole gap until then,
+    disagreeing with the over-summary card. Fixed by keying the clear off the over boundary
+    directly (`ballInOver === 0 && currentOver > 0`, guarded so innings-start 0.0 doesn't
+    trigger it) instead of the ticker string's content.
 - **On that same over-completing write, `bowler` has ALREADY rotated to the next over's
   bowler and the batter pair has swapped ends.** Anything attributing the over's final
   (never-in-any-ticker) delivery must use the previous poll's snapshot — `_lastPolledBowler`
@@ -223,7 +254,9 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 ## Useful diagnostics
 
 - `http://localhost:5000/health` — feed freshness, photos, badges, AI key status, NV Play
-  bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`).
+  bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`), and a
+  pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a
+  previous match before the operator goes live — see `obs_bitrate_sanity_check()`.
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights
