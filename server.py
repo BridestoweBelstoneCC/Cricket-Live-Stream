@@ -4422,6 +4422,11 @@ _stream_mon = {
     "last_reason": "",
     "dynamic_bitrate": None,  # OBS's own Dynamic Bitrate setting (None = not yet read)
     "simple_mode": None,      # ladder needs Simple output mode; None = not yet read
+    "configured_kbps": None,  # VBitrate as OBS is CURRENTLY configured, read every tick
+                               # regardless of live/step — unlike baseline_kbps (which only
+                               # latches while live, at step 0), this is what /health's
+                               # pre-flight bitrate-sanity check needs: it must be able to
+                               # catch a leftover downshift BEFORE the operator goes live.
 }
 _stream_mon_lock = threading.Lock()
 
@@ -4592,6 +4597,15 @@ def _stream_monitor_tick():
         # Ladder support: SimpleOutput only (an unset Mode parameter means Simple)
         mode_raw = str(((results[3] or {}).get("parameterValue")) or "Simple")
         _stream_mon["simple_mode"] = (mode_raw == "Simple")
+        try:
+            vbitrate = int(str((results[1] or {}).get("parameterValue", "") or 0))
+        except ValueError:
+            vbitrate = 0
+        # Read regardless of live/step, unlike baseline_kbps below — this is what lets
+        # /health's pre-flight bitrate-sanity check catch a leftover downshift (see
+        # STREAM_FREEZE_2026-08-15.md) before the operator ever presses "Start Streaming".
+        if _stream_mon["simple_mode"] and vbitrate:
+            _stream_mon["configured_kbps"] = vbitrate
         s0 = results[0]
         live = bool(s0.get("outputActive"))
         _stream_mon["streaming"] = live
@@ -4599,10 +4613,6 @@ def _stream_monitor_tick():
             _stream_mon["samples"] = []
             return None
         # Baseline: the configured bitrate the first time we see the stream live at step 0
-        try:
-            vbitrate = int(str((results[1] or {}).get("parameterValue", "") or 0))
-        except ValueError:
-            vbitrate = 0
         if _stream_mon["simple_mode"] and _stream_mon["step"] == 0 and vbitrate:
             _stream_mon["baseline_kbps"] = vbitrate
             _stream_mon["current_kbps"] = vbitrate
@@ -4714,6 +4724,55 @@ def _recommend_bitrate_and_resolution(upload_mbps):
     if safe_kbps < 4500:
         return min(safe_kbps, 4000), "1080p", 30, "Good enough for 1080p30 — the standard for this project."
     return min(safe_kbps, 6000), "1080p", 30, "Plenty of headroom for a strong 1080p30 stream (60fps rarely helps for cricket — the action is slower-moving than most sports)."
+
+def obs_bitrate_sanity_check(state):
+    """
+    Pre-flight check for /health: is OBS's currently-configured bitrate suspiciously low
+    compared to what the last network test recommended? Catches a leftover downshift from a
+    previous match — the quality ladder writes VBitrate into the OBS profile, where it
+    PERSISTS after the server exits, while the ladder's own step counter is in-memory and
+    resets to 0 on restart (see STREAM_FREEZE_2026-08-15.md: an afternoon broadcast stuck at
+    875 kbps instead of 2500, invisible in the panel because everything else read the old
+    baseline). Surfacing it here catches it before the operator ever presses "Start
+    Streaming", rather than relying on someone remembering to check OBS Settings by hand.
+
+    Reads from the stream monitor's already-cached background poll (_stream_mon) — never
+    opens its own OBS connection, since /health must stay cheap (polled every 10s).
+    """
+    with _stream_mon_lock:
+        reachable   = _stream_mon["reachable"]
+        simple_mode = _stream_mon["simple_mode"]
+        configured  = _stream_mon["configured_kbps"]
+
+    if not reachable or configured is None:
+        return {"available": False}
+    if simple_mode is False:
+        return {"available": False, "note": "Advanced output mode — this check only applies to Simple output"}
+
+    mbps = state.get("network_test_mbps")
+    if not mbps:
+        return {"available": True, "configured_kbps": configured, "recommended_kbps": None,
+                "suspicious": False,
+                "note": "No network test on record yet — run a stream health check "
+                        "(/obs/stream_check) to give this something to compare against."}
+
+    recommended_kbps, _res, _fps, _note = _recommend_bitrate_and_resolution(mbps)
+    # 80% threshold: comfortably below "normal" jitter in what a network test recommends
+    # week to week, but well above any of STREAM_LADDER's downshift fractions (0.7/0.5/0.35)
+    # — so this only fires on something that actually looks like a leftover downshift, not
+    # a slightly-conservative manual choice.
+    suspicious = configured < recommended_kbps * 0.8
+    return {
+        "available": True,
+        "configured_kbps": configured,
+        "recommended_kbps": recommended_kbps,
+        "network_test_at": state.get("network_test_at", 0),
+        "suspicious": suspicious,
+        "note": (f"OBS is configured at {configured} kbps, well below the {recommended_kbps} "
+                 f"kbps your last network test recommended — looks like a leftover downshift "
+                 f"from a previous match. Check OBS Settings → Output before going live."
+                ) if suspicious else "",
+    }
 
 def obs_stream_health_check(state, test_seconds=8):
     """Connects to OBS, refuses to touch anything if a real stream/recording is already live,
@@ -5861,6 +5920,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "server":  _self_metrics(),
                 "thermal": _thermal_state(),
+                "obs_bitrate": obs_bitrate_sanity_check(s_h),
                 "errors":  _recent_server_errors(),
             })
 

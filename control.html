@@ -896,6 +896,7 @@
     <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
     <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
+    <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
   </div>
   <style>
     .hl-item { display:inline-flex; align-items:center; gap:6px; }
@@ -2350,8 +2351,26 @@ async function pollHealth() {
     } else {
       thermItem.style.display = 'none';
     }
+    // OBS bitrate sanity — catches a downshift left over from a previous match (the
+    // ladder writes VBitrate into the OBS profile, where it survives a server restart).
+    // Hidden until OBS has answered at least once, same as the thermal item above.
+    var brItem = document.getElementById('hl-bitrate-item');
+    var br = h.obs_bitrate;
+    if (br && br.available) {
+      brItem.style.display = '';
+      brItem.title = br.note || '';
+      if (br.suspicious) {
+        hlSet('hl-bitrate','hl-bad', br.configured_kbps + ' kbps (expected ~' + br.recommended_kbps + ')');
+      } else if (br.recommended_kbps) {
+        hlSet('hl-bitrate','hl-ok', br.configured_kbps + ' kbps');
+      } else {
+        hlSet('hl-bitrate','hl-warn', br.configured_kbps + ' kbps (no baseline yet)');
+      }
+    } else {
+      brItem.style.display = 'none';
+    }
   } catch(e) {
-    ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai','hl-thermal'].forEach(function(id){ hlSet(id,'','—'); });
+    ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai','hl-thermal','hl-bitrate'].forEach(function(id){ hlSet(id,'','—'); });
   }
 }
 pollHealth();
