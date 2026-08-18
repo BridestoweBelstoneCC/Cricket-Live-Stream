@@ -1558,6 +1558,16 @@ function onAgentToggle() {
   }
 }
 
+function escapeAgentText(s) {
+  // hostname/address/file/error all round-trip through an unauthenticated LAN broadcast
+  // (see scorer_agent.py) — anything a rogue device on the wifi chooses to put in them
+  // must never reach innerHTML unescaped, or answering the discovery broadcast becomes a
+  // way to inject markup into the control panel (which holds the session token).
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 function setAgentStatus(text, kind) {
   const el = document.getElementById('agent-status');
   if (!el) return;
@@ -1584,16 +1594,22 @@ async function refreshAgentStatus() {
                    + 'laptop, then press <b>Find scorer laptop</b>.', 'warn');
       return;
     }
+    // hostname/file/address/error all come from the scorer agent over the network
+    // (unauthenticated by design — see TWO_LAPTOP_SETUP.md) — escape before rendering.
+    const hostname = escapeAgentText(d.hostname || d.address);
+    const address  = escapeAgentText(d.address);
+    const file     = escapeAgentText(d.file);
+    const errText  = escapeAgentText(d.error);
     if (d.connected && d.file) {
-      setAgentStatus('&#9679; Connected to <b>' + (d.hostname || d.address) + '</b> ('
-                   + d.address + ')<br>Reading <code>' + d.file + '</code> &mdash; '
+      setAgentStatus('&#9679; Connected to <b>' + hostname + '</b> ('
+                   + address + ')<br>Reading <code>' + file + '</code> &mdash; '
                    + describeAge(d.file_age), 'ok');
     } else if (d.connected) {
-      setAgentStatus('&#9679; Connected to <b>' + (d.hostname || d.address) + '</b>, but '
-                   + 'no scoreboard file yet.<br>' + (d.error || 'Check that scoreboard '
+      setAgentStatus('&#9679; Connected to <b>' + hostname + '</b>, but '
+                   + 'no scoreboard file yet.<br>' + (errText || 'Check that scoreboard '
                    + 'output is switched on in PCS Pro.'), 'warn');
     } else {
-      setAgentStatus('&#9679; ' + (d.error || 'Cannot reach ' + d.address)
+      setAgentStatus('&#9679; ' + (errText || 'Cannot reach ' + address)
                    + (d.have_score ? '<br>Still showing the last score received.' : ''), 'err');
     }
   } catch(e) {
@@ -1605,10 +1621,10 @@ async function discoverAgent() {
   setAgentStatus('Looking for the scoring laptop on this network&hellip;', '');
   try {
     const d = await (await apiFetch('/agent/discover')).json();
-    if (!d.ok) { setAgentStatus(d.error, 'err'); return; }
+    if (!d.ok) { setAgentStatus(escapeAgentText(d.error), 'err'); return; }
     if (d.agents.length > 1) {
-      const list = d.agents.map(a => (a.hostname||'?') + ' (' + a.address + ')').join(', ');
-      setAgentStatus('Found more than one: ' + list + '. Using <b>' + d.chosen
+      const list = d.agents.map(a => escapeAgentText(a.hostname||'?') + ' (' + escapeAgentText(a.address) + ')').join(', ');
+      setAgentStatus('Found more than one: ' + list + '. Using <b>' + escapeAgentText(d.chosen)
                    + '</b>. Type an address above to pick a different one.', 'warn');
     }
     if (d.chosen) document.getElementById('agent_host').placeholder = 'found automatically: ' + d.chosen;

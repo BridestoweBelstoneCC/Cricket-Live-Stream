@@ -321,6 +321,9 @@ _RATE_LIMITS = {
     "/report/generate":       120,   # AI match report — 2 min
     "/social/image/generate": 120,   # AI social graphic — 2 min
     "/obs/stream_check":      300,   # runs real test recordings in OBS — 5 min cooldown
+    "/agent/discover":          3,   # broadcasts on the LAN — short cooldown, not a heavy op,
+                                      # just enough to stop a script (not a human clicking
+                                      # "Find scorer laptop") from flooding the network
 }
 _rate_limit_ts   = {}
 _rate_limit_lock = threading.Lock()
@@ -1892,6 +1895,48 @@ def _log_score(state, source="PCS"):
           f"/ {state['batter2']['name']} {state['batter2']['runs']}")
 
 
+def _pcs_debug_diagnostics(raw):
+    """/pcs/debug's field-level diagnostics: surfaces the NV Play fields most likely to be
+    misconfigured (truncated names, wrong wicket-field template mapping) without hunting
+    through the raw dump. A {{...}} value means NV Play did not recognise that field.
+    `raw` is the RAW NV Play field dict (pre-parse_pcs_json), not an overlay state dict.
+    Shared by /pcs/debug's local/bridge and agent-mode branches so troubleshooting a
+    template misconfiguration isn't worse just because a club is on agent mode."""
+    if not isinstance(raw, dict) or "error" in raw:
+        return None
+
+    def _show(key):
+        v = raw.get(key, "(field absent)")
+        if isinstance(v, str) and v.startswith("{{"):
+            return f"NOT RECOGNISED BY NV PLAY ({v})"
+        return v
+
+    return {
+        "names": {
+            "batter1_name": _show("batter1_name"),
+            "batter2_name": _show("batter2_name"),
+            "bowler_name":  _show("bowler_name"),
+            "note": "If a name here is shorter than reality (e.g. 'Harmiso' for "
+                    "'Harmison'), NV Play itself is truncating it — check the player's "
+                    "name in the NV Play team list and any scoreboard name-length limit.",
+        },
+        "wicket_fields": {
+            "batter1_howout (Wicket)":          _show("batter1_howout"),
+            "batter1_wickettype (WicketType)":  _show("batter1_wickettype"),
+            "batter1_wicketfielder (Fielder)":  _show("batter1_wicketfielder"),
+            "batter2_howout (Wicket)":          _show("batter2_howout"),
+            "batter2_wickettype (WicketType)":  _show("batter2_wickettype"),
+            "batter2_wicketfielder (Fielder)":  _show("batter2_wicketfielder"),
+            "note": "After a wicket, at least one set should show real values "
+                    "(e.g. type='Caught', fielder='Jones', Wicket='Smith'). If they show "
+                    "'NOT RECOGNISED', the field names in scoreboard.template don't "
+                    "match this NV Play version — read the real names from the keys list "
+                    "below and tell Claude so the template can be corrected.",
+        },
+        "ball_ticker": _show("last_ball"),
+    }
+
+
 def read_pcs_file(folder):
     """
     Read the PCS Pro scoreboard output file from a local folder (or a bridge-mirrored
@@ -2075,17 +2120,22 @@ def resolve_agent_address(s, force=False):
     if _agent_resolved and not force:
         return _agent_resolved
 
+    # Nothing resolved right now. Re-resolution — pinging the remembered address, or
+    # broadcasting for a new one — is rate-limited to once per window so a genuine outage
+    # costs one blocking network call every ~15s, not one on every ~2.5s overlay poll (the
+    # remembered-address ping used to sit outside this gate and fire on every single call).
+    if not force and time.time() < _agent_next_discover:
+        return ""
+
+    _agent_next_discover = time.time() + 15
+
     remembered = _agent_normalise(s.get("agent_last_seen", ""))
-    if remembered and not force:
+    if remembered:
         info, err = agent_ping(remembered, timeout=2)
         if info:
             _agent_resolved = remembered
             return remembered
 
-    if not force and time.time() < _agent_next_discover:
-        return _agent_resolved or ""
-
-    _agent_next_discover = time.time() + 15
     agents = discover_agents()
     if not agents:
         _agent_last_error = ("No scorer agent found on the network. Is scorer_agent.py "
@@ -5624,11 +5674,16 @@ class Handler(BaseHTTPRequestHandler):
             s2 = load_state()
             if s2.get("pcs_source", "local") == "agent":
                 # Two-laptop mode: the file lives on the scoring laptop, so ask the agent
-                # for it rather than hunting a folder that isn't on this machine.
+                # for it rather than hunting a folder that isn't on this machine. Mirrors
+                # the local-mode response shape below (raw_pcs as a parsed dict, same
+                # "diagnostics" block) rather than a cut-down variant, so troubleshooting
+                # a template misconfiguration isn't worse just because a club is on agent
+                # mode — this used to skip the diagnostics block entirely.
                 info = agent_status(s2)
                 address = info.get("address", "")
                 if not address:
                     self._json({"source": "agent", "address": "", "raw_pcs": None,
+                                "diagnostics": None, "keys": None,
                                 "search_note": "No scorer laptop found yet. Start "
                                 "scorer_agent.py on the scoring laptop, then press "
                                 "Find scorer laptop in the control panel."})
@@ -5636,7 +5691,7 @@ class Handler(BaseHTTPRequestHandler):
                 ping, err = agent_ping(address, timeout=4)
                 if not ping:
                     self._json({"source": "agent", "address": address, "raw_pcs": None,
-                                "search_note": err})
+                                "diagnostics": None, "keys": None, "search_note": err})
                     return
                 try:
                     req = urllib.request.Request(f"http://{address}/pcs",
@@ -5645,11 +5700,20 @@ class Handler(BaseHTTPRequestHandler):
                         payload = json.loads(r.read().decode("utf-8", "replace"))
                 except Exception as e:
                     self._json({"source": "agent", "address": address, "raw_pcs": None,
+                                "diagnostics": None, "keys": None,
                                 "search_note": f"Reached the scorer laptop but could not "
                                                f"collect the file: {e}"})
                     return
-                parsed = (_parse_scoreboard_raw(payload.get("content", ""), payload.get("name", ""))
-                         if payload.get("ok") else None)
+                content = payload.get("content", "") or ""
+                raw = None
+                if payload.get("ok") and content.strip():
+                    try:
+                        raw = json.loads(content)
+                    except json.JSONDecodeError as e:
+                        raw = {"error": f"Found {payload.get('name') or 'a file'} but could "
+                                        f"not parse as JSON: {e}",
+                               "raw_text": content[:8000]}
+                parsed = _parse_scoreboard_raw(content, payload.get("name", "")) if payload.get("ok") else None
                 self._json({
                     "source": "agent",
                     "address": address,
@@ -5657,7 +5721,9 @@ class Handler(BaseHTTPRequestHandler):
                     "remote_folder": ping.get("folder", ""),
                     "file_found": payload.get("name"),
                     "file_age": payload.get("age"),
-                    "raw_pcs": (payload.get("content") or "")[:1200],
+                    "diagnostics": _pcs_debug_diagnostics(raw),
+                    "raw_pcs": raw,
+                    "keys": sorted(raw.keys()) if isinstance(raw, dict) and "error" not in raw else None,
                     "parsed_ok": bool(parsed),
                     "search_note": "" if payload.get("ok") else (
                         payload.get("detail") or payload.get("error") or ""),
@@ -5708,37 +5774,8 @@ class Handler(BaseHTTPRequestHandler):
             # Diagnostics: surface the fields most likely to be misconfigured in NV Play.
             # Helps diagnose truncated names and missing dismissal detail without hunting
             # through the raw dump. A {{...}} value means NV Play did not recognise that field.
-            diag = None
-            if isinstance(raw, dict) and "error" not in raw:
-                def _show(key):
-                    v = raw.get(key, "(field absent)")
-                    if isinstance(v, str) and v.startswith("{{"):
-                        return f"NOT RECOGNISED BY NV PLAY ({v})"
-                    return v
-                diag = {
-                    "names": {
-                        "batter1_name": _show("batter1_name"),
-                        "batter2_name": _show("batter2_name"),
-                        "bowler_name":  _show("bowler_name"),
-                        "note": "If a name here is shorter than reality (e.g. 'Harmiso' for "
-                                "'Harmison'), NV Play itself is truncating it — check the player's "
-                                "name in the NV Play team list and any scoreboard name-length limit.",
-                    },
-                    "wicket_fields": {
-                        "batter1_howout (Wicket)":          _show("batter1_howout"),
-                        "batter1_wickettype (WicketType)":  _show("batter1_wickettype"),
-                        "batter1_wicketfielder (Fielder)":  _show("batter1_wicketfielder"),
-                        "batter2_howout (Wicket)":          _show("batter2_howout"),
-                        "batter2_wickettype (WicketType)":  _show("batter2_wickettype"),
-                        "batter2_wicketfielder (Fielder)":  _show("batter2_wicketfielder"),
-                        "note": "After a wicket, at least one set should show real values "
-                                "(e.g. type='Caught', fielder='Jones', Wicket='Smith'). If they show "
-                                "'NOT RECOGNISED', the field names in scoreboard.template don't "
-                                "match this NV Play version — read the real names from the keys list "
-                                "below and tell Claude so the template can be corrected.",
-                    },
-                    "ball_ticker": _show("last_ball"),
-                }
+            # Shared with the agent-mode branch above — see _pcs_debug_diagnostics().
+            diag = _pcs_debug_diagnostics(raw)
             self._json({"diagnostics": diag,
                         "pcs_folder": pcs_folder,
                         "file_found": os.path.basename(found_path) if found_path else None,
@@ -5771,6 +5808,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/agent/discover":
             # Shout on the local network and report every scorer agent that answers.
+            if not self._check_rate_limit(path): return
             st = load_state()
             agents = discover_agents(timeout=2.0)
             chosen = ""
