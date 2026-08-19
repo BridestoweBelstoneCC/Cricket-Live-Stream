@@ -6921,6 +6921,11 @@ if __name__ == "__main__":
 
     class _Server(ThreadingHTTPServer):
         daemon_threads = True
+        # Every request here is a fresh HTTP/1.0 connection (no keep-alive), so a burst of
+        # near-simultaneous pollers (overlay + panel + /scoring + a reconnect after a wifi
+        # blip) queues up real TCP connects, not just requests. The stdlib default backlog
+        # of 5 was found by load-testing to reset connections at concurrency >= 10.
+        request_queue_size = 64
 
         def handle_error(self, request, client_address):
             # Record handler-thread exceptions in the /health flight recorder as well
