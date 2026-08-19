@@ -67,6 +67,22 @@ shipped without it and misreported a manual match day until fixed.
   `config.ini`'s `[Scoring]` section) instead of `pcs_output_folder`; a Tailscale IP is the
   recommended way to reach it. `/health`'s `pcs.bridge` block reports connectivity
   separately from file freshness. Operator-facing setup/security/troubleshooting: `BRIDGE.md`.
+- **`scorer_agent.py`** — the other separate-hardware option, for two laptops already on
+  the SAME club wifi (`nvplay_bridge.py` above is for machines that aren't, reached over
+  Tailscale with a token). Standalone, stdlib-only, no import coupling to `server.py` for
+  the same reason as the bridge. Serves `/ping` and `/pcs` over HTTP, and answers a UDP
+  `CRICKETSTREAM-DISCOVER` broadcast on port 8787 so the streaming laptop's control panel
+  can find it with a button press instead of typing an IP — deliberately no token, since
+  discovery only works within the same broadcast domain anyway (don't run it on a public
+  network). Controlled by state's `pcs_source` ("local" | "agent") and `agent_host`;
+  `read_score_source()` in `server.py` is the dispatch point every /live-adjacent call
+  site must use — the same one-door pattern as `effective_pcs_folder()`. Operator-facing
+  setup/troubleshooting: `TWO_LAPTOP_SETUP.md`. **The UDP discovery broadcast and the HTTP
+  port are independent as far as Windows Firewall is concerned** — a real two-machine test
+  found the HTTP port (8788) reachable while the discovery port (8787) silently got nothing,
+  because the first-run firewall prompt didn't cover both. The control panel's manual
+  `host:port` entry field is the documented fallback for exactly this, not just a
+  same-network-but-no-broadcast edge case.
 - **`stream_telemetry.py`** / **`camera_encoder.py`** / **`refresh_cam.py`** — standalone
   match-day diagnostic tools, written while commissioning a Reolink RTSP camera over a
   season. None are imported by `server.py`. `stream_telemetry.py` passively samples OBS +
@@ -152,6 +168,14 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   and any new tooling read `/live/view` (same response, no side effects).
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
+- **The HTTP server's `request_queue_size` must stay explicitly raised (currently 64).**
+  Every request here is a fresh HTTP/1.0 connection (no keep-alive), so a burst of
+  near-simultaneous pollers (overlay + panel + `/scoring` + several devices reconnecting
+  together after a wifi blip) queues up real TCP connects, not just requests. The stdlib
+  `ThreadingHTTPServer` default backlog of 5 was found by load-testing (`ab -c 10`+) to
+  reset connections outright — the server itself never errored, the client just got refused
+  at the OS level before Python's handler ever ran. Don't let this silently regress back to
+  the default while refactoring the `_Server` class.
 - **Logging must never raise.** `log_ball_data()` and anything in the match-day loop is wrapped
   in try/except and must stay that way — a logging error must never interrupt the stream.
 - **State writes must stay atomic.** `save_state()` writes to a temp file then `os.replace()`s,
@@ -186,7 +210,12 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   `effective_pcs_folder()` is the one place that branches on it; `/live`, `/health`,
   `/pcs/debug`, the watchdog's freshness check, and AI over-commentary all call it. A new
   endpoint reading `pcs_output_folder` straight from state will work fine in local mode and
-  silently see nothing in bridge mode.
+  silently see nothing in bridge mode. Two-laptop mode (`pcs_source = "agent"`, see
+  `scorer_agent.py` above) is a THIRD source alongside local/bridge, one level up —
+  `read_score_source()` wraps `effective_pcs_folder()`+`read_pcs_file()` for local/bridge
+  and dispatches to `read_agent_file()` for agent mode. Same rule, one door higher: a new
+  call site must go through `read_score_source()`, not `read_pcs_file()` directly, or it
+  works in local/bridge mode and silently sees nothing when a club is running agent mode.
 - **`/health`'s `thermal` block and the watchdog's throttle warning read `pmset -g therm`,
   not an actual temperature** — macOS doesn't expose real sensor readings without extra
   tooling, but `CPU_Speed_Limit`/`CPU_Scheduler_Limit` dropping below 100 is the signal that

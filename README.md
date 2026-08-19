@@ -194,6 +194,19 @@ Full setup steps, a security rundown, and troubleshooting: **[`BRIDGE.md`](BRIDG
 
 ---
 
+## Running the stream on a second laptop
+
+Keep the scorer's laptop scoring and nothing else — the streaming laptop runs OBS, the
+server and the overlay, and can be restarted or fiddled with mid-match without reaching
+across to the scorer. `scorer_agent.py` runs on the scoring laptop and finds the streaming
+laptop on the club wifi automatically (no address to type). This is the option for two
+laptops already on the same local network; use the NV Play bridge above instead if they
+aren't (e.g. reached over Tailscale).
+
+Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md)**.
+
+---
+
 ## Requirements
 
 **Hardware:**

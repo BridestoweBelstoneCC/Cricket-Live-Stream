@@ -203,6 +203,8 @@ def build_state(cfg, match, state_path=None):
         "max_overs":            int(stream.get("max_overs",50)),
 
         # PCS Pro / scoring
+        "pcs_source":           (score.get("pcs_source","local") or "local").strip().lower(),
+        "agent_host":           (score.get("agent_host","") or "").strip(),
         "pcs_output_folder":    os.path.expanduser(score.get("pcs_output_folder","")),
         "logos_folder":          os.path.expanduser(score.get("logos_folder","")),
         "headshots_folder":       os.path.expanduser(score.get("headshots_folder","")),
@@ -382,9 +384,34 @@ def main():
     except Exception as e:
         log(f"OBS setup skipped: {e}", "warn")
 
-    # ── Validate PCS folder ──
+    # ── Validate the score source ──
     if manual_mode:
         log("PCS folder checks skipped — scoring manually at /scoring today", "ok")
+    elif state.get("pcs_source") == "agent":
+        # Two-laptop mode: check we can actually see the scoring laptop before the
+        # toss, rather than finding out at the start of play.
+        agent_host = state.get("agent_host", "")
+        try:
+            import server as _srv
+            if agent_host:
+                info, err = _srv.agent_ping(agent_host)
+                if info:
+                    log(f"Scorer laptop reachable: {info.get('hostname','?')} ({agent_host})", "ok")
+                else:
+                    log(f"Scorer laptop not reachable at {agent_host}: {err}", "warn")
+            else:
+                agents = _srv.discover_agents(timeout=2.0)
+                if agents:
+                    a = agents[0]
+                    log(f"Scorer laptop found: {a.get('hostname','?')} ({a['address']})", "ok")
+                    if not a.get("file"):
+                        log("Connected, but no scoreboard file yet — has the scorer "
+                            "started PCS Pro scoreboard output?", "warn")
+                else:
+                    log("No scorer laptop found on the network — is scorer_agent.py "
+                        "running on the scoring laptop? See TWO_LAPTOP_SETUP.md", "warn")
+        except Exception as e:
+            log(f"Could not check the scorer laptop: {e}", "warn")
     else:
         pcs_folder = state["pcs_output_folder"]
         if pcs_folder:
