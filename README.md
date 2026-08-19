@@ -8,7 +8,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.6.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.7-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
@@ -482,6 +482,13 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**v2.7** — Two independent ways to run NV Play on a separate machine from the one doing OBS
+and the stream, both verified on real two-machine hardware: `nvplay_bridge.py` (Tailscale,
+token-gated, for machines that aren't on the same network) and `scorer_agent.py` (UDP
+auto-discovery, for two laptops on the same club wifi). A Mac thermal early-warning check,
+match-day diagnostic/camera tooling, and a pre-flight OBS bitrate sanity check round out a
+run of fixes driven by real match-day failures. Full detail in [`CHANGELOG.md`](CHANGELOG.md).
 
 **v2.6.1** — Ten bugs found by a deep code review of everything shipped between v2.4 and
 v2.6, all fixed with regression tests (suite now 211): over-final wickets are credited to

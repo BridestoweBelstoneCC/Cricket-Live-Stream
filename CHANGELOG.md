@@ -4,20 +4,36 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.7 — 2026-08-19
 
 *Two real match-day failures drove most of this: a streaming Mac overheating and crashing
-the scorer's VM mid-match (a way to run NV Play off the streaming machine, an early-warning
-thermal check), and an afternoon broadcast stuck at a third of its intended bitrate with
-nothing in the panel showing it (a pre-flight bitrate sanity check). Camera/telemetry
-tooling and CI hardening came out of the same run of match days.*
+the scorer's VM mid-match (two independent ways to run NV Play off the streaming machine,
+plus an early-warning thermal check), and an afternoon broadcast stuck at a third of its
+intended bitrate with nothing in the panel showing it (a pre-flight bitrate sanity check).
+Camera/telemetry tooling and CI hardening came out of the same run of match days. Both
+separate-hardware options were verified tonight on genuine two-machine hardware, not just
+simulated on one laptop.*
 
-- **NV Play can now run on separate hardware from the streaming machine.** `nvplay_bridge.py`
-  is a standalone, stdlib-only script for the scorer's machine — it serves NV Play's output
-  file over HTTP; the server mirrors it into a local cache every ~2s, at which point it's an
-  ordinary local file to `/live`, `/health`, the watchdog, and AI commentary, all unchanged.
-  Configure it from the control panel's new "NV Play on separate hardware" fields (URL +
-  token) instead of the PCS output folder. A Tailscale IP is the recommended way to reach it.
+- **NV Play can now run on separate hardware from the streaming machine — two ways.**
+  `nvplay_bridge.py` is a standalone, stdlib-only script for the scorer's machine, for when
+  the two machines AREN'T on the same network — it serves NV Play's output file over HTTP,
+  gated by a token, reached over Tailscale; the server mirrors it into a local cache every
+  ~2s, at which point it's an ordinary local file to `/live`, `/health`, the watchdog, and AI
+  commentary, all unchanged. Configure it from the control panel's new "NV Play on separate
+  hardware" fields (URL + token) instead of the PCS output folder.
+  `scorer_agent.py` is the simpler alternative for two laptops already on the SAME club wifi
+  — no address or token to type, found automatically via a UDP broadcast. Verified tonight
+  against a real second machine: held the last known score gracefully when the agent was
+  deliberately stopped mid-match (simulating the crash that started all this), then
+  auto-recovered on restart with no re-pairing needed. One real gap found and worked around:
+  Windows Firewall can allow the HTTP port while still silently blocking the UDP discovery
+  broadcast — the control panel's manual `host:port` field is the documented fallback.
+  See `TWO_LAPTOP_SETUP.md` (agent) and `BRIDGE.md` (bridge) for setup guides.
+- **Fixed: the server could reset connections under a burst of simultaneous pollers.**
+  Found by load-testing the two-laptop dry run — the stdlib `ThreadingHTTPServer` default
+  connection backlog of 5 was too small once the overlay, control panel, `/scoring`, and a
+  post-wifi-blip reconnect all landed at once (every request here is a fresh HTTP/1.0
+  connection, no keep-alive). Raised to 64; verified clean at 300 requests, concurrency 50.
 - **`/health` now reports Mac thermal throttling before it becomes a crash.** A new `thermal`
   block reads `pmset -g therm` — macOS's own throttle signal, and a better one than a raw
   temperature since it fires the moment the OS starts limiting CPU speed for heat, ahead of
