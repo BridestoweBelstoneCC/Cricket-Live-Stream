@@ -30,7 +30,51 @@ This software does exactly that — for your club's YouTube live stream. It runs
 
 ---
 
-## Step 1 — Download and install OBS Studio
+## Option A — Let Claude set it up for you
+
+If you (or someone at your club) has access to Claude, Anthropic's AI assistant, it can walk
+you through this entire setup conversationally — installing OBS, running the setup wizard,
+configuring OBS's WebSocket server and Replay Buffer, and getting your camera working. This
+is genuinely the fastest route if you're not confident with computers, and it's how the most
+recent setup of this project was actually done.
+
+**What you need:**
+- **Claude Code** — a free download from **claude.com/code** that runs in a terminal window
+  and can read files, run commands, and see error messages on your computer as you go.
+- A Claude account (a free account works; a paid plan gives more room for a long session).
+
+**How to use it:**
+
+1. Download this repository (see Step 2 under Option B below) and open a terminal in that
+   folder.
+2. Run `claude` to start it.
+3. Paste in this prompt to get started:
+
+   > I've just downloaded CricketStream Overlay for my cricket club and I have no coding
+   > experience. Please read CLAUDE.md and FOR_NON_TECHNICAL_USERS.md in this folder, then
+   > walk me through the entire setup step by step: installing OBS Studio, running the setup
+   > wizard, configuring OBS's WebSocket server and Replay Buffer, and getting my camera
+   > source working. Ask me one question at a time, explain what each step does in plain
+   > English, and don't assume I know any technical terms.
+
+4. Answer its questions as you go — club name, kit colour, camera type, and so on. It'll tell
+   you exactly what to click and where.
+
+**Worth knowing:**
+- Claude can read and run things on your computer, but it can't physically click buttons
+  inside OBS's window for you — it'll tell you exactly what to click, and you do the clicking.
+- If anything looks wrong or you're unsure about a step, just ask — that's what it's there for.
+- This doesn't replace Option B below, it's the same setup, just with a guide sitting next to
+  you instead of a page you read on your own.
+
+---
+
+## Option B — Do it yourself, step by step
+
+Prefer to follow written instructions at your own pace, or don't have access to Claude?
+Here's the full manual walkthrough.
+
+### Step 1 — Download and install OBS Studio
 
 1. Go to **https://obsproject.com**
 2. Click the button for your operating system (Windows or macOS)
@@ -42,7 +86,7 @@ This software does exactly that — for your club's YouTube live stream. It runs
 
 ---
 
-## Step 2 — Download the cricket stream software
+### Step 2 — Download the cricket stream software
 
 1. Go to **https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream**
 2. Click the green **Code** button
@@ -53,7 +97,7 @@ This software does exactly that — for your club's YouTube live stream. It runs
 
 ---
 
-## Step 3 — First-time setup
+### Step 3 — First-time setup
 
 Go to the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) page and download the setup wizard for your computer:
 
