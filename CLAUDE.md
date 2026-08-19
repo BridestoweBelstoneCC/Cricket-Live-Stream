@@ -272,6 +272,16 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   lookup is deliberately withheld rather than risk crediting the wrong player. The fix is data,
   not code: add `shirt_number = Full Name` to the **Squad Roster** card in the control panel.
   `/player/stats?name=SURNAME&debug=1` shows exactly why a name did or didn't resolve.
+- **The camera source must be added to EVERY OBS scene that uses it, including Replay** — not
+  just Main. A source that isn't present in a scene isn't just hidden when that scene is live,
+  it deactivates outright; switching back to Main re-activates it from scratch, which means
+  the RTSP feed reconnects and restarts its internal buffering. The picture then drifts out
+  of sync with the overlay graphics for the rest of the session — the score updates before you
+  see the ball. This was the actual root cause behind the RTSP drift `refresh_cam.py` was
+  built to paper over (see its file entry above); once the camera source was added to the
+  Replay scene too, the drift stopped happening in the first place and periodic reloads became
+  mostly unnecessary. Check every scene in OBS's scene list has the camera source, not just
+  the one usually shown.
 
 ## Conventions
 

@@ -422,6 +422,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── quickstart.py              Match-day launcher script
 ├── obs_setup.py               OBS auto-configuration
 ├── nvplay_bridge.py           Standalone: serve NV Play's output when it's on separate hardware
+├── scorer_agent.py            Standalone: same, for two laptops on the same club wifi (no token)
 ├── stream_telemetry.py        Standalone: passive match-day CSV logger + headroom probe
 ├── camera_encoder.py          Standalone: read a Reolink camera's own encoder settings
 ├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
@@ -436,19 +437,22 @@ inside a free Windows virtual machine while streaming natively from macOS.
 │   ├── setup.bat              First-time setup wizard launcher
 │   ├── install.bat            Package installer (advanced)
 │   ├── quickstart.bat         Match-day launcher
-│   └── start_server.bat       Server-only launcher
+│   ├── start_server.bat       Server-only launcher
+│   └── start_scorer_agent.bat Launcher for scorer_agent.py, run on the scoring laptop
 ├── Mac/
 │   ├── SETUP_GUIDE_MAC.md     Full Mac setup + troubleshooting
 │   ├── MAC_VM_SETUP.md        Mac + VMware Fusion guide
 │   ├── setup.sh               First-time setup wizard launcher
 │   ├── install.sh             Package installer (advanced)
 │   ├── quickstart.sh          Match-day launcher
-│   └── start_server.sh        Server-only launcher
+│   ├── start_server.sh        Server-only launcher
+│   └── start_scorer_agent.sh  Launcher for scorer_agent.py, run on the scoring laptop
 ├── docs/                      GitHub Pages landing page
 ├── README.md                  This file
 ├── ARCHITECTURE.md            System design with diagrams (for contributors)
 ├── CHANGELOG.md               Version history and upgrade notes
-├── BRIDGE.md                  NV Play on separate hardware — setup + security
+├── BRIDGE.md                  NV Play on separate hardware over Tailscale — setup + security
+├── TWO_LAPTOP_SETUP.md        NV Play on a second laptop on the same wifi — setup
 ├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
 ├── CONTRIBUTING.md            How to contribute
 ├── CLUB_LOGOS.md              Club badge guide

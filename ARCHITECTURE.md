@@ -16,7 +16,7 @@ identically no matter where the data comes from.
 ```mermaid
 flowchart LR
     subgraph sources["Data sources (pick one)"]
-        NV["NV Play / PCS Pro<br/>scorer's laptop writes a<br/>JSON frame every ball<br/>(optionally separate hardware,<br/>mirrored by nvplay_bridge.py)"]
+        NV["NV Play / PCS Pro<br/>scorer's laptop writes a<br/>JSON frame every ball<br/>(optionally separate hardware,<br/>mirrored by nvplay_bridge.py<br/>or scorer_agent.py)"]
         MAN["Manual scoring page<br/>scoring.html on a phone<br/>(no scoring software)"]
         SIM["Match simulator<br/>simulate_match.py<br/>(rehearsals)"]
         WID["PlayCricket widget<br/>(score-only fallback)"]
@@ -57,11 +57,15 @@ Key decisions baked into that shape:
 - **The server must run next to the scorer's output file**, so it can never be a cloud
   service — remote *operation* (Tailscale / Cloudflare Tunnel to the panel and scoring
   page) is what's exposed instead.
-- **NV Play can run on hardware separate from the server** via `nvplay_bridge.py`, which
-  serves the scorer's file over HTTP; the server mirrors it into a local cache folder every
-  ~2s, becoming an ordinary local file before `parse_pcs_json()` — or anything else — ever
-  sees it. Built so the streaming machine doesn't have to carry a scorer's VM's CPU/heat
-  load alongside OBS.
+- **NV Play can run on hardware separate from the server, two ways.** `nvplay_bridge.py`
+  serves the scorer's file over HTTP, token-gated, for machines that aren't on the same
+  network (reached over Tailscale); `scorer_agent.py` is the simpler option for two laptops
+  already on the same club wifi — found automatically via a UDP broadcast, no address or
+  token to type. Either way the server mirrors the feed locally, becoming an ordinary local
+  file (or, for the agent, an equivalent in-memory frame) before `parse_pcs_json()` — or
+  anything else — ever sees it; `read_score_source()` is the one dispatch point every
+  /live-adjacent call site goes through. Built so the streaming machine doesn't have to
+  carry a scorer's VM's CPU/heat load alongside OBS.
 - **`/live` is the overlay's poll and drives all side effects** (event detection, ball
   logging, commentary triggers, consuming the wicket-event buffer). Every other consumer
   uses the read-only `/live/view` — exactly one client owns the pipeline.
@@ -116,9 +120,10 @@ Two subtleties worth knowing (they've caused real bugs):
 | `scoring_engine.py` | Deterministic innings engine shared by manual scoring and the simulator |
 | `simulate_match.py` | Rehearsal harness: complete simulated matches written as real feed frames (`--chaos` for failure drills) |
 | `scoreboard.template` | What NV Play fills in — the contract every source imitates |
-| `nvplay_bridge.py` | Standalone stdlib script: serves NV Play's file over HTTP when it's on separate hardware from the server |
+| `nvplay_bridge.py` | Standalone stdlib script: serves NV Play's file over HTTP when it's on separate hardware from the server, not on the same network (Tailscale, token-gated) |
+| `scorer_agent.py` | Standalone stdlib script: same idea, for two laptops already on the same club wifi (UDP auto-discovery, no token) |
 | `obs_setup.py` / `quickstart.py` / `setup_wizard.py` | OBS auto-config · match-day launcher · first-run wizard |
-| `tests/` | 165 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
+| `tests/` | 211 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
 
 ### Security model, briefly
 
