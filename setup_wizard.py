@@ -188,6 +188,11 @@ def configure():
     heading("Scoring software")
     print("  The folder where NV Play / PCS Pro writes its scoreboard output.")
     print("  Leave blank to use PlayCricket widget as fallback (score only).\n")
+    print("  Running the scorer on different hardware from this machine? Two options,")
+    print("  both configured later from the control panel, not here:")
+    print("    - Different networks, reached over Tailscale -> see BRIDGE.md")
+    print("    - Two laptops on the same club wifi, found automatically -> see")
+    print("      TWO_LAPTOP_SETUP.md\n")
     pcs_folder = ask("PCS output folder")
 
     heading("OBS")
