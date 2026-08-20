@@ -201,7 +201,9 @@ server and the overlay, and can be restarted or fiddled with mid-match without r
 across to the scorer. `scorer_agent.py` runs on the scoring laptop and finds the streaming
 laptop on the club wifi automatically (no address to type). This is the option for two
 laptops already on the same local network; use the NV Play bridge above instead if they
-aren't (e.g. reached over Tailscale).
+aren't (e.g. reached over Tailscale). On Windows, a standalone `CricketStreamScorerAgent.exe`
+on the [releases page](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
+means the scoring laptop doesn't need Python installed at all.
 
 Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md)**.
 

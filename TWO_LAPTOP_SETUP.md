@@ -23,15 +23,17 @@ no address to type, no token to copy.
 
 - Both laptops on the **same wifi** (or both plugged into the same router).
   A phone hotspot works fine if the club has no wifi — connect both to it.
-- **Python 3** on the scoring laptop. If it's already running the scoring
-  software today, it has Python. If not, get it from
-  [python.org](https://www.python.org/downloads/) and tick
-  **"Add Python to PATH"** during installation.
-- Two files copied onto the scoring laptop:
-  - `scorer_agent.py`
-  - `Windows/start_scorer_agent.bat` (Windows) or `Mac/start_scorer_agent.sh` (Mac)
-
-  Put them in the same folder — anywhere convenient, the Desktop is fine.
+- One file copied onto the scoring laptop, depending on what it already has:
+  - **Windows, no Python installed:** download `CricketStreamScorerAgent.exe`
+    from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
+    — no separate Python install needed, just double-click it.
+  - **Windows or Mac, already running PCS Pro (so Python may already be
+    there) or happy to install it:** get **Python 3** from
+    [python.org](https://www.python.org/downloads/) (tick **"Add Python to
+    PATH"** on Windows) if it's not already there, then copy `scorer_agent.py`
+    + `Windows/start_scorer_agent.bat` (Windows) or `Mac/start_scorer_agent.sh`
+    (Mac) onto the scoring laptop, in the same folder — anywhere convenient,
+    the Desktop is fine.
 
 ---
 
@@ -43,8 +45,9 @@ no address to type, no token to copy.
    **Tools → Configuration → Scoreboard**, with the output folder set and
    *Enable Scoreboard Output* ticked. This is the same setup you already use;
    nothing changes here.
-2. Double-click **`start_scorer_agent.bat`** (Windows) or
-   **`start_scorer_agent.sh`** (Mac).
+2. Double-click **`CricketStreamScorerAgent.exe`** (Windows, no Python needed),
+   or **`start_scorer_agent.bat`** (Windows, from source) / **`start_scorer_agent.sh`**
+   (Mac).
 3. A black window opens and shows something like:
 
    ```
@@ -55,13 +58,15 @@ no address to type, no token to copy.
 
    That's it. **Leave the window open** for the whole match and forget about it.
 
-   The first time, Windows may ask whether to allow Python through the firewall.
+   The first time, Windows may ask whether to allow it through the firewall
+   (as **Python**, or as **CricketStreamScorerAgent** if you're using the exe).
    Say **yes**, and tick **Private networks**. If nobody's looking and it gets
    dismissed, see *When it doesn't work* below.
 
    If it can't find the scoreboard folder on its own, it will tell you. Copy the
    path out of PCS Pro's Scoreboard settings and start it like this — you only
-   need to do it once, it remembers:
+   need to do it once, it remembers (drag-and-drop the folder onto the exe also
+   works, if you're using that):
 
    ```
    python scorer_agent.py "C:\Users\Scorer\Documents\Cricket Matches\_Scoreboards\Output"

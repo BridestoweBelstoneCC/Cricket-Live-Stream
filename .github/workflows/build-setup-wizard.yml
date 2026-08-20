@@ -74,8 +74,33 @@ jobs:
           name: CricketStreamSetup-mac
           path: dist/CricketStreamSetup-mac.zip
 
+  # scorer_agent.py runs on the SCORING laptop (see TWO_LAPTOP_SETUP.md), which is often a
+  # club's spare/old machine with no Python on it -- same "python is not recognised" failure
+  # mode the setup wizard's own exe exists to avoid. Windows-only for now: TWO_LAPTOP_SETUP.md's
+  # Mac launcher (start_scorer_agent.sh) already runs scorer_agent.py straight from source with
+  # no separate install step, since Macs ship python3; Windows has no such guarantee.
+  build-scorer-agent-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build exe
+        run: pyinstaller --onefile --console --name CricketStreamScorerAgent scorer_agent.py
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: CricketStreamScorerAgent-windows
+          path: dist/CricketStreamScorerAgent.exe
+
   release:
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-scorer-agent-windows]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -93,3 +118,4 @@ jobs:
           files: |
             artifacts/CricketStreamSetup-windows/CricketStreamSetup.exe
             artifacts/CricketStreamSetup-mac/CricketStreamSetup-mac.zip
+            artifacts/CricketStreamScorerAgent-windows/CricketStreamScorerAgent.exe
