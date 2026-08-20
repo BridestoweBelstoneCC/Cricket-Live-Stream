@@ -5,7 +5,7 @@ Reads config.ini, fetches today's match from the PlayCricket API,
 writes match_state.json with everything pre-configured, then starts
 the server. Double-click quickstart.bat (Windows) or quickstart.sh (Mac).
 """
-import configparser, json, os, sys, subprocess, urllib.request, datetime, platform
+import configparser, json, os, sys, subprocess, urllib.request, datetime, platform, time
 
 # Use certifi's certificates to avoid CERTIFICATE_VERIFY_FAILED on the PlayCricket API.
 # server.py carries the same patch; without it here the fixture fetch fails outright and
@@ -34,6 +34,13 @@ def log(msg, status=""):
     print(f"{icons.get(status,'   ')} {msg}")
 
 GITHUB_REPO = "BridestoweBelstoneCC/Cricket-Live-Stream"
+
+# server.py's serve_forever() never returns during normal operation, so proc.wait() only
+# ever returns here because the server crashed (unhandled exception, OOM, anything) --
+# capped so a genuinely broken config doesn't restart-loop forever. Found missing entirely
+# by a real crash test against exe-runtime-preview (2026-08-20): killing server.py took the
+# whole launcher down with it, no recovery.
+SERVER_MAX_RESTARTS = 3
 
 def get_current_version():
     """Best-effort local version via `git describe --tags`. Returns '' if this isn't a git
@@ -496,8 +503,23 @@ def main():
     print("  ─────────────────────────────────────────────")
     print()
 
+    server_restarts = 0
     try:
-        proc.wait()
+        while True:
+            proc.wait()
+            # Reaching here (without US having called terminate/kill below) means the server
+            # exited on its own -- a crash, not a shutdown. Ctrl+C is caught by the except
+            # clause instead and never reaches this point.
+            if server_restarts >= SERVER_MAX_RESTARTS:
+                log(f"Server crashed and won't auto-restart again (already tried "
+                    f"{SERVER_MAX_RESTARTS} times) — check the terminal output above for "
+                    f"what died, then close this window and re-run quickstart", "err")
+                sys.exit(1)
+            server_restarts += 1
+            log(f"Server stopped unexpectedly — restarting "
+                f"(attempt {server_restarts}/{SERVER_MAX_RESTARTS})", "warn")
+            time.sleep(2)   # brief backoff so a genuine crash-loop doesn't hammer the machine
+            proc = subprocess.Popen([sys.executable, server_path], env=server_env, **popen_kwargs)
     except KeyboardInterrupt:
         # Offer the report while the server is STILL RUNNING (match log lives in its memory)
         offer_match_report(token)
