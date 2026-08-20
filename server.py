@@ -38,14 +38,7 @@ PCS Pro setup (scorer's laptop):
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
-import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess, socket, io, sys
-
-# Frozen (PyInstaller) support — CricketStreamServer.exe: sys.executable is the exe itself,
-# and __file__ resolves inside the temp extraction folder, not next to the exe on disk. Every
-# path that used to be relative to this file now goes through APP_DIR instead, matching
-# setup_wizard.py's own FROZEN/BASE pattern (see CLAUDE.md's frozen-executable gotcha).
-FROZEN  = getattr(sys, "frozen", False)
-APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess, socket, io
 
 # Mac SSL fix — use certifi certificates to avoid CERTIFICATE_VERIFY_FAILED errors
 try:
@@ -79,7 +72,7 @@ _BIND_HOST          = "127.0.0.1"
 _CLOUDFLARE_TUNNEL  = False
 
 def _config_ini_path():
-    return os.path.join(APP_DIR, "config.ini")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
 
 def _persist_control_token(new_token):
     """Writes a freshly-generated control_token into config.ini's [Auth] section, editing
@@ -501,7 +494,7 @@ def match_log_snapshot_copy():
 _db_lock = threading.Lock()
 
 def _db_path():
-    return os.path.join(APP_DIR, "match_data.db")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_data.db")
 
 def _db():
     conn = sqlite3.connect(_db_path(), timeout=5)
@@ -919,8 +912,8 @@ def fetch_weather_data():
 # Resolve relative to server.py (like STATE_FILE / config.ini / the DB), NOT the current
 # working directory — the launch scripts cd elsewhere, so a bare filename could be looked
 # up in the wrong place and "put it next to server.py" (what every doc says) would fail.
-YT_TOKEN_FILE = os.path.join(APP_DIR, "yt_token.json")
-YT_CREDS_FILE = os.path.join(APP_DIR, "yt_credentials.json")
+YT_TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yt_token.json")
+YT_CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "yt_credentials.json")
 YT_SCOPES     = ["https://www.googleapis.com/auth/youtube"]
 YT_PRIVACY    = ("public", "unlisted", "private")
 # The categories worth offering a grassroots cricket stream (id → label). 17 = Sports is
@@ -1592,7 +1585,7 @@ def check_commentary_trigger(state):
 # ── State file ────────────────────────────────────────────────
 PORT       = 5000
 # Always resolve state file relative to server.py regardless of launch directory
-STATE_FILE = os.path.join(APP_DIR, "match_state.json")
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_state.json")
 MAX_CLIPS  = 100
 MAX_BODY_BYTES = 1024 * 1024   # 1 MB — every POST body is small JSON; cheap guard against junk
 
@@ -1747,7 +1740,7 @@ def _seed_state_from_config():
     config.ini no longer overwrites it.
     """
     import configparser as _cp
-    cfg_path = os.path.join(APP_DIR, "config.ini")
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if not os.path.exists(cfg_path):
         return
     cp = _cp.ConfigParser()
@@ -1837,7 +1830,7 @@ _innings_latch  = 1   # latched innings number (see parse_pcs_json); survives th
 # its PCS output file into this local folder every couple of seconds. Once mirrored, it's a
 # completely ordinary local file — every existing consumer (find_pcs_output_file,
 # read_pcs_file, /health, /pcs/debug, the watchdog) keeps working unchanged.
-PCS_BRIDGE_CACHE_DIR = os.path.join(APP_DIR, ".pcs_bridge_cache")
+PCS_BRIDGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pcs_bridge_cache")
 
 def effective_pcs_folder(state):
     """Which local folder to scan for the PCS output file. Every /live-adjacent call site
@@ -2418,7 +2411,7 @@ def _socials_root():
     cfg = load_state()
     folder = cfg.get("socials_folder", "").strip()
     if not folder:
-        folder = os.path.join(APP_DIR, "socials")
+        folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "socials")
     return os.path.expanduser(folder)
 
 def _socials_dir(team_key=""):
@@ -2678,7 +2671,7 @@ _season_stats = {"date": None, "lookup": {}, "built": False, "building": False,
                  "matches_used": 0, "calls": 0, "error": None, "build_started": None}
 _season_stats_lock = threading.Lock()
 _season_stats_last_action = None   # "cache" | "fresh" (transient, for status messages)
-SEASON_STATS_CACHE_FILE = os.path.join(APP_DIR,
+SEASON_STATS_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                        "season_stats_cache.json")
 
 
@@ -3407,7 +3400,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
             cid_w = str(cfg.get("home_club_id", "")).strip()
             logos_w = cfg.get("logos_folder", "").strip()
             logos_w = os.path.expanduser(logos_w) if logos_w else os.path.join(
-                      APP_DIR, "logos")
+                      os.path.dirname(os.path.abspath(__file__)), "logos")
             for ext in (".png", ".webp", ".jpg", ".jpeg"):
                 lp = os.path.join(logos_w, cid_w + ext)
                 if os.path.exists(lp):
@@ -3462,7 +3455,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
         cid = str(cfg.get("home_club_id", "")).strip()
         logos = cfg.get("logos_folder", "").strip()
         logos = os.path.expanduser(logos) if logos else os.path.join(
-                APP_DIR, "logos")
+                os.path.dirname(os.path.abspath(__file__)), "logos")
         for ext in (".png", ".webp", ".jpg", ".jpeg"):
             lp = os.path.join(logos, cid + ext)
             if os.path.exists(lp):
@@ -3584,7 +3577,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
     # lay out tidily in one row. Match-day sponsors: just drop more files into sponsors/.
     try:
         sp_dir = (cfg.get("sponsors_folder", "").strip()
-                  or os.path.join(APP_DIR, "sponsors"))
+                  or os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors"))
         sp_dir = os.path.expanduser(sp_dir)
         sps = sorted([f for f in os.listdir(sp_dir)
                       if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))])
@@ -3623,7 +3616,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
 
     # ── Save ──
     if not out_path:
-        out_path = os.path.join(APP_DIR,
+        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 f"instagram_result_{datetime.date.today().isoformat()}.png")
     img.save(out_path, "PNG")
     return out_path
@@ -3779,7 +3772,7 @@ def parse_pcs_json(data):
 # to never having pressed the button. The event log persists to manual_scoring.json after
 # every action — a server restart or a dropped phone resumes mid-over.
 
-MANUAL_SCORING_FILE = os.path.join(APP_DIR,
+MANUAL_SCORING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                    "manual_scoring.json")
 _manual_lock = threading.Lock()
 _manual = {"session": None, "load_attempted": False}
@@ -5324,7 +5317,7 @@ def obs_stream_health_check(state, test_seconds=8):
 # breakage class scripts/check_panel_js.py exists for). Read per request: panel edits show
 # up on a browser refresh with no server restart. Kit-colour presets are injected at serve
 # time in place of the placeholder token below.
-CONTROL_HTML_FILE = os.path.join(APP_DIR, "control.html")
+CONTROL_HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "control.html")
 
 def control_html():
     with open(CONTROL_HTML_FILE, encoding="utf-8") as f:
@@ -5646,7 +5639,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/","/overlay"):
-            self._file(os.path.join(APP_DIR,"overlay.html"),"text/html; charset=utf-8", no_cache=True)
+            self._file(os.path.join(os.path.dirname(os.path.abspath(__file__)),"overlay.html"),"text/html; charset=utf-8", no_cache=True)
         elif path == "/control":
             try:
                 self._html(control_html())
@@ -5657,7 +5650,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/scoring":
             # Manual ball-by-ball scoring page — phones/tablets, no NV Play needed
             try:
-                with open(os.path.join(APP_DIR,
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                        "scoring.html"), encoding="utf-8") as f:
                     self._html(f.read())
             except OSError as e:
@@ -5718,7 +5711,8 @@ class Handler(BaseHTTPRequestHandler):
             s2      = load_state()
             lf      = s2.get("logos_folder","").strip()
             ldir    = (os.path.expanduser(lf) if lf
-                       else os.path.join(APP_DIR, "logos"))
+                       else os.path.join(os.path.dirname(
+                            os.path.abspath(__file__)), "logos"))
             files   = []
             exists  = os.path.isdir(ldir)
             if exists:
@@ -5991,7 +5985,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/social/image/latest":
             # Serve the most recently generated Instagram graphic for preview/download.
-            here = APP_DIR
+            here = os.path.dirname(os.path.abspath(__file__))
             imgs = sorted(glob.glob(os.path.join(here, "instagram_result_*.png")),
                           key=os.path.getmtime, reverse=True)
             if imgs:
@@ -6016,7 +6010,8 @@ class Handler(BaseHTTPRequestHandler):
             s2    = load_state()
             hdir  = s2.get("headshots_folder","").strip()
             hdir  = (os.path.expanduser(hdir) if hdir
-                     else os.path.join(APP_DIR, "headshots"))
+                     else os.path.join(os.path.dirname(
+                          os.path.abspath(__file__)), "headshots"))
             mimes = {"png":"image/png","jpg":"image/jpeg",
                      "jpeg":"image/jpeg","webp":"image/webp"}
             # Tiered match so the scorebar name finds the photo even when they differ in form:
@@ -6067,7 +6062,7 @@ class Handler(BaseHTTPRequestHandler):
             s_state   = load_state()
             logos_cfg = s_state.get("logos_folder","").strip()
             logo_dir  = (os.path.expanduser(logos_cfg) if logos_cfg
-                         else os.path.join(APP_DIR, "logos"))
+                         else os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos"))
             exts = (".png",".jpg",".jpeg",".svg",".webp",".gif")
             out = []
             try:
@@ -6088,7 +6083,7 @@ class Handler(BaseHTTPRequestHandler):
             s_state  = load_state()
             logos_cfg = s_state.get("logos_folder","").strip()
             logo_dir = (os.path.expanduser(logos_cfg) if logos_cfg
-                        else os.path.join(APP_DIR, "logos"))
+                        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos"))
             mimes    = {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
                         "svg":"image/svg+xml","webp":"image/webp","gif":"image/gif"}
             found = False
@@ -6110,7 +6105,7 @@ class Handler(BaseHTTPRequestHandler):
             raw_name = path[9:].split("?")[0].strip("/")
             name     = os.path.basename(raw_name.replace("..", "").replace("/", "")
                                         .replace("\\", "").replace(":", ""))
-            sponsor_dir = os.path.join(APP_DIR, "sponsors")
+            sponsor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors")
             mimes    = {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
                         "svg":"image/svg+xml","webp":"image/webp","gif":"image/gif"}
             found = False
@@ -6295,7 +6290,7 @@ class Handler(BaseHTTPRequestHandler):
             pcs_age   = (now - os.path.getmtime(pcs_path)) if pcs_path else None
             manual    = manual_session_active()
             # Asset folders
-            here      = APP_DIR
+            here      = os.path.dirname(os.path.abspath(__file__))
             hs_dir    = os.path.expanduser(s_h.get("headshots_folder","").strip()) or os.path.join(here,"headshots")
             lg_dir    = os.path.expanduser(s_h.get("logos_folder","").strip()) or os.path.join(here,"logos")
             img_exts  = (".png",".jpg",".jpeg",".webp",".svg",".gif")
@@ -6909,7 +6904,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # ── Entry point ───────────────────────────────────────────────
 
-def main():
+if __name__ == "__main__":
     # Check for websocket-client
     try:
         import websocket
@@ -7007,7 +7002,3 @@ def main():
         print("\n  Server stopped.")
     finally:
         _stop_cloudflare_tunnel()
-
-
-if __name__ == "__main__":
-    main()

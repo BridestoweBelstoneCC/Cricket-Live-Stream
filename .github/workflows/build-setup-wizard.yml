@@ -100,24 +100,16 @@ jobs:
           path: dist/CricketStreamScorerAgent.exe
 
   # EXPERIMENTAL — not yet wired into `release` below, so a normal v* tag does NOT ship this.
-  # Bundles server.py + quickstart.py into standalone Windows exes so the STREAMING laptop
-  # never needs Python installed either (same rationale as CricketStreamScorerAgent.exe for
-  # the scoring laptop). Real dependencies this time (websocket-client, anthropic, Pillow,
-  # etc.), unlike the stdlib-only scorer agent -- requirements.txt has to be installed before
-  # PyInstaller can bundle them. Every __file__-based path in both scripts now goes through
-  # an APP_DIR/FROZEN pair (see CLAUDE.md's frozen-executable gotcha) so config.ini,
-  # match_state.json, control.html etc. are found/read next to the exe, not lost in
-  # PyInstaller's temp extraction folder -- verified locally, including that control.html
-  # is still served LIVE off disk, not baked into the exe. quickstart launches the sibling
-  # CricketStreamServer.exe as a genuine subprocess when frozen (not `python server.py`),
-  # preserving the existing detached-process design that keeps the server alive through
-  # quickstart's own Ctrl+C so the match report can still be generated afterward. Both exes
-  # must ship together, side by side -- packaged into one zip so they can't get separated.
-  # Two things this build does NOT do when frozen, both by design: auto-install missing
-  # packages via pip (nothing to install -- everything needed is already bundled in) and
-  # auto-start stream_telemetry.py (not bundled in this pass; degrades gracefully, same as
-  # source mode without that file present).
-  build-runtime-windows:
+  # A thin double-clickable exe for match day: finds the Python that CricketStreamSetup.exe
+  # already installed and runs `python quickstart.py`, exactly as quickstart.bat does today.
+  # Deliberately does NOT freeze server.py/quickstart.py themselves -- an earlier attempt at
+  # that (bundling both into standalone exes, no Python needed at all) required real surgery
+  # on server.py's file-path handling and quickstart's subprocess-launch logic, was untested
+  # on real hardware, and was more risk than the win was worth once Python-on-the-machine was
+  # back on the table (the setup wizard already installs it). This version touches neither
+  # file -- quickstart.py/server.py run completely unchanged, exactly as they do today via
+  # quickstart.bat -- so there is nothing new to break in the actual match-day code path.
+  build-quickstart-launcher-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7.0.0
@@ -126,24 +118,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies + PyInstaller
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
+      - name: Install PyInstaller
+        run: pip install pyinstaller
 
-      - name: Build server exe
-        run: pyinstaller --onefile --console --name CricketStreamServer server.py
-
-      - name: Build quickstart exe
-        run: pyinstaller --onefile --console --name CricketStreamQuickstart quickstart.py
-
-      - name: Package both together
-        run: Compress-Archive -Path dist/CricketStreamServer.exe,dist/CricketStreamQuickstart.exe -DestinationPath dist/CricketStreamRuntime-windows.zip
+      - name: Build exe
+        run: pyinstaller --onefile --console --name CricketStreamQuickstart quickstart_launcher.py
 
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: CricketStreamRuntime-windows
-          path: dist/CricketStreamRuntime-windows.zip
+          name: CricketStreamQuickstart-windows
+          path: dist/CricketStreamQuickstart.exe
 
   release:
     needs: [build-windows, build-macos, build-scorer-agent-windows]

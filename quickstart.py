@@ -23,12 +23,6 @@ try:
 except Exception:
     pass  # certifi not installed or not needed — system certs used instead
 
-# Frozen (PyInstaller) support — CricketStreamQuickstart.exe: sys.executable is the exe
-# itself, and __file__ resolves inside the temp extraction folder, not next to the exe on
-# disk. Same FROZEN/APP_DIR pattern as setup_wizard.py and server.py.
-FROZEN  = getattr(sys, "frozen", False)
-APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
-
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         CricketStream Overlay — Quick Start          ║
@@ -46,7 +40,7 @@ def get_current_version():
     checkout, git isn't installed, or anything else goes wrong -- purely informational, so a
     missing git binary must never be treated as an error."""
     try:
-        script_dir = APP_DIR
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         out = subprocess.run(["git", "describe", "--tags"], cwd=script_dir,
                               capture_output=True, text=True, timeout=5)
         if out.returncode == 0:
@@ -82,7 +76,7 @@ def check_for_updates():
 
 def load_config():
     cfg = configparser.ConfigParser()
-    config_path = os.path.join(APP_DIR, "config.ini")
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if not os.path.exists(config_path):
         print(f"ERROR: config.ini not found at {config_path}")
         sys.exit(1)
@@ -153,7 +147,7 @@ def build_state(cfg, match, state_path=None):
 
     state_path is overridable for the test suite; production callers pass nothing."""
     if state_path is None:
-        state_path = os.path.join(APP_DIR,
+        state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   "match_state.json")
     try:
         import json as _j
@@ -273,7 +267,7 @@ def check_requirements():
 
 def main():
     print(BANNER)
-    script_dir = APP_DIR
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # ── Check for updates ──
     check_for_updates()
@@ -339,21 +333,15 @@ def main():
     log(f"Club: {club_name}", "ok")
 
     # ── Check requirements ──
-    # Skipped when frozen: sys.executable is CricketStreamQuickstart.exe itself there, not a
-    # real Python interpreter with pip, and PyInstaller already bundled every dependency the
-    # frozen server needs at build time anyway — there's nothing to self-heal here.
-    if FROZEN:
-        log("Packages bundled into the exe — nothing to check", "ok")
+    log("Checking Python packages...")
+    missing = check_requirements()
+    if missing:
+        log(f"Installing missing packages: {', '.join(missing)}", "warn")
+        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log("Packages installed", "ok")
     else:
-        log("Checking Python packages...")
-        missing = check_requirements()
-        if missing:
-            log(f"Installing missing packages: {', '.join(missing)}", "warn")
-            subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            log("Packages installed", "ok")
-        else:
-            log("All packages present", "ok")
+        log("All packages present", "ok")
 
     # ── Fetch today's match ──
     log("Fetching today's match from PlayCricket API...")
@@ -444,23 +432,10 @@ def main():
     print()
 
     # ── Start server as a subprocess so we regain control on Ctrl+C ──
-    # When frozen, there's no Python interpreter to hand server.py to (sys.executable IS
-    # this exe) -- launch the sibling CricketStreamServer executable instead. Same subprocess
-    # relationship either way, just a different command. PyInstaller only appends .exe on
-    # Windows, not macOS/Linux, so the sibling's name has to match that per-platform.
-    if FROZEN:
-        server_exe_name = "CricketStreamServer.exe" if os.name == "nt" else "CricketStreamServer"
-        server_exe = os.path.join(script_dir, server_exe_name)
-        if not os.path.exists(server_exe):
-            print(f"ERROR: {server_exe_name} not found next to this exe at {server_exe}")
-            sys.exit(1)
-        server_cmd = [server_exe]
-    else:
-        server_path = os.path.join(script_dir, "server.py")
-        if not os.path.exists(server_path):
-            print(f"ERROR: server.py not found at {server_path}")
-            sys.exit(1)
-        server_cmd = [sys.executable, server_path]
+    server_path = os.path.join(script_dir, "server.py")
+    if not os.path.exists(server_path):
+        print(f"ERROR: server.py not found at {server_path}")
+        sys.exit(1)
 
     import subprocess
     # Start the server detached from this terminal's signal delivery, so that a Ctrl+C
@@ -475,7 +450,7 @@ def main():
         popen_kwargs["start_new_session"] = True   # new session/group on macOS & Linux
     server_env = os.environ.copy()
     server_env["BBCC_BIND_HOST"] = "0.0.0.0" if remote_mode else "127.0.0.1"
-    proc = subprocess.Popen(server_cmd, env=server_env, **popen_kwargs)
+    proc = subprocess.Popen([sys.executable, server_path], env=server_env, **popen_kwargs)
 
     # ── Pre-load season batting stats (once per day, cached locally) ──
     # PlayCricket has no per-player stats endpoint, so the server pulls each completed
