@@ -428,6 +428,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── stream_telemetry.py        Standalone: passive match-day CSV logger + headroom probe
 ├── camera_encoder.py          Standalone: read a Reolink camera's own encoder settings
 ├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
+├── stream_quality_test.py     Standalone: automated quality-ladder test against a live stream
 ├── graphics/                  OBS-loaded graphic assets (e.g. instant_replay.png)
 ├── tests/                     Automated test suite (python3 -m unittest discover -s tests)
 ├── requirements.txt           Python package list

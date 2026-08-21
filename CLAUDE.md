@@ -94,7 +94,12 @@ shipped without it and misreported a manual match day until fixed.
   `camera_encoder.py` reads a Reolink camera's own encoder settings over its HTTP API, since
   OBS re-encoding a low-bitrate camera source can't recover detail that was never captured.
   `refresh_cam.py` reloads an OBS media source on a timer to stop a long-running RTSP feed
-  drifting out of sync with the overlay.
+  drifting out of sync with the overlay. `stream_quality_test.py` (added 2026-08-21)
+  automates the manual quality-ladder test: requires OBS already streaming (persistent
+  stream key — deliberately never starts/stops the stream itself, that's a real, visible
+  action left to the operator), then drives `/stream/quality` down and restore, polling
+  `GetStreamStatus` through each ~5-10s reconfigure gap to confirm the stream actually
+  survived rather than just trusting the API call succeeded.
 - **`simulate_match.py`** — match simulator for rehearsing the whole broadcast without a
   scorer: writes NV Play-style frames (faithful to the gotchas: blank pre-match names,
   runs_required-driven innings 2) to a fake PCS folder. Scenarios: full / chase / century /
