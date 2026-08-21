@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import quickstart
@@ -134,6 +135,83 @@ class TestFetchTodaysMatchParsing(unittest.TestCase):
         match, err = quickstart.fetch_todays_match("", "111")
         self.assertIsNone(match)
         self.assertIn("API key", err)
+
+
+class FakeProc:
+    """Stand-in for subprocess.Popen. wait() with no args simulates the server process
+    having exited (a crash, in the loop's terms) unless configured to raise
+    KeyboardInterrupt instead, simulating Ctrl+C. wait(timeout=...) -- the cleanup call --
+    always just returns, matching a process that terminates cleanly."""
+
+    def __init__(self, raise_on_wait=None):
+        self.raise_on_wait = raise_on_wait
+        self.terminated = False
+        self.killed = False
+
+    def wait(self, timeout=None):
+        if timeout is None and self.raise_on_wait:
+            raise self.raise_on_wait
+        return 0
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+
+class TestRunServerWithRestarts(unittest.TestCase):
+    """quickstart.run_server_with_restarts -- extracted 2026-08-21 specifically so this
+    class of test could exist without spawning real subprocesses. Found live the night
+    before a match: killing server.py used to take the whole launcher down with it."""
+
+    def setUp(self):
+        self.report_patcher = mock.patch("quickstart.offer_match_report")
+        self.mock_report = self.report_patcher.start()
+        self.addCleanup(self.report_patcher.stop)
+        self.sleeps = []
+
+    def fake_sleep(self, secs):
+        self.sleeps.append(secs)
+
+    def test_restarts_up_to_the_cap_then_gives_up(self):
+        launched = []
+
+        def launch():
+            p = FakeProc()
+            launched.append(p)
+            return p
+
+        first = FakeProc()
+        with self.assertRaises(SystemExit) as ctx:
+            quickstart.run_server_with_restarts(first, launch, max_restarts=3,
+                                                backoff=0, sleep=self.fake_sleep)
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(len(launched), 3)             # relaunched exactly up to the cap
+        self.assertEqual(len(self.sleeps), 3)           # backed off before each relaunch
+        self.mock_report.assert_not_called()            # no Ctrl+C happened here
+
+    def test_ctrl_c_on_the_very_first_wait_shuts_down_cleanly_with_no_restart(self):
+        launched = []
+        proc = FakeProc(raise_on_wait=KeyboardInterrupt())
+        quickstart.run_server_with_restarts(proc, lambda: launched.append(1) or FakeProc(),
+                                            token="tok123", max_restarts=3,
+                                            backoff=0, sleep=self.fake_sleep)
+        self.assertEqual(launched, [])                  # never treated as a crash
+        self.assertTrue(proc.terminated)
+        self.mock_report.assert_called_once_with("tok123")
+
+    def test_ctrl_c_after_a_restart_terminates_the_new_process_not_the_original(self):
+        original = FakeProc()                            # "crashes" once
+        restarted = FakeProc(raise_on_wait=KeyboardInterrupt())
+
+        def launch():
+            return restarted
+
+        quickstart.run_server_with_restarts(original, launch, max_restarts=3,
+                                            backoff=0, sleep=self.fake_sleep)
+        self.assertFalse(original.terminated)             # the dead one, nothing to terminate
+        self.assertTrue(restarted.terminated)              # the live one gets shut down
 
 
 if __name__ == "__main__":

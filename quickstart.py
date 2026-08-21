@@ -503,33 +503,10 @@ def main():
     print("  ─────────────────────────────────────────────")
     print()
 
-    server_restarts = 0
-    try:
-        while True:
-            proc.wait()
-            # Reaching here (without US having called terminate/kill below) means the server
-            # exited on its own -- a crash, not a shutdown. Ctrl+C is caught by the except
-            # clause instead and never reaches this point.
-            if server_restarts >= SERVER_MAX_RESTARTS:
-                log(f"Server crashed and won't auto-restart again (already tried "
-                    f"{SERVER_MAX_RESTARTS} times) — check the terminal output above for "
-                    f"what died, then close this window and re-run quickstart", "err")
-                sys.exit(1)
-            server_restarts += 1
-            log(f"Server stopped unexpectedly — restarting "
-                f"(attempt {server_restarts}/{SERVER_MAX_RESTARTS})", "warn")
-            time.sleep(2)   # brief backoff so a genuine crash-loop doesn't hammer the machine
-            proc = subprocess.Popen([sys.executable, server_path], env=server_env, **popen_kwargs)
-    except KeyboardInterrupt:
-        # Offer the report while the server is STILL RUNNING (match log lives in its memory)
-        offer_match_report(token)
-        print("\n  Shutting down server...")
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except Exception:
-            proc.kill()
-        print("  Server stopped. Bye!")
+    def launch_server():
+        return subprocess.Popen([sys.executable, server_path], env=server_env, **popen_kwargs)
+
+    run_server_with_restarts(proc, launch_server, token)
 
 
 def self_test():
@@ -687,6 +664,42 @@ def pull_season_stats(api_key, token=""):
         opp = " incl. opposition" if d.get("opposition") else " (home only — no opposition club ID)"
         log(f"Season stats ready: {d.get('players',0)} players "
             f"from {d.get('matches_used',0)} matches ({src}){opp}", "ok")
+
+
+def run_server_with_restarts(proc, launch, token="", max_restarts=SERVER_MAX_RESTARTS,
+                              backoff=2, sleep=time.sleep):
+    """Waits on the server subprocess, restarting it (capped) if it exits on its own, and
+    handles the Ctrl+C shutdown path. `launch` is called with no args to relaunch after an
+    unexpected exit -- injected (rather than closing over server_path/server_env/popen_kwargs
+    directly) so a test can pass fake Popen-like objects with no real subprocess involved.
+    `sleep` is injected the same way so a test doesn't have to actually wait out the backoff."""
+    server_restarts = 0
+    try:
+        while True:
+            proc.wait()
+            # Reaching here (without US having called terminate/kill below) means the server
+            # exited on its own -- a crash, not a shutdown. Ctrl+C is caught by the except
+            # clause instead and never reaches this point.
+            if server_restarts >= max_restarts:
+                log(f"Server crashed and won't auto-restart again (already tried "
+                    f"{max_restarts} times) — check the terminal output above for "
+                    f"what died, then close this window and re-run quickstart", "err")
+                sys.exit(1)
+            server_restarts += 1
+            log(f"Server stopped unexpectedly — restarting "
+                f"(attempt {server_restarts}/{max_restarts})", "warn")
+            sleep(backoff)   # brief backoff so a genuine crash-loop doesn't hammer the machine
+            proc = launch()
+    except KeyboardInterrupt:
+        # Offer the report while the server is STILL RUNNING (match log lives in its memory)
+        offer_match_report(token)
+        print("\n  Shutting down server...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+        print("  Server stopped. Bye!")
 
 
 def offer_match_report(token=""):
