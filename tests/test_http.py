@@ -9,6 +9,7 @@ which need the real external services.
 import http.client
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -575,6 +576,27 @@ class TestAuthEnabled(HttpTestBase):
         events = [e["event"] for e in body["entries"]]
         self.assertIn("login_fail", events)
         self.assertIn("login_ok", events)
+
+
+class TestRequestQueueSize(unittest.TestCase):
+    """The real _Server class lives inside main()'s local scope, so it can't be imported
+    and instantiated directly without also binding a real port -- this pins the fix via a
+    source scan instead, which is enough to catch a silent regression while costing nothing
+    to run and touching no runtime code."""
+
+    def test_request_queue_size_stays_raised_above_the_stdlib_default(self):
+        # Load-testing found the stdlib ThreadingHTTPServer default backlog of 5 resets
+        # connections under a burst of >=10 near-simultaneous pollers, since every request
+        # here is a fresh HTTP/1.0 connection with no keep-alive (server.py, commit 74d372d).
+        with open(server.__file__, encoding="utf-8") as f:
+            src = f.read()
+        match = re.search(r"class _Server\(ThreadingHTTPServer\):.*?request_queue_size\s*=\s*(\d+)",
+                           src, re.DOTALL)
+        self.assertIsNotNone(match, "_Server class or its request_queue_size line has moved "
+                                    "or been removed — update this test to match")
+        self.assertGreater(int(match.group(1)), 5,
+                           "request_queue_size regressed back to (or below) the stdlib "
+                           "default of 5 — this will reset connections under a poller burst")
 
 
 if __name__ == "__main__":

@@ -35,8 +35,8 @@ jobs:
 
       # `python`, not `python3`: the Windows runners have no `python3` on PATH, while
       # setup-python provides `python` on every platform.
-      - name: Python compile check
-        run: python -c "import py_compile; py_compile.compile('server.py', doraise=True); print('OK')"
+      - name: Python compile check (every top-level script, not just server.py)
+        run: python scripts/compile_check_all.py
 
       - name: Check embedded JS (control panel + overlay)
         run: python scripts/check_panel_js.py

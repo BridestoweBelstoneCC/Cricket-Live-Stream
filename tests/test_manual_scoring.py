@@ -179,6 +179,27 @@ class TestSession(SessionBase):
         s.apply({"event": "ball", "kind": "6"})              # play continues
         self.assertEqual(s.current.total, 10)
 
+    def test_undo_right_after_a_bowler_pick_reverts_the_pick_not_the_last_ball(self):
+        # Found live (2026-08-20) driving /scoring through a real browser: tapping "Undo
+        # last ball" right after confirming the next over's bowler undoes the BOWLER PICK,
+        # not the previous delivery -- undo replays the last EVENT, and a bowler pick is
+        # itself an event, not a ball. Correct by design (straight event-log replay), but
+        # easy to assume otherwise, so pin it down.
+        s = self.session()
+        for _ in range(6):
+            s.apply({"event": "ball", "kind": "1"})
+        self.assertTrue(s.current.awaiting_new_over)
+        total_before = s.current.total
+        events_before = len(s.events)
+
+        s.apply({"event": "bowler", "name": "Bob Beta4"})
+        self.assertFalse(s.current.awaiting_new_over)
+
+        s.undo()
+        self.assertEqual(len(s.events), events_before)            # the bowler event is gone
+        self.assertTrue(s.current.awaiting_new_over)              # back to needing a pick
+        self.assertEqual(s.current.total, total_before)           # the 6th ball is untouched
+
     def test_persistence_round_trip(self):
         s = self.session()
         for ev in self.BALLS:
