@@ -51,7 +51,19 @@ shipped without it and misreported a manual match day until fixed.
   a dropped phone resumes mid-over. Same login/session token as the control panel.
 - **`quickstart.py`** — auto-setup / launcher; runs a pre-flight self-test and a best-effort
   GitHub release check (`check_for_updates()` — compares `git describe --tags` against the
-  latest release; purely informational, silently skipped if there's no git/internet).
+  latest release; purely informational, silently skipped if there's no git/internet). Starts
+  `server.py` as a detached subprocess (so Ctrl+C stops only the launcher, keeping the server
+  alive long enough to generate the match report) and, via `run_server_with_restarts()`,
+  relaunches it up to `SERVER_MAX_RESTARTS` times with a short backoff if it exits
+  unexpectedly — extracted into its own function specifically so this could be unit-tested
+  with a fake Popen-like object rather than real subprocesses.
+- **`quickstart_launcher.py`** — thin exe wrapper for `quickstart.py`: finds the Python the
+  setup wizard already installed and runs `python quickstart.py`, exactly as `quickstart.bat`
+  does today. Deliberately doesn't freeze `quickstart.py`/`server.py` themselves (an earlier
+  attempt did; reverted — see git history on this file if it ever needs resurrecting) — this
+  version touches neither, so there's nothing new in the real match-day code path to break.
+  Built into `CricketStreamQuickstart.exe`, currently an experimental pre-release
+  (`exe-runtime-preview`), not yet wired into the main `release` build.
 - **`setup_wizard.py`** — first-time setup wizard; installs packages and writes `config.ini`.
   Also built into a standalone Windows `.exe` / macOS binary by
   `.github/workflows/build-setup-wizard.yml` (see gotchas below).
@@ -129,21 +141,23 @@ There is no compiler — verification is a compile check, an embedded-JS syntax 
 stdlib-unittest suite (no test dependencies to install):
 
 ```bash
-# 1. Server must compile cleanly
-python3 -c "import py_compile; py_compile.compile('server.py', doraise=True); print('OK')"
+# 1. Every top-level script must compile cleanly — not just server.py. Nine standalone
+#    tools (scorer_agent.py, setup_wizard.py, every diagnostic script) had zero syntax
+#    coverage until this existed; a broken one would go green in CI otherwise.
+python3 scripts/compile_check_all.py
 
 # 2. Syntax-check the JS in control.html and overlay.html.
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~210, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
-#    parsing, season-stats aggregation, session tokens, quickstart's state merge, the match
-#    simulator's engine invariants, highlight tagging/planning, manual scoring (engine,
-#    exact-replay undo, /scoring end-to-end), stream-quality downshift decisions, JS logic
-#    executed in a real engine (classifyBall parity, the bowler-milestone chain), and HTTP
-#    integration tests that spin up the real Handler on an ephemeral port (auth, redaction,
-#    path traversal, origin check, loopback carve-out, /live vs /live/view, event buffer,
-#    ball DB).
+# 3. Automated tests (~216, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+#    parsing, season-stats aggregation, session tokens, quickstart's state merge and its
+#    crash-restart loop, the match simulator's engine invariants, highlight tagging/planning,
+#    manual scoring (engine, exact-replay undo, /scoring end-to-end), stream-quality downshift
+#    decisions, JS logic executed in a real engine (classifyBall parity, the bowler-milestone
+#    chain), and HTTP integration tests that spin up the real Handler on an ephemeral port
+#    (auth, redaction, path traversal, origin check, loopback carve-out, /live vs /live/view,
+#    event buffer, ball DB).
 python3 -m unittest discover -s tests
 
 # 4. Run it
@@ -151,8 +165,9 @@ pip install -r requirements.txt
 python3 server.py      # or: python3 quickstart.py
 ```
 
-Always run steps 1–3 after editing `server.py`, `overlay.html`, or `quickstart.py`. Step 2
-matters more than it looks (see gotchas). All three are wired into `.github/workflows/ci.yml`.
+Always run steps 1–3 after editing `server.py`, `overlay.html`, `quickstart.py`, or any other
+top-level script. Step 2 matters more than it looks (see gotchas). All three are wired into
+`.github/workflows/ci.yml`.
 The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — real
 `match_state.json`/`match_data.db` are never touched.
 

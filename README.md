@@ -422,6 +422,7 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── simulate_match.py          Match simulator — rehearse the whole broadcast, no scorer needed
 ├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
 ├── quickstart.py              Match-day launcher script
+├── quickstart_launcher.py     Thin exe wrapper for quickstart.py (finds Python, runs it)
 ├── obs_setup.py               OBS auto-configuration
 ├── nvplay_bridge.py           Standalone: serve NV Play's output when it's on separate hardware
 ├── scorer_agent.py            Standalone: same, for two laptops on the same club wifi (no token)

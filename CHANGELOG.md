@@ -4,6 +4,48 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+*Continued hardening after v2.7's real two-laptop dry run: a thin launcher for match day, a
+crash-recovery gap found by deliberately trying to break it, and a broadened CI compile
+check after nine of thirteen top-level scripts turned out to have zero syntax coverage.*
+
+- **`scorer_agent.py` now ships as a standalone Windows exe** (`CricketStreamScorerAgent.exe`),
+  same rationale as the setup wizard's own — the scoring laptop is often a club's spare
+  machine with no Python installed. No Mac build: NV Play doesn't run natively on Mac, so a
+  "Mac scoring laptop" isn't a real scenario.
+- **A thin exe for match day too** (`quickstart_launcher.py` → `CricketStreamQuickstart.exe`):
+  finds the Python the setup wizard already installed and runs `quickstart.py` exactly as
+  `quickstart.bat` does today — a nicer double-click experience with zero change to the
+  actual match-day code path. An earlier attempt froze `server.py` and `quickstart.py`
+  themselves into standalone exes with no Python needed at all — it worked, but was reverted
+  in favour of this simpler, lower-risk version once it turned out the machine was never
+  going to be Python-free anyway (the setup wizard installs it regardless).
+- **Fixed: a crashed server took the whole launcher down with it, no recovery.** Found by a
+  real resilience test against the new launcher: `quickstart.py` had no restart loop at all
+  — an unhandled exception, OOM, anything, and the match-day session was simply over.
+  `quickstart.py` now retries up to 3 times with a short backoff before giving up, logging
+  each attempt. Verified with real kill tests, including on real Windows hardware, and
+  (once extracted into its own function for testability) 3 new unit tests covering the
+  restart-then-give-up, immediate-Ctrl+C, and Ctrl+C-after-a-restart paths.
+- **`stream_quality_test.py`** automates the manual "does a quality shift survive a real
+  broadcast" test — watches the stream through the ~5-10s reconfigure gap and confirms it
+  actually stayed live, rather than trusting the API call succeeded. Deliberately never
+  starts or stops the stream itself; that stays the operator's call.
+- **CI's compile check now covers all 13 top-level scripts, not just `server.py`.** Nine of
+  them — `scorer_agent.py`, `setup_wizard.py`, and every diagnostic tool among them — had no
+  syntax coverage at all, incidental or otherwise; a broken standalone script would go green
+  in CI and only surface when someone actually tried to run it. New
+  `scripts/compile_check_all.py`, plus two more regression tests pinning behavior found live
+  this run: the connection-backlog fix staying above the stdlib default, and that undoing
+  right after a bowler pick reverts the pick, not the previous ball (correct by design, easy
+  to assume otherwise).
+- **The non-technical setup guide now offers a Claude-assisted path.**
+  `FOR_NON_TECHNICAL_USERS.md`'s new Option A walks a volunteer through the whole install
+  conversationally via Claude Code, alongside the existing written Option B walkthrough.
+
+---
+
 ## v2.7 — 2026-08-19
 
 *Two real match-day failures drove most of this: a streaming Mac overheating and crashing

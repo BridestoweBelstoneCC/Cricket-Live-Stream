@@ -123,7 +123,9 @@ Two subtleties worth knowing (they've caused real bugs):
 | `nvplay_bridge.py` | Standalone stdlib script: serves NV Play's file over HTTP when it's on separate hardware from the server, not on the same network (Tailscale, token-gated) |
 | `scorer_agent.py` | Standalone stdlib script: same idea, for two laptops already on the same club wifi (UDP auto-discovery, no token) |
 | `obs_setup.py` / `quickstart.py` / `setup_wizard.py` | OBS auto-config · match-day launcher · first-run wizard |
-| `tests/` | 211 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
+| `quickstart_launcher.py` | Thin exe wrapper: finds Python, runs `quickstart.py` — no other code path |
+| `stream_quality_test.py` | Standalone: automates the quality-ladder test against a live broadcast |
+| `tests/` | 216 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
 
 ### Security model, briefly
 
