@@ -491,6 +491,12 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
+**v2.7.3** — Fixed the one-click "add camera" OBS setup, found while wiring up a real new
+camera: re-running it could silently drop the camera from the Replay scene, or fail outright,
+because of a real OBS-websocket quirk around removing a source referenced by more than one
+scene. It now updates the camera in place and keeps it in every scene that needs it. Full
+detail in [`CHANGELOG.md`](CHANGELOG.md).
+
 **v2.7.2** — Fixed a Windows-console encoding bug that could silently kill an in-flight
 request the moment the server printed one of its own checkmarks or arrows. Full detail in
 [`CHANGELOG.md`](CHANGELOG.md).

@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.7.3 — 2026-09-19
 
 - **Fixed: the one-click "add camera" setup (`obs_add_camera()`) could silently drop the
   camera source from Replay, and could fail outright on a re-run.** Found while wiring up a
