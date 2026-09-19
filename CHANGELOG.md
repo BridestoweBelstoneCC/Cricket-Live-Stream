@@ -4,6 +4,31 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Fixed: a bitrate downshift from a previous match's quality ladder silently carried over
+  into the next one.** The stream-quality ladder writes `VBitrate` straight into the OBS
+  profile on disk when it downshifts for congestion, and that value persists after the
+  server exits — only the ladder's own step counter is in-memory and resets to 0 on restart.
+  Nothing ever put the bitrate back, so a match that ended on a downshifted step handed the
+  *next* match day a silently-crippled stream from the first ball. This has now bitten twice
+  for real (`diagnostics/STREAM_FREEZE_2026-08-15.md`, `diagnostics/SEASON_END_2026-09-19.md`
+  — both a leftover 875 kbps against a >2,700 kbps recommendation). `/health`'s pre-flight
+  sanity check already flagged this, but flagging it wasn't enough — the manual checklist
+  item didn't catch it a second time. `obs_setup()` now resets `SimpleOutput/VBitrate` to a
+  configured baseline (`bitrate_kbps` in `config.ini`'s `[Stream]` section) every time it
+  runs, i.e. every `quickstart.py` start — undoing whatever the last match's ladder left
+  behind, regardless of when that happened. Skipped while a stream is actually live, and
+  only applies in Simple output mode, same guards as the existing stream-key setup step.
+- **Fixed: `certifi` missing from the active Python environment despite being listed in
+  `requirements.txt`**, causing real `CERTIFICATE_VERIFY_FAILED` errors on the PlayCricket
+  season-stats fetch (also found in `diagnostics/SEASON_END_2026-09-19.md`). `server.py`'s
+  own certifi patch silently falls back to system certs when the import fails, which masked
+  the gap instead of surfacing it. Re-installed properly against the Python `server.py`
+  actually runs under on this machine.
+
+---
+
 ## v2.7.3 — 2026-09-19
 
 - **Fixed: the one-click "add camera" setup (`obs_add_camera()`) could silently drop the

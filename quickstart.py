@@ -387,12 +387,17 @@ def main():
     obs_pw     = cfg["OBS"].get("obs_password","")
     replay_dir = os.path.expanduser(cfg["OBS"].get("replay_folder",""))
     try:
+        bitrate_kbps = int(cfg["Stream"].get("bitrate_kbps", "").strip() or 0)
+    except ValueError:
+        bitrate_kbps = 0
+    try:
         # Import obs_setup from same directory
         sys.path.insert(0, script_dir)
         from obs_setup import obs_setup
         ok, messages = obs_setup(password=obs_pw, replay_folder=replay_dir, verbose=False,
                                  stream_key=cfg["Stream"].get("youtube_stream_key",
-                                                              "").strip())
+                                                              "").strip(),
+                                 bitrate_kbps=bitrate_kbps)
         if ok:
             log("OBS configured — scenes and sources ready", "ok")
         else:

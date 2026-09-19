@@ -22,7 +22,7 @@ except Exception:
     pass
 
 def obs_setup(host="localhost", port=4455, password="", replay_folder="",
-              server_port=5000, verbose=True, stream_key=""):
+              server_port=5000, verbose=True, stream_key="", bitrate_kbps=0):
     """
     Full OBS setup via WebSocket v5.
     Returns (success, list_of_messages).
@@ -251,6 +251,41 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
             else:
                 log_msg("Could not apply the stream key — set it in OBS Settings → Stream", "warn")
 
+    # ── Reset the video bitrate to the configured baseline ─────────────────────
+    # The stream-quality ladder (server.py) writes SimpleOutput/VBitrate straight into the
+    # OBS profile when it downshifts for congestion, and that value PERSISTS on disk after
+    # the server exits — the ladder's own step counter is in-memory only and resets to 0 on
+    # restart. Nothing was putting the bitrate back, so a downshifted match handed the next
+    # match day a silently-crippled stream from the first ball. Bit twice for real
+    # (see diagnostics/STREAM_FREEZE_2026-08-15.md and diagnostics/SEASON_END_2026-09-19.md,
+    # both a leftover 875 kbps against a >2700 kbps recommendation). Applying this on every
+    # setup run — not just once — is the point: it undoes whatever the last match's ladder
+    # left behind, regardless of when that happened. Skipped while a stream is actually live,
+    # same precaution as the stream key above, and only meaningful in Simple output mode
+    # (Advanced mode ignores SimpleOutput/VBitrate).
+    if bitrate_kbps:
+        live = request("GetStreamStatus")
+        if live and live.get("responseData", {}).get("outputActive"):
+            log_msg(f"Stream is LIVE — leaving the bitrate alone (would reset to "
+                    f"{bitrate_kbps} kbps)", "warn")
+        else:
+            mode_resp = request("GetProfileParameter", {"parameterCategory": "Output",
+                                                         "parameterName": "Mode"})
+            mode = (mode_resp or {}).get("responseData", {}).get("parameterValue") or "Simple"
+            if mode != "Simple":
+                log_msg("OBS is in Advanced output mode — bitrate reset only applies to "
+                        "Simple output, skipped", "warn")
+            else:
+                r = request("SetProfileParameter", {"parameterCategory": "SimpleOutput",
+                                                    "parameterName": "VBitrate",
+                                                    "parameterValue": str(bitrate_kbps)})
+                if r and r.get("requestStatus", {}).get("result"):
+                    log_msg(f"Video bitrate reset to {bitrate_kbps} kbps (undoes any "
+                            f"leftover downshift from a previous match)", "ok")
+                else:
+                    log_msg(f"Could not reset the bitrate — check it manually in OBS "
+                            f"Settings → Output (should be {bitrate_kbps} kbps)", "warn")
+
     # ── Enable OBS's Dynamic Bitrate (congestion handled without disconnects) ──
     # Off by default in OBS and buried in Settings → Advanced → Network. With it on, the
     # encoder bitrate flexes automatically when the connection struggles — the seamless
@@ -303,6 +338,10 @@ if __name__ == "__main__":
     replay_folder = cfg.get("OBS", "replay_folder",  fallback="")
     replay_folder = os.path.expanduser(replay_folder)
     stream_key    = cfg.get("Stream", "youtube_stream_key", fallback="").strip()
+    try:
+        bitrate_kbps = int(cfg.get("Stream", "bitrate_kbps", fallback="").strip() or 0)
+    except ValueError:
+        bitrate_kbps = 0
 
     print()
     print("OBS Auto-Setup — CricketStream Overlay")
@@ -311,6 +350,7 @@ if __name__ == "__main__":
         password      = password,
         replay_folder = replay_folder,
         stream_key    = stream_key,
+        bitrate_kbps  = bitrate_kbps,
     )
     print()
     if ok:
