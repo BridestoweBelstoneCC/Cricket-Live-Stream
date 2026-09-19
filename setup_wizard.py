@@ -7,6 +7,14 @@ On Mac:     run setup.sh
 """
 import configparser, glob, os, secrets, shutil, subprocess, sys, tempfile, urllib.request, webbrowser
 
+# Best-effort: a Windows console (or piped stdout) can report a legacy single-byte codepage
+# instead of UTF-8, which raises UnicodeEncodeError on this file's checkmarks/arrows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 FROZEN = getattr(sys, "frozen", False)
 # When frozen (PyInstaller), __file__ points inside the temp extraction
 # folder, which is deleted on exit — use the real exe's location instead.

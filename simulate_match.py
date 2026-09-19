@@ -37,6 +37,14 @@ import time
 
 from scoring_engine import InningsEngine
 
+# Best-effort: a Windows console (or piped stdout) can report a legacy single-byte codepage
+# instead of UTF-8, which raises UnicodeEncodeError on this file's checkmarks/arrows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ── Squads (deliberately club-agnostic; two Smiths to rehearse the brothers path) ──
 HOME_TEAM = "Home CC"
 AWAY_TEAM = "Rival CC"

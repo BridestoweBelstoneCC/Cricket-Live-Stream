@@ -27,6 +27,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# Best-effort: a Windows console (or piped stdout) can report a legacy single-byte codepage
+# instead of UTF-8, which raises UnicodeEncodeError on this file's checkmarks/arrows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 

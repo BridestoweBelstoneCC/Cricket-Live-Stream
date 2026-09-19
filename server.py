@@ -38,7 +38,7 @@ PCS Pro setup (scorer's laptop):
     4. Paste the output folder path into the control panel → PCS Pro output folder
 """
 
-import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess, socket, io
+import json, os, re, glob, time, hashlib, hmac, secrets, threading, base64, datetime, subprocess, socket, io, sys
 
 # Mac SSL fix — use certifi certificates to avoid CERTIFICATE_VERIFY_FAILED errors
 try:
@@ -56,6 +56,19 @@ import urllib.request, urllib.error, html
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import sqlite3
 from urllib.parse import urlparse, urlencode
+
+# Console output throughout this file uses arrows/checkmarks (→, ✓, ✗, —). Windows consoles
+# (and anything with stdout redirected/piped, including the test suite's HTTP threads) often
+# report a legacy single-byte codepage rather than UTF-8, which raises UnicodeEncodeError the
+# first time one of those characters is printed — and since this runs inside request-handling
+# threads, that crash takes the in-flight HTTP response down with it. Force UTF-8 out, best
+# effort: reconfigure() is Python 3.7+ and can be missing entirely on an unusual stdout (e.g.
+# a test runner's captured stream), so failure here must never block startup.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 from scoring_engine import InningsEngine   # shared scorer's book — also drives simulate_match
 

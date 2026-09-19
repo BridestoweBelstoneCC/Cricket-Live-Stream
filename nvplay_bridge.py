@@ -16,8 +16,16 @@ folder (and picks a random token). Edit that file directly to change settings la
 delete it to be asked again. Reachable over Tailscale is the recommended way to point the
 streaming machine at this one — see CLAUDE.md's remote-access notes.
 """
-import configparser, glob, hmac, json, os, secrets, time
+import configparser, glob, hmac, json, os, secrets, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# Best-effort: a Windows console (or piped stdout) can report a legacy single-byte codepage
+# instead of UTF-8, which raises UnicodeEncodeError on this file's checkmarks/arrows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 HERE        = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "bridge_config.ini")

@@ -4,11 +4,28 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.7.2 — 2026-09-19
 
-*Continued hardening after v2.7's real two-laptop dry run: a thin launcher for match day, a
-crash-recovery gap found by deliberately trying to break it, and a broadened CI compile
-check after nine of thirteen top-level scripts turned out to have zero syntax coverage.*
+- **Fixed: a Windows console (or any redirected/piped stdout) could crash the request thread
+  that was mid-response, the moment this project's own console output printed a checkmark or
+  arrow.** `server.py` and every other top-level script use characters like `✓`/`✗`/`→`
+  throughout their console output; a console that isn't a genuine UTF-8 terminal often
+  reports a legacy single-byte codepage instead, and `print()` on one of those characters
+  raised `UnicodeEncodeError` right there in the thread doing the printing — inside an
+  HTTP request handler, that took the in-flight response down with it. Found by 14 automated
+  HTTP tests failing with `RemoteDisconnected` on this exact Windows setup. Every top-level
+  script with any non-ASCII console output now force-reconfigures `stdout`/`stderr` to UTF-8
+  (replacing anything that still can't be represented) right after its imports, best-effort
+  and never allowed to block startup.
+
+---
+
+## v2.7.1 — 2026-09-19
+
+*A thin launcher for match day, a crash-recovery gap found by deliberately trying to break
+it, a broadened CI compile check after nine of thirteen top-level scripts turned out to have
+zero syntax coverage, and a friendlier recovery when `scorer_agent.py` can't find the
+scoreboard folder on its own.*
 
 - **`scorer_agent.py` now ships as a standalone Windows exe** (`CricketStreamScorerAgent.exe`),
   same rationale as the setup wizard's own — the scoring laptop is often a club's spare
@@ -43,11 +60,6 @@ check after nine of thirteen top-level scripts turned out to have zero syntax co
 - **The non-technical setup guide now offers a Claude-assisted path.**
   `FOR_NON_TECHNICAL_USERS.md`'s new Option A walks a volunteer through the whole install
   conversationally via Claude Code, alongside the existing written Option B walkthrough.
-
----
-
-## v2.7.1 — 2026-09-19
-
 - **Fixed: `scorer_agent.py` gave up instead of asking, when it couldn't find the
   scoreboard folder.** If auto-detection failed, it printed instructions to re-run from the
   command line with the path as an argument and exited — awkward for the exe build, which

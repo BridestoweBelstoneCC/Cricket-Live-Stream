@@ -11,6 +11,14 @@ or care about.
 """
 import glob, os, shutil, subprocess, sys
 
+# Best-effort: this exe's console can report a legacy single-byte codepage instead of
+# UTF-8, which raises UnicodeEncodeError on the arrow this file prints below.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 def find_python():
     """Same search as setup_wizard.py's own find_python(), duplicated rather

@@ -13,6 +13,14 @@ Or called from quickstart.py automatically.
 """
 import json, time, sys, hashlib, base64, os
 
+# Best-effort: a Windows console (or piped stdout) can report a legacy single-byte codepage
+# instead of UTF-8, which raises UnicodeEncodeError on this file's checkmarks/arrows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 def obs_setup(host="localhost", port=4455, password="", replay_folder="",
               server_port=5000, verbose=True, stream_key=""):
     """

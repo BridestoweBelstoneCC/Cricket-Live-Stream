@@ -23,6 +23,16 @@ try:
 except Exception:
     pass  # certifi not installed or not needed — system certs used instead
 
+# Console output below uses arrows/checkmarks (→, ✓, ⚠, ✗). A Windows console (or any
+# stdout that isn't a real UTF-8 terminal) can report a legacy single-byte codepage instead,
+# which raises UnicodeEncodeError the first time one of those prints — best-effort fix,
+# never allowed to block startup.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         CricketStream Overlay — Quick Start          ║
