@@ -37,7 +37,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-AGENT_VERSION = "1.0"
+AGENT_VERSION = "2.7.1"
 SERVICE_NAME  = "cricketstream-scorer-agent"
 
 DEFAULT_HTTP_PORT      = 8788
@@ -397,6 +397,8 @@ def banner(folder, how, http_port, discovery_port):
         print("                     normal before play starts)")
     elif how == "saved":
         print("                    (remembered from last time)")
+    elif how == "typed":
+        print("                    (entered manually -- remembered from here on)")
     print(f"  This machine    : {ip}")
     print(f"  Serving on      : http://{ip}:{http_port}/pcs")
     print(f"  Discovery       : UDP {discovery_port}")
@@ -433,13 +435,24 @@ def resolve_folder(arg_folder):
     print("  Could not find the PCS Pro / NV Play scoreboard output folder.")
     print()
     print("  In PCS Pro it's under Tools -> Configuration -> Scoreboard, in the")
-    print("  'Output Folder' box. Copy that path and start this again like so:")
+    print("  'Output Folder' box.")
     print()
-    print('      python3 scorer_agent.py "PASTE THE FOLDER PATH HERE"')
+    print("  You only need to enter it once -- it's remembered from here on.")
     print()
-    print("  You only need to do that once -- it remembers.")
-    print()
-    sys.exit(1)
+    while True:
+        try:
+            typed = input("  Scoreboard output folder: ").strip().strip('"')
+        except (EOFError, KeyboardInterrupt):
+            print("\n  No folder given -- stopping.\n")
+            sys.exit(1)
+        if not typed:
+            continue
+        folder = os.path.abspath(os.path.expanduser(typed))
+        if not os.path.isdir(folder):
+            print(f"  That folder does not exist:\n     {folder}\n")
+            continue
+        save_folder(folder)
+        return folder, "typed"
 
 
 def main():

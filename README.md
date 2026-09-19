@@ -491,6 +491,11 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
+**v2.7.1** — `scorer_agent.py` now asks for the scoreboard folder right in its console
+window if it can't find it automatically, instead of exiting and asking you to re-run it
+from the command line — friendlier for the double-click exe build. Full detail in
+[`CHANGELOG.md`](CHANGELOG.md).
+
 **v2.7** — Two independent ways to run NV Play on a separate machine from the one doing OBS
 and the stream, both verified on real two-machine hardware: `nvplay_bridge.py` (Tailscale,
 token-gated, for machines that aren't on the same network) and `scorer_agent.py` (UDP

@@ -46,6 +46,17 @@ check after nine of thirteen top-level scripts turned out to have zero syntax co
 
 ---
 
+## v2.7.1 — 2026-09-19
+
+- **Fixed: `scorer_agent.py` gave up instead of asking, when it couldn't find the
+  scoreboard folder.** If auto-detection failed, it printed instructions to re-run from the
+  command line with the path as an argument and exited — awkward for the exe build, which
+  most scoring laptops are launched by double-click, with no easy way to add an argument.
+  It now prompts for the folder path right there in the console window, validates it, and
+  remembers it for next time, the same as a folder found any other way.
+
+---
+
 ## v2.7 — 2026-08-19
 
 *Two real match-day failures drove most of this: a streaming Mac overheating and crashing
