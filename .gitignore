@@ -14,6 +14,11 @@ __pycache__/
 # Runtime-generated files
 season_stats_cache.json
 
+# Prebuilt release executables pulled down from GitHub Releases to run on this
+# machine (the match-day launcher lives here because quickstart_launcher.py looks
+# for quickstart.py alongside its own exe). Build artifacts, not source.
+CricketStream*.exe
+
 # YouTube OAuth — NEVER commit these. yt_credentials.json is your Google OAuth client
 # secret; yt_token.json is the authorised access/refresh token. Either one leaking lets
 # someone act as your channel. Globbed for the same reason as above: re-authorising
