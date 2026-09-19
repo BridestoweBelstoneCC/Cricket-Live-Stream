@@ -4375,9 +4375,11 @@ def obs_trigger_replay(state, reason=""):
         print(f"  ✗  OBS WebSocket error: {e}")
 
 def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
-    """Create an RTSP media source in OBS over WebSocket — one-click camera setup for
-    non-technical users. Re-adding with the same name replaces the old source so it stays
-    idempotent. Returns (ok, message)."""
+    """Create (or update) an RTSP media source in OBS over WebSocket — one-click camera
+    setup for non-technical users. Re-running with the same name updates the existing
+    source's settings in place rather than removing and recreating it (see the comment
+    inline on why removal is unsafe), and ensures it's present in every scene that needs
+    it (main + replay), not just one. Returns (ok, message)."""
     try:
         import websocket
     except ImportError:
@@ -4391,6 +4393,7 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
     password = state.get("obs_password", "")
     name     = (input_name or state.get("obs_camera_name") or "Cricket Camera").strip()
     scene    = (scene_name or state.get("obs_main_scene") or "Main").strip()
+    replay_scene = (state.get("obs_replay_scene") or "Replay").strip()
     ws_url   = f"ws://{host}:{port}"
     mid = [0]
     def nid():
@@ -4452,10 +4455,6 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
         names  = [s.get("sceneName") for s in _rdata(scenes).get("scenes", [])]
         if scene not in names:
             scene = _rdata(scenes).get("currentProgramSceneName") or (names[0] if names else scene)
-        # Idempotent: if a source with this name exists, remove it before recreating.
-        inputs = send_request(ws, "GetInputList")
-        if name in [i.get("inputName") for i in _rdata(inputs).get("inputs", [])]:
-            send_request(ws, "RemoveInput", {"inputName": name})
         settings = {
             "is_local_file": False,
             "input": rtsp_url,
@@ -4463,15 +4462,51 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
             "restart_on_activate": True,
             "hw_decode": True,           # use GPU decode where available
         }
-        resp = send_request(ws, "CreateInput", {
-            "sceneName": scene, "inputName": name,
-            "inputKind": "ffmpeg_source", "inputSettings": settings,
-            "sceneItemEnabled": True})
-        ws.close()
+        # Idempotent WITHOUT destroying and recreating: a real two-machine test found that
+        # RemoveInput on a source still referenced by another scene's scene item doesn't
+        # delete it — it just detaches ONE reference, leaving the input in a broken state
+        # that even refuses new CreateSceneItem calls (OBS logs "Failed to create the scene
+        # item") until every remaining scene item is individually removed. Since this camera
+        # is expected to sit in more than one scene by design (see below), update the
+        # existing input's settings in place instead of ever removing it.
+        inputs = send_request(ws, "GetInputList")
+        exists = name in [i.get("inputName") for i in _rdata(inputs).get("inputs", [])]
+        if exists:
+            resp = send_request(ws, "SetInputSettings",
+                                 {"inputName": name, "inputSettings": settings, "overlay": True})
+        else:
+            resp = send_request(ws, "CreateInput", {
+                "sceneName": scene, "inputName": name,
+                "inputKind": "ffmpeg_source", "inputSettings": settings,
+                "sceneItemEnabled": True})
         st = (resp or {}).get("d", {}).get("requestStatus", {})
-        if st.get("result", False):
-            return True, f"Added '{name}' to scene '{scene}'"
-        return False, f"OBS rejected the request: {st.get('comment','') or 'unknown error'}"
+        if not st.get("result", False):
+            ws.close()
+            return False, f"OBS rejected the request: {st.get('comment','') or 'unknown error'}"
+
+        # A source left out of even one scene that goes live doesn't just stay hidden — it
+        # deactivates outright, so switching back to it re-activates the RTSP feed from
+        # scratch and drifts out of sync with the overlay for the rest of the session (see
+        # CLAUDE.md's camera-source gotcha). Ensure a scene item in every scene that needs
+        # it, without disturbing one that's already correctly placed (position, transform,
+        # enabled state all survive — CreateSceneItem is only called where it's missing).
+        added_to = []
+        for target in [scene, replay_scene]:
+            if not target or target not in names or target in added_to:
+                continue
+            items = send_request(ws, "GetSceneItemList", {"sceneName": target})
+            present = [i.get("sourceName") for i in _rdata(items).get("sceneItems", [])]
+            if name in present:
+                added_to.append(target)
+                continue
+            r2 = send_request(ws, "CreateSceneItem",
+                               {"sceneName": target, "sourceName": name, "sceneItemEnabled": True})
+            if (r2 or {}).get("d", {}).get("requestStatus", {}).get("result", False):
+                added_to.append(target)
+        ws.close()
+        if not added_to:
+            return False, f"Updated '{name}' but could not place it in any scene"
+        return True, f"'{name}' is set up in {', '.join(added_to)}"
     except Exception as e:
         return False, f"Could not reach OBS: {e}"
 

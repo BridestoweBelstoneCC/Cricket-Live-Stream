@@ -4,6 +4,23 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Fixed: the one-click "add camera" setup (`obs_add_camera()`) could silently drop the
+  camera source from Replay, and could fail outright on a re-run.** Found while wiring up a
+  real new camera: it removed the existing input before recreating it, but a real
+  two-machine OBS test showed `RemoveInput` doesn't fully delete a source that's still
+  referenced by a scene item in ANOTHER scene — it just detaches one reference, leaving the
+  input in a broken state where even a fresh `CreateSceneItem` fails ("Failed to create the
+  scene item") until every remaining reference is individually removed. It also only ever
+  placed the camera in one scene, contradicting this project's own camera-source gotcha
+  (a source left out of even one live scene deactivates and drifts on reconnect). Re-running
+  it now updates the existing source's settings in place instead of removing it, and ensures
+  it's present in both the main and replay scenes — verified against real OBS, including the
+  exact re-run-after-multi-scene-placement case that broke before.
+
+---
+
 ## v2.7.2 — 2026-09-19
 
 - **Fixed: a Windows console (or any redirected/piped stdout) could crash the request thread
