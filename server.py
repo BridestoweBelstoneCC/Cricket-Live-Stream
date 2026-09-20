@@ -1632,6 +1632,8 @@ DEFAULT_STATE = {
     "graphics_partnership_display":True,
     "graphics_runrate_trend":  True,
     "graphics_player_card":     False,
+    "scorebar_style":          "classic",   # "classic" | "modern" — see overlay.html's
+                                             # body.style-modern CSS block
     "replay_enabled":          True,
     "replay_on_fifty":         False,
     "obs_host":                "localhost",

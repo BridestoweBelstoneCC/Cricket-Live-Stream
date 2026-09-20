@@ -88,6 +88,47 @@ html, body {
 #bowler-figures { font-size: 14px; color: rgba(255,255,255,0.5); margin-top: 2px; }
 
 /* ═══════════════════════════
+   SCOREBAR — "Modern" alternate style, toggled via body.style-modern (see poll()'s
+   scorebar_style handling). Default ("Classic") is everything above — this block only
+   overrides shape/type/spacing, never the team-colour backgrounds applyColours() sets
+   inline on #seg-batting-team/#seg-bowling-team/#seg-bowler, so team branding still works
+   under either style. Deliberately scoped to the scorebar only, not the graphic panels —
+   see TODO's scorebar-style-presets note on keeping alternate styles restrained.
+═══════════════════════════ */
+body.style-modern #scorebar {
+  font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+  gap: 6px;
+  padding: 0 8px;
+}
+body.style-modern .seg { border-radius: 10px; margin: 7px 0; }
+body.style-modern .seg-light {
+  background: rgba(16,20,28,0.85);
+  border-right: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+body.style-modern #score-total { color: #fff; font-size: 30px; letter-spacing: 0.5px; }
+body.style-modern #overs-display { color: #fff; }
+body.style-modern #overs-display .muted { color: rgba(255,255,255,0.55); }
+body.style-modern #status-text { color: rgba(255,255,255,0.75); }
+body.style-modern .batter-name, body.style-modern .batter-runs { color: #fff !important; }
+body.style-modern .batter-balls { color: rgba(255,255,255,0.55); }
+body.style-modern #seg-spacer { background: transparent; }
+body.style-modern .seg-ball {
+  border-radius: 8px; width: 30px; height: 30px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+}
+body.style-modern #innings-badge { border-radius: 6px; }
+body.style-modern #seg-bowler,
+body.style-modern #seg-target { border-left: none; border-radius: 10px; }
+body.style-modern #seg-bowler { margin-left: 3px; }
+/* #target-need/#target-detail carry inline colours tuned for the classic light-grey
+   background (see the seg-target HTML) — need overriding here or they're nearly invisible
+   on modern's dark glass. Caught by screenshotting both styles side by side. */
+body.style-modern #target-need   { color: #ff6b5b !important; }
+body.style-modern #target-detail { color: rgba(255,255,255,0.6) !important; }
+
+/* ═══════════════════════════
    GRAPHIC PANELS — slide up
 ═══════════════════════════ */
 .pc-accent  { width:6px; height:100%; background:#2a8c5a;
@@ -120,6 +161,18 @@ html, body {
 .pc-stat-key { font-size:9px; font-weight:700; text-transform:uppercase;
   letter-spacing:1.5px; color:rgba(255,255,255,0.4); }
 .pc-divider { width:1px; height:36px; background:rgba(255,255,255,0.12); }
+
+/* New-batter card: bigger photo + type than the shared .pc-* defaults above, which the
+   pregame form-guide panels (#pregame-form-home/-away) also use — scoped to #player-card/
+   #player-card-right specifically so those aren't affected. Both single- and split-mode
+   (two openers side by side, see .split above) auto-size to content height, so there's no
+   overflow risk from going bigger — verified via simulate_match.py + a browser screenshot. */
+#player-card .pc-headshot, #player-card-right .pc-headshot { width:132px; height:132px; border-width:3px; }
+#player-card .pc-name,     #player-card-right .pc-name     { font-size:42px; }
+#player-card .pc-stat-val, #player-card-right .pc-stat-val { font-size:30px; }
+#player-card .pc-stat-key, #player-card-right .pc-stat-key { font-size:11px; }
+#player-card .pc-stats,    #player-card-right .pc-stats    { gap:28px; margin-top:10px; }
+#player-card .pc-divider,  #player-card-right .pc-divider  { height:48px; }
 
 .graphic-panel {
   position: absolute;
@@ -2587,6 +2640,7 @@ async function poll() {
   try { cfg=await (await fetch(`${SERVER}/state`)).json(); }
   catch(e){console.warn('server.py not reachable');return;}
 
+  document.body.classList.toggle('style-modern', cfg.scorebar_style === 'modern');
   MAX_OVERS=cfg.max_overs||50;
   const home=cfg.home_team||'Home CC';
   const away=cfg.away_team||'Opposition CC';
