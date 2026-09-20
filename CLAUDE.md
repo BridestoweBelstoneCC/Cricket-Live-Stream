@@ -302,6 +302,14 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   Replay scene too, the drift stopped happening in the first place and periodic reloads became
   mostly unnecessary. Check every scene in OBS's scene list has the camera source, not just
   the one usually shown.
+- **Optional second (bowler-end) camera, added 2026-09-20, is backend-only and UNTESTED
+  against real two-camera hardware** — `obs_add_camera()` gained an `extra_scenes` param
+  and auto-creates a missing target scene, generalizing the gotcha above across more than
+  two scenes (both cameras end up in Main, the bowler-end scene, and Replay). This machine
+  had no second camera to verify scene auto-creation or cross-presence against a real OBS
+  instance before match day — confirm both before relying on it. No automatic cut at the
+  over boundary yet, manual only (`/camera/scene`, same `SetCurrentProgramScene` call
+  `/replay` uses internally) — see TODO.md.
 
 ## Conventions
 
@@ -317,6 +325,10 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a
   previous match before the operator goes live — see `obs_bitrate_sanity_check()`.
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
+- `http://localhost:5000/league/table` — today's competition's table (home club's row +
+  the row above), backend for the not-yet-built "win today, move up to Nth" graphic;
+  `"usable": false` means `competition_id` is blank or doesn't resolve to a real league
+  table (a cup/friendly fixture, most likely) — see `fetch_league_table()`.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights
   compile (clips are auto-tagged at replay time via the `clips` DB table; the reel gets

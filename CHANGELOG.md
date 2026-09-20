@@ -6,6 +6,34 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Added: scorebar style picker — Classic (existing look) or Modern (dark glass, rounded
+  segments).** CSS-only skin toggled by `scorebar_style` in the control panel's Graphics
+  card, applied instantly on the overlay's next poll (`body.style-modern` in
+  `overlay.html`). Deliberately scoped to the scorebar only, not the graphic panels — see
+  TODO.md's note on keeping alternate styles restrained so future scorebar features don't
+  have to be built twice.
+- **Added: bigger new-batter player card.** The photo (72px → 132px) and text (name 28px →
+  42px, stats 22px → 30px) are noticeably more legible, scoped to `#player-card`/
+  `#player-card-right` specifically so the shared `.pc-headshot`/`.pc-name` classes the
+  pregame form-guide panels also use are unaffected.
+- **Added: league-table context graphic backend (`/league/table`).** Given a competition_id
+  for today's match, fetches PlayCricket's `league_table.json` (cached once/day, same
+  pattern as season stats) and returns the home club's row plus the row above it — the data
+  behind a future "win today, move up to Nth" graphic. Verified against BBCC's real
+  Division 1 table. `competition_id` is now captured alongside `competition_name` wherever
+  `fetch_todays_match()` runs (`quickstart.py` and `server.py`'s `/match/fetch`). The
+  overlay-side graphic panel itself is not yet built — this is the data plumbing only.
+- **Added: second-camera (bowler-end) support — backend only, UNTESTED against real
+  hardware.** `obs_add_camera()` now takes `extra_scenes` and auto-creates a missing target
+  scene, so a second camera's scene (e.g. "Main-Bowler") no longer has to be created by
+  hand in OBS first; both cameras end up placed in Main, the bowler-end scene, and Replay,
+  matching the existing camera-source gotcha generalized across more scenes. New control
+  panel fields (bowler-end camera URL/name/scene) and two buttons: "Add bowler-end camera
+  to OBS" and manual cut buttons ("Cut to bowler-end" / "Cut to wide angle") calling a new
+  `/camera/scene` endpoint — the same `SetCurrentProgramScene` call `/replay` already uses.
+  No automatic cut at the over boundary yet (see TODO.md). This machine has no second
+  camera to test against — confirm scene creation and cross-presence on a real two-camera
+  setup before relying on it match day.
 - **Fixed: a bitrate downshift from a previous match's quality ladder silently carried over
   into the next one.** The stream-quality ladder writes `VBitrate` straight into the OBS
   profile on disk when it downshifts for congestion, and that value persists after the

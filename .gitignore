@@ -71,3 +71,8 @@ graphics/*.gif
 
 # Private working notes (maintainer's local checklist, not shipped)
 TODO.md
+
+# Rendered example screenshots (scorebar styles, etc.) for dragging into a GitHub README/
+# release editor by hand — same reasoning as the video rule above: GitHub's own CDN is
+# where these belong once published, not a committed file in the repo.
+examples/
