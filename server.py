@@ -1663,6 +1663,14 @@ DEFAULT_STATE = {
     "home_club_id":           "",
     "ground_filter":          "",
     "away_club_id":           "",
+    "competition_id":         "",   # PlayCricket numeric competition/division ID for TODAY's
+                                     # match — separate from competition_name (text); needed
+                                     # by fetch_league_table() since league_table.json takes
+                                     # an ID, not a name. Auto-filled alongside
+                                     # competition_name by fetch_todays_match(); a cup/friendly
+                                     # fixture may not have a real table, so this can be wrong
+                                     # or blank on those days — league_table.json is called
+                                     # defensively (see fetch_league_table()).
     "pcs_bridge_url":         "",   # NV Play on separate hardware — see nvplay_bridge.py
     "pcs_bridge_token":       "",
     # Two-laptop mode — see scorer_agent.py / TWO_LAPTOP_SETUP.md. Independent of the
@@ -2842,6 +2850,105 @@ def build_season_stats(force=False):
             _season_stats["error"]         = f"build crashed: {e}"
         print(f"  ✗  Season stats: build crashed — {e}")
         return _season_stats
+
+
+# ── League table (context graphic: "win today -> move up to Nth") ─────────────
+# One API call, rebuilt at most once a day (tables only change after a result is entered,
+# never mid-match) — same daily-cache shape as season stats above, much simpler since
+# there's no per-club aggregation, just one PlayCricket endpoint.
+_league_table = {"date": None, "competition_id": None, "built": False, "error": None,
+                 "name": "", "rows": []}
+_league_table_lock = threading.Lock()
+
+
+def fetch_league_table(force=False):
+    """Fetch today's competition's league table from PlayCricket, cached once per day per
+    competition_id. Returns the module-level _league_table dict. Verified against BBCC's
+    real Division 1 table on 2026-09-19 — see TODO.md for the competition_id vs
+    division_id naming note (PlayCricket's own docs call the parameter division_id; in
+    practice it accepts the same numeric ID matches.json calls competition_id).
+
+    Deliberately tolerant of a bad/missing ID: a cup or friendly fixture's competition_id
+    often has no real table behind it (verified: one non-league ID returned a table for an
+    unrelated league entirely, rather than an error) — home_team_row() below is what
+    actually decides whether the result is USABLE, by checking the home club appears in
+    it, not just that the call succeeded."""
+    global _league_table
+    state = load_state()
+    api_key = state.get("playcricket_api_key", "").strip()
+    comp_id = str(state.get("competition_id", "") or "").strip()
+    today = datetime.date.today().isoformat()
+
+    if not api_key or not comp_id:
+        with _league_table_lock:
+            _league_table = {"date": today, "competition_id": comp_id, "built": True,
+                             "error": "No competition_id for today's match yet "
+                                      "(set by /match/fetch, or blank on a cup/friendly "
+                                      "fixture)", "name": "", "rows": []}
+        return _league_table
+
+    with _league_table_lock:
+        if (not force and _league_table.get("built")
+                and _league_table.get("date") == today
+                and _league_table.get("competition_id") == comp_id):
+            return _league_table
+
+    try:
+        data = _pc_get_json("https://play-cricket.com/api/v2/league_table.json"
+                            f"?division_id={comp_id}&api_token={api_key}")
+        tables = data.get("league_table") or []
+        if not tables:
+            raise ValueError("empty league_table in response")
+        tbl = tables[0]
+        headings = tbl.get("headings", {})
+        # Column that says "Team" and the one that says "Pts" vary by competition (a
+        # non-league table seen in testing had only "p"/"Pen", no points column at all) —
+        # find them by heading text instead of assuming a fixed column number.
+        team_col = next((k for k, v in headings.items() if str(v).strip().lower() == "team"), "column_1")
+        pts_col  = next((k for k, v in headings.items() if str(v).strip().lower() == "pts"), None)
+        played_col = next((k for k, v in headings.items() if str(v).strip().lower() == "p"), None)
+        rows = []
+        for row in tbl.get("values", []):
+            rows.append({
+                "position": row.get("position", ""),
+                "team":     row.get(team_col, ""),
+                "points":   row.get(pts_col, "") if pts_col else "",
+                "played":   row.get(played_col, "") if played_col else "",
+            })
+        result = {"date": today, "competition_id": comp_id, "built": True, "error": None,
+                  "name": tbl.get("name", ""), "rows": rows}
+    except Exception as e:
+        result = {"date": today, "competition_id": comp_id, "built": True,
+                  "error": f"league_table fetch failed: {e}", "name": "", "rows": []}
+
+    with _league_table_lock:
+        _league_table = result
+    return result
+
+
+def league_table_home_row(table=None):
+    """Which row (if any) is the home club — and is this table actually USABLE for the
+    'win today, move up to Nth' graphic? A table fetched successfully can still be the
+    WRONG table (verified in testing: an unrelated competition_id returned a different
+    real league's table, not an error) — the only reliable check is whether the home
+    club's own name appears in it. Matches on the club name's first significant word
+    (e.g. 'Bridestowe' out of 'Bridestowe and Belstone CC'), same spirit as the
+    opposition-abbreviation logic in fetch_todays_match(), since PlayCricket's league-table
+    team names don't exactly match the state's home_team spelling."""
+    table = table or _league_table
+    rows = table.get("rows") or []
+    home_name = (load_state().get("home_team") or "").strip()
+    if not rows or not home_name:
+        return None
+    key = home_name.replace(" CC", "").replace(" Cricket Club", "").strip().split()
+    key = key[0].lower() if key else ""
+    if not key:
+        return None
+    for i, row in enumerate(rows):
+        if key in str(row.get("team", "")).lower():
+            return {"index": i, "row": row,
+                    "row_above": rows[i - 1] if i > 0 else None}
+    return None
 
 
 # ── Server self-metrics + error flight recorder ────────────────
@@ -4178,6 +4285,7 @@ def fetch_todays_match(api_key, site_id):
         "match_date":      match.get("match_date",""),
         "match_time":      match.get("match_time",""),
         "competition":     match.get("competition_name",""),
+        "competition_id":  str(match.get("competition_id","")),
         "competition_type":match.get("competition_type",""),
         "home_team":       match.get("home_team_name",""),
         "away_team":       opp_name,
@@ -6228,6 +6336,30 @@ class Handler(BaseHTTPRequestHandler):
                             "scorers": _season_stats.get("top_scorers") or {"home": None, "away": None},
                             "bowlers": _season_stats.get("top_bowlers") or {"home": None, "away": None}})
 
+        elif path == "/league/table":
+            # Pre-game / between-innings "context" panel: where this result leaves the home
+            # club in the table. Same lazy-build-in-background pattern as /player/stats and
+            # /season/top — never blocks the overlay's poll.
+            today = datetime.date.today().isoformat()
+            comp_id = str(load_state().get("competition_id", "") or "").strip()
+            built = (_league_table.get("built") and _league_table.get("date") == today
+                    and _league_table.get("competition_id") == comp_id)
+            if not built:
+                threading.Thread(target=fetch_league_table, daemon=True).start()
+                self._json({"ready": False})
+            elif _league_table.get("error"):
+                self._json({"ready": True, "usable": False, "error": _league_table["error"]})
+            else:
+                home = league_table_home_row(_league_table)
+                if not home:
+                    self._json({"ready": True, "usable": False,
+                                "error": "Home club not found in this table — probably a "
+                                         "cup/friendly competition_id, not the league"})
+                else:
+                    self._json({"ready": True, "usable": True, "name": _league_table.get("name", ""),
+                                "row": home["row"], "row_above": home["row_above"],
+                                "total_teams": len(_league_table.get("rows") or [])})
+
         elif path == "/player/stats/refresh":
             if not self._check_token(): return
             # Build/ensure the season stats cache. ?force=1 forces a fresh pull (control-panel
@@ -6259,6 +6391,7 @@ class Handler(BaseHTTPRequestHandler):
                 if result.get("away_club_id"): updates["away_club_id"]     = result["away_club_id"]
                 if result.get("away_abbrev"):   updates["away_abbrev"]      = result["away_abbrev"]
                 if result.get("competition"):   updates["competition_name"] = result["competition"]
+                if result.get("competition_id"):updates["competition_id"]   = result["competition_id"]
                 if result.get("umpire1"):       updates["umpire1_name"]     = result["umpire1"]
                 if result.get("umpire2"):       updates["umpire2_name"]     = result["umpire2"]
                 if result.get("match_id"):      updates["pc_match_id"]      = result["match_id"]

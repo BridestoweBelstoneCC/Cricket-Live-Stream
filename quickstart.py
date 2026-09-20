@@ -142,6 +142,7 @@ def fetch_todays_match(api_key, club_id):
         "away_abbrev":  auto_abbrev,
         "away_club_id": opp_club_id,     # opposition's PlayCricket club ID — badge + opp stats
         "competition":  match.get("competition_name",""),
+        "competition_id": str(match.get("competition_id","")),
         "ground":       match.get("ground_name",""),
         "ground_lat":   match.get("ground_latitude",""),
         "ground_lon":   match.get("ground_longitude",""),
@@ -185,6 +186,7 @@ def build_state(cfg, match, state_path=None):
     away_team   = match["away_team"]   if match else exist.get("away_team", "Opposition CC")
     away_abbrev = match["away_abbrev"] if match else exist.get("away_abbrev", "")
     competition = match["competition"] if match else exist.get("competition_name", "")
+    competition_id = match["competition_id"] if match else exist.get("competition_id", "")
     umpire1     = match["umpire1"]     if match else exist.get("umpire1_name", "")
     umpire2     = match["umpire2"]     if match else exist.get("umpire2_name", "")
     scorer1     = match["scorer1"]     if match else exist.get("scorer1_name", "")
@@ -199,6 +201,7 @@ def build_state(cfg, match, state_path=None):
         "home_colour":          club.get("home_colour","#1a3a5c"),
         "away_colour":          exist.get("away_colour", "#7b2d2d"),
         "competition_name":     competition,
+        "competition_id":       competition_id,
         "replay_motto":          cfg["Club"].get("motto",""),
         "umpire1_name":         umpire1,
         "umpire2_name":         umpire2,

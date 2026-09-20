@@ -35,6 +35,7 @@ max_overs = 40
 """
 
 FIXTURE = {"away_team": "Fixture CC", "away_abbrev": "FIX", "competition": "League Div 1",
+           "competition_id": "12345",
            "umpire1": "U One", "umpire2": "U Two", "scorer1": "S One",
            "match_id": "999", "away_club_id": "222"}
 
