@@ -698,8 +698,37 @@
       <label>Camera source name</label>
       <input type="text" id="obs_camera_name" placeholder="Cricket Camera">
     </div>
-    <button class="btn btn-test" onclick="addCameraToObs()" style="width:100%;">&#128247; Add camera to OBS</button>
+    <button class="btn btn-test" onclick="addCameraToObs(1)" style="width:100%;">&#128247; Add camera to OBS</button>
     <div id="camera-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <hr>
+    <p class="section-note">
+      Second camera (e.g. bowler-end) for a hard cut between two angles &mdash; optional,
+      leave the URL blank to skip. <strong>New, not yet verified against real two-camera
+      hardware</strong> &mdash; test it on a real match before relying on it. Both cameras
+      end up placed in Main, the bowler-end scene, and Replay, so switching never leaves a
+      camera deactivated (see CLAUDE.md's camera-source gotcha).
+    </p>
+    <div class="field">
+      <label>Bowler-end camera RTSP URL</label>
+      <input type="text" id="camera2_rtsp_url" placeholder="rtsp://user:pass@192.168.1.51:554/stream">
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>Camera 2 source name</label>
+        <input type="text" id="obs_camera2_name" placeholder="Bowler End Camera">
+      </div>
+      <div class="field">
+        <label>Bowler-end scene name</label>
+        <input type="text" id="obs_bowler_scene" placeholder="Main-Bowler">
+      </div>
+    </div>
+    <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add bowler-end camera to OBS</button>
+    <div id="camera2-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <div class="half-grid" style="margin-top:8px;">
+      <button class="btn btn-test" onclick="cutToCameraScene('bowler')">&#127909; Cut to bowler-end</button>
+      <button class="btn btn-test" onclick="cutToCameraScene('main')">&#127909; Cut to wide angle</button>
+    </div>
+    <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div class="field">
       <label>Replay folder path (leave blank to auto-detect)</label>
       <input type="text" id="replay_folder" placeholder="C:/Users/You/Videos/Replays">
@@ -1413,7 +1442,8 @@ function updatePreview() {
 const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
   'pcs_output_folder','pcs_bridge_url','pcs_bridge_token','pcs_source','agent_host','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
-  'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id'];
+  'camera2_rtsp_url','obs_camera2_name','obs_bowler_scene',
+  'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id','scorebar_style'];
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
@@ -1712,16 +1742,36 @@ async function showPlayerCards() {
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 
-// ── OBS camera auto-add ──
-async function addCameraToObs() {
-  const msg = document.getElementById('camera-msg');
-  const url = (document.getElementById('camera_rtsp_url') || {}).value || '';
+// ── OBS camera auto-add ── which=1 (default, wide/main) or 2 (bowler-end) ──
+async function addCameraToObs(which) {
+  which = which || 1;
+  const urlField  = which === 2 ? 'camera2_rtsp_url' : 'camera_rtsp_url';
+  const nameField = which === 2 ? 'obs_camera2_name' : 'obs_camera_name';
+  const sceneField= which === 2 ? 'obs_bowler_scene'  : 'obs_main_scene';
+  const msg = document.getElementById(which === 2 ? 'camera2-msg' : 'camera-msg');
+  const url = (document.getElementById(urlField) || {}).value || '';
   if (!url.trim()) { if (msg) { msg.textContent = 'Enter the camera RTSP URL first'; msg.style.color = '#d29922'; } return; }
   if (msg) { msg.textContent = 'Adding camera to OBS…'; msg.style.color = '#5b9bd5'; }
   try {
-    await saveState();   // make sure the URL/name are persisted before we call OBS
-    const name = (document.getElementById('obs_camera_name') || {}).value || '';
-    const d = await (await apiFetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim(), name:name.trim()})})).json();
+    await saveState();   // make sure the URL/name/scene are persisted before we call OBS
+    const name  = (document.getElementById(nameField)  || {}).value || '';
+    const scene = (document.getElementById(sceneField) || {}).value || '';
+    const d = await (await apiFetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({which: String(which), url:url.trim(), name:name.trim(), scene:scene.trim()})})).json();
+    if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+}
+
+// ── Manual camera cut — same SetCurrentProgramScene call /replay uses internally ──
+async function cutToCameraScene(which) {
+  const msg = document.getElementById('camera-cut-msg');
+  const sceneField = which === 'bowler' ? 'obs_bowler_scene' : 'obs_main_scene';
+  const scene = (document.getElementById(sceneField) || {}).value
+    || (which === 'bowler' ? 'Main-Bowler' : 'Main');
+  if (msg) { msg.textContent = 'Switching…'; msg.style.color = '#5b9bd5'; }
+  try {
+    const d = await (await apiFetch('/camera/scene', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({scene: scene})})).json();
     if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
   } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
 }

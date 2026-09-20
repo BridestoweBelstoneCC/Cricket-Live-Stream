@@ -1643,6 +1643,12 @@ DEFAULT_STATE = {
     "camera_rtsp_url":         "",
     "obs_camera_name":         "Cricket Camera",
     "obs_replay_scene":        "Replay",
+    # Optional second camera (e.g. bowler-end) for a hard cut between two angles — see
+    # TODO.md's camera-cut notes. Blank camera2_rtsp_url means "not configured", the whole
+    # feature is a no-op. UNTESTED against real two-camera hardware — see obs_add_camera().
+    "camera2_rtsp_url":        "",
+    "obs_camera2_name":        "Bowler End Camera",
+    "obs_bowler_scene":        "Main-Bowler",
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
@@ -1691,7 +1697,7 @@ _last_good_state = None   # cached last successful load, used if the file is mid
 # in config.ini's [Auth] section and _seed_state_from_config's MAPPING doesn't copy them) —
 # they're listed here anyway as a defensive backstop in case that ever changes.
 SECRET_KEYS = ("anthropic_api_key", "playcricket_api_key", "api_token",
-               "weather_api_key", "obs_password", "camera_rtsp_url",
+               "weather_api_key", "obs_password", "camera_rtsp_url", "camera2_rtsp_url",
                "control_token", "club_password", "youtube_stream_key",
                "pcs_bridge_token")
 SECRET_SENTINEL = "••••••••"
@@ -4484,12 +4490,21 @@ def obs_trigger_replay(state, reason=""):
     except Exception as e:
         print(f"  ✗  OBS WebSocket error: {e}")
 
-def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
+def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None, extra_scenes=None):
     """Create (or update) an RTSP media source in OBS over WebSocket — one-click camera
     setup for non-technical users. Re-running with the same name updates the existing
     source's settings in place rather than removing and recreating it (see the comment
     inline on why removal is unsafe), and ensures it's present in every scene that needs
-    it (main + replay), not just one. Returns (ok, message)."""
+    it (main + replay, plus extra_scenes — e.g. a second camera's own scene, so a
+    bowler-end/wide-angle pair can hard-cut between scenes without either camera
+    deactivating and drifting on reconnect, same rule as the single-camera case, just
+    generalized across more scenes). Returns (ok, message).
+
+    UNTESTED against real two-camera OBS hardware as of 2026-09-20 — the single-camera
+    path this extends from was verified against real OBS (see CHANGELOG v2.7.3); this
+    generalization has only been exercised by the test suite's mocked/no-OBS paths.
+    Confirm scene creation and cross-presence with a real second camera before relying on
+    it match day."""
     try:
         import websocket
     except ImportError:
@@ -4560,11 +4575,18 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
         if not wait_for_op(ws, 2, 5):
             ws.close()
             return False, "OBS authentication failed — check the WebSocket password"
-        # Pick a valid scene: requested one if it exists, else the current program scene.
+        # Pick a valid scene: requested one if it exists or can be created, else the
+        # current program scene. A second camera's scene (e.g. "Main-Bowler") often
+        # doesn't exist yet — auto-creating it here means the operator doesn't have to
+        # go into OBS by hand first, same as obs_setup() creates "Main"/"Replay" upfront.
         scenes = send_request(ws, "GetSceneList")
         names  = [s.get("sceneName") for s in _rdata(scenes).get("scenes", [])]
         if scene not in names:
-            scene = _rdata(scenes).get("currentProgramSceneName") or (names[0] if names else scene)
+            created = send_request(ws, "CreateScene", {"sceneName": scene})
+            if (created or {}).get("d", {}).get("requestStatus", {}).get("result", False):
+                names.append(scene)
+            else:
+                scene = _rdata(scenes).get("currentProgramSceneName") or (names[0] if names else scene)
         settings = {
             "is_local_file": False,
             "input": rtsp_url,
@@ -4601,9 +4623,16 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None):
         # it, without disturbing one that's already correctly placed (position, transform,
         # enabled state all survive — CreateSceneItem is only called where it's missing).
         added_to = []
-        for target in [scene, replay_scene]:
-            if not target or target not in names or target in added_to:
+        targets = [scene, replay_scene] + list(extra_scenes or [])
+        for target in targets:
+            if not target or target in added_to:
                 continue
+            if target not in names:
+                created = send_request(ws, "CreateScene", {"sceneName": target})
+                if (created or {}).get("d", {}).get("requestStatus", {}).get("result", False):
+                    names.append(target)
+                else:
+                    continue   # couldn't create it and it doesn't exist — skip, not fatal
             items = send_request(ws, "GetSceneItemList", {"sceneName": target})
             present = [i.get("sourceName") for i in _rdata(items).get("sceneItems", [])]
             if name in present:
@@ -6809,14 +6838,52 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 d = {}
             cfg = load_state()
+            # which=2 adds/updates the second (e.g. bowler-end) camera instead of the first
+            # — same endpoint, same obs_add_camera() call, just different state keys. See
+            # TODO.md's camera-cut notes; UNTESTED against real two-camera hardware.
+            which = str(d.get("which") or "1").strip()
+            url_key, name_key, scene_key, default_scene, default_name = (
+                ("camera2_rtsp_url", "obs_camera2_name", "obs_bowler_scene",
+                 "Main-Bowler", "Bowler End Camera") if which == "2" else
+                ("camera_rtsp_url", "obs_camera_name", "obs_main_scene",
+                 "Main", "Cricket Camera"))
             # If the field still shows the redacted sentinel (the operator loaded the panel
             # without retyping the URL), fall back to the real stored value — otherwise this
             # would try to add "••••••••" itself as the camera source.
             posted_url = (d.get("url") or "").strip()
-            url = (cfg.get("camera_rtsp_url") or "").strip() if posted_url == SECRET_SENTINEL \
-                  else (posted_url or cfg.get("camera_rtsp_url") or "").strip()
-            ok, msg = obs_add_camera(url, d.get("name"), d.get("scene"), cfg)
+            url = (cfg.get(url_key) or "").strip() if posted_url == SECRET_SENTINEL \
+                  else (posted_url or cfg.get(url_key) or "").strip()
+            name  = d.get("name")  or cfg.get(name_key)  or default_name
+            scene = d.get("scene") or cfg.get(scene_key) or default_scene
+            # The OTHER camera's scene, if that camera is configured — ensures both cameras
+            # sit in both cameras' scenes (plus Replay), not just their own "home" scene.
+            if which == "2":
+                other_scene, other_url = cfg.get("obs_main_scene") or "Main", cfg.get("camera_rtsp_url")
+            else:
+                other_scene, other_url = cfg.get("obs_bowler_scene") or "Main-Bowler", cfg.get("camera2_rtsp_url")
+            extra = [other_scene] if (other_url or "").strip() else []
+            ok, msg = obs_add_camera(url, name, scene, cfg, extra_scenes=extra)
             self._json({"ok": ok, "message": msg})
+
+        elif path == "/camera/scene":
+            # Manual hard-cut between camera scenes (e.g. bowler-end <-> wide) from the
+            # control panel, or any operator device — a thin wrapper around the same
+            # SetCurrentProgramScene call /replay already uses. Not for the overlay itself
+            # (no OVERLAY_ENDPOINTS carve-out needed — an operator presses this, not the
+            # browser source), so the token check above already gates it.
+            try:
+                d = json.loads(body or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            scene = (d.get("scene") or "").strip()
+            if not scene:
+                self._json({"ok": False, "error": "No scene given"}, status=400)
+                return
+            cfg = load_state()
+            result = _obs_call(cfg, [("SetCurrentProgramScene", {"sceneName": scene})], timeout=6)
+            ok = bool(result and result[0] is not None)
+            self._json({"ok": ok, "message": f"Switched to {scene}" if ok
+                        else f"Could not switch OBS to '{scene}' — check it exists and OBS is reachable"})
 
         elif path == "/data/reconcile":
             # Reconcile a match's aggregates against PlayCricket's published scorecard.
