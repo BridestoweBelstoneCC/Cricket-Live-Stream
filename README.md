@@ -236,20 +236,27 @@ New to this? Read your platform's quick start first:
 - **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 3-step fast path, full detail below it
 - **No coding experience at all?** [`FOR_NON_TECHNICAL_USERS.md`](FOR_NON_TECHNICAL_USERS.md) walks you through every step in plain English.
 
-**First time? One download does everything — no need to install Python yourself:**
+**One file. You run the same one every time.**
 
-1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, works on both Apple Silicon and Intel) — and put it in the folder you extracted the project to.
-2. Run it — Windows: double-click the `.exe`. Mac: unzip it, then double-click `CricketStream.command`.
-   If Python isn't installed yet, it installs it for you, then installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
+1. Download it from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, one download covers both Apple Silicon and Intel) — and put it anywhere inside the folder you unzipped.
+2. Double-click it. That's the whole job.
 
-Already have Python installed and prefer running from source? Skip the download and run `Windows/setup.bat` or `Mac/setup.sh` instead — same wizard.
+It works out for itself what still needs doing:
 
-That's it. The wizard handles everything else interactively — no manual file editing needed.
+| | |
+|---|---|
+| **First run** | Installs Python if it's missing · installs the packages · asks your club details · writes `config.ini` · starts the match |
+| **Every run after** | Goes straight to the match — today's fixture, season stats, pre-flight check |
 
-**Already set up? Match day:**
+No Python to install yourself, no files to edit, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time".
 
-- Windows: double-click `Windows/quickstart.bat`
-- Mac: run `Mac/quickstart.sh`
+> **Two laptops?** The scorer's machine gets its own single download,
+> `CricketStreamScorerAgent.exe` — no Python, no config, no project folder needed there.
+> See [`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md).
+
+Already have Python and prefer running from source? `Windows/setup.bat` / `Mac/setup.sh` once, then `Windows/quickstart.bat` / `Mac/quickstart.sh` each match day — same code, same result.
+
+If anything goes wrong, it tells you what and waits — these windows never close on an error you haven't read.
 
 ---
 

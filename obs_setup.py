@@ -303,7 +303,37 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
     request("SetCurrentProgramScene", {"sceneName": "Main"})
     log_msg("Active scene set to Main", "ok")
 
-    # ── Start replay buffer ────────────────────────────────────
+    # ── Enable AND start the replay buffer ─────────────────────
+    # This used to only START it, which fails outright when the buffer isn't ENABLED in
+    # OBS's output settings — the default for a fresh OBS install. The operator got a
+    # warning mid-setup telling them to go and tick a box themselves, and if they missed
+    # it (a volunteer, on a match morning) nothing announced the problem again: the first
+    # anyone knew was a wicket falling and no replay appearing. Replays are half the point
+    # of the product, so setup now turns the buffer on rather than asking.
+    #
+    # There's no WebSocket request to enable it, but the profile parameter behind the
+    # checkbox is settable: Simple mode keeps it at SimpleOutput/RecRB (+RecRBTime for the
+    # length in seconds), Advanced at AdvOut/RecRB. Set whichever matches the current mode.
+    mode_resp = request("GetProfileParameter", {"parameterCategory": "Output",
+                                                "parameterName": "Mode"})
+    out_mode = (mode_resp or {}).get("responseData", {}).get("parameterValue") or "Simple"
+    rb_category = "AdvOut" if out_mode != "Simple" else "SimpleOutput"
+
+    enabled_ok = False
+    r = request("SetProfileParameter", {"parameterCategory": rb_category,
+                                        "parameterName": "RecRB",
+                                        "parameterValue": "true"})
+    if r and r.get("requestStatus", {}).get("result"):
+        enabled_ok = True
+        # Long enough to cover the run-up and the shot, matching the setup guides' 25s.
+        request("SetProfileParameter", {"parameterCategory": rb_category,
+                                        "parameterName": "RecRBTime",
+                                        "parameterValue": "25"})
+        log_msg(f"Replay buffer enabled ({out_mode} output mode, 25s)", "ok")
+    else:
+        log_msg("Could not enable the replay buffer automatically — tick it in OBS "
+                "Settings → Output → Replay Buffer", "warn")
+
     rb_status = request("GetReplayBufferStatus")
     rb_active = False
     if rb_status and rb_status.get("requestStatus",{}).get("result"):
@@ -319,6 +349,12 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
             err = r.get("requestStatus",{}).get("comment","") if r else "no response"
             if "not active" in str(err).lower() or "already" in str(err).lower():
                 log_msg("Replay buffer started", "ok")
+            elif enabled_ok:
+                # We just ticked the box, so OBS knows about it — but an output that was
+                # disabled when OBS started may only be creatable after a restart. Say so
+                # specifically rather than repeating "go and enable it", which is now done.
+                log_msg("Replay buffer enabled but wouldn't start yet — restart OBS once "
+                        "and re-run setup; it starts automatically from then on", "warn")
             else:
                 log_msg(f"Replay buffer: {err or 'enable in OBS Settings → Output → Replay Buffer'}", "warn")
 

@@ -134,6 +134,34 @@
     }
     .hero-screenshot img { display: block; width: 100%; height: auto; }
 
+    /* ── See it in action ─────────────────────────────────────────────────────
+       Currently a still lifted from the club's own stream. To turn it into the
+       trailer, drop the video's URL into .trailer-frame — see the comment on the
+       markup further down. Sized 16:9 so swapping a still for an <iframe>/<video>
+       doesn't shift the page. */
+    .trailer { padding: 84px 0; background: #0d1520; }
+    .trailer h2 { text-align: center; color: #fff; }
+    .trailer .sub { text-align: center; color: rgba(255,255,255,.62); max-width: 620px;
+                    margin: 12px auto 40px; line-height: 1.6; }
+    .trailer-frame {
+      position: relative;
+      max-width: min(960px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 16 / 9;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+      background: #000;
+    }
+    .trailer-frame img,
+    .trailer-frame iframe,
+    .trailer-frame video { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+    .trailer-caption {
+      text-align: center; margin-top: 18px;
+      color: rgba(255,255,255,.5); font-size: .92rem;
+    }
+    @media (max-width: 720px) { .trailer { padding: 56px 0; } }
+
     .live-badge {
       position: absolute;
       top: 16px;
@@ -320,6 +348,7 @@
 <nav>
   <span class="brand">&#127951; CricketStream Overlay</span>
   <div class="nav-links">
+    <a href="#see-it">See it</a>
     <a href="#features">Features</a>
     <a href="#how-it-works">How it works</a>
     <a href="#get-started">Get started</a>
@@ -340,6 +369,40 @@
   </div>
 </div>
 
+<section class="trailer" id="see-it">
+  <div class="container">
+    <h2>See it on a real match</h2>
+    <p class="sub">Not a mock-up — this is a Saturday league game, filmed on one camera,
+       with the graphics driven live by the scorer's own software.</p>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         TO SHOW THE TRAILER HERE, replace the <img> below with ONE of these:
+
+           YouTube:  <iframe src="https://www.youtube.com/embed/VIDEO_ID"
+                             title="CricketStream Overlay trailer"
+                             allow="accelerated-encoding; encrypted-media; picture-in-picture"
+                             allowfullscreen></iframe>
+
+           A hosted .mp4 (e.g. a GitHub user-attachments URL, the same way the hero
+           screenshot above is hosted):
+                     <video controls preload="none" poster="trailer-poster.jpg">
+                       <source src="PASTE_URL_HERE" type="video/mp4">
+                     </video>
+
+         The trailer is NOT committed to this repo on purpose — see .gitignore:
+         video would multiply the repo size permanently for everyone who clones it.
+         So it has to live on a CDN (YouTube, or dragged into a GitHub issue/README
+         editor to get a user-attachments URL) and be linked from here.
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div class="trailer-frame">
+      <img src="trailer-poster.jpg"
+           alt="A six being hit, with the CricketStream scorebar and highlight caption over live match footage">
+    </div>
+    <p class="trailer-caption">Bridestowe &amp; Belstone CC — scorebar, highlight captions
+       and replay tagging, all generated automatically.</p>
+  </div>
+</section>
+
 <section class="features" id="features">
   <div class="container">
     <h2>Everything your stream needs</h2>
@@ -353,7 +416,7 @@
           </svg>
         </div>
         <h3>Live scorebar</h3>
-        <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate, and a ball-by-ball ticker — updates on every delivery.</p>
+        <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate and a ball-by-ball ticker — updating on every delivery. Four styles, from understated to full TV-sport, all in your club colours.</p>
       </div>
 
       <div class="feature-card reveal" style="--i:1">
