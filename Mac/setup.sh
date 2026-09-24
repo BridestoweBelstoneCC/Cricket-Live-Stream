@@ -23,7 +23,10 @@ if [ ! -f setup_wizard.py ]; then
     exit 1
 fi
 
-if ! command -v python3 &>/dev/null; then
+# macOS has its own version of the Windows Store-stub trap: /usr/bin/python3 exists on
+# a Mac with no developer tools and triggers an Xcode Command Line Tools prompt instead
+# of running. command -v finds it either way, so ask it to actually execute something.
+if [ "$(python3 -c 'import sys;print(sys.version_info[0])' 2>/dev/null)" != "3" ]; then
     echo ""
     echo "  ============================================================"
     echo "   PROBLEM: Python 3 isn't installed"

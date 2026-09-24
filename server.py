@@ -751,7 +751,7 @@ def db_status():
         return {"ok": False, "error": str(e), "balls": 0, "matches": 0, "recent": []}
 
 def export_match_csv(match_id):
-    import io, csv
+    import csv
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["innings", "over", "ball", "batting_team", "batter", "non_striker",
@@ -3074,7 +3074,6 @@ def _thermal_state():
     any 'temperature' number would look alarming). Returns {'available': False} on any
     non-Mac platform, missing binary, or parse failure — never raises, since this feeds both
     the watchdog and /health and neither may break because of it."""
-    import sys
     if sys.platform != "darwin":
         return {"available": False}
     try:

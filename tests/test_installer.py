@@ -217,6 +217,105 @@ class TestUnifiedLauncher(unittest.TestCase):
         self.assertNotIn("Traceback", out)
 
 
+class TestPythonDetection(unittest.TestCase):
+    """The Windows Store alias stub, found by running the real exe on a clean Windows 11 VM.
+
+    A fresh Windows 11 ships zero-byte "App Execution Alias" files at
+    %LOCALAPPDATA%\\Microsoft\\WindowsApps\\python.exe and python3.exe. Running one prints
+    "Python was not found; run without arguments to install from the Microsoft Store" and
+    then EXITS 0. shutil.which() finds it, and an errorlevel check calls it success — so
+    the launcher announced "Python packages are installed" on a machine with no Python,
+    never offered to install it, and handed quickstart a dead interpreter (exit 9009).
+
+    Unreproducible on a dev machine: having Python is precisely what hides it.
+    """
+
+    def setUp(self):
+        import setup_wizard
+        self.wiz = setup_wizard
+
+    def test_the_real_interpreter_is_accepted(self):
+        self.assertTrue(self.wiz.is_real_python3(sys.executable))
+
+    def test_a_stub_that_prints_an_advert_and_exits_zero_is_rejected(self):
+        # Exactly what the Store alias does: a success exit code, nothing on stdout.
+        with tempfile.TemporaryDirectory() as tmp:
+            if os.name == "nt":
+                stub = os.path.join(tmp, "python.cmd")
+                body = "@echo off\r\necho Python was not found; run without arguments >&2\r\nexit /b 0\r\n"
+            else:
+                stub = os.path.join(tmp, "python")
+                body = "#!/bin/sh\necho 'Python was not found' >&2\nexit 0\n"
+            with open(stub, "w") as f:
+                f.write(body)
+            if os.name != "nt":
+                os.chmod(stub, 0o755)
+            self.assertFalse(self.wiz.is_real_python3(stub),
+                             "a stub that exits 0 with no stdout must NOT pass as Python")
+
+    def test_nonexistent_and_empty_paths_are_rejected(self):
+        self.assertFalse(self.wiz.is_real_python3(None))
+        self.assertFalse(self.wiz.is_real_python3(""))
+        self.assertFalse(self.wiz.is_real_python3(os.path.join(REPO, "no-such-python.exe")))
+
+    def test_find_python_verifies_candidates_rather_than_trusting_the_path(self):
+        src = read("setup_wizard.py")
+        self.assertIn("is_real_python3(path)", src,
+                      "find_python must verify each candidate actually runs Python 3")
+        self.assertNotIn("        if path:\n            return path", src,
+                         "find_python still returns a which() hit without verifying it")
+
+    def test_launchers_do_not_rely_on_the_exit_code_alone(self):
+        # `python --version` + `if errorlevel 1` passes against the stub, which exits 0.
+        for name in ("Windows/install.bat", "Windows/quickstart.bat",
+                     "Windows/setup.bat", "Windows/start_server.bat"):
+            body = read(*name.split("/"))
+            self.assertIn("version_info[0]", body,
+                          f"{name} must check interpreter OUTPUT, not just the exit code")
+            self.assertNotIn("python --version >nul 2>&1\nif errorlevel 1", body,
+                             f"{name} still uses the exit-code check the stub defeats")
+        for name in ("Mac/install.sh", "Mac/quickstart.sh",
+                     "Mac/setup.sh", "Mac/start_server.sh"):
+            body = read(*name.split("/"))
+            self.assertIn("version_info[0]", body,
+                          f"{name} must check interpreter output (macOS has the same trap "
+                          f"with /usr/bin/python3 prompting for Xcode tools)")
+
+
+class TestNoShadowedModuleImports(unittest.TestCase):
+    """A function-local `import X` makes X local for the WHOLE function, so any use of the
+    module-level X *earlier* in that function raises UnboundLocalError — at runtime, only.
+
+    quickstart.py had exactly this: `import subprocess` inside main() silently broke the
+    pip call further up. It fires only when packages are actually missing, so no dev
+    machine ever hits it; a club's first run hits it immediately. Found on a clean
+    Windows 11 VM, 2026-09-24.
+    """
+
+    def _shadowed(self, filename):
+        import ast
+        tree = ast.parse(read(filename))
+        top = {a.asname or a.name.split(".")[0]
+               for node in tree.body if isinstance(node, ast.Import) for a in node.names}
+        bad = []
+        for func in [n for n in ast.walk(tree)
+                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+            for node in ast.walk(func):
+                if isinstance(node, ast.Import):
+                    for a in node.names:
+                        name = a.asname or a.name.split(".")[0]
+                        if name in top:
+                            bad.append(f"{filename}:{node.lineno} '{name}' in {func.name}()")
+        return bad
+
+    def test_entry_points_do_not_shadow_their_own_module_imports(self):
+        for f in ("quickstart.py", "setup_wizard.py", "cricketstream.py",
+                  "server.py", "scorer_agent.py"):
+            self.assertEqual(self._shadowed(f), [],
+                             "function-local import shadows a module-level one; any use of "
+                             "that name earlier in the function is an UnboundLocalError")
+
+
 class TestDependencyProbe(unittest.TestCase):
     def setUp(self):
         import cricketstream

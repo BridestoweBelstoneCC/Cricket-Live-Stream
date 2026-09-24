@@ -34,10 +34,14 @@ echo   CricketStream Overlay - Installing requirements
 echo   ===============================================
 echo.
 
-python --version >nul 2>&1
-if errorlevel 1 goto nopython
+REM A fresh Windows 11 ships 0-byte "App Execution Alias" stubs for python.exe that
+REM print a Microsoft Store advert and EXIT 0 -- so an errorlevel check reports Python
+REM as present when there is none. Only a real interpreter produces output here.
+set PYOK=
+for /f "delims=" %%i in ('python -c "import sys;print(sys.version_info[0])" 2^>nul') do set PYOK=%%i
+if not "%PYOK%"=="3" goto nopython
 
-for /f "tokens=*" %%i in ('python --version') do echo   Found: %%i
+for /f "tokens=*" %%i in ('python --version 2^>nul') do echo   Found: %%i
 echo.
 
 echo   Updating pip...

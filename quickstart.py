@@ -539,7 +539,11 @@ def main():
             "TO FIX: re-download/unzip the project and keep the folder intact.",
             "  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream")
 
-    import subprocess
+    # NOTE: no "import subprocess" here. subprocess is imported at module level, and a
+    # function-local import of the same name makes it local for the ENTIRE function --
+    # so the pip call earlier in main() died with UnboundLocalError, but only on a machine
+    # that actually had packages to install. Invisible on any dev box. Found on a clean
+    # Windows 11 VM, 2026-09-24.
     # Start the server detached from this terminal's signal delivery, so that a Ctrl+C
     # interrupts ONLY this launcher — not the server. That keeps the server alive long
     # enough to generate the match report (the match log lives in the server's memory).
@@ -608,7 +612,6 @@ def self_test():
     """Pre-flight checklist: read /health and print a go/no-go summary.
     Run AFTER the server is up so you find problems in the warm-up, not at the first ball.
     Warnings don't block — plenty are normal (e.g. demo mode before the scorer connects)."""
-    import urllib.request
     print()
     print("  ─── Pre-flight check ────────────────────────")
     try:
@@ -677,7 +680,7 @@ def self_test():
 
 def wait_for_server(timeout=20):
     """Poll the server's /live endpoint until it responds (or we give up)."""
-    import urllib.request, time as _t
+    import time as _t
     deadline = _t.time() + timeout
     while _t.time() < deadline:
         try:
@@ -693,7 +696,6 @@ def get_session_token(cfg):
     script's own calls to auth-gated endpoints (/player/stats/refresh, /report/generate) carry
     a valid Bearer token instead of 401ing against our own server. Returns "" if no password is
     set (auth disabled — server accepts unauthenticated calls) or if login fails."""
-    import urllib.request, json
     pw = cfg["Auth"].get("club_password", "").strip() if cfg.has_section("Auth") else ""
     if not pw:
         return ""
@@ -718,7 +720,6 @@ def start_telemetry(script_dir, popen_kwargs):
     best-effort: a failure to start must never hold up match day, so anything unexpected is
     logged and ignored.
     """
-    import subprocess
     path = os.path.join(script_dir, "stream_telemetry.py")
     if not os.path.exists(path):
         return
@@ -738,7 +739,6 @@ def start_telemetry(script_dir, popen_kwargs):
 def pull_season_stats(api_key, token=""):
     """Trigger the season-stats build on the running server and report the result.
     Uses the non-forced refresh so a same-day cache is reused (no repeat API calls)."""
-    import urllib.request, json
     if not api_key or api_key == "YOUR_KEY_HERE":
         log("Season stats skipped — no PlayCricket API key in config.ini", "warn")
         return
@@ -807,7 +807,6 @@ def run_server_with_restarts(proc, launch, token="", max_restarts=SERVER_MAX_RES
 
 def offer_match_report(token=""):
     """Offer to generate an AI match report from the still-running server."""
-    import urllib.request, json, datetime
     print()
     try:
         ans = input("  Generate an AI match report for this game? [y/N]: ").strip().lower()

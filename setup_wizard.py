@@ -152,13 +152,39 @@ def abbrev_from_name(name):
         return ""
     return words[0][:6].upper()
 
+def is_real_python3(path):
+    """Does this path actually RUN Python 3, or does it only look like it?
+
+    A fresh Windows 11 ships zero-byte "App Execution Alias" stubs at
+    %LOCALAPPDATA%\\Microsoft\\WindowsApps\\python.exe and python3.exe. They are not
+    Python: run one and it prints "Python was not found; run without arguments to
+    install from the Microsoft Store" — and then EXITS 0, so even an errorlevel check
+    says it succeeded. shutil.which() finds them, so trusting the path meant the wizard
+    reported "Python is installed" on a machine that had none, never offered to install
+    it, and then handed quickstart an interpreter that couldn't run anything (exit 9009).
+
+    Found by running the real exe on a genuinely clean Windows 11 VM — it cannot be
+    reproduced on a dev machine, because having Python is what hides it. Asking the
+    candidate to execute something is the only honest test.
+    """
+    if not path:
+        return False
+    try:
+        out = subprocess.run([path, "-c", "import sys; print(sys.version_info[0])"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0 and out.stdout.strip() == "3"
+
+
 def find_python():
-    """Return a real Python interpreter, never the frozen exe itself."""
+    """Return a real Python 3 interpreter, never the frozen exe itself and never one of
+    the Store alias stubs — every candidate is verified by is_real_python3()."""
     if not FROZEN:
         return sys.executable
     for candidate in ("python3", "python", "py"):
         path = shutil.which(candidate)
-        if path:
+        if is_real_python3(path):
             return path
     # winget/the official installer update the registry PATH, but that
     # doesn't propagate into this already-running process — look in the
@@ -168,25 +194,46 @@ def find_python():
             continue
         matches = sorted(glob.glob(os.path.join(base, "Programs", "Python", "Python3*", "python.exe")) +
                           glob.glob(os.path.join(base, "Python3*", "python.exe")))
-        if matches:
-            return matches[-1]
+        # Newest first — a half-removed old install shouldn't win over a working new one.
+        for path in reversed(matches):
+            if is_real_python3(path):
+                return path
     return None
 
 def install_python_windows():
-    if shutil.which("winget"):
+    have_winget = bool(shutil.which("winget"))
+    if have_winget:
         print("  Installing Python 3 via winget (this can take a minute)...\n")
-        subprocess.run([
+        sys.stdout.flush()
+        # --source winget is load-bearing, not tidiness. Without it winget also consults
+        # the msstore source, and when THAT fails — which it does on a fresh Windows 11 with
+        # "0x8a15005e: The server certificate did not match any of the expected values" —
+        # winget finds the package in the working source, then refuses to act on it:
+        #   "The following packages were found among the working sources.
+        #    Please specify one of them using the --source option to proceed."
+        # It downloads the whole 19.8 MB first and THEN gives up, so it looks like a
+        # successful install right up until Python still isn't there. Naming the source
+        # skips msstore entirely. Seen on a clean Windows 11 VM, 2026-09-24.
+        result = subprocess.run([
             "winget", "install", "--id", "Python.Python.3.12", "-e", "--silent",
+            "--source", "winget",
             "--accept-package-agreements", "--accept-source-agreements",
         ])
         python = find_python()
         if python:
             print("  [OK] Python installed.")
             return python
-    print("  Couldn't install Python automatically (winget not available).")
+        print(f"\n  [!!] winget ran but Python still isn't usable "
+              f"(winget exit code {result.returncode}).")
+        print("       Its output is above — the reason is usually in the last few lines.")
+    else:
+        print("  winget isn't available on this machine.")
     print("  Opening the download page — tick 'Add python.exe to PATH' during setup,")
-    print("  then re-run this wizard.")
-    webbrowser.open("https://www.python.org/downloads/")
+    print("  then run this again.")
+    try:
+        webbrowser.open("https://www.python.org/downloads/")
+    except Exception:
+        pass          # no browser (server core, locked-down machine) — the URL is printed anyway
     return None
 
 def install_python_mac():
