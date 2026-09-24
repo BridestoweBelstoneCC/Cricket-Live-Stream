@@ -7,7 +7,7 @@
 
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
-1. **Setup** — download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), drop it into this folder, and double-click it. It installs Python for you if it's missing, installs packages, and walks you through your club details, creating `config.ini`. *(Once only.)*
+1. **Setup** — download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), put it **anywhere inside the folder you unzipped** (either here in `Windows\`, or up beside `server.py` — both work), and double-click it. It installs Python for you if it's missing, installs packages, and walks you through your club details, creating `config.ini`. *(Once only.)*
 2. **Match day** — double-click **`quickstart.bat`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
@@ -39,7 +39,9 @@ Do not put it on the Desktop — Windows sometimes blocks scripts running from t
 
 ## Step 2 — Install Python packages and configure
 
-Don't have Python installed yet? Download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), drop it into this folder, and double-click it — it installs Python automatically before continuing. Already have Python? Double-click **`setup.bat`** instead; it's the same wizard, run from source.
+Don't have Python installed yet? Download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), put it inside the folder you unzipped, and double-click it — it installs Python automatically before continuing. Already have Python? Double-click **`setup.bat`** instead; it's the same wizard, run from source.
+
+> **Where exactly does the .exe go?** Anywhere inside the unzipped project — this `Windows\` folder or the one above it (where `server.py` lives) both work; it looks in both. What it can't do is run from Downloads or the Desktop on its own, because the project files it needs aren't there. If you get that wrong it now tells you so and waits, rather than closing.
 
 The setup wizard installs packages, then asks a few questions — your club name, kit colour, PlayCricket ID, and any API keys you have. It creates `config.ini` for you automatically.
 
@@ -285,6 +287,34 @@ still works; the AI features simply stay off.
 ---
 
 ## Troubleshooting
+
+### The window opens, flashes something, and closes before I can read it
+
+This shouldn't happen any more — every one of these files now stops and waits with
+`Press Enter to close this window...` whatever goes wrong, including an outright crash.
+If you're seeing it, you're on an older copy: download the current version and try again.
+
+To read the message on an old copy, open Command Prompt (press Start, type `cmd`), then
+drag the file you were double-clicking into the window and press Enter. It runs the same
+way but the window stays open.
+
+### It says "I can't find the CricketStream project files"
+
+The file needs to live inside the folder you unzipped. It looks in its own folder and the
+one above it, so both `Windows\` and the main project folder are fine — but Downloads or
+the Desktop on their own aren't, because `server.py` and the rest aren't there.
+
+Move the file next to `server.py` and run it again. The message tells you which folder it
+actually looked in, which is usually enough to spot what happened.
+
+### Quickstart says "No config.ini yet — setup hasn't been run"
+
+`config.ini` holds your club details and is created once, by the setup wizard. Run
+`CricketStreamSetup.exe` or `setup.bat` first.
+
+If you're sure you already ran setup, it saved `config.ini` somewhere else — an older
+version wrote it next to itself rather than next to `server.py`. Find it and move it into
+the folder with `server.py`.
 
 ### Quickstart says "Cannot connect to OBS"
 

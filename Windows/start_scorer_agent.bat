@@ -6,7 +6,8 @@ REM  Start it once at the beginning of the day and leave the
 REM  window open. It shares the scoreboard file with the
 REM  streaming laptop. It does not change anything.
 REM ===========================================================
-cd /d %~dp0
+chcp 65001 >nul
+cd /d "%~dp0"
 
 if exist scorer_agent.py goto run
 if exist ..\scorer_agent.py cd ..

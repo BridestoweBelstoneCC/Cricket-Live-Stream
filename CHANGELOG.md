@@ -6,6 +6,45 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Fixed: the installer closed its own window before you could read the error.** Reported
+  as "run it in the wrong place and it auto-exits without an error you can read" — two
+  separate causes, both fixed.
+  - **Nothing paused before exiting.** A double-clicked `.exe` owns its console window, so
+    every `sys.exit()` in `setup_wizard.py` (= `CricketStreamSetup.exe`) closed the window
+    with the reason inside it. That included unhandled exceptions — the traceback flashed
+    past for a few frames, which is both the least useful thing to show someone and exactly
+    the text needed to diagnose it. Every fatal path in `setup_wizard.py`, `quickstart.py`
+    and `quickstart_launcher.py` now goes through a `die()` that prints a framed, plain-English
+    problem + what to do about it, and waits. Crashes are caught and held on screen with a
+    link to report them. `CRICKETSTREAM_NO_PAUSE=1` switches the pauses off for automation;
+    `quickstart.py` also only pauses when there's a real console attached, so the wizard's
+    own "launch the server now" subprocess and the test suite never block.
+  - **Three of the four Windows launchers could never have worked as shipped.**
+    `Windows/quickstart.bat`, `install.bat` and `start_server.bat` did `cd /d %~dp0` (the
+    `Windows\` folder) and then looked for `quickstart.py` / `requirements.txt` / `server.py`,
+    which live in the repo root — so they failed 100% of the time with `can't open file` or
+    `Could not open requirements file`. Same bug in `Mac/quickstart.sh`, `install.sh` and
+    `start_server.sh`. They all now search their own folder then the parent, the way
+    `start_scorer_agent.bat` already did, and say plainly which folders they looked in when
+    they still can't find it.
+  - **`CricketStreamSetup.exe` dropped in the wrong folder** failed deep inside pip and
+    vanished; worse, one that got past that wrote `config.ini` next to itself, where
+    `server.py` — which only ever reads `config.ini` from its own folder — would never find
+    it. It now locates the project (own folder, then parent, then cwd), reports the folder
+    it settled on, and refuses to half-configure an install nobody can use.
+  - **Ordering:** `quickstart.py` asked two interactive questions about today's match before
+    checking `config.ini` existed, so a first-timer answered both and was then told setup had
+    never been run. Checked upfront now.
+  - **Mojibake:** reconfiguring Python's streams to UTF-8 only fixes half the problem on
+    Windows — the console still renders through its own codepage, so the banner and the
+    ✓/⚠/✗ icons arrived as `â€”` on a default cp850/cp1252 console. Both entry points now set
+    the console codepage too, which is the only half available to the frozen `.exe` (it has
+    no `.bat` wrapper to run `chcp 65001` for it), and the `.bat` files set it as well.
+  - New `tests/test_installer.py` guards all of it: every launcher searching the parent
+    folder, every launcher pausing, no bare fatal `sys.exit(1)` outside `die()`, a crash
+    handler in all three entry points, and an end-to-end run of the wizard from a wrong
+    folder asserting it exits non-zero with an explanation and no traceback.
+
 - **Changed: "Modern" scorebar rebuilt, plus two new styles ("Impact", "Minimal").** The
   first Modern was Classic's layout with each segment floated as its own rounded dark pill,
   which read as a row of unrelated buttons with a hole punched through the middle (because

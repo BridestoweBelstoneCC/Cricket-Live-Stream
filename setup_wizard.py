@@ -15,10 +15,88 @@ try:
 except Exception:
     pass
 
+# Reconfiguring the streams above only makes Python EMIT utf-8 — a Windows console still
+# renders those bytes through its own codepage, so on a default cp850/cp1252 console every
+# em-dash in this file arrives as "â€”". Putting the console itself into utf-8 is the other
+# half of the fix, and matters most for the frozen exe, which has no .bat wrapper to run
+# `chcp 65001` for it.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
 FROZEN = getattr(sys, "frozen", False)
-# When frozen (PyInstaller), __file__ points inside the temp extraction
-# folder, which is deleted on exit — use the real exe's location instead.
-BASE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+
+# ── Never close without being read ────────────────────────────────────────────
+# This file is shipped as CricketStreamSetup.exe — a double-clicked exe owns its
+# console window, so the window closes the instant the process ends. Every exit
+# path therefore has to pause first, or the user gets a black rectangle that
+# blinks once and vanishes with the reason inside it. That includes crashes: an
+# unhandled traceback is exactly the message someone needs to send us, and it was
+# the one thing guaranteed never to be readable. Set CRICKETSTREAM_NO_PAUSE=1 to
+# turn the pauses off for scripted/CI runs.
+NO_PAUSE = os.environ.get("CRICKETSTREAM_NO_PAUSE", "") == "1"
+
+
+def pause(msg="Press Enter to close this window..."):
+    if NO_PAUSE:
+        return
+    try:
+        input(f"\n  {msg}")
+    except (EOFError, KeyboardInterrupt):
+        pass          # no console to read from — nothing to wait for either
+
+
+def die(title, *lines):
+    """Readable, framed fatal error + a pause, then quit. Always prefer this over
+    a bare sys.exit() — see the NO_PAUSE comment above for why."""
+    print()
+    print("  " + "=" * 60)
+    print(f"   PROBLEM: {title}")
+    print("  " + "=" * 60)
+    for line in lines:
+        print(f"   {line}" if line else "")
+    pause()
+    sys.exit(1)
+
+
+# ── Where the project actually lives ──────────────────────────────────────────
+# The exe gets downloaded on its own and dropped wherever the setup guide's reader
+# thought "this folder" meant — often Downloads, or the Windows/ subfolder next to
+# setup.bat. Both used to fail deep inside pip ("Could not open requirements file")
+# and then vanish. Worse, a wizard that got that far wrote config.ini beside itself,
+# where server.py — which only ever reads config.ini from its OWN folder — would
+# never find it. So: find the real project folder first, and say so plainly if we
+# can't, instead of half-configuring an install nobody can use.
+MARKERS = ("server.py", "requirements.txt", "overlay.html")
+
+
+def looks_like_project(path):
+    return path and all(os.path.exists(os.path.join(path, m)) for m in MARKERS)
+
+
+def find_project_root():
+    """The folder holding server.py/requirements.txt, or None. Checks beside this
+    script/exe first, then one level up (covers the exe being dropped in Windows/ or
+    Mac/ next to setup.bat, which is what the setup guide's 'this folder' reads as),
+    then the working directory."""
+    # When frozen, __file__ points inside PyInstaller's temp extraction folder, which
+    # is deleted on exit — the exe's own location is the only meaningful one.
+    origin = (os.path.dirname(os.path.abspath(sys.executable)) if FROZEN
+              else os.path.dirname(os.path.abspath(__file__)))
+    cwd = os.getcwd()
+    for candidate in (origin, os.path.dirname(origin), cwd, os.path.dirname(cwd)):
+        if looks_like_project(candidate):
+            return candidate
+    return None
+
+
+HERE = (os.path.dirname(os.path.abspath(sys.executable)) if FROZEN
+        else os.path.dirname(os.path.abspath(__file__)))
+BASE = find_project_root() or HERE
 CONFIG_FILE = os.path.join(BASE, "config.ini")
 
 # Bump this occasionally. The macos11 tag is a universal2 installer — it
@@ -156,20 +234,33 @@ def install_packages():
     req = os.path.join(BASE, "requirements.txt")
     python = find_python() or install_python()
     if not python:
-        print("\n  [!!] No Python 3 install found on this machine.")
-        print("    The setup wizard doesn't need Python, but the server does.")
-        print("    Install Python 3 from python.org, then run:")
-        print(f"    pip install -r \"{req}\"")
-        sys.exit(1)
+        die("No Python 3 installation found on this machine",
+            "",
+            "The setup wizard itself doesn't need Python, but the server does.",
+            "",
+            "TO FIX: install Python 3 from https://python.org/downloads",
+            "        — tick 'Add python.exe to PATH' during setup —",
+            "        then run this wizard again.",
+            "",
+            "If you'd rather do it by hand, install Python and then run:",
+            f"  pip install -r \"{req}\"")
     print("  Running: pip install -r requirements.txt\n")
     result = subprocess.run(
         [python, "-m", "pip", "install", "-r", req, "--quiet"],
         capture_output=False
     )
     if result.returncode != 0:
-        print("\n  [!!] Package installation failed.")
-        print("    Try running manually: pip install -r requirements.txt")
-        sys.exit(1)
+        die("Installing the Python packages failed",
+            "",
+            "The error from pip is printed just above this box.",
+            "",
+            "Most common causes:",
+            "  - No internet connection, or a firewall blocking pip",
+            "  - Needs admin rights: right-click this file and choose",
+            "    'Run as administrator', then try again",
+            "",
+            "To retry by hand:",
+            f"  \"{python}\" -m pip install -r \"{req}\"")
     print("\n  [OK] Packages installed.")
 
 def configure():
@@ -283,17 +374,46 @@ def write_config(v):
         cfg.write(f)
     print(f"\n  [OK] Saved to {CONFIG_FILE}")
 
+def check_location():
+    """Fail early and legibly if we can't see the project files, instead of dying
+    later inside pip with 'Could not open requirements file' and closing."""
+    if looks_like_project(BASE):
+        return
+    die("I can't find the CricketStream project files",
+        "",
+        f"I'm running from:  {HERE}",
+        "",
+        "...but there's no server.py / requirements.txt here or in the folder",
+        "above, so this isn't the project folder.",
+        "",
+        "TO FIX: move this file into the folder that contains server.py,",
+        "quickstart.py and requirements.txt, then run it again.",
+        "",
+        "That folder is the one you unzipped — if you haven't downloaded the",
+        "project yet, get it from:",
+        "  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream",
+        "(green 'Code' button -> Download ZIP, then unzip it somewhere",
+        " permanent like Documents\\CricketStream, and put this file inside.)")
+
+
 def main():
     print(BANNER)
 
     if sys.version_info < (3, 8):
-        print("[!!] Python 3.8 or later is required.")
-        sys.exit(1)
+        die("This needs Python 3.8 or later",
+            "",
+            f"Found Python {sys.version.split()[0]}.",
+            "Install a current Python 3 from https://python.org/downloads",
+            "and tick 'Add python.exe to PATH' during setup.")
+
+    check_location()
+    print(f"  Project folder: {BASE}\n")
 
     if os.path.exists(CONFIG_FILE):
         print(f"  config.ini already exists at {CONFIG_FILE}")
         if not ask_yn("Re-run setup and overwrite it?", default=False):
             print("\n  Nothing changed. Run quickstart.sh / quickstart.bat to start the server.")
+            pause()
             sys.exit(0)
 
     install_packages()
@@ -308,6 +428,7 @@ def main():
 
     if not ask_yn("\nSave this config?", default=True):
         print("  Cancelled — nothing saved.")
+        pause()
         sys.exit(0)
 
     write_config(values)
@@ -325,12 +446,42 @@ def main():
         python = find_python()
         if not python or not os.path.exists(quickstart):
             print("\n  Run quickstart.sh (Mac) or quickstart.bat (Windows) to start the server.")
+            pause()
         else:
+            # Hands the console over to quickstart, which does its own pausing.
             subprocess.run([python, quickstart])
+    else:
+        pause("All done. Press Enter to close this window...")
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print("\n\n  Cancelled — nothing saved.")
+        pause()
         sys.exit(0)
+    except EOFError:
+        # Launched with no usable console (some double-click contexts), so input()
+        # got EOF immediately. Pausing again would just loop on the same error.
+        print("\n  [!!] No keyboard input available — run this from a terminal:")
+        print(f"       python \"{os.path.abspath(__file__)}\"" if not FROZEN
+              else f"       \"{sys.executable}\"")
+        sys.exit(1)
+    except Exception:
+        # A traceback that flashes up for 40ms and disappears is the single most
+        # useless failure mode this wizard had — it's also precisely the text we'd
+        # need to see to diagnose it. Show it, explain it, and hold the window open.
+        import traceback
+        print()
+        print("  " + "=" * 60)
+        print("   SOMETHING WENT WRONG — this is a bug, not something you did")
+        print("  " + "=" * 60)
+        print()
+        traceback.print_exc(file=sys.stdout)
+        print()
+        print("   Please report this at:")
+        print("   https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
+        print("   Copy the lines above into the issue (they say what broke).")
+        pause()
+        sys.exit(1)

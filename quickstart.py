@@ -33,6 +33,19 @@ try:
 except Exception:
     pass
 
+# Reconfiguring the streams only makes Python EMIT utf-8; a Windows console still renders
+# those bytes through its own codepage, so the banner's box-drawing characters and the
+# ✓/⚠/✗ icons below arrive as mojibake on a default cp850/cp1252 console. This is the other
+# half of that fix, and it's the only half available to CricketStreamQuickstart.exe, which
+# has no .bat wrapper to run `chcp 65001` for it.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         CricketStream Overlay — Quick Start          ║
@@ -42,6 +55,43 @@ BANNER = """
 def log(msg, status=""):
     icons = {"ok": "  ✓", "warn": "  ⚠", "err": "  ✗", "": "   "}
     print(f"{icons.get(status,'   ')} {msg}")
+
+
+# ── Never close without being read ────────────────────────────────────────────
+# Launched from CricketStreamQuickstart.exe there's no .bat wrapper holding the
+# window open, so a bare sys.exit() closes it instantly with the reason inside.
+# Only pause when there's actually a person at a console: the setup wizard runs
+# this as a subprocess and the tests import it, and neither should ever block.
+# CRICKETSTREAM_NO_PAUSE=1 forces it off.
+def _interactive():
+    if os.environ.get("CRICKETSTREAM_NO_PAUSE", "") == "1":
+        return False
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except Exception:
+        return False
+
+
+def pause(msg="Press Enter to close this window..."):
+    if not _interactive():
+        return
+    try:
+        input(f"\n  {msg}")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def die(title, *lines):
+    """Readable, framed fatal error + a pause, then quit. Use instead of a bare
+    sys.exit() for anything a person needs to act on."""
+    print()
+    print("  " + "=" * 60)
+    print(f"   PROBLEM: {title}")
+    print("  " + "=" * 60)
+    for line in lines:
+        print(f"   {line}" if line else "")
+    pause()
+    sys.exit(1)
 
 GITHUB_REPO = "BridestoweBelstoneCC/Cricket-Live-Stream"
 
@@ -95,8 +145,20 @@ def load_config():
     cfg = configparser.ConfigParser()
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if not os.path.exists(config_path):
-        print(f"ERROR: config.ini not found at {config_path}")
-        sys.exit(1)
+        die("No config.ini yet — setup hasn't been run",
+            "",
+            f"Expected it at:  {config_path}",
+            "",
+            "config.ini holds your club name, colours and API keys. It's",
+            "created for you by the setup wizard, which only needs running once.",
+            "",
+            "TO FIX, run ONE of these first:",
+            "  - CricketStreamSetup.exe   (also installs Python for you)",
+            "  - Windows:  setup.bat",
+            "  - Mac:      setup.sh",
+            "",
+            "Already ran setup? Then it saved config.ini somewhere else — check",
+            "the folder the wizard printed, and move config.ini next to server.py.")
     cfg.read(config_path, encoding="utf-8")
     return cfg
 
@@ -289,6 +351,13 @@ def main():
     print(BANNER)
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
+    # Check this BEFORE the two interactive prompts below. load_config() happens further
+    # down, which meant a first-timer who hadn't run setup answered two questions about
+    # today's match and only then got told setup had never been run — the sort of thing
+    # that makes a tool feel like it's wasting your time on a match morning.
+    if not os.path.exists(os.path.join(script_dir, "config.ini")):
+        load_config()          # raises the "setup hasn't been run" box and stops
+
     # ── Check for updates ──
     check_for_updates()
     print()
@@ -459,8 +528,16 @@ def main():
     # ── Start server as a subprocess so we regain control on Ctrl+C ──
     server_path = os.path.join(script_dir, "server.py")
     if not os.path.exists(server_path):
-        print(f"ERROR: server.py not found at {server_path}")
-        sys.exit(1)
+        die("server.py is missing",
+            "",
+            f"Expected it at:  {server_path}",
+            "",
+            "quickstart.py and server.py have to sit in the same folder — it",
+            "looks like only part of the project was copied, or one file got",
+            "moved out.",
+            "",
+            "TO FIX: re-download/unzip the project and keep the folder intact.",
+            "  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream")
 
     import subprocess
     # Start the server detached from this terminal's signal delivery, so that a Ctrl+C
@@ -699,10 +776,18 @@ def run_server_with_restarts(proc, launch, token="", max_restarts=SERVER_MAX_RES
             # exited on its own -- a crash, not a shutdown. Ctrl+C is caught by the except
             # clause instead and never reaches this point.
             if server_restarts >= max_restarts:
-                log(f"Server crashed and won't auto-restart again (already tried "
-                    f"{max_restarts} times) — check the terminal output above for "
-                    f"what died, then close this window and re-run quickstart", "err")
-                sys.exit(1)
+                die(f"The server keeps crashing (restarted it {max_restarts} times)",
+                    "",
+                    "Whatever killed it is printed above this box — scroll up; the",
+                    "last few lines before each restart are the useful ones.",
+                    "",
+                    "Common causes:",
+                    "  - Port 5000 already in use (another copy still running?)",
+                    "  - A setting in config.ini the server can't read",
+                    "  - Packages missing or half-installed — re-run setup",
+                    "",
+                    "If it isn't obvious, please open an issue with those lines:",
+                    "  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
             server_restarts += 1
             log(f"Server stopped unexpectedly — restarting "
                 f"(attempt {server_restarts}/{max_restarts})", "warn")
@@ -757,4 +842,29 @@ def offer_match_report(token=""):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise                    # die()/sys.exit() already said their piece
+    except KeyboardInterrupt:
+        # main() handles Ctrl+C during the match itself (it offers the report first);
+        # this only catches one during startup, before the server is up.
+        print("\n\n  Cancelled.")
+        sys.exit(0)
+    except Exception:
+        # Same reasoning as setup_wizard.py: a traceback that flashes past for 40ms is
+        # both the least useful thing a person can be shown and exactly the text needed
+        # to diagnose it. Hold the window open with it on screen.
+        import traceback
+        print()
+        print("  " + "=" * 60)
+        print("   SOMETHING WENT WRONG — this is a bug, not something you did")
+        print("  " + "=" * 60)
+        print()
+        traceback.print_exc(file=sys.stdout)
+        print()
+        print("   Please report this at:")
+        print("   https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
+        print("   Copy the lines above into the issue (they say what broke).")
+        pause()
+        sys.exit(1)

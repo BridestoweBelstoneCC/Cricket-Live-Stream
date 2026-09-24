@@ -1,5 +1,16 @@
 #!/bin/bash
 cd "$(dirname "$0")"
+[ -f requirements.txt ] || { [ -f ../requirements.txt ] && cd ..; }
+
+if [ ! -f requirements.txt ]; then
+    echo ""
+    echo "  PROBLEM: I can't find the CricketStream project files."
+    echo "  Looked in $(dirname "$0") and the folder above it."
+    echo "  Keep this file in the Mac/ folder, or next to requirements.txt."
+    echo ""
+    read -p "Press Enter to close this window..."
+    exit 1
+fi
 
 echo ""
 echo " CricketStream Overlay - Installing requirements"
