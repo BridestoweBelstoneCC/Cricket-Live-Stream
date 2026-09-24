@@ -946,11 +946,11 @@ body.style-minimal #target-detail { color: #7b8698 !important; font-size: 11px !
 
 <!-- Player card (new batter) -->
 <div id="player-card" class="graphic-panel">
-  <div class="pc-accent"></div>
+  <div class="pc-accent" id="pc-accent"></div>
   <div style="display:flex;align-items:center;gap:20px;">
     <img id="pc-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
     <div>
-      <div class="pc-label">New Batter</div>
+      <div class="pc-label" id="pc-label">New Batter</div>
       <div class="pc-name" id="pc-name">A. Flintoff</div>
     </div>
   </div>
@@ -974,11 +974,11 @@ body.style-minimal #target-detail { color: #7b8698 !important; font-size: 11px !
 
 <!-- Second player card (opener on right / non-striker) -->
 <div id="player-card-right" class="graphic-panel">
-  <div class="pc-accent"></div>
+  <div class="pc-accent" id="pc-accent-right"></div>
   <div style="display:flex;align-items:center;gap:20px;">
     <img id="pc-headshot-right" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
     <div>
-      <div class="pc-label">New Batter</div>
+      <div class="pc-label" id="pc-label-right">New Batter</div>
       <div class="pc-name" id="pc-name-right">—</div>
     </div>
   </div>
@@ -1349,6 +1349,19 @@ function applyColours(home, away, homeBatting) {
   el('partner-accent').style.background   = bat;
   el('lineup-accent').style.background    = bat;
   el('summary-accent').style.background   = bat;
+  // The new-batter card's accent and label were the one pair of these left on the hardcoded
+  // green (#2a8c5a) — they had no id, so they got missed when the others were wired up. It
+  // barely showed against Classic's neutral grey bar, but sitting flush on top of a
+  // team-coloured dark bar (Modern/Impact) a green stripe is the only thing on screen that
+  // belongs to no team. Lifted, not raw: a dark navy club colour as a 6px bar or as label
+  // text on the card's near-black panel is as good as invisible.
+  var pcLift = wormColour(bat);
+  ['pc-accent', 'pc-accent-right'].forEach(function(id) {
+    var e = el(id); if (e) e.style.background = pcLift;
+  });
+  ['pc-label', 'pc-label-right'].forEach(function(id) {
+    var e = el(id); if (e) e.style.color = pcLift;
+  });
   el('weather-widget').style.borderLeftColor = bat;
 }
 

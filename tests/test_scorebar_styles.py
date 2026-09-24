@@ -65,6 +65,18 @@ class TestScorebarStyles(unittest.TestCase):
             r"body\.style-minimal #bowler-name \{[^}]*color:[^;]*!important",
             "Minimal must force #bowler-name's colour over applyColours' inline #fff")
 
+    def test_player_card_accents_are_team_coloured_not_hardcoded(self):
+        # The new-batter card sits flush on top of the scorebar, so on a team-coloured dark
+        # style its accent is right next to the bar's own team-colour rule. Both .pc-accent
+        # bars and both "New Batter" labels were left on the hardcoded green .pc-* default
+        # for exactly one reason: they had no id, so they were skipped when partner-accent/
+        # lineup-accent/summary-accent were wired into applyColours(). Any new accent needs
+        # an id AND a line in applyColours, or it silently stays green.
+        for el_id in ("pc-accent", "pc-accent-right", "pc-label", "pc-label-right"):
+            self.assertIn(f'id="{el_id}"', self.overlay, f"{el_id} has no id to target")
+            self.assertIn(f"'{el_id}'", self.overlay,
+                          f"{el_id} is never referenced from JS — applyColours can't set it")
+
     def test_every_style_keeps_the_bar_at_the_shared_height(self):
         # 72px is load-bearing: the graphic panels sit at bottom:72px and fow/partnership/
         # milestone panels are themselves 72px to line up with the bar. A style that changes
