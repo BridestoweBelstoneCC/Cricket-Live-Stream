@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.8 — 2026-09-24
 
 - **Changed: camera cuts are ~3.6x quicker, and the control panel is built for flicking.**
   `/camera/scene` went through `_obs_call`, which opens a connection, waits for Hello,
