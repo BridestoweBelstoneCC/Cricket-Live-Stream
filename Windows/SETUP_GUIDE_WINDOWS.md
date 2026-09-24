@@ -208,6 +208,30 @@ Open `http://localhost:5000/control` in your browser. You should see the control
 
 ---
 
+## Step 6a — Choose your scorebar style (optional)
+
+The score strip along the bottom comes in four looks. All of them use your club colours —
+the difference is the styling.
+
+| Style | Looks like | Good for |
+|---|---|---|
+| **Classic** | Light grey panels — the original | Plain and very legible; the safe default |
+| **Modern** | Dark broadcast slab, team-colour rule along the top | A more "TV" feel without shouting |
+| **Impact** | Bold angled cuts, white score plate, heavy type | The easiest to read on a phone |
+| **Minimal** | Clean white with lots of space | Bright, sunny daytime pictures |
+
+Open the control panel (`http://localhost:5000/control`), find the **Graphics** card, and
+use **Scorebar style**. It shows a **live preview** right there using your own team names
+and colours, so you can see each one before committing. Click **Save** when you're happy.
+
+You can change it whenever you like — even mid-match. The overlay picks it up on its next
+poll, a few seconds later, with no restart.
+
+The setup wizard also asks which one you want, so this is only if you skipped it or changed
+your mind.
+
+---
+
 ## Step 7 — Player photos (optional, new in v2)
 
 When a new batter comes in, the overlay can show a player card with their photo and

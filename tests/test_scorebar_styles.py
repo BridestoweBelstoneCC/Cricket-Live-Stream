@@ -65,6 +65,34 @@ class TestScorebarStyles(unittest.TestCase):
             r"body\.style-minimal #bowler-name \{[^}]*color:[^;]*!important",
             "Minimal must force #bowler-name's colour over applyColours' inline #fff")
 
+    def test_setup_wizard_offers_every_style(self):
+        # The wizard is the only place a first-time user is told these exist at all — if a
+        # style is added to the panel but not here, new clubs never discover it.
+        wizard = read("setup_wizard.py")
+        for style in ["classic"] + self.js_styles:
+            self.assertIn(f'"{style}"', wizard,
+                          f"setup_wizard.py never offers the '{style}' scorebar style")
+
+    def test_config_example_documents_every_style(self):
+        example = read("config.example.ini")
+        self.assertIn("scorebar_style", example)
+        for style in ["classic"] + self.js_styles:
+            self.assertIn(style, example,
+                          f"config.example.ini doesn't mention the '{style}' style")
+
+    def test_preview_mode_never_touches_the_mutating_endpoints(self):
+        # /live advances event detection, logs balls and drains the wicket buffer;
+        # /commands POPS the queue. The control panel's style preview embeds the real
+        # overlay, so if preview mode ever started polling, an open panel would silently
+        # eat the OBS overlay's events and commands mid-match.
+        overlay = read("overlay.html")
+        self.assertIn("if (_params.get('preview') === '1') {", overlay,
+                      "preview mode no longer short-circuits the poll bootstrap")
+        self.assertRegex(
+            overlay,
+            r"if \(new URLSearchParams\(location\.search\)\.get\('preview'\) !== '1'\) \{\s*\n\s*setInterval\(pollCommands",
+            "pollCommands is no longer gated on preview mode")
+
     def test_player_card_accents_are_team_coloured_not_hardcoded(self):
         # The new-batter card sits flush on top of the scorebar, so on a team-coloured dark
         # style its accent is right next to the bar's own team-colour rule. Both .pc-accent

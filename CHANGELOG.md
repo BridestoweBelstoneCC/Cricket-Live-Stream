@@ -6,6 +6,24 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Added: live scorebar-style preview in the control panel, and the setup wizard now asks
+  which one you want.** The picker existed but you chose blind from a text dropdown whose
+  hint pointed at an `examples/` folder you had to go find in Explorer — and a first-time
+  user following the setup guide was never told the styles existed at all. The Graphics card
+  now embeds the **real overlay** in an iframe via a new `?preview=1&style=<name>` mode,
+  scaled to fit, using your own team names and colours, updating as you change the dropdown
+  and before you save. It's the actual CSS rather than a mock-up that could drift.
+  Preview mode renders exactly ONE static frame and starts neither timer: `/live` is a
+  mutating GET and `GET /commands` pops the queue, so a preview left open mid-match would
+  otherwise eat the OBS overlay's events and commands. Verified by queueing a command,
+  leaving a preview open for 12s and confirming the command survived.
+  `scorebar_style` is now also written to `config.ini` (new `[Graphics]` section, documented
+  in `config.example.ini`) and seeded into state like the other settings.
+- **Docs:** README, both setup guides, `ARCHITECTURE.md` and `CLAUDE.md` brought up to date
+  for this release's work — the four scorebar styles and where to pick them, the render
+  script, the preview-mode rule alongside the existing `/live` single-consumer gotcha, the
+  installer's never-exit-silently rule, and the test count (216 → ~250).
+
 - **Fixed: the installer closed its own window before you could read the error.** Reported
   as "run it in the wrong place and it auto-exits without an error you can read" — two
   separate causes, both fixed.

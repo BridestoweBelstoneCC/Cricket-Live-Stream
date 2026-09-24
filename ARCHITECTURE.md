@@ -114,7 +114,7 @@ Two subtleties worth knowing (they've caused real bugs):
 | Piece | Role |
 |---|---|
 | `server.py` | The whole backend: HTTP server, parsing, ball DB, replays/highlights, AI, auth, watchdog, stream sentinel, manual-scoring session |
-| `overlay.html` | The broadcast layer (1920×1080 OBS browser source) — scorebar, cards, milestones, worm, replays. Pure client-side JS |
+| `overlay.html` | The broadcast layer (1920×1080 OBS browser source) — scorebar, cards, milestones, worm, replays. Pure client-side JS. Four scorebar styles as `body.style-*` CSS over one shared DOM; `?preview=1` renders a single static frame for the control panel's picker and deliberately starts no timers |
 | `control.html` | Operator panel served at `/control` (kit colours, toggles, roster, health, highlights, stream quality) |
 | `scoring.html` | Manual ball-by-ball scoring page at `/scoring` — event-sourced, undo-exact, restart-safe |
 | `scoring_engine.py` | Deterministic innings engine shared by manual scoring and the simulator |
@@ -125,7 +125,8 @@ Two subtleties worth knowing (they've caused real bugs):
 | `obs_setup.py` / `quickstart.py` / `setup_wizard.py` | OBS auto-config · match-day launcher · first-run wizard |
 | `quickstart_launcher.py` | Thin exe wrapper: finds Python, runs `quickstart.py` — no other code path |
 | `stream_quality_test.py` | Standalone: automates the quality-ladder test against a live broadcast |
-| `tests/` | 216 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
+| `scripts/` | Verification tooling: `compile_check_all.py` (syntax), `check_panel_js.py` (embedded JS), `render_scorebar.py` (headless screenshots of every scorebar style — the only check that catches visual regressions) |
+| `tests/` | ~250 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
 
 ### Security model, briefly
 

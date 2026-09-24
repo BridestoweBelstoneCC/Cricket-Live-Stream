@@ -92,7 +92,7 @@ html, body {
    handling). Default ("Classic") is everything above; each block below only overrides
    shape/type/spacing/colour, never the team-colour backgrounds applyColours() sets inline
    on #seg-batting-team/#seg-bowling-team/#seg-bowler, so team branding survives under every
-   style. applyColours() also publishes --bat/--bowl/--bat-dim on #scorebar, which is what
+   style. applyColours() also publishes --bat/--bowl/--bat-lift/--bowl-lift on #scorebar, which is what
    lets these styles carry team identity past those two end blocks (accent rules, striker
    highlight) without more per-element JS.
 
@@ -1618,7 +1618,11 @@ async function pollCommands() {
     }
   } catch(e) {}
 }
-setInterval(pollCommands, 3000);
+// Not in preview mode: /commands POPS the queue, so a preview tab left open would eat
+// replay/scorecard commands the real OBS overlay was meant to receive.
+if (new URLSearchParams(location.search).get('preview') !== '1') {
+  setInterval(pollCommands, 3000);
+}
 
 
 // ── Ball-by-ball ticker (scorebar only) ──────────────────
@@ -3119,7 +3123,69 @@ function scheduleNext() {
   const delay  = Math.max(pcsActive ? 2000 : 8000, base+jitter);
   setTimeout(async()=>{await poll();scheduleNext();}, delay);
 }
-poll().then(scheduleNext);
+// ── Preview mode (?preview=1&style=modern) ────────────────
+// Renders ONE static frame of fake match data and never starts either timer. Used by the
+// control panel's style picker to show what each scorebar actually looks like, instead of
+// asking the operator to choose blind from a dropdown.
+//
+// It must never poll: /live is a mutating GET (it advances event detection, logs balls to
+// the DB and drains the wicket buffer — exactly one client, the OBS overlay, may call it)
+// and /commands pops the command queue, so a preview left open in a browser tab would eat
+// replay/scorecard commands meant for the real overlay. Hence the early return below
+// instead of a flag checked inside poll(). See CLAUDE.md.
+function startPreview(styleOverride) {
+  if (styleOverride) {
+    SCOREBAR_STYLES.forEach(function(s) {
+      document.body.classList.toggle('style-' + s, styleOverride === s);
+    });
+  }
+  cfg = Object.assign({}, cfg, {
+    home_team: 'Home CC', away_team: 'Rival CC',
+    home_abbrev: 'HOME', away_abbrev: 'RIV',
+    home_colour: cfg.home_colour || '#1a3a5c',
+    away_colour: cfg.away_colour || '#7b2d2d',
+    max_overs: 20, graphics_player_card: false,
+  });
+  MAX_OVERS = 20;
+  var demo = {
+    battingTeamName: 'Rival CC', bowlingTeamName: 'Home CC',
+    innings: 2, score: 137, wickets: 4, overs: 15.3,
+    batter1: { name: 'J Hatton',   runs: 48, balls: 31, onStrike: true },
+    batter2: { name: 'T Gostling', runs: 23, balls: 19, onStrike: false },
+    bowler:  { name: 'S Ewen', overs: '3.3', runs: 28, wickets: 2, maidens: 0 },
+    statusText: 'Needs 31 off 27', run_rate: 8.84,
+    targetRuns: 168, runsRequired: 31, ballsRemaining: 27,
+    last_ball: '1 4 . 6 W 2', lastWicketType: '',
+    card: { batters: [], bowlers: [] },
+  };
+  try { applyColours(cfg.home_colour, cfg.away_colour, false); } catch(e) {}
+  try { renderScorebar(demo, cfg.home_team, cfg.away_team); } catch(e) { console.warn(e); }
+  // The ball ticker is filled by processPCSData on a normal poll; in preview there's only
+  // ever one frame, so paint it directly from the same parser the live path uses.
+  try {
+    var row = el('seg-over-balls');
+    if (row) {
+      row.innerHTML = '';
+      parseOverString(demo.last_ball).forEach(function(b) {
+        var d = document.createElement('div');
+        d.className = 'seg-ball ' + b.cls;
+        d.textContent = b.label;
+        row.appendChild(d);
+      });
+    }
+  } catch(e) { console.warn('preview ticker:', e); }
+}
+
+var _params = new URLSearchParams(location.search);
+if (_params.get('preview') === '1') {
+  // One /state read for the club's real colours, then nothing else, ever.
+  fetch(`${SERVER}/state`).then(function(r){ return r.json(); })
+    .then(function(s){ cfg = s || {}; })
+    .catch(function(){})
+    .then(function(){ startPreview(_params.get('style') || cfg.scorebar_style); });
+} else {
+  poll().then(scheduleNext);
+}
 </script>
 </body>
 </html>

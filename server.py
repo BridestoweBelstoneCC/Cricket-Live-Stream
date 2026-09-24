@@ -1805,6 +1805,7 @@ def _seed_state_from_config():
         ("Scoring", "ground_filter",     "ground_filter",         str),
         ("OBS",     "obs_password",      "obs_password",          str),
         ("OBS",     "replay_folder",     "replay_folder",         str),
+        ("Graphics", "scorebar_style",   "scorebar_style",        str),
         ("Stream",  "youtube_title",     "youtube_title_template", str),
         ("Stream",  "max_overs",         "max_overs",             int),
     ]

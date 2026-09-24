@@ -294,6 +294,22 @@ def configure():
     print("      TWO_LAPTOP_SETUP.md\n")
     pcs_folder = ask("PCS output folder")
 
+    heading("Scorebar style")
+    print("  The look of the score strip along the bottom of the stream. All four use")
+    print("  your club colours — pick on the feel, not the colour.\n")
+    print("    [1] Classic  — light grey panels. The original; plain and very legible.")
+    print("    [2] Modern   — dark broadcast slab with a team-colour rule along the top.")
+    print("    [3] Impact   — bold angled cuts and a white score plate, TV-sport styling.")
+    print("                   The easiest to read on a phone.")
+    print("    [4] Minimal  — clean white, lots of space. Sits best under a bright")
+    print("                   daytime picture.\n")
+    print("  You can see each one and change your mind any time: control panel ->")
+    print("  Graphics -> Scorebar style shows a live preview.\n")
+    style_choice = ask("Choose 1-4", default="1")
+    scorebar_style = {"1": "classic", "2": "modern",
+                      "3": "impact", "4": "minimal"}.get(style_choice.strip(), "classic")
+    print(f"  [OK] {scorebar_style.capitalize()}")
+
     heading("OBS")
     obs_pw = ask("OBS WebSocket password")
     replay_folder = ask("Replay buffer folder")
@@ -328,6 +344,7 @@ def configure():
         name=name, abbrev=abbrev, colour=colour, motto=motto,
         pc_id=pc_id, pc_key=pc_key,
         pcs_folder=pcs_folder, obs_pw=obs_pw, replay_folder=replay_folder,
+        scorebar_style=scorebar_style,
         yt_title=yt_title, yt_key=yt_key, max_overs=max_overs,
         anthropic_key=anthropic_key,
         club_password=club_password, control_token=control_token,
@@ -355,6 +372,9 @@ def write_config(v):
     cfg["OBS"] = {
         "obs_password":  v["obs_pw"],
         "replay_folder": v["replay_folder"],
+    }
+    cfg["Graphics"] = {
+        "scorebar_style": v["scorebar_style"],
     }
     cfg["Stream"] = {
         "youtube_title":      v["yt_title"],

@@ -37,7 +37,21 @@ shipped without it and misreported a manual match day until fixed.
   (see `control_html()` in server.py). Read from disk per request, so panel edits show on
   refresh without a server restart. It used to live INSIDE server.py as a Python string —
   see the (historical) backslash gotcha below.
-- **`overlay.html`** (~2600 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
+- **`overlay.html`** (~2900 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
+  Four scorebar styles (`classic`/`modern`/`impact`/`minimal`) as `body.style-*` CSS blocks
+  over one shared DOM; `classic` is the base stylesheet, so an unknown `scorebar_style`
+  renders as classic rather than breaking. The list lives in three places that must agree —
+  overlay's `SCOREBAR_STYLES`, its CSS blocks, and the control panel's picker — which
+  `tests/test_scorebar_styles.py` enforces. `applyColours()` publishes
+  `--bat`/`--bowl`/`--bat-lift`/`--bowl-lift` on `#scorebar` so styles can carry team
+  identity beyond the two end blocks; the `-lift` pair goes through the existing
+  luminance-aware `wormColour()`, because a club colour like a near-black navy is invisible
+  as a thin rule on a dark bar. Every style keeps the bar at **72px** — it's load-bearing
+  (graphic panels sit at `bottom:72px`; fow/partnership/milestone panels are themselves
+  72px to line up), so hierarchy comes from type scale and colour, never a taller bar.
+- **`scripts/render_scorebar.py`** — renders every scorebar style to `examples/` in headless
+  Chrome/Edge with fixed mock data; no server, no npm, no node. The only check that catches
+  visual regressions (see the build/test section above).
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is
@@ -150,14 +164,15 @@ python3 scripts/compile_check_all.py
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~216, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
-#    parsing, season-stats aggregation, session tokens, quickstart's state merge and its
-#    crash-restart loop, the match simulator's engine invariants, highlight tagging/planning,
-#    manual scoring (engine, exact-replay undo, /scoring end-to-end), stream-quality downshift
-#    decisions, JS logic executed in a real engine (classifyBall parity, the bowler-milestone
-#    chain), and HTTP integration tests that spin up the real Handler on an ephemeral port
-#    (auth, redaction, path traversal, origin check, loopback carve-out, /live vs /live/view,
-#    event buffer, ball DB).
+# 3. Automated tests (~250, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+#    parsing, season-stats aggregation, league-table resolution, session tokens, quickstart's
+#    state merge and its crash-restart loop, the match simulator's engine invariants, highlight
+#    tagging/planning, manual scoring (engine, exact-replay undo, /scoring end-to-end),
+#    stream-quality downshift decisions, installer/launcher robustness, scorebar-style
+#    consistency, JS logic executed in a real engine (classifyBall parity, the bowler-milestone
+#    chain, the camera auto-cut's replay-collision rules), and HTTP integration tests that spin
+#    up the real Handler on an ephemeral port (auth, redaction, path traversal, origin check,
+#    loopback carve-out, /live vs /live/view, event buffer, ball DB).
 python3 -m unittest discover -s tests
 
 # 4. Run it
@@ -168,6 +183,21 @@ python3 server.py      # or: python3 quickstart.py
 Always run steps 1–3 after editing `server.py`, `overlay.html`, `quickstart.py`, or any other
 top-level script. Step 2 matters more than it looks (see gotchas). All three are wired into
 `.github/workflows/ci.yml`.
+
+**There is no automated check for how anything LOOKS.** Scorebar styles and graphic panels
+are CSS over a shared DOM, and the failure mode is always visual, never a syntax error — a
+team colour that vanishes into the background, an inline colour from `applyColours()` beating
+the stylesheet, one style's full-width accent painting over another element. Render it:
+
+```bash
+# Every scorebar style -> examples/, headless Chrome/Edge, fixed mock data, no server needed.
+python3 scripts/render_scorebar.py             # all four
+python3 scripts/render_scorebar.py modern      # just one
+```
+
+Two real bugs on the day it was added that none of steps 1–3 could have caught: Minimal's
+bowler name rendered white-on-white, and Impact's footer rule covered the striker underline.
+The control panel's own live preview (below) is the other half of this.
 The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — real
 `match_state.json`/`match_data.db` are never touched.
 
@@ -185,7 +215,16 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - **The overlay's own poll is `/live`; everything else must use `/live/view`.** `/live` is
   a mutating GET — it advances event detection, logs balls to the DB, and consumes the
   wicket-event buffer, so exactly ONE client (the OBS overlay) may call it. Panel features
-  and any new tooling read `/live/view` (same response, no side effects).
+  and any new tooling read `/live/view` (same response, no side effects). `GET /commands`
+  is the same shape of trap: it POPS the queue, so a second consumer silently steals
+  replay/scorecard commands from the real overlay.
+  **This is why `overlay.html` has a preview mode** (`/overlay?preview=1&style=<name>`):
+  the control panel embeds the real overlay in an iframe to show what each scorebar style
+  looks like, and it renders exactly ONE static frame of demo data with both timers never
+  started. Don't "fix" that by letting preview mode poll — an operator leaving the panel
+  open mid-match would eat the overlay's events and commands. `tests/test_scorebar_styles.py`
+  guards both short-circuits. It takes one `/state` read for the club's real colours and
+  nothing else, ever.
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
 - **The HTTP server's `request_queue_size` must stay explicitly raised (currently 64).**
@@ -249,6 +288,22 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   infinite self-relaunching. Use `find_python()`, which searches `PATH` instead. Same trap for
   `__file__`: it resolves inside the temp extraction folder, so paths must use
   `os.path.dirname(sys.executable)` when `sys.frozen` is set.
+- **No installer/launcher may exit without pausing first, and none may assume it's in the
+  project folder.** A double-clicked `.exe` or `.bat` owns its console window, so a bare
+  `sys.exit()` closes it with the reason inside — including tracebacks, which are exactly
+  the text needed to diagnose the problem. `setup_wizard.py`, `quickstart.py` and
+  `quickstart_launcher.py` all route fatal paths through their own `die()` (framed problem
+  + what to do + pause) and catch unhandled exceptions; `CRICKETSTREAM_NO_PAUSE=1` turns the
+  pauses off for automation, and `quickstart.py` additionally only pauses on a real TTY so
+  the wizard's own subprocess and the test suite never block. Every `Windows/*.bat` and
+  `Mac/*.sh` searches its own folder THEN the parent before giving up, because they live in
+  `Windows/`/`Mac/` while everything they run lives in the repo root — three of the four
+  Windows launchers were broken as shipped for exactly this reason until 2026-09-24.
+  `setup_wizard.py` also locates the project itself (`find_project_root()`) rather than
+  trusting its own folder: an exe dropped in `Windows/` used to write `config.ini` beside
+  itself, where `server.py` — which only reads `config.ini` from its OWN folder — never
+  found it, leaving a half-configured install with no error anywhere.
+  `tests/test_installer.py` guards all of it.
 - **No hardcoded club identity in defaults.** `DEFAULT_STATE`, `config.example.ini`, and
   `match_state.example.json` must stay club-agnostic (e.g. `"Home CC"`, blank `ground_filter`/
   `home_club_id`) — this project is used by clubs other than the original maintainer's.

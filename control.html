@@ -577,9 +577,25 @@
         <option value="minimal">Minimal — clean white, high contrast</option>
       </select>
       <p class="hint">Changes the look of the bottom scorebar. Takes effect on the overlay's
-        next poll (a few seconds), no restart needed. All four use your team colours — see
-        <strong>examples/</strong> in the project folder for a picture of each. Impact reads
-        best on phones; Minimal sits better under a bright daytime picture.</p>
+        next poll (a few seconds), no restart needed. All four use your team colours.
+        Impact reads best on phones; Minimal sits better under a bright daytime picture.</p>
+      <!-- Live preview: the REAL overlay in ?preview=1 mode (one static frame of demo
+           data, no polling — it must never call /live or /commands, both of which have
+           side effects). Scaled 1920->full width so it shows the actual CSS rather than a
+           mock-up that could drift out of step with it. -->
+      <div style="margin-top:10px;">
+        <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
+                    font-weight:600;margin-bottom:6px;">Preview</div>
+        <div id="scorebar-preview-wrap"
+             style="position:relative;width:100%;height:0;padding-bottom:3.75%;overflow:hidden;
+                    border-radius:6px;background:#11161f;border:1px solid #21344a;">
+          <iframe id="scorebar-preview" title="Scorebar preview" scrolling="no"
+                  style="position:absolute;top:0;left:0;width:1920px;height:72px;border:0;
+                         transform-origin:top left;"></iframe>
+        </div>
+        <p class="hint" style="margin-top:6px;">Sample match data — your own team names and
+          colours are used.</p>
+      </div>
     </div>
     <div class="toggle-row">
       <div><div class="toggle-label">Fall of wicket card</div>
@@ -1557,6 +1573,36 @@ async function applyBadgePick(side) {
   } catch(e) { showStatus('Could not set badge: '+e.message, 'err'); }
 }
 
+// ── Scorebar style preview ────────────────────────────────
+// Points an iframe at the real overlay in ?preview=1 mode, so the picker shows the actual
+// CSS rather than a mock-up that could drift. Preview mode renders one static frame and
+// never polls — see the comment on startPreview() in overlay.html for why that matters
+// (/live and /commands both have side effects and are single-consumer).
+function scaleScorebarPreview() {
+  const wrap = document.getElementById('scorebar-preview-wrap');
+  const frame = document.getElementById('scorebar-preview');
+  if (!wrap || !frame) return;
+  const scale = wrap.clientWidth / 1920;
+  frame.style.transform = 'scale(' + scale + ')';
+}
+
+function refreshScorebarPreview() {
+  const frame = document.getElementById('scorebar-preview');
+  const picker = document.getElementById('scorebar_style');
+  if (!frame || !picker) return;
+  // Cache-bust so switching back to a style already shown still re-renders it.
+  frame.src = '/overlay?preview=1&style=' + encodeURIComponent(picker.value || 'classic')
+            + '&t=' + Date.now();
+  scaleScorebarPreview();
+}
+
+window.addEventListener('resize', scaleScorebarPreview);
+(function () {
+  const picker = document.getElementById('scorebar_style');
+  // Preview on selection, before saving — the whole point is seeing it first.
+  if (picker) picker.addEventListener('change', refreshScorebarPreview);
+})();
+
 async function loadState() {
   const s = await (await apiFetch('/state')).json();
   FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
@@ -1565,6 +1611,7 @@ async function loadState() {
   updateSwatch(document.getElementById('home-swatch'), s.home_colour||'#1a3a5c');
   updateSwatch(document.getElementById('away-swatch'), s.away_colour||'#7b2d2d');
   updatePreview();
+  refreshScorebarPreview();
   updateDemoStyle(!!s.demo_mode);
   checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
   document.getElementById('pcs_source_agent').checked = (s.pcs_source === 'agent');
