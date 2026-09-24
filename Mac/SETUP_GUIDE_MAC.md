@@ -380,6 +380,18 @@ Costs are a few pence per match. Without a key, everything else still works.
 
 ## Troubleshooting
 
+### "Cannot connect to OBS" — check Safe Mode first
+
+If OBS didn't shut down cleanly last time, it asks on startup:
+*"Run in Safe Mode (third-party plugins, scripting, and **WebSockets disabled**)?"*
+
+Safe Mode switches the WebSocket server off, so nothing here can reach OBS — no replays,
+no scene switching, no auto-setup — and the only symptom is "cannot connect". Quit OBS,
+open it again, and choose **Run in Normal Mode**.
+
+Otherwise: make sure OBS is open before running quickstart, and that the WebSocket
+password in `config.ini` matches OBS → Tools → WebSocket Server Settings (port 4455).
+
 ### Port 5000 already in use / server won't start
 
 macOS uses port 5000 for AirPlay.

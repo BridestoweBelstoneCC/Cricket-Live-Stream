@@ -374,6 +374,11 @@ the folder with `server.py`.
 - Make sure OBS is open before running quickstart
 - Check the WebSocket password in `config.ini` matches the one in OBS → Tools → WebSocket Server Settings
 - Check the port is 4455 in both places
+- **Did OBS offer you Safe Mode when it started?** If OBS didn't shut down cleanly last
+  time, it asks *"Run in Safe Mode (third-party plugins, scripting, and **WebSockets
+  disabled**)?"*. Safe Mode switches the WebSocket server off, so nothing here can reach
+  OBS — no replays, no scene switching, no auto-setup, and the only symptom is "cannot
+  connect". Close OBS, open it again, and choose **Run in Normal Mode**.
 
 ### PCS monitor says "Widget" not "PCS"
 

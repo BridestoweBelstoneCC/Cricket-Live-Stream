@@ -6,6 +6,31 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Changed: camera cuts are ~3.6x quicker, and the control panel is built for flicking.**
+  `/camera/scene` went through `_obs_call`, which opens a connection, waits for Hello,
+  authenticates and sends Identify before every single request — four round trips of setup
+  per cut. That's the right trade for the health checks and bitrate ladder it was written
+  for (seconds or minutes apart), and the wrong one for switching between camera angles
+  while following the play. Measured against a live OBS 32.2.2: **31.9 ms median per cut,
+  36 ms worst case, against 8.8 ms / 16.6 ms** once one socket is held open.
+  - New `_obs_fast_call()` keeps a single OBS socket open, used **only** by camera cuts;
+    everything else still uses the per-call connection, which is deliberate.
+  - The robustness that connection-per-call was protecting is kept a different way —
+    reconnect on any error — and was verified rather than assumed: killing OBS mid-session
+    returns cleanly in ~2s with no hang, and once OBS is back the next cut reconnects by
+    itself in 63 ms and returns to ~14 ms. An early version retried *connect* failures too,
+    which made "OBS not running" take ~14s and timed out an HTTP test; it now retries only
+    a socket it was reusing, since a refused connection means OBS simply isn't there.
+  - Control panel: the live angle is highlighted and the highlight moves **on click**, not
+    on the server's reply, so the panel never feels laggy; **press `C`** to flick between
+    angles without aiming at a button (ignored while typing); and rapid presses coalesce
+    rather than queue, so mashing the key can't leave OBS working through a backlog of
+    stale switches after you've stopped.
+- **Docs: OBS Safe Mode disables the WebSocket server.** If OBS didn't shut down cleanly it
+  offers Safe Mode on startup, which turns WebSockets off — so replays, scene switching and
+  auto-setup all stop working, with "cannot connect to OBS" as the only symptom. Now called
+  out in both setup guides' troubleshooting. Found by killing OBS in the test VM.
+
 - **Changed: one download per machine, and the host one does everything.** The streaming
   laptop needed two executables — `CricketStreamSetup.exe` to configure, then
   `CricketStreamQuickstart.exe` on match day, which had to be placed next to `quickstart.py`

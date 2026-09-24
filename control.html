@@ -109,6 +109,15 @@
   .btn:active{transform:scale(.98)}
   .btn-test{background:#1a4a1a;margin-top:8px;font-size:12px;padding:8px}
   .btn-test:hover{background:#256025}
+  /* Camera cut buttons: the live angle is obvious at a glance, and the highlight moves on
+     CLICK rather than on the server's reply — see cutToCameraScene(). Flicking between
+     angles is a two-or-three-times-an-over thing, so it has to feel instant. */
+  .cam-btn{transition:background .12s ease,box-shadow .12s ease}
+  .cam-btn.live{background:#1f6feb;box-shadow:inset 0 0 0 2px #58a6ff;font-weight:700}
+  .cam-btn.live:hover{background:#2a7bf5}
+  .cam-btn.failed{background:#6e1f1f;box-shadow:inset 0 0 0 2px #f85149}
+  kbd{background:#21344a;border:1px solid #3d5a7a;border-bottom-width:2px;border-radius:4px;
+      padding:1px 5px;font-family:inherit;font-size:11px;color:#c9d6e4}
   .status{margin-top:10px;padding:8px 11px;border-radius:4px;font-size:12px;text-align:center;display:none}
   .ok{background:#0d3a1a;color:#4caf50;border:1px solid #1e6b30;display:block}
   .err{background:#3a0d0d;color:#f44336;border:1px solid #6b1e1e;display:block}
@@ -750,9 +759,13 @@
     <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add bowler-end camera to OBS</button>
     <div id="camera2-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div class="half-grid" style="margin-top:8px;">
-      <button class="btn btn-test" onclick="cutToCameraScene('bowler')">&#127909; Cut to bowler-end</button>
-      <button class="btn btn-test" onclick="cutToCameraScene('main')">&#127909; Cut to wide angle</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
     </div>
+    <p class="hint" style="margin-top:6px;">
+      Press <kbd>C</kbd> to flick between the two without aiming at a button — the quickest
+      way to cut while you're watching the play. The live angle is highlighted.
+    </p>
     <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div class="toggle-row" style="margin-top:10px">
       <div><div class="toggle-label">Automatic cut at over boundary</div>
@@ -1824,18 +1837,72 @@ async function addCameraToObs(which) {
 }
 
 // ── Manual camera cut — same SetCurrentProgramScene call /replay uses internally ──
+// ── Camera cutting ────────────────────────────────────────
+// Tuned for flicking between angles while watching the play, which means attacking BOTH
+// halves of the delay. The server side holds one OBS socket open (9ms per cut instead of
+// 33ms — see _obs_fast_call in server.py); this side removes the rest of the wait from
+// what the operator actually perceives:
+//   - the highlight moves on CLICK, not on the reply, so the panel never feels laggy
+//   - a keyboard shortcut means not aiming at a small target on a phone
+//   - rapid presses COALESCE rather than queue, so mashing the key can't leave OBS
+//     working through a backlog of stale switches after you've stopped
+let _camLive = 'main';        // what we believe is on air
+let _camInFlight = false;
+let _camPending = null;       // most recent request made while one was in flight
+
+function markCameraLive(which) {
+  _camLive = which;
+  ['main', 'bowler'].forEach(function (k) {
+    const b = document.getElementById('cam-btn-' + k);
+    if (b) { b.classList.toggle('live', k === which); b.classList.remove('failed'); }
+  });
+}
+
+function sceneNameFor(which) {
+  const field = which === 'bowler' ? 'obs_bowler_scene' : 'obs_main_scene';
+  return (document.getElementById(field) || {}).value
+      || (which === 'bowler' ? 'Main-Bowler' : 'Main');
+}
+
 async function cutToCameraScene(which) {
   const msg = document.getElementById('camera-cut-msg');
-  const sceneField = which === 'bowler' ? 'obs_bowler_scene' : 'obs_main_scene';
-  const scene = (document.getElementById(sceneField) || {}).value
-    || (which === 'bowler' ? 'Main-Bowler' : 'Main');
-  if (msg) { msg.textContent = 'Switching…'; msg.style.color = '#5b9bd5'; }
+  markCameraLive(which);                       // optimistic: feels instant
+  if (_camInFlight) { _camPending = which; return; }   // coalesce, don't queue
+  _camInFlight = true;
   try {
     const d = await (await apiFetch('/camera/scene', {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({scene: scene})})).json();
-    if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
-  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+      body:JSON.stringify({scene: sceneNameFor(which)})})).json();
+    if (!d.ok) {
+      // Put the truth back on screen — the optimistic highlight was a guess and it was wrong.
+      const b = document.getElementById('cam-btn-' + which);
+      if (b) b.classList.add('failed');
+      if (msg) { msg.textContent = '✗ ' + (d.message || 'Switch failed'); msg.style.color = '#f85149'; }
+    } else if (msg) {
+      msg.textContent = '';                    // success is shown by the highlight itself
+    }
+  } catch (e) {
+    const b = document.getElementById('cam-btn-' + which);
+    if (b) b.classList.add('failed');
+    if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; }
+  } finally {
+    _camInFlight = false;
+    if (_camPending && _camPending !== which) { const next = _camPending; _camPending = null; cutToCameraScene(next); }
+    else { _camPending = null; }
+  }
 }
+
+// C toggles between the two angles. Ignored while typing, so it can't fire when someone
+// is filling in a team name; the panel is full of text fields.
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'c' && e.key !== 'C') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
+            || t.isContentEditable)) return;
+  if (!document.getElementById('cam-btn-main')) return;
+  e.preventDefault();
+  cutToCameraScene(_camLive === 'main' ? 'bowler' : 'main');
+});
 
 // ── Match data (ball-by-ball database) ──
 let _latestMatchId = '';
