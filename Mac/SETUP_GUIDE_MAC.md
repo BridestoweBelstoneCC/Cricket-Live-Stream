@@ -179,12 +179,31 @@ Save and close.
 
 ### Enable Replay Buffer
 
+**You shouldn't need to do this by hand** — quickstart turns the replay buffer on for you
+(25 seconds) the first time it configures OBS. One catch: OBS only creates the buffer when
+it starts up, so the very first time you'll see
+
+```
+⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup
+```
+
+Quit OBS, open it again, run quickstart again, and you'll get `✓ Replay buffer started`.
+From then on it starts automatically every match day.
+
+To check: the **Controls** panel should have a **Start Replay Buffer** button. If it
+doesn't, the buffer isn't enabled and the steps below will fix it.
+
+<details>
+<summary>Doing it manually (only if the above didn't work)</summary>
+
 1. OBS → **Preferences → Output** (Cmd+,)
 2. Set Output Mode to **Advanced**
 3. Click the **Recording** tab
 4. Scroll to **Replay Buffer** → tick **Enable**
 5. Maximum Replay Time: **25 seconds**
 6. Click OK
+
+</details>
 
 ### Output settings (optimised for Mac)
 

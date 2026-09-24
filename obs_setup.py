@@ -317,19 +317,31 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
     mode_resp = request("GetProfileParameter", {"parameterCategory": "Output",
                                                 "parameterName": "Mode"})
     out_mode = (mode_resp or {}).get("responseData", {}).get("parameterValue") or "Simple"
-    rb_category = "AdvOut" if out_mode != "Simple" else "SimpleOutput"
 
+    # Set it in BOTH sections, not just the active one. OBS keeps a separate RecRB under
+    # [SimpleOutput] and [AdvOut], and only honours the one matching the current output
+    # mode — so enabling just the active one leaves a trap: switch OBS to Advanced later
+    # (to pick an encoder, say) and replays silently stop working, with nothing to
+    # indicate why. Verified against a real profile's basic.ini, which showed RecRB=true
+    # in one section and RecRB=false in the other after setting only the active one.
     enabled_ok = False
-    r = request("SetProfileParameter", {"parameterCategory": rb_category,
-                                        "parameterName": "RecRB",
-                                        "parameterValue": "true"})
-    if r and r.get("requestStatus", {}).get("result"):
-        enabled_ok = True
-        # Long enough to cover the run-up and the shot, matching the setup guides' 25s.
-        request("SetProfileParameter", {"parameterCategory": rb_category,
-                                        "parameterName": "RecRBTime",
-                                        "parameterValue": "25"})
-        log_msg(f"Replay buffer enabled ({out_mode} output mode, 25s)", "ok")
+    for category in ("SimpleOutput", "AdvOut"):
+        r = request("SetProfileParameter", {"parameterCategory": category,
+                                            "parameterName": "RecRB",
+                                            "parameterValue": "true"})
+        ok = bool(r and r.get("requestStatus", {}).get("result"))
+        if ok:
+            # Long enough to cover the run-up and the shot, matching the setup guides' 25s.
+            request("SetProfileParameter", {"parameterCategory": category,
+                                            "parameterName": "RecRBTime",
+                                            "parameterValue": "25"})
+        # Only the section OBS is actually using decides whether this worked.
+        if category == ("AdvOut" if out_mode != "Simple" else "SimpleOutput"):
+            enabled_ok = ok
+
+    if enabled_ok:
+        log_msg(f"Replay buffer enabled, 25s ({out_mode} output mode — and pre-set for the "
+                f"other mode, so switching later won't turn replays off)", "ok")
     else:
         log_msg("Could not enable the replay buffer automatically — tick it in OBS "
                 "Settings → Output → Replay Buffer", "warn")

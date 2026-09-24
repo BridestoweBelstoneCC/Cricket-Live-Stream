@@ -140,12 +140,32 @@ Save and close config.ini when done.
 
 ### Enable Replay Buffer
 
+**You shouldn't need to do this by hand** — quickstart turns the replay buffer on for you
+(25 seconds) the first time it configures OBS. There's one catch: OBS only creates the
+buffer when it starts up, so the very first time you'll see
+
+```
+⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup
+```
+
+Close OBS, open it again, run quickstart again, and you'll get `✓ Replay buffer started`.
+From then on it starts automatically every match day. *(Verified on a clean Windows 11 with
+a fresh OBS install.)*
+
+To check it worked: the **Controls** panel on the right should have a **Start Replay
+Buffer** button. If it doesn't, the buffer isn't enabled and the steps below will fix it.
+
+<details>
+<summary>Doing it manually (only if the above didn't work)</summary>
+
 1. OBS → **Settings → Output**
 2. Set Output Mode to **Advanced**
 3. Click the **Recording** tab
 4. Scroll down to **Replay Buffer** — tick **Enable**
 5. Set Maximum Replay Time to **25 seconds**
 6. Click OK
+
+</details>
 
 ### Output settings (for streaming)
 
