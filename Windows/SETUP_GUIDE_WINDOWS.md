@@ -7,8 +7,17 @@
 
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
-1. **Setup** — download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), put it **anywhere inside the folder you unzipped** (either here in `Windows\`, or up beside `server.py` — both work), and double-click it. It installs Python for you if it's missing, installs packages, and walks you through your club details, creating `config.ini`. *(Once only.)*
-2. **Match day** — double-click **`quickstart.bat`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+1. **Once** — download `CricketStream.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) and put it **anywhere inside the folder you unzipped** (either here in `Windows\`, or up beside `server.py` — both work).
+2. **Every time, including the first** — double-click it.
+
+That's the whole thing. It works out what still needs doing: on the first run it installs
+Python if it's missing, installs the packages, and asks you the setup questions to create
+`config.ini`; on every run after that it goes straight to starting the match — today's
+fixture, season stats, pre-flight check. Control panel: `http://localhost:5000/control` ·
+Overlay (for OBS): `http://localhost:5000/overlay`
+
+> Prefer running from source because you already have Python? `setup.bat` once, then
+> `quickstart.bat` each match day — same code, same result.
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
 
@@ -20,7 +29,7 @@ You will need:
 - A Windows laptop or PC
 - A camera connected to your laptop (USB webcam or HDMI camera via capture card)
 - OBS Studio installed — https://obsproject.com
-- Python 3 — installed automatically by `CricketStreamSetup.exe` (see Step 2), or get it yourself from https://python.org/downloads and tick **"Add Python to PATH"**
+- Python 3 — installed automatically by `CricketStream.exe` (see Step 2), or get it yourself from https://python.org/downloads and tick **"Add Python to PATH"**
 - A YouTube account with Live Streaming enabled
 - NV Play installed on the scorer's laptop
 
@@ -39,7 +48,7 @@ Do not put it on the Desktop — Windows sometimes blocks scripts running from t
 
 ## Step 2 — Install Python packages and configure
 
-Don't have Python installed yet? Download `CricketStreamSetup.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), put it inside the folder you unzipped, and double-click it — it installs Python automatically before continuing. Already have Python? Double-click **`setup.bat`** instead; it's the same wizard, run from source.
+Don't have Python installed yet? Download `CricketStream.exe` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest), put it inside the folder you unzipped, and double-click it — it installs Python automatically before continuing. Already have Python? Double-click **`setup.bat`** instead; it's the same wizard, run from source.
 
 > **Where exactly does the .exe go?** Anywhere inside the unzipped project — this `Windows\` folder or the one above it (where `server.py` lives) both work; it looks in both. What it can't do is run from Downloads or the Desktop on its own, because the project files it needs aren't there. If you get that wrong it now tells you so and waits, rather than closing.
 
@@ -49,10 +58,10 @@ The setup wizard installs packages, then asks a few questions — your club name
   ====================================================
         CricketStream Overlay -- First-time Setup
   ====================================================
-  --- Step 1 — Installing packages ------------------
+  --- Installing packages ---------------------------
   Running: pip install -r requirements.txt
   [OK] Packages installed.
-  --- Step 2 — Club details -------------------------
+  --- Club details ----------------------------------
   Club name  (required):
 ```
 
@@ -334,7 +343,7 @@ actually looked in, which is usually enough to spot what happened.
 ### Quickstart says "No config.ini yet — setup hasn't been run"
 
 `config.ini` holds your club details and is created once, by the setup wizard. Run
-`CricketStreamSetup.exe` or `setup.bat` first.
+`CricketStream.exe` or `setup.bat` first.
 
 If you're sure you already ran setup, it saved `config.ini` somewhere else — an older
 version wrote it next to itself rather than next to `server.py`. Find it and move it into

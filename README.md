@@ -238,8 +238,8 @@ New to this? Read your platform's quick start first:
 
 **First time? One download does everything — no need to install Python yourself:**
 
-1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStreamSetup.exe` (Windows) or `CricketStreamSetup-mac.zip` (Mac, works on both Apple Silicon and Intel) — and put it in the folder you extracted the project to.
-2. Run it — Windows: double-click the `.exe`. Mac: unzip it, then double-click `Setup Wizard.command`.
+1. Download the setup wizard from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, works on both Apple Silicon and Intel) — and put it in the folder you extracted the project to.
+2. Run it — Windows: double-click the `.exe`. Mac: unzip it, then double-click `CricketStream.command`.
    If Python isn't installed yet, it installs it for you, then installs packages, walks you through your club details, writes `config.ini`, and offers to launch the server immediately.
 
 Already have Python installed and prefer running from source? Skip the download and run `Windows/setup.bat` or `Mac/setup.sh` instead — same wizard.

@@ -8,8 +8,17 @@
 Done this before, or just want to get going? This is the whole job; everything below is the detail.
 
 1. **Turn off AirPlay Receiver** (it blocks port 5000): System Settings → General → AirDrop & Handoff → AirPlay Receiver **off**. *(Once only.)*
-2. **Setup** — download `CricketStreamSetup-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) (one download works on both Apple Silicon and Intel Macs), unzip it into this folder, and double-click **`Setup Wizard.command`**. It installs Python and fixes SSL certificates for you if needed (see Step 2 for why that matters), then installs packages and walks you through your club details, creating `config.ini`. *(Once only.)*
-3. **Match day** — double-click **`quickstart.sh`**. It finds today's fixture, starts everything, pulls season stats, and runs a pre-flight check. Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+2. **Once** — download `CricketStream-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) (one download works on both Apple Silicon and Intel Macs) and unzip it into this folder.
+3. **Every time, including the first** — double-click **`CricketStream.command`**.
+
+That's the whole thing. It works out what still needs doing: on the first run it installs
+Python and fixes SSL certificates if needed (see Step 2 for why that matters), installs the
+packages, and asks you the setup questions to create `config.ini`; on every run after that
+it goes straight to starting the match — today's fixture, season stats, pre-flight check.
+Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+
+> Prefer running from source because you already have Python? `setup.sh` once, then
+> `quickstart.sh` each match day — same code, same result.
 
 Add the overlay as a 1920×1080 **Browser source** in OBS and you're live. Full OBS setup, replays, AI features, and troubleshooting follow below.
 
@@ -21,7 +30,7 @@ You will need:
 - A Mac running macOS 12 (Monterey) or later — Apple Silicon (M1/M2/M3) or Intel, both supported
 - A camera connected to your Mac (USB webcam or HDMI camera via capture card)
 - OBS Studio for Mac — https://obsproject.com
-- Python 3 — installed automatically by `Setup Wizard.command` (see Step 2), or get it yourself from https://python.org/downloads
+- Python 3 — installed automatically by `CricketStream.command` (see Step 2), or get it yourself from https://python.org/downloads
 - A YouTube account with Live Streaming enabled
 
 **Scoring software on Mac:**
@@ -45,7 +54,7 @@ Unzip `cricketstream_mac.zip` to a permanent location:
 
 ## Step 2 — Install Python
 
-> **Skip this whole step if you're using `CricketStreamSetup-mac.zip`** (see the fast path above) — the setup wizard installs Python and fixes SSL certificates for you automatically, including the "Fix SSL certificates" part below. This section is only for people running `setup.sh` from source.
+> **Skip this whole step if you're using `CricketStream-mac.zip`** (see the fast path above) — the setup wizard installs Python and fixes SSL certificates for you automatically, including the "Fix SSL certificates" part below. This section is only for people running `setup.sh` from source.
 
 1. Download from https://python.org/downloads — choose the macOS installer
 2. Run the installer and follow the prompts
@@ -81,7 +90,7 @@ Go to **System Preferences → General → AirDrop & Handoff** and untick **AirP
 
 ## Step 3 — Install Python packages and configure
 
-Already ran `CricketStreamSetup-mac.zip`'s `Setup Wizard.command`? You've done this step — skip to Step 5.
+Already ran `CricketStream-mac.zip`'s `CricketStream.command`? You've done this step — skip to Step 5.
 
 Otherwise, in Finder, navigate to your CricketStream folder.
 Right-click **`setup.sh`** → **Open** → **Open** (macOS will warn about an unknown developer — click Open again to proceed).

@@ -230,7 +230,7 @@ def install_python():
     return None
 
 def install_packages():
-    heading("Step 1 — Installing packages")
+    heading("Installing packages")
     req = os.path.join(BASE, "requirements.txt")
     python = find_python() or install_python()
     if not python:
@@ -245,6 +245,7 @@ def install_packages():
             "If you'd rather do it by hand, install Python and then run:",
             f"  pip install -r \"{req}\"")
     print("  Running: pip install -r requirements.txt\n")
+    sys.stdout.flush()   # pip writes to the same console; unflushed lines land after it
     result = subprocess.run(
         [python, "-m", "pip", "install", "-r", req, "--quiet"],
         capture_output=False
@@ -264,7 +265,7 @@ def install_packages():
     print("\n  [OK] Packages installed.")
 
 def configure():
-    heading("Step 2 — Club details")
+    heading("Club details")
     print("  These appear on the scorebar and graphics.\n")
 
     name = ask("Club name", required=True)

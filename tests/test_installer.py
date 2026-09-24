@@ -102,7 +102,7 @@ class TestNoSilentExits(unittest.TestCase):
     def test_entry_points_catch_unhandled_exceptions(self):
         # A traceback that flashes past for 40ms is the least useful thing a user can be
         # shown, and the exact text needed to diagnose the problem.
-        for name in ("setup_wizard.py", "quickstart.py", "quickstart_launcher.py"):
+        for name in ("setup_wizard.py", "quickstart.py", "cricketstream.py"):
             body = read(name)
             self.assertIn("except Exception:", body, f"{name} has no crash handler")
             self.assertIn("traceback.print_exc(file=sys.stdout)", body,
@@ -112,9 +112,16 @@ class TestNoSilentExits(unittest.TestCase):
     def test_pausing_can_be_switched_off_for_automation(self):
         # Otherwise the wizard's own "launch the server now" subprocess, CI, and these
         # tests would all block forever on an input() nobody is there to answer.
-        for name in ("setup_wizard.py", "quickstart.py", "quickstart_launcher.py"):
+        for name in ("setup_wizard.py", "quickstart.py", "scorer_agent.py"):
             self.assertIn("CRICKETSTREAM_NO_PAUSE", read(name),
                           f"{name} has no way to disable its pauses")
+        # cricketstream.py deliberately owns no pause of its own — every one of its pauses
+        # is wiz.pause(), which honours the variable. Asserting the delegation rather than
+        # the string keeps a second, drifting copy of the rule from appearing.
+        launcher = read("cricketstream.py")
+        self.assertIn("import setup_wizard as wiz", launcher)
+        self.assertNotRegex(launcher, r"^def pause\(",
+                            "cricketstream.py should reuse wiz.pause(), not define its own")
 
 
 class TestWizardLocatesProject(unittest.TestCase):
@@ -147,6 +154,92 @@ class TestWizardLocatesProject(unittest.TestCase):
         self.assertIn("can't find the CricketStream project files", out)
         self.assertIn("TO FIX", out)
         self.assertNotIn("Traceback", out)
+
+
+class TestUnifiedLauncher(unittest.TestCase):
+    """cricketstream.py — the one exe for the streaming laptop. What's new here is the
+    DECISION of which steps to run; each step itself is setup_wizard's existing code."""
+
+    @staticmethod
+    def sandbox(tmp, with_config):
+        """A minimal project folder: the markers the launcher looks for, plus a stub
+        quickstart.py so the handover can be observed without starting a real server."""
+        import shutil
+        for f in ("cricketstream.py", "setup_wizard.py", "requirements.txt",
+                  "server.py", "overlay.html"):
+            shutil.copy(os.path.join(REPO, f), tmp)
+        with open(os.path.join(tmp, "quickstart.py"), "w") as fh:
+            fh.write("import sys\nprint('STUB-QUICKSTART', sys.argv[1:])\nsys.exit(0)\n")
+        if with_config:
+            with open(os.path.join(tmp, "config.ini"), "w") as fh:
+                fh.write("[Club]\nname = Test CC\n")
+
+    def run_launcher(self, tmp, *args):
+        env = dict(os.environ, CRICKETSTREAM_NO_PAUSE="1")
+        return subprocess.run([sys.executable, "cricketstream.py", *args], cwd=tmp, env=env,
+                              capture_output=True, text=True, timeout=300,
+                              stdin=subprocess.DEVNULL)
+
+    def test_with_config_it_skips_setup_and_starts_the_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.sandbox(tmp, with_config=True)
+            proc = self.run_launcher(tmp, "--passthru")
+        out = proc.stdout + proc.stderr
+        self.assertIn("[OK] Config:", out)
+        self.assertNotIn("First-time setup", out, "ran setup despite config.ini existing")
+        # Handed over, and passed the operator's arguments straight through.
+        self.assertIn("STUB-QUICKSTART", out)
+        self.assertIn("--passthru", out)
+        self.assertEqual(proc.returncode, 0)
+
+    def test_without_config_it_runs_setup_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.sandbox(tmp, with_config=False)
+            proc = self.run_launcher(tmp)
+        out = proc.stdout + proc.stderr
+        self.assertIn("First-time setup", out)
+        # stdin is /dev/null, so the interview hits EOF. That must be reported as "no
+        # keyboard input" rather than as a crash — it isn't a bug, and a "something went
+        # wrong" box would send people to the issue tracker over a closed stdin.
+        self.assertIn("No keyboard input available", out)
+        self.assertNotIn("SOMETHING WENT WRONG", out)
+        self.assertNotIn("STUB-QUICKSTART", out, "started the match with no config")
+
+    def test_missing_project_files_stop_it_before_anything_else(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            import shutil
+            for f in ("cricketstream.py", "setup_wizard.py"):
+                shutil.copy(os.path.join(REPO, f), tmp)
+            proc = self.run_launcher(tmp)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("can't find the CricketStream project files", out)
+        self.assertNotIn("Traceback", out)
+
+
+class TestDependencyProbe(unittest.TestCase):
+    def setUp(self):
+        import cricketstream
+        self.cs = cricketstream
+        self._saved = cricketstream.REQUIRED
+
+    def tearDown(self):
+        self.cs.REQUIRED = self._saved
+
+    def test_reports_a_genuinely_absent_package(self):
+        self.cs.REQUIRED = dict(self._saved, **{"not-a-real-pkg": "not_a_real_pkg_xyz"})
+        self.assertIn("not-a-real-pkg", self.cs.missing_packages(sys.executable))
+
+    def test_probe_uses_importlib_util_not_bare_importlib(self):
+        # `import importlib` does NOT bind importlib.util — with the bare spelling the probe
+        # raises AttributeError, exits non-zero, and this function silently reports "nothing
+        # missing" for every package forever. Caught by the test above; pinned here because
+        # the broken spelling looks completely correct at a glance.
+        self.assertIn("import importlib.util", read("cricketstream.py"))
+
+    def test_a_broken_interpreter_is_not_read_as_everything_missing(self):
+        # Otherwise a bad python path would trigger a pointless full reinstall on match day.
+        self.assertEqual(self.cs.missing_packages(os.path.join(REPO, "no-such-python")), [])
 
 
 if __name__ == "__main__":

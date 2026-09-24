@@ -37,8 +37,56 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
+# This file prints em-dashes and arrows, and ships frozen as an exe on a Windows laptop
+# whose console defaults to a legacy codepage. Two halves to the fix: make Python emit
+# utf-8, and put the console itself into utf-8 so it renders those bytes rather than
+# showing "â€”". Without the second half a frozen exe has no .bat wrapper to run
+# `chcp 65001` for it. Both best-effort — never allowed to stop the agent starting.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
 AGENT_VERSION = "2.7.1"
 SERVICE_NAME  = "cricketstream-scorer-agent"
+
+# ── Never close without being read ────────────────────────────────────────────
+# This ships frozen as CricketStreamScorerAgent.exe and lives on the scorer's laptop —
+# very often a club's old spare machine, operated by whoever is scoring that day. A
+# double-clicked exe owns its console window, so a bare sys.exit() closes it with the
+# reason inside, which on a match morning means nobody ever finds out the port was
+# taken. Same rule as setup_wizard.py/quickstart.py; deliberately reimplemented in four
+# lines rather than imported, because this file must stay standalone and stdlib-only —
+# it runs on a machine that may have nothing else from this project on it.
+NO_PAUSE = os.environ.get("CRICKETSTREAM_NO_PAUSE", "") == "1"
+
+
+def pause(msg="Press Enter to close this window..."):
+    if NO_PAUSE:
+        return
+    try:
+        input(f"\n  {msg}")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def die(title, *lines):
+    print()
+    print("  " + "=" * 60)
+    print(f"   PROBLEM: {title}")
+    print("  " + "=" * 60)
+    for line in lines:
+        print(f"   {line}" if line else "")
+    pause()
+    sys.exit(1)
 
 DEFAULT_HTTP_PORT      = 8788
 DEFAULT_DISCOVERY_PORT = 8787
@@ -417,8 +465,15 @@ def resolve_folder(arg_folder):
     if arg_folder:
         folder = os.path.abspath(os.path.expanduser(arg_folder))
         if not os.path.isdir(folder):
-            print(f"\n  !  That folder does not exist:\n     {folder}\n")
-            sys.exit(1)
+            die("That scoreboard folder doesn't exist",
+                "",
+                f"  {folder}",
+                "",
+                "In PCS Pro the folder is under Tools -> Configuration -> Scoreboard,",
+                "in the 'Output Folder' box. Copy it exactly from there.",
+                "",
+                "Or just run the agent with no folder at all — it finds the folder",
+                "itself in most setups, and remembers it after the first time.")
         save_folder(folder)
         return folder, "argument"
 
@@ -475,10 +530,15 @@ def main():
     try:
         httpd = ThreadingHTTPServer(("0.0.0.0", args.port), AgentHandler)
     except OSError as e:
-        print(f"\n  !  Could not start on port {args.port}: {e}")
-        print("     Another copy of the agent may already be running.")
-        print(f"     If you need a different port: python3 scorer_agent.py --port {args.port + 1}\n")
-        sys.exit(1)
+        die(f"Couldn't start on port {args.port}",
+            "",
+            f"  {e}",
+            "",
+            "Almost always this means the agent is ALREADY RUNNING — look for",
+            "another window like this one before starting a second.",
+            "",
+            f"If you genuinely need a different port, start it with:  --port {args.port + 1}",
+            "(and type that same port into the streaming laptop's control panel).")
 
     banner(folder, how, args.port, args.discovery_port)
 
@@ -494,4 +554,28 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise                     # die() has already explained itself and paused
+    except KeyboardInterrupt:
+        sys.exit(0)               # main() prints its own goodbye for Ctrl-C
+    except Exception:
+        # Frozen as an exe on the scorer's laptop, an unhandled traceback flashes up for a
+        # few frames and the window is gone — taking with it the only description of what
+        # broke, on the one machine nobody can debug mid-match.
+        import traceback
+        print()
+        print("  " + "=" * 60)
+        print("   SOMETHING WENT WRONG — this is a bug, not something you did")
+        print("  " + "=" * 60)
+        print()
+        traceback.print_exc(file=sys.stdout)
+        print()
+        print("   The stream can still run without the agent — the streaming laptop")
+        print("   falls back to whatever other source it has configured.")
+        print()
+        print("   Please report this at:")
+        print("   https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
+        pause()
+        sys.exit(1)

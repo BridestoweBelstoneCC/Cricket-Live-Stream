@@ -4,7 +4,7 @@ Compile-check every top-level Python script in the repo, not just server.py.
 server.py gets an explicit check in CI; quickstart.py/scoring_engine.py/simulate_match.py
 get incidental coverage because some test module imports them -- but standalone tools like
 scorer_agent.py, nvplay_bridge.py, setup_wizard.py, camera_encoder.py, refresh_cam.py,
-stream_telemetry.py, stream_quality_test.py, quickstart_launcher.py, and obs_setup.py had
+stream_telemetry.py, stream_quality_test.py, cricketstream.py, and obs_setup.py had
 NONE: a syntax error in any of them would sail through CI green and only surface when
 someone actually tried to run it, e.g. on the scoring laptop on match day.
 

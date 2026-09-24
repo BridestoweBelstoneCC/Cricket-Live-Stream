@@ -1,0 +1,193 @@
+name: Build executables
+
+# Two downloads, one per machine, and that's the whole product:
+#
+#   CricketStream.exe             -> the STREAMING laptop. One file that does everything:
+#                                    checks it's in the project folder, installs Python and
+#                                    the packages if they're missing, runs first-time setup
+#                                    if there's no config.ini, then starts the match. It
+#                                    replaced the old two-exe dance (CricketStreamSetup.exe
+#                                    to configure, then CricketStreamQuickstart.exe on match
+#                                    day, which had to be placed in the right folder by hand
+#                                    and gave no readable error when it wasn't).
+#   CricketStreamScorerAgent.exe  -> the SCORER's laptop. Genuinely standalone: scorer_agent.py
+#                                    is stdlib-only, so this is frozen whole and needs no
+#                                    Python, no project folder and no config on that machine.
+#
+# CricketStream.exe is a LAUNCHER, not a frozen app: it deliberately does not freeze
+# server.py/quickstart.py, which stay ordinary .py files run by a real interpreter. server.py
+# reads overlay.html/control.html from disk on every request (that's what makes control-panel
+# edits appear on refresh) and resolves config.ini/match_state.json relative to its own folder.
+# An earlier attempt at freezing them needed real surgery on both and was reverted; this
+# approach leaves the entire match-day code path running exactly as it does from source.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      # setup_wizard.py is imported by cricketstream.py (for find_python, install_python,
+      # find_project_root, install_packages, configure, write_config and the die()/pause()
+      # rules), so PyInstaller follows the import and bundles it automatically.
+      - name: Build exe
+        run: pyinstaller --onefile --console --name CricketStream cricketstream.py
+
+      - name: Smoke-test the exe
+        # Run it somewhere that is NOT the project folder: it must exit non-zero with the
+        # "can't find the project files" explanation rather than crashing or hanging. This
+        # is the one check CI can make that the frozen binary actually starts at all —
+        # a broken freeze (missing import, bad bootloader) fails here rather than on a
+        # club's match morning.
+        shell: pwsh
+        env:
+          CRICKETSTREAM_NO_PAUSE: '1'
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:TEMP\notproject" | Out-Null
+          Copy-Item dist\CricketStream.exe "$env:TEMP\notproject\"
+          Push-Location "$env:TEMP\notproject"
+          $out = & .\CricketStream.exe 2>&1 | Out-String
+          Pop-Location
+          Write-Host $out
+          if ($out -notmatch "can't find the CricketStream project files") {
+            Write-Error "exe did not produce the expected out-of-project error"
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: CricketStream-windows
+          path: dist/CricketStream.exe
+
+  # PyInstaller's onefile bootloader appends a single archive (the Python runtime + bundled
+  # files) after the Mach-O binary and finds it at runtime via an offset from EOF. Building
+  # arm64 and x86_64 separately and lipo-merging them does NOT work for onefile builds —
+  # the merged binary's bootloader can only ever discover one of the two archives (whichever
+  # occurs last), so it runs fine on one architecture and fails on the other with a
+  # "Failed to load Python shared library ... incompatible architecture" error (confirmed by
+  # actually building and running it). The correct approach is PyInstaller's own
+  # --target-arch universal2, which builds one archive containing both architectures'
+  # native libraries — actions/setup-python installs python.org's own universal2 build for
+  # Python >= 3.11 on macOS, so no extra Python install step is needed.
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build universal2 binary
+        run: pyinstaller --onefile --target-arch universal2 --name CricketStream cricketstream.py
+
+      - name: Verify both architectures are present
+        run: lipo -info dist/CricketStream
+
+      - name: Smoke-test the binary
+        env:
+          CRICKETSTREAM_NO_PAUSE: '1'
+        run: |
+          mkdir -p /tmp/notproject && cp dist/CricketStream /tmp/notproject/
+          cd /tmp/notproject
+          out="$(./CricketStream 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "can't find the CricketStream project files"
+
+      - name: Package with a double-clickable launcher
+        # A raw Mach-O binary double-clicked in Finder runs with no visible
+        # window, so an interactive wizard would appear to hang. A .command
+        # file is what Finder opens in Terminal.app automatically.
+        run: |
+          cd dist
+          cat > "CricketStream.command" <<'EOF'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          ./CricketStream
+          EOF
+          chmod +x "CricketStream.command" CricketStream
+          zip CricketStream-mac.zip CricketStream "CricketStream.command"
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: CricketStream-mac
+          path: dist/CricketStream-mac.zip
+
+  # scorer_agent.py runs on the SCORING laptop (see TWO_LAPTOP_SETUP.md), which is often a
+  # club's spare/old machine with no Python on it -- same "python is not recognised" failure
+  # mode the host exe exists to avoid. Unlike the host, this one IS fully self-contained:
+  # scorer_agent.py is stdlib-only and reads no project files, so the frozen binary is the
+  # entire install on that machine. Windows-only for now: TWO_LAPTOP_SETUP.md's Mac launcher
+  # (start_scorer_agent.sh) already runs it straight from source, since Macs ship python3;
+  # Windows has no such guarantee.
+  build-scorer-agent-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build exe
+        run: pyinstaller --onefile --console --name CricketStreamScorerAgent scorer_agent.py
+
+      - name: Smoke-test the exe
+        # --help exercises the frozen binary's startup and argparse without binding a port
+        # or touching the filesystem, so it's safe on a CI runner and still proves the
+        # freeze produced something that runs.
+        shell: pwsh
+        env:
+          CRICKETSTREAM_NO_PAUSE: '1'
+        run: |
+          $out = & dist\CricketStreamScorerAgent.exe --help 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch "scoreboard") {
+            Write-Error "agent exe did not start"
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: CricketStreamScorerAgent-windows
+          path: dist/CricketStreamScorerAgent.exe
+
+  release:
+    needs: [build-windows, build-macos, build-scorer-agent-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          path: artifacts
+
+      - name: Attach binaries to the GitHub release
+        uses: softprops/action-gh-release@v3.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            artifacts/CricketStream-windows/CricketStream.exe
+            artifacts/CricketStream-mac/CricketStream-mac.zip
+            artifacts/CricketStreamScorerAgent-windows/CricketStreamScorerAgent.exe

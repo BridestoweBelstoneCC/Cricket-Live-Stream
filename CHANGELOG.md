@@ -6,6 +6,35 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Changed: one download per machine, and the host one does everything.** The streaming
+  laptop needed two executables — `CricketStreamSetup.exe` to configure, then
+  `CricketStreamQuickstart.exe` on match day, which had to be placed next to `quickstart.py`
+  by hand and gave no readable error when it wasn't. Now there is **`CricketStream.exe`**
+  (`CricketStream.command` on Mac): one file, run the same way every time, which works out
+  for itself what still needs doing —
+  *in the project folder? → Python installed? → packages installed? → `config.ini` exists?
+  → start the match.* Satisfied steps are skipped silently, so the first run configures and
+  every later run goes straight to the match. New `cricketstream.py`; it implements none of
+  those steps itself, calling the `setup_wizard.py` function that already did each job, so
+  `setup.bat`/`setup.sh` keep working against the same code.
+  - Dependency checking is new: it asks the interpreter that will actually run the server
+    which packages it can import, and pip-installs only if some are missing. (The first
+    version of that probe used `import importlib` and silently reported "nothing missing"
+    forever — `importlib.util` is a submodule and needs importing by name. Now pinned by a
+    test.)
+  - **The scorer's laptop was already a single self-contained exe** —
+    `CricketStreamScorerAgent.exe` freezes `scorer_agent.py` whole, which is stdlib-only, so
+    that machine needs no Python, no project folder and no config. It gained the same
+    never-exit-silently treatment (a taken port used to close the window with the reason in
+    it) and the console-codepage fix, so its em-dashes stop arriving as `â€”`.
+  - `quickstart_launcher.py` is deleted, superseded by `cricketstream.py`. The build workflow
+    is renamed `build-executables.yml` and now smoke-tests each frozen binary in CI — a bad
+    freeze fails the build rather than a club's match morning.
+  - **Both exes were built and run locally on Windows before this shipped**, which the
+    previous attempt at this could never do: verified out-of-project (readable error, exit 1),
+    in-project (skips setup, hands over, passes arguments through), and dropped in the
+    `Windows\` sub-folder (finds the project one level up).
+
 - **Added: live scorebar-style preview in the control panel, and the setup wizard now asks
   which one you want.** The picker existed but you chose blind from a text dropdown whose
   hint pointed at an `examples/` folder you had to go find in Explorer — and a first-time

@@ -99,12 +99,20 @@ Here's the full manual walkthrough.
 
 ### Step 3 — First-time setup
 
-Go to the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) page and download the setup wizard for your computer:
+Go to the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) page and download the one file for your computer:
 
-**Windows:** `CricketStreamSetup.exe` — put it in the folder from Step 2 and double-click it.
-**Mac:** `CricketStreamSetup-mac.zip` (works on both Apple Silicon and Intel Macs) — put it in the folder from Step 2, unzip it, then double-click **`Setup Wizard.command`** (macOS will warn about an unknown developer the first time — click **Open** to proceed).
+**Windows:** `CricketStream.exe` — put it in the folder from Step 2 and double-click it.
+**Mac:** `CricketStream-mac.zip` (works on both Apple Silicon and Intel Macs) — put it in the folder from Step 2, unzip it, then double-click **`CricketStream.command`** (macOS will warn about an unknown developer the first time — click **Open** to proceed).
 
-You don't need to install Python first — if it's missing, the wizard installs it for you (and on Mac, fixes the SSL certificate issue automatically, which used to be a separate manual step). On Mac it will ask for your Mac password partway through — that's the wizard installing Python, not anything suspicious.
+> **This is the only file you ever need to run.** It works out for itself what still
+> needs doing: the first time it installs Python and the software's other bits and asks
+> you the setup questions below; every time after that it just starts the match. So this
+> same file is both "set it up" and "go live on Saturday" — there's nothing else to find.
+>
+> It does need to sit **inside the folder from Step 2** (the one with `server.py` in it).
+> If you put it somewhere else it will tell you so and wait, rather than closing.
+
+You don't need to install Python first — if it's missing, it installs it for you (and on Mac, fixes the SSL certificate issue automatically, which used to be a separate manual step). On Mac it will ask for your Mac password partway through — that's Python being installed, not anything suspicious.
 
 A window opens and asks you a few questions:
 
@@ -165,10 +173,18 @@ When the wizard finishes, it offers to launch the server straight away.
 **30 minutes before you go live:**
 
 1. Make sure OBS is open
-2. **Windows:** Double-click **`quickstart.bat`**
-   **Mac:** Double-click **`quickstart.sh`**
+2. Double-click the **same file you used to set it up**:
+   **Windows:** `CricketStream.exe` · **Mac:** `CricketStream.command`
 
-   > ⚠️ **Always use quickstart on match days** — it finds today's fixture, checks OBS is ready, and starts the server. Running `server.py` directly skips those checks.
+   It skips the setup questions this time (it can see you've already answered them) and
+   goes straight to starting the match — finding today's fixture, checking OBS is ready,
+   and starting the server.
+
+   > Already have Python and prefer running from source? `quickstart.bat` (Windows) /
+   > `quickstart.sh` (Mac) do the same match-day job.
+   >
+   > ⚠️ Don't run `server.py` directly on a match day — it skips the fixture lookup and
+   > the pre-flight checks.
 
 3. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
 4. Open your browser and go to **http://127.0.0.1:5000/control**
@@ -247,9 +263,28 @@ For full details including where to find club badge images, see **`CLUB_LOGOS.md
 
 ## Troubleshooting
 
-### The black window closes immediately when I run setup.bat or CricketStreamSetup.exe
+### The black window closes immediately
 
-Right-click it → **Run as administrator**
+This shouldn't happen any more — `CricketStream.exe` and the `.bat`/`.sh` files all stop
+and wait with *"Press Enter to close this window..."* whatever goes wrong, including an
+outright crash. If you're seeing it, you're on an older copy: download the current version.
+
+To read the message on an old copy, open Command Prompt (press Start, type `cmd`), then
+drag the file you were double-clicking into that window and press Enter — it runs the same
+way but the window stays open.
+
+If the problem turns out to be a permissions one, right-click the file →
+**Run as administrator**.
+
+### It says "I can't find the CricketStream project files"
+
+`CricketStream.exe` has to live **inside the folder from Step 2** — the one containing
+`server.py`. It looks in its own folder and the one above it, so putting it in the
+`Windows\` sub-folder is fine too; Downloads or the Desktop on their own are not, because
+the rest of the software isn't there.
+
+Move it next to `server.py` and run it again. The message tells you which folder it
+actually looked in, which is usually enough to spot what happened.
 
 ### The wizard couldn't install Python automatically
 
@@ -257,7 +292,7 @@ It opens the python.org download page instead — download it from there, tick *
 
 ### It says "Python was not found" (when running setup.bat / setup.sh directly)
 
-You need to install Python from python.org and make sure to tick **"Add Python to PATH"** during installation — or just use `CricketStreamSetup.exe` / `CricketStreamSetup-mac.zip` from Step 3 instead, which installs Python for you.
+You need to install Python from python.org and make sure to tick **"Add Python to PATH"** during installation — or just use `CricketStream.exe` / `CricketStream-mac.zip` from Step 3 instead, which installs Python for you.
 
 ### The overlay shows on my browser but not in OBS
 

@@ -71,16 +71,27 @@ shipped without it and misreported a manual match day until fixed.
   relaunches it up to `SERVER_MAX_RESTARTS` times with a short backoff if it exits
   unexpectedly — extracted into its own function specifically so this could be unit-tested
   with a fake Popen-like object rather than real subprocesses.
-- **`quickstart_launcher.py`** — thin exe wrapper for `quickstart.py`: finds the Python the
-  setup wizard already installed and runs `python quickstart.py`, exactly as `quickstart.bat`
-  does today. Deliberately doesn't freeze `quickstart.py`/`server.py` themselves (an earlier
-  attempt did; reverted — see git history on this file if it ever needs resurrecting) — this
-  version touches neither, so there's nothing new in the real match-day code path to break.
-  Built into `CricketStreamQuickstart.exe`, currently an experimental pre-release
-  (`exe-runtime-preview`), not yet wired into the main `release` build.
-- **`setup_wizard.py`** — first-time setup wizard; installs packages and writes `config.ini`.
-  Also built into a standalone Windows `.exe` / macOS binary by
-  `.github/workflows/build-setup-wizard.yml` (see gotchas below).
+- **`cricketstream.py`** — **the one launcher for the streaming laptop**, shipped frozen as
+  `CricketStream.exe` / `CricketStream.command`. Decides what still needs doing and does it:
+  in the project folder? → Python installed? → packages installed? → `config.ini` exists?
+  → hand over to `quickstart.py`. Every satisfied step is skipped silently, so the second
+  and every later run is just "double-click, match starts". It implements none of those
+  steps itself — each one calls the `setup_wizard.py` function that already did that job,
+  so there's exactly one version of each and `setup.bat`/`setup.sh` keep working unchanged.
+  Replaced the old two-exe dance (`CricketStreamSetup.exe` then `CricketStreamQuickstart.exe`,
+  the latter having to be placed next to `quickstart.py` by hand, with no readable error
+  when it wasn't). `quickstart_launcher.py` was its predecessor and is deleted — it's in
+  git history if ever needed. **Deliberately does NOT freeze `quickstart.py`/`server.py`**:
+  `server.py` reads `overlay.html`/`control.html` from disk per request (that's what makes
+  panel edits appear on refresh) and resolves `config.ini`/`match_state.json` relative to
+  its own folder, so both stay ordinary `.py` files run by a real interpreter and the
+  match-day code path is byte-for-byte what runs from source. An earlier freeze attempt
+  needed surgery on both and was reverted.
+- **`setup_wizard.py`** — the setup interview plus the shared installer plumbing
+  (`find_python`/`install_python`, `find_project_root`, `install_packages`, `configure`,
+  `write_config`, `die`/`pause`). Still runnable standalone via `setup.bat`/`setup.sh`, and
+  imported by `cricketstream.py` rather than duplicated. Built into the exes by
+  `.github/workflows/build-executables.yml` (see gotchas below).
 - **`scoreboard.template`** — the template the scorer's software fills in. Deployed to the
   *scorer's* machine, not the streaming machine.
 - **`nvplay_bridge.py`** — standalone, stdlib-only script for when NV Play runs on hardware
@@ -292,7 +303,7 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   project folder.** A double-clicked `.exe` or `.bat` owns its console window, so a bare
   `sys.exit()` closes it with the reason inside — including tracebacks, which are exactly
   the text needed to diagnose the problem. `setup_wizard.py`, `quickstart.py` and
-  `quickstart_launcher.py` all route fatal paths through their own `die()` (framed problem
+  `cricketstream.py` all route fatal paths through `die()` (framed problem
   + what to do + pause) and catch unhandled exceptions; `CRICKETSTREAM_NO_PAUSE=1` turns the
   pauses off for automation, and `quickstart.py` additionally only pauses on a real TTY so
   the wizard's own subprocess and the test suite never block. Every `Windows/*.bat` and
