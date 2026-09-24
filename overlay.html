@@ -704,6 +704,34 @@ body.style-modern #target-detail { color: rgba(255,255,255,0.6) !important; }
   </div>
 </div>
 
+<!-- League table context — "where does today leave the home club" — same full-screen shell
+     as #prematch-panel/#pregame-form-*. Shown once pre-match and once per innings during the
+     end-of-over rotation (see loadLeagueTable()/showOverSummary() in the script below);
+     skipped entirely when /league/table reports usable:false (cup/friendly fixture). -->
+<div class="graphic-panel" id="league-table-panel">
+  <div class="over-accent" style="background:#2a6496;"></div>
+  <div class="pc-label" id="league-table-name" style="color:#2a6496;">League Table</div>
+  <div class="pc-stats" style="margin-top:10px;">
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="league-table-position">—</span>
+      <span class="pc-stat-key" id="league-table-team">—</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="league-table-points">—</span>
+      <span class="pc-stat-key">Points</span>
+    </div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat">
+      <span class="pc-stat-val" id="league-table-played">—</span>
+      <span class="pc-stat-key">Played</span>
+    </div>
+  </div>
+  <div style="font-size:13px;color:rgba(255,255,255,0.55);margin-top:16px;" id="league-table-above-row">
+    A win today moves them above <span id="league-table-above-team" style="color:#fff;font-weight:700;">—</span>
+  </div>
+</div>
+
 <!-- Player card (new batter) -->
 <div id="player-card" class="graphic-panel">
   <div class="pc-accent"></div>
@@ -1651,6 +1679,17 @@ function showOverSummary(overNum, overRuns, bowlerName, bowlerFigs, balls) {
       })
     }).catch(function(){});
   }
+  // League table context -- once per innings (not every over: the table can't have
+  // changed since the last time it was shown, and showing it every over would crowd out
+  // over-summary/partnership/run-rate). _lastPCSinnings is already updated for this poll
+  // by the time showOverSummary runs (see the over-transition block above).
+  if (cfg.graphics_league_table && _leagueTableShownInnings !== _lastPCSinnings) {
+    loadLeagueTable();
+    if (fillLeagueTablePanel()) {
+      queueGraphic('league-table-panel', 8000);
+      _leagueTableShownInnings = _lastPCSinnings;
+    }
+  }
   // Weekend sponsor -- content refreshed each over; actual show/hide of the strap itself
   // happens per-panel in nextGraphic(), overlaid on over-summary/partnership/AI commentary
   // only (never the run rate worm).
@@ -2498,6 +2537,56 @@ function fillPregameForm(side, teamName, teamAbbrev, colour) {
   return true;
 }
 
+// ── League table context — "win today, move up to Nth" ────
+// Same lazy-build-in-background pattern as /season/top above: the backend caches the
+// table once a day (it only changes after a result is entered, never mid-match), so one
+// retry loop here is plenty. Shown once pre-match (showPreMatchInfo, dead time before the
+// openers are picked) and once per innings during the live end-of-over rotation
+// (showOverSummary) -- not every over, since the underlying data can't have changed since
+// the last time it was shown and every over shown would crowd out over-summary/partnership.
+var _leagueTable = { usable: false, name: '', row: null, row_above: null, total_teams: 0 };
+var _leagueTableRequested = false;
+var _leagueTableShownInnings = 0;   // last innings number this panel was queued for; 0 = never
+
+function loadLeagueTable() {
+  if (_leagueTableRequested) return;
+  _leagueTableRequested = true;
+  var tries = 0;
+  (function attempt() {
+    fetch(SERVER + '/league/table').then(function(r){ return r.json(); }).then(function(d) {
+      if (d && d.ready === false && tries < 15) { tries++; setTimeout(attempt, 3000); return; }
+      if (d && d.ready && d.usable) {
+        _leagueTable = { usable: true, name: d.name || '', row: d.row || null,
+                         row_above: d.row_above || null, total_teams: d.total_teams || 0 };
+      }
+      // ready but usable:false (cup/friendly competition_id) -- leave _leagueTable.usable
+      // false, the fallback the TODO called for. Same for a fetch error.
+    }).catch(function(){});
+  })();
+}
+
+// Fills the panel DOM from the last-loaded _leagueTable. Returns true if there's a usable
+// table to show -- callers use this to decide whether to queue the panel at all.
+function fillLeagueTablePanel() {
+  if (!_leagueTable.usable || !_leagueTable.row) return false;
+  var row = _leagueTable.row;
+  var pos = row.position ? (row.position + (_leagueTable.total_teams ? ' of ' + _leagueTable.total_teams : '')) : '—';
+  el('league-table-name').textContent     = _leagueTable.name || 'League Table';
+  el('league-table-position').textContent = pos;
+  el('league-table-team').textContent     = row.team || '—';
+  el('league-table-points').textContent   = row.points !== '' ? row.points : '—';
+  el('league-table-played').textContent   = row.played !== '' ? row.played : '—';
+  var aboveRow = el('league-table-above-row');
+  if (_leagueTable.row_above && _leagueTable.row_above.team) {
+    el('league-table-above-team').textContent = _leagueTable.row_above.team;
+    aboveRow.style.display = '';
+  } else {
+    // Already top of the table -- nothing to move up past.
+    aboveRow.style.display = 'none';
+  }
+  return true;
+}
+
 function isPreMatchPCS(state) {
   // NV Play sets batting_team (server.py parse_pcs_json) as soon as the match is configured in
   // PCS Pro -- well before the scorer selects the openers, which is normally the last setup step
@@ -2513,6 +2602,7 @@ function isPreMatchPCS(state) {
 
 function showPreMatchInfo() {
   loadPregameForm();
+  if (cfg.graphics_league_table) loadLeagueTable();
   // Show pre-match competition/umpires panel if we have API data
   const comp   = cfg.competition_name || '';
   const u1     = cfg.umpire1_name     || '';
@@ -2536,6 +2626,10 @@ function showPreMatchInfo() {
     }
     if (fillPregameForm('away', cfg.away_team, cfg.away_abbrev, cfg.away_colour)) {
       queueGraphic('pregame-form-away', 9000);
+    }
+    if (cfg.graphics_league_table && fillLeagueTablePanel()) {
+      queueGraphic('league-table-panel', 9000);
+      _leagueTableShownInnings = 1;   // covers the pre-match showing for innings 1
     }
   }
 }

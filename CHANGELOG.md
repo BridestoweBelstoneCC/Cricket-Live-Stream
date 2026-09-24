@@ -16,13 +16,22 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   42px, stats 22px → 30px) are noticeably more legible, scoped to `#player-card`/
   `#player-card-right` specifically so the shared `.pc-headshot`/`.pc-name` classes the
   pregame form-guide panels also use are unaffected.
-- **Added: league-table context graphic backend (`/league/table`).** Given a competition_id
-  for today's match, fetches PlayCricket's `league_table.json` (cached once/day, same
-  pattern as season stats) and returns the home club's row plus the row above it — the data
-  behind a future "win today, move up to Nth" graphic. Verified against BBCC's real
-  Division 1 table. `competition_id` is now captured alongside `competition_name` wherever
-  `fetch_todays_match()` runs (`quickstart.py` and `server.py`'s `/match/fetch`). The
-  overlay-side graphic panel itself is not yet built — this is the data plumbing only.
+- **Added: league-table context graphic (`/league/table` + overlay panel).** Given a
+  competition_id for today's match, fetches PlayCricket's `league_table.json` (cached
+  once/day, same pattern as season stats) and returns the home club's row plus the row
+  above it. Verified against BBCC's real Division 1 table. `competition_id` is now
+  captured alongside `competition_name` wherever `fetch_todays_match()` runs
+  (`quickstart.py` and `server.py`'s `/match/fetch`). The overlay panel (`#league-table-panel`
+  in `overlay.html`, new `graphics_league_table` toggle in the control panel's Graphics
+  card, defaults on) shows position/points/played and "a win today moves them above
+  X" — once pre-match in the dead-time rotation alongside the season-form panels, and once
+  more per innings in the live end-of-over rotation (not every over — the table can't
+  change mid-match, and showing it every over would crowd out over-summary/partnership).
+  Cleanly skips itself when `usable: false` (cup/friendly fixture with no real table) or
+  when the daily fetch hasn't completed yet. New pure-logic tests in
+  `tests/test_league_table.py` cover `league_table_home_row()`'s name matching and the
+  "wrong table returned instead of erroring" defensive case, plus `fetch_league_table()`'s
+  no-competition_id/API-failure/cache branches.
 - **Added: second-camera (bowler-end) support — backend only, UNTESTED against real
   hardware.** `obs_add_camera()` now takes `extra_scenes` and auto-creates a missing target
   scene, so a second camera's scene (e.g. "Main-Bowler") no longer has to be created by

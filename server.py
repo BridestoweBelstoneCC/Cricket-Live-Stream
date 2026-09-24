@@ -1631,6 +1631,7 @@ DEFAULT_STATE = {
     "graphics_over_summary":   True,
     "graphics_partnership_display":True,
     "graphics_runrate_trend":  True,
+    "graphics_league_table":   True,   # /league/table context panel — see league_table_home_row()
     "graphics_player_card":     False,
     "scorebar_style":          "classic",   # "classic" | "modern" — see overlay.html's
                                              # body.style-modern CSS block

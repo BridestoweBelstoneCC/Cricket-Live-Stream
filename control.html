@@ -626,6 +626,11 @@
            <div class="toggle-desc">Bar chart of runs per over — top left corner</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_runrate_trend"><span class="track"></span></label>
     </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">League table context</div>
+           <div class="toggle-desc">Where today's result leaves the home club in the table — once pre-match, once per innings. Needs competition_id (set automatically by "Fetch today's match")</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_league_table"><span class="track"></span></label>
+    </div>
     <hr>
     <div class="field">
       <label>Weekend sponsor name</label>
@@ -1447,7 +1452,7 @@ const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
