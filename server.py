@@ -1633,8 +1633,12 @@ DEFAULT_STATE = {
     "graphics_runrate_trend":  True,
     "graphics_league_table":   True,   # /league/table context panel — see league_table_home_row()
     "graphics_player_card":     False,
-    "scorebar_style":          "classic",   # "classic" | "modern" — see overlay.html's
-                                             # body.style-modern CSS block
+    "scorebar_style":          "classic",   # "classic" | "modern" | "impact" | "minimal" —
+                                             # see overlay.html's body.style-* CSS blocks and
+                                             # its SCOREBAR_STYLES list. "classic" is the base
+                                             # stylesheet (no style-* class), so an unknown
+                                             # value here renders as classic rather than
+                                             # breaking the bar.
     "replay_enabled":          True,
     "replay_on_fifty":         False,
     "obs_host":                "localhost",

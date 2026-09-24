@@ -88,45 +88,257 @@ html, body {
 #bowler-figures { font-size: 14px; color: rgba(255,255,255,0.5); margin-top: 2px; }
 
 /* ═══════════════════════════
-   SCOREBAR — "Modern" alternate style, toggled via body.style-modern (see poll()'s
-   scorebar_style handling). Default ("Classic") is everything above — this block only
-   overrides shape/type/spacing, never the team-colour backgrounds applyColours() sets
-   inline on #seg-batting-team/#seg-bowling-team/#seg-bowler, so team branding still works
-   under either style. Deliberately scoped to the scorebar only, not the graphic panels —
-   see TODO's scorebar-style-presets note on keeping alternate styles restrained.
+   SCOREBAR — alternate styles, toggled via body.style-* (see poll()'s scorebar_style
+   handling). Default ("Classic") is everything above; each block below only overrides
+   shape/type/spacing/colour, never the team-colour backgrounds applyColours() sets inline
+   on #seg-batting-team/#seg-bowling-team/#seg-bowler, so team branding survives under every
+   style. applyColours() also publishes --bat/--bowl/--bat-dim on #scorebar, which is what
+   lets these styles carry team identity past those two end blocks (accent rules, striker
+   highlight) without more per-element JS.
+
+   Three rules every style here follows, learned from the first pass at "Modern" (which
+   floated each segment as its own rounded pill and looked like a row of unrelated buttons
+   with a hole punched in the middle, because #seg-spacer went transparent):
+     1. The bar reads as ONE object. Segments are divided by hairlines, not by gaps.
+     2. #seg-spacer is part of the bar, never a transparent hole in it.
+     3. Height stays 72px. It's load-bearing — the graphic panels sit at bottom:72px and
+        #fow-panel/#partnership-panel/#milestone-panel are themselves 72px to line up with
+        it. Hierarchy comes from type scale and colour, not from a taller bar.
 ═══════════════════════════ */
+
+/* ── Modern: unified dark broadcast slab, team-colour rule along the top ───────────── */
 body.style-modern #scorebar {
   font-family: 'Segoe UI', system-ui, Arial, sans-serif;
-  gap: 6px;
-  padding: 0 8px;
+  background: linear-gradient(180deg, #17212f 0%, #0b1119 100%);
+  box-shadow: 0 -3px 22px rgba(0,0,0,0.5);
 }
-body.style-modern .seg { border-radius: 10px; margin: 7px 0; }
+/* The top rule is what sells it as broadcast graphics rather than a web widget: batting
+   team's colour bleeding into the bowling team's across the middle of the bar. */
+body.style-modern #scorebar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 2;
+  background: linear-gradient(90deg, var(--bat-lift, #2a6496) 0%, var(--bat-lift, #2a6496) 34%,
+                                     var(--bowl-lift, #7b2d2d) 66%, var(--bowl-lift, #7b2d2d) 100%);
+}
 body.style-modern .seg-light {
-  background: rgba(16,20,28,0.85);
-  border-right: none;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: transparent;
+  border-right: 1px solid rgba(255,255,255,0.075);
 }
-body.style-modern #score-total { color: #fff; font-size: 30px; letter-spacing: 0.5px; }
-body.style-modern #overs-display { color: #fff; }
-body.style-modern #overs-display .muted { color: rgba(255,255,255,0.55); }
-body.style-modern #status-text { color: rgba(255,255,255,0.75); }
-body.style-modern .batter-name, body.style-modern .batter-runs { color: #fff !important; }
-body.style-modern .batter-balls { color: rgba(255,255,255,0.55); }
-body.style-modern #seg-spacer { background: transparent; }
+body.style-modern #seg-spacer {
+  background: transparent;
+  border-right: 1px solid rgba(255,255,255,0.075);
+}
+/* Team blocks keep their inline colour but gain depth — a flat fill next to a gradient bar
+   is the thing that reads as "unfinished". */
+body.style-modern #seg-batting-team,
+body.style-modern #seg-bowling-team { position: relative; }
+/* Lifts the block rather than darkening it: a club with a near-black navy (very common —
+   BBCC's own is #1a3a5c) otherwise sinks straight into the bar and stops working as the
+   anchor it's there to be. The bright inside edge is what keeps it separate from the
+   neighbouring segment whatever colour the club picked. */
+body.style-modern #seg-batting-team::after,
+body.style-modern #seg-bowling-team::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 50%,
+                                      rgba(0,0,0,0.14) 100%);
+}
+body.style-modern #seg-batting-team { box-shadow: inset -1px 0 0 rgba(255,255,255,0.18); }
+body.style-modern #seg-bowling-team { box-shadow: inset  1px 0 0 rgba(255,255,255,0.18),
+                                                  inset -1px 0 0 rgba(255,255,255,0.18); }
+body.style-modern #batting-team-name, body.style-modern #bowling-team-name,
+body.style-modern .team-badge { position: relative; z-index: 1; }
+/* Score is the hero — at 40px against 19px batters it's unmistakably the thing to read
+   first, which is the whole job of a scorebar. */
+body.style-modern #seg-score { background: rgba(0,0,0,0.32); min-width: 148px; }
+body.style-modern #score-total {
+  color: #fff; font-size: 40px; font-weight: 800; letter-spacing: -1px;
+  font-variant-numeric: tabular-nums; text-shadow: 0 2px 8px rgba(0,0,0,0.55);
+}
+body.style-modern #seg-overs { min-width: 118px; }
+body.style-modern #overs-display { color: #fff; font-size: 21px; font-weight: 700; }
+body.style-modern #overs-display .muted { color: rgba(255,255,255,0.42); font-weight: 500; }
+body.style-modern #seg-innings { min-width: 50px; padding: 0 12px; }
+body.style-modern #innings-badge {
+  background: rgba(255,255,255,0.11); color: rgba(255,255,255,0.88);
+  border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+}
+body.style-modern #status-text { color: rgba(255,255,255,0.72); font-size: 15px; font-weight: 600; }
+/* The old style left this label near-black on a near-black pill — invisible. */
+body.style-modern #seg-this-over { border-right: 1px solid rgba(255,255,255,0.075); padding: 0 16px; gap: 8px; }
+body.style-modern .seg-over-label { color: rgba(255,255,255,0.38); letter-spacing: 1.4px; }
 body.style-modern .seg-ball {
-  border-radius: 8px; width: 30px; height: 30px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+  border-radius: 7px; width: 27px; height: 27px; font-size: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(0,0,0,0.45);
 }
-body.style-modern #innings-badge { border-radius: 6px; }
-body.style-modern #seg-bowler,
-body.style-modern #seg-target { border-left: none; border-radius: 10px; }
-body.style-modern #seg-bowler { margin-left: 3px; }
+body.style-modern .seg-ball.dot   { background: #3b4859; }
+body.style-modern .seg-ball.empty { background: rgba(255,255,255,0.06); box-shadow: none; }
+body.style-modern .seg-batter { min-width: 188px; }
+body.style-modern .batter-name { color: #fff !important; font-size: 19px; }
+body.style-modern .batter-runs { color: #fff !important; font-size: 19px; font-weight: 800; }
+body.style-modern .batter-balls { color: rgba(255,255,255,0.45); }
+/* On-strike batter gets a team-colour edge and a lift out of the bar — you can tell who's
+   facing at a glance instead of hunting for a 15px pencil glyph. */
+body.style-modern .seg-batter.striker {
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+  box-shadow: inset 3px 0 0 var(--bat-lift, #2a6496);
+}
+body.style-modern .batter-icon { display: none; }
+/* applyColours() puts a darkened bowling colour inline here, which on a dark bar is close
+   to invisible. Neutralised to a flat panel and re-tied to the bowling side with a bright
+   top rule instead — visible whatever the club colour is, unlike a dark-on-dark edge. */
+body.style-modern #seg-bowler {
+  border-left: none; min-width: 210px;
+  background: rgba(255,255,255,0.055) !important;
+  box-shadow: inset 0 3px 0 var(--bowl-lift, #7b2d2d), inset 1px 0 0 rgba(255,255,255,0.12);
+}
+body.style-modern #bowler-name { font-size: 19px; font-weight: 700; color: #fff; }
+body.style-modern #bowler-figures { font-size: 14px; color: rgba(255,255,255,0.55); }
 /* #target-need/#target-detail carry inline colours tuned for the classic light-grey
    background (see the seg-target HTML) — need overriding here or they're nearly invisible
-   on modern's dark glass. Caught by screenshotting both styles side by side. */
-body.style-modern #target-need   { color: #ff6b5b !important; }
-body.style-modern #target-detail { color: rgba(255,255,255,0.6) !important; }
+   on a dark bar. Caught by screenshotting both styles side by side. */
+body.style-modern #seg-target { border-left: none; box-shadow: inset 3px 0 0 rgba(255,107,91,0.55); }
+body.style-modern #target-need   { color: #ff6b5b !important; font-size: 15px !important; }
+body.style-modern #target-detail { color: rgba(255,255,255,0.55) !important; font-size: 11px !important; }
+
+/* ── Impact: BBL/IPL-style — angled cuts, white score plate, heavy type ─────────────
+   The loud one. Built for a club with strong colours and for viewers watching on a phone,
+   where Classic's 19px grey-on-grey detail is the first thing to become unreadable. The
+   angled edges are the signature; they're clip-paths on three blocks only, not a skew on
+   the whole bar, so nothing else has to be counter-transformed to stay straight. */
+body.style-impact #scorebar {
+  font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+  background: linear-gradient(180deg, #121a25 0%, #060a10 100%);
+  box-shadow: 0 -3px 22px rgba(0,0,0,0.55);
+}
+/* Thick team-colour footer rule — Impact's signature, where Modern uses a thin top rule. */
+body.style-impact #scorebar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; z-index: 2;
+  background: linear-gradient(90deg, var(--bat, #2a6496) 0%, var(--bat, #2a6496) 38%,
+                                     var(--bowl, #7b2d2d) 62%, var(--bowl, #7b2d2d) 100%);
+}
+body.style-impact .seg-light { background: transparent; border-right: 1px solid rgba(255,255,255,0.07); }
+body.style-impact #seg-spacer { background: transparent; border-right: 1px solid rgba(255,255,255,0.07); }
+body.style-impact #seg-batting-team {
+  min-width: 170px; padding-left: 26px; padding-right: 40px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%);
+}
+body.style-impact #batting-team-name { font-size: 24px; font-weight: 800; letter-spacing: 2px; }
+/* The white plate is the whole point: the score stops being "a segment of the bar" and
+   becomes the one thing your eye lands on, the way a broadcast bar's score block does. */
+body.style-impact #seg-score {
+  background: linear-gradient(180deg, #fff 0%, #dfe4ea 100%);
+  min-width: 176px; margin-left: -26px; padding: 0 26px;
+  clip-path: polygon(26px 0, 100% 0, calc(100% - 24px) 100%, 0 100%);
+  border-right: none;
+}
+body.style-impact #score-total {
+  color: #080d14; font-size: 42px; font-weight: 900; letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums;
+}
+body.style-impact #seg-innings { margin-left: -22px; padding-left: 26px; min-width: 56px; }
+body.style-impact #innings-badge {
+  background: var(--bat-lift, #c0392b); color: #fff;
+  border-radius: 3px; font-size: 12px; font-weight: 800;
+}
+body.style-impact #overs-display { color: #fff; font-size: 22px; font-weight: 800; }
+body.style-impact #overs-display .muted { color: rgba(255,255,255,0.4); font-weight: 600; }
+body.style-impact #status-text { color: rgba(255,255,255,0.7); font-size: 15px; font-weight: 700; }
+body.style-impact .seg-over-label { color: rgba(255,255,255,0.35); letter-spacing: 1.4px; }
+body.style-impact .seg-ball {
+  border-radius: 4px; width: 28px; height: 28px; font-size: 12px; font-weight: 900;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 4px rgba(0,0,0,0.5);
+}
+body.style-impact .seg-ball.dot   { background: #384657; }
+body.style-impact .seg-ball.empty { background: rgba(255,255,255,0.05); box-shadow: none; }
+body.style-impact .seg-batter { min-width: 190px; }
+body.style-impact .batter-name  { color: #fff !important; font-size: 20px; font-weight: 800; }
+body.style-impact .batter-runs  { color: #fff !important; font-size: 20px; font-weight: 900; }
+body.style-impact .batter-balls { color: rgba(255,255,255,0.42); font-size: 13px; }
+body.style-impact .seg-batter.striker {
+  background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04));
+  box-shadow: inset 0 4px 0 var(--bat-lift, #2a6496);
+}
+body.style-impact .batter-icon { display: none; }
+body.style-impact #seg-bowling-team {
+  min-width: 128px; padding-left: 34px; padding-right: 22px;
+  clip-path: polygon(24px 0, 100% 0, 100% 100%, 0 100%);
+  margin-left: -20px;
+}
+body.style-impact #bowling-team-name { font-size: 19px; font-weight: 800; letter-spacing: 1.5px; }
+body.style-impact #seg-bowler {
+  border-left: none; min-width: 205px;
+  background: rgba(255,255,255,0.05) !important;
+  box-shadow: inset 0 4px 0 var(--bowl-lift, #7b2d2d);
+}
+body.style-impact #bowler-name { font-size: 20px; font-weight: 800; color: #fff; }
+body.style-impact #bowler-figures { font-size: 14px; color: rgba(255,255,255,0.55); }
+body.style-impact #seg-target { border-left: none; box-shadow: inset 0 4px 0 #e04a3a; }
+body.style-impact #target-need   { color: #ff6b5b !important; font-size: 16px !important; font-weight: 900 !important; }
+body.style-impact #target-detail { color: rgba(255,255,255,0.55) !important; font-size: 11px !important; }
+
+/* ── Minimal: light, quiet, high-contrast type ──────────────────────────────────────
+   The opposite end from Impact, and the only light-toned option besides Classic — but
+   where Classic is flat grey panels with hairline borders, this is one clean white sheet
+   with generous spacing and no dividers at all, leaning on type weight for structure.
+   Sits better under a bright daytime camera picture than either dark style does. */
+body.style-minimal #scorebar {
+  font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+  background: linear-gradient(180deg, rgba(252,253,255,0.97) 0%, rgba(238,241,246,0.97) 100%);
+  box-shadow: 0 -2px 18px rgba(10,20,40,0.22);
+}
+body.style-minimal #scorebar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 2;
+  background: linear-gradient(90deg, var(--bat, #2a6496) 0%, var(--bat, #2a6496) 38%,
+                                     var(--bowl, #7b2d2d) 62%, var(--bowl, #7b2d2d) 100%);
+}
+body.style-minimal .seg-light { background: transparent; border-right: none; }
+body.style-minimal #seg-spacer { background: transparent; border-right: none; }
+body.style-minimal #seg-batting-team { min-width: 116px; padding: 0 20px; }
+body.style-minimal #batting-team-name { font-size: 20px; letter-spacing: 1.6px; }
+body.style-minimal #seg-score { min-width: 150px; }
+body.style-minimal #score-total {
+  color: #0a1220; font-size: 40px; font-weight: 800; letter-spacing: -1.2px;
+  font-variant-numeric: tabular-nums;
+}
+body.style-minimal #seg-innings { min-width: 46px; padding: 0 10px; }
+body.style-minimal #innings-badge {
+  background: rgba(10,18,32,0.07); color: #46536a;
+  border-radius: 4px; font-size: 12px; font-weight: 700;
+}
+body.style-minimal #seg-overs { min-width: 116px; }
+body.style-minimal #overs-display { color: #0a1220; font-size: 21px; font-weight: 700; }
+body.style-minimal #overs-display .muted { color: #93a0b4; font-weight: 500; }
+body.style-minimal #status-text { color: #5a6880; font-size: 15px; font-weight: 600; }
+body.style-minimal .seg-over-label { color: #9aa6b8; letter-spacing: 1.4px; }
+body.style-minimal #seg-this-over { border-right: none; gap: 8px; }
+body.style-minimal .seg-ball {
+  border-radius: 50%; width: 26px; height: 26px; font-size: 12px; font-weight: 800;
+  box-shadow: 0 1px 2px rgba(10,20,40,0.18);
+}
+body.style-minimal .seg-ball.dot   { background: #aab4c4; }
+body.style-minimal .seg-ball.empty { background: rgba(10,20,40,0.07); box-shadow: none; }
+body.style-minimal .seg-batter { min-width: 186px; }
+body.style-minimal .batter-name  { color: #0a1220 !important; font-size: 19px; font-weight: 700; }
+body.style-minimal .batter-runs  { color: #0a1220 !important; font-size: 19px; font-weight: 800; }
+body.style-minimal .batter-balls { color: #93a0b4; font-size: 13px; }
+/* No fill, no border — just a colour bar under the name. The whole style's structure comes
+   from weight and space rather than boxes, and the striker marker follows that. */
+body.style-minimal .seg-batter.striker { box-shadow: inset 0 -4px 0 var(--bat, #2a6496); }
+body.style-minimal .batter-icon { display: none; }
+body.style-minimal #seg-bowling-team { min-width: 108px; padding: 0 18px; }
+body.style-minimal #bowling-team-name { font-size: 17px; letter-spacing: 1.3px; }
+body.style-minimal #seg-bowler {
+  border-left: none; min-width: 200px;
+  background: transparent !important;
+  box-shadow: inset 0 -4px 0 var(--bowl, #7b2d2d);
+}
+/* applyColours() sets #bowler-name to #fff inline (it assumes a dark team-colour block
+   behind it, which every other style has and this one doesn't) — without !important the
+   bowler's name is white on a white bar, i.e. invisible. Only caught by rendering it. */
+body.style-minimal #bowler-name { font-size: 19px; font-weight: 700; color: #0a1220 !important; }
+body.style-minimal #bowler-figures { font-size: 14px; color: #7b8698; }
+body.style-minimal #seg-target { border-left: none; box-shadow: inset 0 -4px 0 #c0392b; }
+body.style-minimal #target-need   { color: #c0392b !important; font-size: 15px !important; }
+body.style-minimal #target-detail { color: #7b8698 !important; font-size: 11px !important; }
 
 /* ═══════════════════════════
    GRAPHIC PANELS — slide up
@@ -982,6 +1194,10 @@ body.style-modern #target-detail { color: rgba(255,255,255,0.6) !important; }
 const SERVER = location.origin;
 let MAX_OVERS = 50;
 let cfg = {};
+// Scorebar styles that have a body.style-* CSS block below. "classic" is deliberately NOT
+// here — it's the base stylesheet, so it's what you get with no style class applied. Keep
+// this in step with the control panel's picker and DEFAULT_STATE's scorebar_style comment.
+const SCOREBAR_STYLES = ['modern', 'impact', 'minimal'];
 
 // ── State tracking ────────────────────────────────────────
 let prev = {
@@ -1107,6 +1323,21 @@ function applyColours(home, away, homeBatting) {
   // when the away side bats, the batting elements take the away colour and the bowling the home.
   var bat  = (homeBatting === false) ? away : home;   // batting team colour
   var bowl = (homeBatting === false) ? home : away;   // bowling team colour
+  // Expose both as CSS custom properties on the bar itself, so a scorebar style can use the
+  // team colours for accents (top rule, striker highlight, gradient wash) without every such
+  // element needing its own line in here. Classic ignores them; the darker styles lean on
+  // them heavily -- it's what lets them carry team identity beyond the two end blocks.
+  var sb = el('scorebar');
+  if (sb) {
+    sb.style.setProperty('--bat', bat);
+    sb.style.setProperty('--bowl', bowl);
+    // Lifted variants for thin accents on a DARK bar. A club colour like BBCC's own navy
+    // (#1a3a5c) is invisible as a 3px rule on near-black, so the dark styles use these
+    // instead — wormColour() is the existing luminance-aware lightener the run-rate worm
+    // already uses for exactly this problem, rather than a second rule that does the same job.
+    sb.style.setProperty('--bat-lift', wormColour(bat));
+    sb.style.setProperty('--bowl-lift', wormColour(bowl));
+  }
   el('seg-batting-team').style.background = bat;
   el('seg-bowling-team').style.background = bowl;
   el('seg-bowler').style.background       = shadeColour(bowl, -30);
@@ -2386,6 +2617,13 @@ function renderScorebar(state, home, away) {
   el('batter2-balls').textContent = ` (${state.batter2.balls})`;
   el('batter2-icon').className    = 'batter-icon'+(state.batter2.onStrike?' visible':'');
 
+  // Mark the on-strike segment itself, not just the little icon inside it, so a scorebar
+  // style can highlight the whole block (tint, accent bar, brighter type). Classic ignores
+  // the class entirely. Doing it here rather than with CSS :has() on purpose -- OBS 30 still
+  // ships a CEF build old enough that :has() isn't available.
+  el('seg-batter1').className = 'seg seg-light seg-batter'+(state.batter1.onStrike?' striker':'');
+  el('seg-batter2').className = 'seg seg-light seg-batter'+(state.batter2.onStrike?' striker':'');
+
   el('bowler-name').textContent    = fmtSurname(state.bowler.name);
   el('bowler-figures').textContent = state.bowler.name!=='—'
     ? `${state.bowler.wickets}-${state.bowler.runs} (${state.bowler.overs})` : '';
@@ -2787,7 +3025,12 @@ async function poll() {
   try { cfg=await (await fetch(`${SERVER}/state`)).json(); }
   catch(e){console.warn('server.py not reachable');return;}
 
-  document.body.classList.toggle('style-modern', cfg.scorebar_style === 'modern');
+  // One body class per scorebar style, driven by whatever the panel has selected. Anything
+  // not in this list (including "classic" and an empty/unknown value) leaves every style-*
+  // class off, which IS classic — it's the base CSS, not an override block of its own.
+  SCOREBAR_STYLES.forEach(function(s) {
+    document.body.classList.toggle('style-' + s, cfg.scorebar_style === s);
+  });
   MAX_OVERS=cfg.max_overs||50;
   const home=cfg.home_team||'Home CC';
   const away=cfg.away_team||'Opposition CC';

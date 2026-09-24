@@ -6,6 +6,39 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Changed: "Modern" scorebar rebuilt, plus two new styles ("Impact", "Minimal").** The
+  first Modern was Classic's layout with each segment floated as its own rounded dark pill,
+  which read as a row of unrelated buttons with a hole punched through the middle (because
+  `#seg-spacer` went transparent). All three alternate styles now follow the rule Classic
+  got right: the bar is ONE object, divided by hairlines rather than gaps, with the spacer
+  part of the bar. Score is the hero everywhere (40–42px against 19px batter names) instead
+  of barely larger than the detail around it.
+  - **Modern** — dark broadcast slab, team-colour rule along the top edge, on-strike batter
+    highlighted with a team-colour edge and a lift out of the bar.
+  - **Impact** — the loud one, T20-broadcast style: angled clip-path cuts, a white score
+    plate, heavier type, thick team-colour footer. Reads best on a phone.
+  - **Minimal** — clean white sheet, no dividers at all, structure from type weight and
+    space. The only light option besides Classic; sits better under a bright daytime picture.
+  - `applyColours()` now publishes `--bat`/`--bowl`/`--bat-lift`/`--bowl-lift` on `#scorebar`,
+    so styles can carry team identity past the two end blocks without more per-element JS.
+    The `-lift` pair runs through the existing luminance-aware `wormColour()` — a club colour
+    like a near-black navy is invisible as a 3px rule on a dark bar, which is the same problem
+    the run-rate worm already solved rather than a new one.
+  - `renderScorebar()` marks the on-strike segment with a `striker` class (not just the 15px
+    icon inside it), so a style can highlight the whole block. Done in JS rather than CSS
+    `:has()` on purpose — OBS 30 still ships a CEF build without it.
+  - Classic is untouched and remains the default.
+- **Added: `scripts/render_scorebar.py`** — renders every scorebar style to `examples/` in
+  headless Chrome/Edge with fixed mock data, no server or npm packages needed. The scorebar
+  failure mode is always visual and never a syntax error, so none of it showed up in the
+  existing checks; this pass found two real bugs that way (Minimal's bowler name was
+  white-on-white because `applyColours()` sets `color:#fff` inline, and Impact's full-width
+  footer rule painted straight over the striker/bowler underlines). New
+  `tests/test_scorebar_styles.py` covers the part that *can* run without a browser: the
+  style list in overlay.html's `SCOREBAR_STYLES`, its CSS blocks, and the control panel's
+  picker all having to agree, plus the shared 72px bar height that the graphic panels line
+  up against.
+
 - **Added: automatic camera cut at the over boundary — opt-in, UNTESTED against real
   two-camera hardware.** New `graphics_camera_auto_cut` toggle (control panel, defaults
   off — a camera cut is a real, visible on-air action, same reasoning as
