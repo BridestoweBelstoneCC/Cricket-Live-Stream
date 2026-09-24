@@ -6,6 +6,22 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Added: automatic camera cut at the over boundary — opt-in, UNTESTED against real
+  two-camera hardware.** New `graphics_camera_auto_cut` toggle (control panel, defaults
+  off — a camera cut is a real, visible on-air action, same reasoning as
+  `stream_auto_downshift`); a no-op unless a second (bowler-end) camera is also configured.
+  Keys off the same over-transition signal `overlay.html` already detects for
+  over-summary/partnership: cuts to the bowler-end scene, then back to the main scene ~8s
+  later, via the existing `/camera/scene` endpoint (now loopback-trusted for the overlay,
+  same carve-out `/replay` uses). Deliberately skips itself around an instant replay: never
+  cuts while a replay could still be on screen, and stands down its own revert-to-main if a
+  replay starts during the bowler-end window, so the two scene transitions never fight each
+  other. New `tests/test_camera_autocut.py` (real JS execution, same approach as the
+  bowler-milestone tests) covers both gates and all three replay-timing cases. **Not
+  independently verified:** no OBS/second camera was reachable from this machine — confirm
+  the actual cut behaves correctly on a real two-camera setup before relying on it match
+  day, same caveat as the manual-cut backend this builds on. See TODO.md.
+
 - **Added: scorebar style picker — Classic (existing look) or Modern (dark glass, rounded
   segments).** CSS-only skin toggled by `scorebar_style` in the control panel's Graphics
   card, applied instantly on the overlay's next poll (`body.style-modern` in

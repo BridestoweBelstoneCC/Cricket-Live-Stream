@@ -175,6 +175,23 @@ class TestRoutesOpen(HttpTestBase):
         self.assertEqual(status, 200)
         self.assertEqual(server.load_state()["anthropic_api_key"], "")
 
+    def test_camera2_configured_flag_never_leaks_the_url(self):
+        # The overlay needs to know a second camera is configured (to gate the auto-cut
+        # feature) without ever seeing camera2_rtsp_url itself — same pattern as
+        # anthropic_key_set/playcricket_key_set.
+        status, body = self.get_json("/state")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["camera2_configured"])
+
+        st = server.load_state()
+        st["camera2_rtsp_url"] = "rtsp://admin:hunter2@192.168.1.51:554/stream"
+        server.save_state(st)
+
+        status, body = self.get_json("/state")
+        self.assertTrue(body["camera2_configured"])
+        self.assertEqual(body["camera2_rtsp_url"], server.SECRET_SENTINEL)
+        self.assertNotIn("hunter2", json.dumps(body))
+
     def test_state_post_merges_instead_of_replacing(self):
         status, _ = self.post_json("/state", {"roster": {"21": "Peter Smith"},
                                               "sponsor_name": "Acme"})
@@ -539,8 +556,16 @@ class TestAuthEnabled(HttpTestBase):
         self.assertEqual(status, 200)
         status, _ = self.post_json("/weather/hide", {})
         self.assertEqual(status, 200)
+        # /camera/scene joined OVERLAY_ENDPOINTS for the auto-cut feature — OBS is
+        # unreachable in this test, so ok:False in the body, but never 401
+        status, body = self.post_json("/camera/scene", {"scene": "Main-Bowler"})
+        self.assertEqual(status, 200)
+        self.assertFalse(body["ok"])
         # ...but a proxied (X-Forwarded-For) caller is NOT trusted loopback
         status, _ = self.post_json("/replay", {"reason": "Test"},
+                                   headers={"X-Forwarded-For": "203.0.113.9"})
+        self.assertEqual(status, 401)
+        status, _ = self.post_json("/camera/scene", {"scene": "Main-Bowler"},
                                    headers={"X-Forwarded-For": "203.0.113.9"})
         self.assertEqual(status, 401)
         # ...and non-overlay POSTs never get the carve-out even from loopback

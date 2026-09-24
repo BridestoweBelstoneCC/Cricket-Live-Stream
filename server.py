@@ -1650,6 +1650,13 @@ DEFAULT_STATE = {
     "camera2_rtsp_url":        "",
     "obs_camera2_name":        "Bowler End Camera",
     "obs_bowler_scene":        "Main-Bowler",
+    # Automatic over-boundary cut: overlay.html cuts to obs_bowler_scene on the same
+    # over-transition signal it already detects for over-summary etc., then cuts back to
+    # obs_main_scene ~8s later. Opt-in and defaults off, same as stream_auto_downshift —
+    # a camera cut is a real, visible on-air action, and this whole feature is UNTESTED
+    # against real two-camera hardware (see obs_add_camera()). A no-op regardless unless
+    # camera2_rtsp_url is also configured. See TODO.md.
+    "graphics_camera_auto_cut":False,
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
@@ -5868,6 +5875,9 @@ class Handler(BaseHTTPRequestHandler):
             # Add boolean flags so the overlay can gate features without seeing raw secrets
             st["anthropic_key_set"]   = bool(st.get("anthropic_api_key","").strip())
             st["playcricket_key_set"] = bool(st.get("playcricket_api_key","").strip())
+            # Same reasoning: the overlay needs to know a second camera is configured (to
+            # gate the auto-cut feature) without ever seeing the RTSP URL itself.
+            st["camera2_configured"]  = bool(st.get("camera2_rtsp_url","").strip())
             # SECURITY: never send stored secrets over HTTP. Responses carry CORS *
             # (the overlay may be loaded from OBS as a separate origin), which means any
             # web page open on this machine could read this endpoint. The control panel
@@ -6767,8 +6777,11 @@ class Handler(BaseHTTPRequestHandler):
         # source with no login flow of its own. /commentary/over/generate additionally
         # spends Anthropic credit, so all of them trust loopback callers with no forwarding
         # proxy in front of them (see _is_trusted_loopback), or a valid session either way,
-        # rather than requiring a session the overlay can never obtain.
-        OVERLAY_ENDPOINTS = ("/commentary/over/generate", "/replay", "/weather/show", "/weather/hide")
+        # rather than requiring a session the overlay can never obtain. /camera/scene joined
+        # this list when the auto-cut feature was added — it was operator-only before that
+        # (see the endpoint's own comment).
+        OVERLAY_ENDPOINTS = ("/commentary/over/generate", "/replay", "/weather/show",
+                             "/weather/hide", "/camera/scene")
         if path in OVERLAY_ENDPOINTS:
             if not (self._is_trusted_loopback() or self._check_token()):
                 return
@@ -6867,11 +6880,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok, "message": msg})
 
         elif path == "/camera/scene":
-            # Manual hard-cut between camera scenes (e.g. bowler-end <-> wide) from the
-            # control panel, or any operator device — a thin wrapper around the same
-            # SetCurrentProgramScene call /replay already uses. Not for the overlay itself
-            # (no OVERLAY_ENDPOINTS carve-out needed — an operator presses this, not the
-            # browser source), so the token check above already gates it.
+            # Hard-cut between camera scenes (e.g. bowler-end <-> wide) — a thin wrapper
+            # around the same SetCurrentProgramScene call /replay already uses. Called from
+            # the control panel's manual cut buttons (operator, needs a session) AND
+            # automatically by the overlay itself at the over boundary when
+            # graphics_camera_auto_cut is on (loopback, no login flow — see OVERLAY_ENDPOINTS
+            # in do_POST, same carve-out /replay uses).
             try:
                 d = json.loads(body or "{}")
             except json.JSONDecodeError:

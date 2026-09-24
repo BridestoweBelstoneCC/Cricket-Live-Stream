@@ -734,6 +734,11 @@
       <button class="btn btn-test" onclick="cutToCameraScene('main')">&#127909; Cut to wide angle</button>
     </div>
     <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Automatic cut at over boundary</div>
+           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera URL is set above. <strong>New, unverified against real hardware</strong> — watch the first live over closely.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
+    </div>
     <div class="field">
       <label>Replay folder path (leave blank to auto-detect)</label>
       <input type="text" id="replay_folder" placeholder="C:/Users/You/Videos/Replays">
@@ -1452,7 +1457,7 @@ const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','graphics_camera_auto_cut','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';

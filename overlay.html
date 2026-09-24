@@ -1696,6 +1696,51 @@ function showOverSummary(overNum, overRuns, bowlerName, bowlerFigs, balls) {
   updateSponsorStrap();
 }
 
+// ── Camera auto-cut at the over boundary ───────────────────
+// Opt-in (graphics_camera_auto_cut, default off) and a no-op unless a second camera is
+// configured (camera2_configured, from /state -- the overlay never sees the real RTSP URL).
+// UNTESTED against real two-camera hardware, same as the backend it drives (obs_add_camera)
+// -- watch the first live over closely. See TODO.md.
+var _cameraAutoCutTimer = null;
+function autoCutCameraForOver() {
+  if (!cfg.graphics_camera_auto_cut || !cfg.camera2_configured) return;
+  if (_cameraAutoCutTimer) { clearTimeout(_cameraAutoCutTimer); _cameraAutoCutTimer = null; }
+  // Don't step on an instant replay's own scene transition (Replay -> main, on its own
+  // server-side timer -- see obs_trigger_replay's `duration`) -- if one triggered earlier
+  // in the over that just ended and could still be running, skip this over's cut entirely
+  // rather than race it.
+  var replayWindow = ((cfg.replay_duration || 18) + 5) * 1000;
+  if (Date.now() - _lastReplayTime < replayWindow) {
+    console.log('[camera-cut] skipped: replay still in progress');
+    return;
+  }
+  var cutAt = Date.now();
+  cutCameraScene(cfg.obs_bowler_scene || 'Main-Bowler', 'auto-cut: over start');
+  _cameraAutoCutTimer = setTimeout(function() {
+    _cameraAutoCutTimer = null;
+    // If a replay fired during our bowler-end window, it now owns the return-to-main
+    // transition on its own timer -- cutting back ourselves here would race it.
+    if (_lastReplayTime > cutAt) { console.log('[camera-cut] revert skipped: replay took over'); return; }
+    cutCameraScene(cfg.obs_main_scene || 'Main', 'auto-cut: revert');
+  }, 8000);
+}
+
+async function cutCameraScene(scene, reason) {
+  try {
+    // fetch() only rejects on a network failure -- checked explicitly, same as triggerReplay,
+    // so a rejected/failed request never silently looks like a successful cut.
+    const res = await fetch(`${SERVER}/camera/scene`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ scene: scene }),
+    });
+    if (!res.ok) {
+      console.warn('[camera-cut] server rejected (' + reason + '):', res.status, await res.text().catch(() => ''));
+      return;
+    }
+    console.log('[camera-cut] ' + reason + ' -> ' + scene);
+  } catch(e) { console.warn('[camera-cut] fetch failed (' + reason + '):', e); }
+}
+
 function updateSponsorStrap() {
   if (!cfg.sponsor_name) return;
   el('sponsor-name-text').textContent = cfg.sponsor_name;
@@ -2005,6 +2050,14 @@ function processPCSData(state) {
       ? `${finishedBowler.overs}-${finishedBowler.maidens||0}-${finishedBowler.runs||0}-${finishedBowler.wickets||0}`
       : '';
     showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
+    // Camera auto-cut at the over boundary -- independent of the over-summary panel's own
+    // on/off toggle (graphics_over_summary), but shares its "a replay already covers this"
+    // suppression: an over-ending wicket already triggers FOW + an instant replay, and
+    // cutting to the bowler-end camera at the same moment would fight the replay's own
+    // scene transition.
+    if (_lastWicketOver !== (_lastPCSovers + 1)) {
+      try { autoCutCameraForOver(); } catch(e) { console.warn('camera auto-cut error:', e); }
+    }
     _overRunHistory.push(overRuns);
     // v2.1: bowler spell, "at this stage" comparison, auto-detected moments.
     // _rrData.prevWickets still holds the start-of-over value here (rrRecordOver runs later).
