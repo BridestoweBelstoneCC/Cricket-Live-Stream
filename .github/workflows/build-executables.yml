@@ -60,12 +60,21 @@ jobs:
           Copy-Item dist\CricketStream.exe "$env:TEMP\notproject\"
           Push-Location "$env:TEMP\notproject"
           $out = & .\CricketStream.exe 2>&1 | Out-String
+          $code = $LASTEXITCODE
           Pop-Location
           Write-Host $out
           if ($out -notmatch "can't find the CricketStream project files") {
             Write-Error "exe did not produce the expected out-of-project error"
             exit 1
           }
+          if ($code -eq 0) {
+            Write-Error "exe exited 0 outside the project folder; expected a non-zero exit"
+            exit 1
+          }
+          # The non-zero exit IS the pass condition. GitHub's pwsh wrapper ends every step
+          # with `exit $LASTEXITCODE`, so without this the expected failure fails the step
+          # (the macOS job's `|| true` is the same fix).
+          exit 0
 
       - uses: actions/upload-artifact@v7.0.1
         with:
