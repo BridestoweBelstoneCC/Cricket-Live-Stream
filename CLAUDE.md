@@ -32,10 +32,21 @@ shipped without it and misreported a manual match day until fixed.
 
 - **`server.py`** (~5000 lines) — the whole backend. HTTP server on port 5000
   (`ThreadingHTTPServer`). Also builds the social-media images.
-- **`control.html`** (~2200 lines) — the operator's control panel, served by `/control`
+- **`control.html`** (~3000 lines) — the operator's control panel, served by `/control`
   with the kit-colour presets injected in place of the `/*__KIT_PRESETS__*/[]` placeholder
   (see `control_html()` in server.py). Read from disk per request, so panel edits show on
-  refresh without a server restart. It used to live INSIDE server.py as a Python string —
+  refresh without a server restart. **Layout (2026-10 refresh):** four tabs by moment —
+  Match day / Graphics & sponsor / After the match / Setup — under a sticky top bar (live
+  status + Save, which every setting except the checklist buttons needs) and the
+  checklist. Every colour is a token on `:root` (`--bg`, `--surface`, `--accent`...); add
+  new colours as tokens, not hex. `--accent`/`--accent-strong`/`--on-accent` are set at
+  runtime from the home kit colour by `applyClubAccent()` (HSL-lightened to 4.5:1 / 3:1
+  against the background; black-or-white text on the fill). Tab visibility must stay
+  CLASS-only (`.tab-panel.active`): an `#tab-x` rule outranks it and pins a tab open. The
+  JS finds controls by id, so moving markup between tabs is safe as long as ids stay
+  unique and present — `tests/test_panel_layout.py` checks that every saved field and
+  every handler survives. The scorebar preview iframe is the overlay's full 1080px canvas
+  shifted up to the bar (measured only while visible — it reads 0 inside a hidden tab). It used to live INSIDE server.py as a Python string —
   see the (historical) backslash gotcha below.
 - **`overlay.html`** (~2900 lines) — the OBS browser source (1920×1080). Pure HTML/CSS/JS.
   Four scorebar styles (`classic`/`modern`/`impact`/`minimal`) as `body.style-*` CSS blocks
@@ -87,6 +98,57 @@ shipped without it and misreported a manual match day until fixed.
   its own folder, so both stay ordinary `.py` files run by a real interpreter and the
   match-day code path is byte-for-byte what runs from source. An earlier freeze attempt
   needed surgery on both and was reverted.
+- **`obs_prep.py`** — the half of OBS setup that needs OBS CLOSED, run by `quickstart.py`
+  before `load_config()` (it can write `obs_password` into `config.ini`). Edits OBS's own
+  files directly, since there's no API for them: `plugin_config/obs-websocket/config.json`
+  to switch the WebSocket server on with a random password (`first_load` must be false or
+  obs-websocket generates its own password over ours), and the active profile's
+  `basic.ini` (found via `user.ini`, OBS 31+, else `global.ini`) for `RecRB` in both
+  output-mode sections plus the replay folder. Then clears `.sentinel/run_*` and launches
+  OBS with `--startreplaybuffer`. **The sentinel clear is load-bearing**: OBS 30+ leaves
+  that marker when it crashes or is force-closed, and the next start stops on a modal
+  "Run in Safe Mode?" prompt — nobody's there to click it on match day, and Safe Mode
+  skips the WebSocket plugin entirely. `--disable-shutdown-check` is also passed but does
+  NOTHING on OBS 32 (the option isn't in its binaries; it prompted with the flag set) —
+  don't mistake it for the fix. Verify Safe Mode behaviour from OBS's own log
+  (`Crash or unclean shutdown detected`), never from "the WebSocket answered": a person
+  clicking the prompt makes the WebSocket answer too, which is exactly how the flag was
+  first wrongly "verified". **Never write either file while OBS is running** — OBS saves its in-memory settings over them on exit; an already-working
+  WebSocket config is reused, never rewritten. An OBS that's running but not answering on
+  its port is treated as stuck (Safe Mode prompt / Safe Mode), not as ready. `basic.ini` is edited line-by-line, not with
+  configparser, which would lowercase OBS's case-sensitive keys and drop its BOM.
+  Stdlib-only. `[OBS] manage_obs = no` turns it off. `obs_setup.py` (over the WebSocket,
+  OBS running) still does scenes/sources/stream key and remains the fallback for a fresh
+  OBS with no profile yet. **Mid-match crashes** are `server.py`'s `_obs_guard_tick()`
+  (own 5s thread, not the 90s watchdog — every second OBS is down the stream is down):
+  reuses obs_prep to reopen OBS, sets the Main scene, and sends `StartStream` only if the
+  stream monitor last saw it live while OBS was REACHABLE (the monitor flips to
+  not-streaming the moment OBS dies, so a naive read would never restore the stream).
+  Crash vs. deliberate close is the sentinel again: a clean exit deletes it, so closing
+  OBS after the match leaves it closed. Never starts an OBS it hasn't seen running this
+  session; capped at 3 reopens per 30 min. Reported in `/health` → `obs_recovery`.
+  Whether it was live is asked of OBS itself on every 5s check (`_obs_is_streaming`), not
+  copied from the 15s stream monitor — the stale flag could put a club back on air after
+  they'd stopped. It stands aside while the checklist's Start OBS job runs (that job
+  closes and reopens OBS on purpose on a first run), only runs the `tasklist` process
+  check once armed, and reuses OBS's PIDs for the freeze check.
+  **Freezes** (Windows only) go through the same path: `obs_window_hung()` pings OBS's
+  window with `SendMessageTimeout(WM_NULL)`; frozen 60s AND the stream not visibly sending
+  (`outputBytes` not moving across two reads) → `kill_obs()`, whose force-close leaves the
+  sentinel, so the next tick reopens it as a crash. Don't swap the ping for
+  `IsHungAppWindow` alone — it only fires when messages are queued, so a frozen OBS nobody
+  is touching read as "responding" for two minutes in testing. And never drop the
+  stream-flowing check: OBS encodes off the UI thread, so a frozen window can sit over a
+  perfectly good stream, and killing it would cause the outage this exists to prevent.
+  **Video settings** are written to `basic.ini` `[Video]` here too, OBS closed (OBS
+  refuses video changes while any output runs, and the replay buffer always does):
+  canvas ALWAYS 1920×1080 because `overlay.html` is a fixed 1920×1080 source at 0,0;
+  output/fps from `[Stream] output_resolution`/`fps`, else the cached upload test
+  (`network_test_mbps` in match_state.json), else 720p30. FPS goes in as `FPSType=1` /
+  `FPSInt` — the default `FPSType=0` matches `FPSCommon` against OBS's menu labels
+  ("25 PAL") and silently ran at 30 when given "25". `recommend_stream_settings()` is the
+  one recommendation table: the server's `/obs/stream_check` shows it, quickstart applies
+  it (including the bitrate, when `bitrate_kbps` is blank; `manual` opts out).
 - **`setup_wizard.py`** — the setup interview plus the shared installer plumbing
   (`find_python`/`install_python`, `find_project_root`, `install_packages`, `configure`,
   `write_config`, `die`/`pause`). Still runnable standalone via `setup.bat`/`setup.sh`, and
@@ -114,7 +176,11 @@ shipped without it and misreported a manual match day until fixed.
   network). Controlled by state's `pcs_source` ("local" | "agent") and `agent_host`;
   `read_score_source()` in `server.py` is the dispatch point every /live-adjacent call
   site must use — the same one-door pattern as `effective_pcs_folder()`. Operator-facing
-  setup/troubleshooting: `TWO_LAPTOP_SETUP.md`. **The UDP discovery broadcast and the HTTP
+  setup/troubleshooting: `TWO_LAPTOP_SETUP.md`. Also installs `scoreboard.template` into NV Play's Templates
+  folder on start (`ensure_template()`; bundled into the exe with `--add-data`, guarded in
+  CI by `--check-template`), and owns the one list of places NV Play writes to
+  (`COMMON_FOLDER_PATTERNS`, OneDrive variants included) — `setup_wizard.py` imports both
+  rather than copying them. **The UDP discovery broadcast and the HTTP
   port are independent as far as Windows Firewall is concerned** — a real two-machine test
   found the HTTP port (8788) reachable while the discovery port (8787) silently got nothing,
   because the first-run firewall prompt didn't cover both. The control panel's manual
@@ -156,7 +222,25 @@ shipped without it and misreported a manual match day until fixed.
 - **`match_data.db`** — SQLite ball-by-ball log, created at runtime (git-ignored).
 - **`sponsors/`** — weekend-sponsor logos, named by ID (`sponsors/3.png`), served via
   `/sponsor/<id>`. Paired with the control panel's "Weekend sponsor name" / "Weekend sponsor
-  image ID" fields. Renders as a persistent strap overlaid on the over-summary/partnership/
+  image ID" fields. **Airtime:** the overlay beacons `POST /sponsor/airtime` (`show`/`hide`,
+  loopback carve-out, never from preview mode); the server times it on its own clock, takes
+  the name from state, caps one appearance at 12s (a lost hide is credited the cap, so keep it near the longest panel), and keeps live time separate from time
+  before going live — only live time is ever presented as airtime. Totals persist to
+  `sponsor_airtime.json` (git-ignored); `GET /sponsor/airtime[?date=]` must stay above the
+  `/sponsor/<id>` prefix route. Quickstart prints it after the match and saves
+  `sponsor_airtime_<date>.txt`. **Logo upload:** `POST /sponsor/upload` takes the raw image
+  as the body (no multipart), handled at the TOP of `do_POST` — before the generic 1 MB
+  body read, so it can allow 8 MB and check login/origin before reading a byte. The type
+  comes from the file's magic bytes (`sniff_image`: PNG/JPEG/WebP/GIF; never SVG, which
+  can carry script), saved as the next free number under `_sponsor_upload_lock` so two
+  uploads can't take the same ID. **Transparent backgrounds:** `logo_bg.py` (Pillow only,
+  no numpy) — background colour from the border, then two modes the operator picks between
+  by eye in the panel, because no one rule handles both kinds of real logo: `outside`
+  (edge-connected only: keeps a badge's white middle, leaves letter holes white) and
+  `everywhere` (letter holes cleared, a badge's middle too). Edge opacity is judged against
+  the logo colour right beside each pixel, not a blur of the cut-out (a blur left a white
+  halo). Always saved as a NEW image, so Undo is the old ID. Panel previews must be `data:`
+  URLs: the panel's CSP is `img-src 'self' data:`, so `blob:` previews render blank. Renders as a persistent strap overlaid on the over-summary/partnership/
   AI-commentary panels only (never the run-rate worm — see `showSponsorStripFor` /
   `.sponsor-space-reserved` in `overlay.html`); off entirely unless a sponsor name is set.
 
@@ -249,7 +333,19 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - **Logging must never raise.** `log_ball_data()` and anything in the match-day loop is wrapped
   in try/except and must stay that way — a logging error must never interrupt the stream.
 - **State writes must stay atomic.** `save_state()` writes to a temp file then `os.replace()`s,
-  with a last-good fallback. Don't replace this with a naive `open().write()`.
+  with a last-good fallback. Don't replace this with a naive `open().write()`. It's also
+  serialised by `_state_write_lock` (every writer shares the one `.tmp` name; two threads at
+  once gave "Permission denied" on Windows and a dropped request) and retries `os.replace`
+  for ~2s, because Windows refuses to replace a file another thread has open for reading.
+  `tests/test_sponsor_upload.py` reproduces both (and fails with the lock removed). That
+  lock does NOT make load-modify-save atomic — for that use `update_state(change)`, which
+  holds `_state_rmw_lock` across load→change→save. POST /state, logo uploads and the
+  checklist's password sync use it; older call sites still do bare load/modify/save and
+  can lose a concurrent change — convert them as you touch them.
+- **HTTP tests must set `_CLUB_PASSWORD` explicitly.** `server.py` reads the REAL
+  `config.ini` at import, so a test that assumes "no password" passes in CI (no
+  config.ini) and 401s on any machine with a club password — patch it to `""` (or a value)
+  in setUp, as the checklist/airtime/upload tests do.
 - **Route handling checks specific paths before prefixes.** When adding endpoints, put exact
   matches (`path == "/data/status"`) before `startswith` checks so a prefix doesn't swallow a
   more specific route.
@@ -368,14 +464,84 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   Replay scene too, the drift stopped happening in the first place and periodic reloads became
   mostly unnecessary. Check every scene in OBS's scene list has the camera source, not just
   the one usually shown.
-- **Optional second (bowler-end) camera, added 2026-09-20, is backend-only and UNTESTED
-  against real two-camera hardware** — `obs_add_camera()` gained an `extra_scenes` param
-  and auto-creates a missing target scene, generalizing the gotcha above across more than
-  two scenes (both cameras end up in Main, the bowler-end scene, and Replay). This machine
-  had no second camera to verify scene auto-creation or cross-presence against a real OBS
-  instance before match day — confirm both before relying on it. No automatic cut at the
-  over boundary yet, manual only (`/camera/scene`, same `SetCurrentProgramScene` call
-  `/replay` uses internally) — see TODO.md.
+- **Optional second (bowler-end) camera, added 2026-09-20** — `obs_add_camera()` takes an
+  `extra_scenes` param and auto-creates a missing target scene, generalizing the gotcha
+  above across more than two scenes (both cameras end up in Main, the bowler-end scene,
+  and Replay). Scene creation, cross-presence and stacking were verified 2026-10-01 on a
+  real OBS 32.1.1 using two VIDEO FILES as the cameras (screenshots confirmed each scene
+  shows its own camera) — still not with two real RTSP cameras, so reconnect/drift
+  behaviour with a second live feed is unverified. Manual cut is `/camera/scene`; the
+  opt-in automatic cut at the over boundary is `graphics_camera_auto_cut`.
+- **Testing against a real OBS: only ever a PORTABLE copy.** Copy `C:\Program Files\
+  obs-studio` somewhere scratch and create `obs_portable_mode.txt` in it: OBS then keeps
+  every setting inside that folder. Do NOT rely on overriding `APPDATA` — Python honours it
+  but OBS on Windows ignores it (it asks Windows for the folder directly), so an "isolated"
+  test on 2026-10-01 launched the real install against the maintainer's REAL settings and
+  rearranged their scenes. To drive the server against the copy, run a scratch copy of the
+  project whose `obs_prep.py` overrides `find_obs()`/`obs_config_dir()` to the portable
+  folder and refuses to run without the marker.
+- **The control panel's Match-day checklist** (`checklist_status()` / `checklist_action()`,
+  `GET /checklist`, `POST /checklist/action`, both token-gated — they start OBS and go live,
+  so NEVER the overlay's loopback carve-out). Every item is detected, none ticked by hand
+  (the old localStorage ticks are gone). "Start OBS" runs `obs_prep.prepare_obs` +
+  `obs_setup.setup_from_config(allow_restart=True)` in a background job and copies a
+  freshly written WebSocket password from config.ini into state, or every later
+  `_obs_call` fails auth. `_obs_call` returns None per REFUSED request — check `r[0]`,
+  not just `r`, or a refusal reads as success (the first version did exactly that).
+- **A brand-new OBS needs one restart before the replay buffer can run**, and
+  `setup_from_config(allow_restart=True)` (quickstart, the checklist) now does it: on
+  obs_setup's "wouldn't start yet", `obs_prep.close_obs()` closes OBS the way a person
+  would (WM_CLOSE / osascript quit; never a force-kill, so no crash marker) and
+  `prepare_obs` reopens it. Two things had to go for that to work, both modal on a fresh
+  OBS: the Auto-Configuration Wizard (`skip_first_run_wizard()`: `[General]
+  FirstRun=true` in user.ini and global.ini) — it blocks the close — and the update box
+  (paused, above). With an output running OBS asks "exit anyway?"; `close_obs` gives up
+  and CANCELS that question rather than leave it on screen. The standalone
+  `obs_setup.py` never restarts OBS (allow_restart=False): whoever runs it by hand is
+  managing OBS. Verified end to end on a fresh portable OBS: one Start OBS press, replay
+  buffer running ten seconds later, no dialogs left.
+- **Never test or switch OBS's encoder over the WebSocket.** OBS only builds encoders
+  when it starts (or its settings dialog is applied), so `SetProfileParameter
+  StreamEncoder` + a test recording measures whatever encoder was built at launch — the
+  old Stream Health Check "hardware vs x264" comparison did exactly that and reported
+  NVENC twice (OBS's log showed no x264 encoder ever created). `GetStats`'
+  `outputTotalFrames`/`outputSkippedFrames` are pipeline-wide, not per recording, too.
+  That check was REMOVED (2026-10-01). Encoder choice is now `obs_prep.ensure_encoder()`:
+  OBS closed, reads the "Available Encoders" list from OBS's own newest log, and moves
+  Simple-mode x264 (or unset) onto the best hardware H.264 encoder; never touches a
+  hardware choice or Advanced mode; `[Stream] encoder = manual` opts out. Verified by
+  OBS's log naming the encoder it actually ran, before and after.
+- **Scene stacking: move cameras DOWN, never lift graphics UP.** `obs_prep.covering_pictures()`
+  lists the picture sources (cameras, video, screen capture — `PICTURE_KINDS`) above a
+  graphic; obs_setup moves each, lowest first, to just beneath it, which keeps two cameras'
+  order and leaves everything else (sponsor-logo images above the scorebar) where the club
+  put it. The first version lifted the graphics to the top of the scene and buried a real
+  club's logos under the scorebar.
+- **`--startreplaybuffer` only once the scenes exist** (`obs_prep.launch_args()` checks the
+  scene collection for an `Overlay` source). On an empty scene OBS won't start the buffer:
+  it opens a modal "No Sources" question instead, which on a fresh install nobody is there
+  to answer. First time through, `obs_setup.py` builds the scenes and starts the buffer
+  over the WebSocket.
+- **OBS's update check is paused for match day** (`pause_update_check()`: `[General]
+  EnableAutoUpdates=false` in `global.ini`, original value kept in a
+  `.cricketstream-updates-paused` marker in OBS's config folder). Measured: the "New update
+  available" box on 4 of 6 default launches, 0 of 4 with it off. Restored by
+  `resume_update_check()` when the server's OBS guard sees a NORMAL close, or at
+  quickstart's shutdown if OBS is already closed; a crash keeps it paused. A club that
+  had it off already gets no marker and is never switched on. Tests that reach
+  quickstart's shutdown must stub `_resume_obs_updates` — it reads the REAL OBS folder.
+- **OBS puts every new source on TOP of its scene, at native size, top-left.** Before
+  `_arrange_camera_item()`, adding a camera covered the Overlay in Main (no graphics) and
+  ReplayClip in Replay (replays showed the live camera), and a 720p camera filled a
+  quarter of the canvas — all confirmed on real OBS. Rules now: a camera in its HOME scene
+  sits directly under the graphics; in any other scene it goes to the bottom (it's only
+  there to stay active); new or untouched-default placements are fitted to the canvas
+  with `OBS_BOUNDS_SCALE_INNER`, hand-placed ones are left alone. Home camera scenes get
+  the Overlay added (the bowler-end scene was created without it, so the auto-cut hid the
+  scorebar). `obs_setup.py` re-asserts Overlay/ReplayClip on top every run, which repairs
+  installs the old code already broke, and fits ReplayClip (replays are recorded at the
+  OUTPUT resolution, 720p by default). Any new code that adds a source to a scene must
+  think about where OBS just put it.
 
 ## Conventions
 
@@ -389,7 +555,8 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - `http://localhost:5000/health` — feed freshness, photos, badges, AI key status, NV Play
   bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`), and a
   pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a
-  previous match before the operator goes live — see `obs_bitrate_sanity_check()`.
+  previous match before the operator goes live — see `obs_bitrate_sanity_check()` — and
+  OBS crash recovery (`obs_recovery`: watching, recent reopens, last event).
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/league/table` — today's competition's table (home club's row +
   the row above), backend for the not-yet-built "win today, move up to Nth" graphic;
@@ -399,9 +566,9 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights
   compile (clips are auto-tagged at replay time via the `clips` DB table; the reel gets
   captions + a chapters description file).
-- `http://localhost:5000/obs/stream_check?force=1` (auth-required) — recommended bitrate from a
-  real upload-speed test, and an encoder comparison from actual short OBS test recordings
-  (never trust hardware specs alone for this — see `obs_stream_health_check()`).
+- `http://localhost:5000/obs/stream_check?force=1` (auth-required) — recommended bitrate and
+  resolution from a real upload-speed test (quickstart applies them to OBS next run).
+- `http://localhost:5000/sponsor/airtime` — today's sponsor airtime (`?date=YYYY-MM-DD`).
 - `http://localhost:5000/stream/monitor` — live congestion/dropped-frame picture while
   streaming, plus the quality-ladder position. Two-tier adaptive quality: OBS's Dynamic
   Bitrate (enabled by obs_setup; seamless) + the sentinel's bitrate ladder

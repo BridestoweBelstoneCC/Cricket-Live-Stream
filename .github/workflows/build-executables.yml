@@ -158,7 +158,11 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build exe
-        run: pyinstaller --onefile --console --name CricketStreamScorerAgent scorer_agent.py
+        # --add-data bundles NV Play's scoreboard.template, which the agent installs into
+        # NV Play's Templates folder on start (scorers used to copy it by hand, from a full
+        # project download they otherwise didn't need). ":" works as the separator on every
+        # platform from PyInstaller 6; checked by building it locally with 6.22.3.
+        run: pyinstaller --onefile --console --name CricketStreamScorerAgent --add-data "scoreboard.template:." scorer_agent.py
 
       - name: Smoke-test the exe
         # --help exercises the frozen binary's startup and argparse without binding a port
@@ -172,6 +176,17 @@ jobs:
           Write-Host $out
           if ($out -notmatch "scoreboard") {
             Write-Error "agent exe did not start"
+            exit 1
+          }
+          # The template has to be INSIDE the exe: the runner's checkout sits next to it,
+          # so run from a different folder to be sure it isn't read from there instead.
+          Push-Location $env:RUNNER_TEMP
+          $tpl = & "$env:GITHUB_WORKSPACE\dist\CricketStreamScorerAgent.exe" --check-template 2>&1 | Out-String
+          $tplCode = $LASTEXITCODE
+          Pop-Location
+          Write-Host $tpl
+          if ($tplCode -ne 0 -or $tpl -notmatch "bundled: yes") {
+            Write-Error "scoreboard.template is not bundled into the agent exe"
             exit 1
           }
 

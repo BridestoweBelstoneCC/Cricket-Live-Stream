@@ -167,34 +167,41 @@ Save and close.
 
 ## Step 6 — Set up OBS
 
-### Enable OBS WebSocket
+### OBS WebSocket and replay buffer — done for you
 
-1. Open OBS
-2. Go to **OBS → Tools → WebSocket Server Settings** (on Mac the menu is at the top of the screen)
-3. Tick **Enable WebSocket server**
-4. Port: `4455`
-5. Tick **Enable Authentication** and set a password
-6. Copy that password into `config.ini` → `obs_password`
-7. Click OK
+**There's nothing to switch on in OBS any more.** Every time quickstart runs it:
 
-### Enable Replay Buffer
+- switches on OBS's WebSocket server (how this software talks to OBS) with a random
+  password, and writes that password into `config.ini` for you;
+- turns on the replay buffer (25 seconds) and points it at your replay folder;
+- opens OBS, so you don't need to open it first.
 
-**You shouldn't need to do this by hand** — quickstart turns the replay buffer on for you
-(25 seconds) the first time it configures OBS. One catch: OBS only creates the buffer when
-it starts up, so the very first time you'll see
+If OBS is already open with the WebSocket server switched off, quickstart asks you to
+quit OBS and carries on once you have: OBS saves its settings when it closes,
+so they can only be changed while it's shut. If OBS already has a WebSocket server set up,
+it's left exactly as it is and its password is reused.
 
-```
-⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup
-```
+To check it worked: the **Controls** panel in OBS should show **Stop Replay Buffer**.
 
-Quit OBS, open it again, run quickstart again, and you'll get `✓ Replay buffer started`.
-From then on it starts automatically every match day.
-
-To check: the **Controls** panel should have a **Start Replay Buffer** button. If it
-doesn't, the buffer isn't enabled and the steps below will fix it.
+Running OBS on a different computer, or would rather set it up yourself? Put
+`manage_obs = no` under `[OBS]` in `config.ini`, then do the steps below by hand.
 
 <details>
-<summary>Doing it manually (only if the above didn't work)</summary>
+<summary>Doing it manually (only with manage_obs = no, or if the above didn't work)</summary>
+
+**WebSocket server:**
+
+1. Open OBS
+2. Go to **OBS → Tools → WebSocket Server Settings**
+3. Tick **Enable WebSocket server**, port `4455`
+4. Tick **Enable Authentication** and set a password
+5. Copy that password into `config.ini` under `obs_password`
+6. Click OK
+
+**Replay buffer:** quickstart can still switch it on over the WebSocket, but OBS only
+creates the buffer when it starts. The first time, you'll see
+`⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup`:
+quit OBS, open it again, and run quickstart again. Or tick it yourself:
 
 1. OBS → **Preferences → Output** (Cmd+,)
 2. Set Output Mode to **Advanced**
@@ -205,21 +212,27 @@ doesn't, the buffer isn't enabled and the steps below will fix it.
 
 </details>
 
-### Output settings (optimised for Mac)
+### Video settings and bitrate — done for you
+
+Quickstart sets these every time it opens OBS:
+
+- **Canvas (Base (Canvas) Resolution): 1920×1080**, always. The overlay graphics are drawn at that
+  size, so any other canvas puts them in the wrong place.
+- **Output resolution and frame rate:** from your last upload-speed test (the control
+  panel's **Stream Health Check** runs one the first time it sees OBS). 1080p on a good
+  connection, 720p otherwise, at 30fps. Before the first test: 720p at 30fps.
+- **Bitrate:** from the same test, comfortably under your measured upload speed.
+
+To pin your own choices, set them in `config.ini` under `[Stream]` rather than in OBS
+(OBS's own settings get replaced next time quickstart runs): `output_resolution = 720p`
+or `1080p`, `fps = 25` or `30`, `bitrate_kbps = 2500`. Set `output_resolution = manual`
+or `bitrate_kbps = manual` to have them left alone entirely.
+
+### Encoder (the one OBS setting left to you)
 
 1. OBS → Preferences → Output → **Streaming** tab
-2. Encoder: **Apple VT H264 Hardware Encoder** (uses hardware — much faster)
-3. Rate Control: **CBR**
-4. Bitrate: **2500 Kbps**
-5. Click OK
-
-### Video settings
-
-1. OBS → Preferences → Video
-2. Base Resolution: **1920×1080**
-3. Output Resolution: **1280×720**
-4. FPS: **30**
-5. Click OK
+2. Video Encoder: **Apple VT H264 Hardware Encoder** (uses hardware — much faster)
+3. Click OK
 
 ### Add overlay browser source
 
@@ -380,17 +393,35 @@ Costs are a few pence per match. Without a key, everything else still works.
 
 ## Troubleshooting
 
+### OBS crashed during the match
+
+You shouldn't need to do anything. The server notices within a few seconds, reopens OBS
+(without the Safe Mode question), switches back to the Main scene, and restarts the stream
+if it was live. The black server window shows `⚠ OBS crashed — reopening it`. If OBS
+crashes three times inside half an hour, it stops reopening it and says so: something
+needs looking at (OBS → Help → Log Files).
+
+Closing OBS yourself is different. It stays closed, so you can shut down normally after
+the match.
+
+On a Mac this covers crashes only, not a frozen OBS (there's no reliable way for the
+server to tell). If OBS stops responding, Force Quit it (Option+Cmd+Esc); the server
+treats that as a crash and reopens it.
+
 ### "Cannot connect to OBS" — check Safe Mode first
 
-If OBS didn't shut down cleanly last time, it asks on startup:
+Quickstart opens OBS itself and skips this question, so the quickest fix is: quit OBS
+and run quickstart again. If you opened OBS yourself and it didn't shut down cleanly last
+time, it asks on startup:
 *"Run in Safe Mode (third-party plugins, scripting, and **WebSockets disabled**)?"*
 
 Safe Mode switches the WebSocket server off, so nothing here can reach OBS — no replays,
 no scene switching, no auto-setup — and the only symptom is "cannot connect". Quit OBS,
 open it again, and choose **Run in Normal Mode**.
 
-Otherwise: make sure OBS is open before running quickstart, and that the WebSocket
-password in `config.ini` matches OBS → Tools → WebSocket Server Settings (port 4455).
+With `manage_obs = no` in `config.ini`: make sure OBS is open before running quickstart,
+and that the WebSocket password in `config.ini` matches OBS → Tools → WebSocket Server
+Settings (port 4455).
 
 ### Port 5000 already in use / server won't start
 

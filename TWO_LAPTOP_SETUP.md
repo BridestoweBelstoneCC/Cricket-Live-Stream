@@ -30,10 +30,10 @@ no address to type, no token to copy.
   - **Windows or Mac, already running PCS Pro (so Python may already be
     there) or happy to install it:** get **Python 3** from
     [python.org](https://www.python.org/downloads/) (tick **"Add Python to
-    PATH"** on Windows) if it's not already there, then copy `scorer_agent.py`
-    + `Windows/start_scorer_agent.bat` (Windows) or `Mac/start_scorer_agent.sh`
-    (Mac) onto the scoring laptop, in the same folder — anywhere convenient,
-    the Desktop is fine.
+    PATH"** on Windows) if it's not already there, then copy `scorer_agent.py`,
+    `scoreboard.template` and `Windows/start_scorer_agent.bat` (Windows) or
+    `Mac/start_scorer_agent.sh` (Mac) onto the scoring laptop, in the same
+    folder — anywhere convenient, the Desktop is fine.
 
 ---
 
@@ -57,6 +57,12 @@ no address to type, no token to copy.
    ```
 
    That's it. **Leave the window open** for the whole match and forget about it.
+
+   The first time, it also puts the CricketStream scoreboard template into NV
+   Play's Templates folder and says so. If NV Play isn't using it yet, choose it
+   once: **Tools → Configuration → Scoreboard → Template File →
+   `scoreboard.template`**. (The `.exe` carries the template inside it; from
+   source, it uses the `scoreboard.template` copied alongside.)
 
    The first time, Windows may ask whether to allow it through the firewall
    (as **Python**, or as **CricketStreamScorerAgent** if you're using the exe).

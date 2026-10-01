@@ -311,6 +311,58 @@ def install_packages():
             f"  \"{python}\" -m pip install -r \"{req}\"")
     print("\n  [OK] Packages installed.")
 
+NVPLAY_DEFAULT_OUTPUT = ("Documents/Cricket Matches/_Scoreboards/Output",
+                         "OneDrive*/Documents/Cricket Matches/_Scoreboards/Output")
+
+def detect_pcs_folder():
+    """(folder, how) for NV Play's output folder on this machine, or (None, None).
+
+    how: "live" (being written right now), "stale" (holds a scoreboard file from before),
+    or "empty" (NV Play's standard output folder exists but has no file in it yet).
+    The search itself is scorer_agent's, which hunts the same folder on a scorer's
+    laptop; one list of places, kept in one file. Best-effort: any failure just means
+    the question gets asked the old way.
+    """
+    try:
+        import scorer_agent
+        folder, how = scorer_agent.autodetect_folder()
+        if folder:
+            return folder, how
+    except Exception:
+        pass
+    home = os.path.expanduser("~")
+    for pattern in NVPLAY_DEFAULT_OUTPUT:
+        for path in sorted(glob.glob(os.path.join(home, pattern))):
+            if os.path.isdir(path):
+                return os.path.normpath(path), "empty"
+    return None, None
+
+def install_nvplay_template(pcs_folder=""):
+    """NV Play on THIS laptop: copy scoreboard.template into its Templates folder, which
+    the setup guide used to have the club do by hand. Same functions the scorer's-laptop
+    agent uses for the same job. Silent when NV Play isn't here. Best-effort."""
+    try:
+        import scorer_agent
+        with open(os.path.join(BASE, scorer_agent.TEMPLATE_NAME), encoding="utf-8") as f:
+            text = f.read()
+        folder = scorer_agent.find_templates_folder(pcs_folder or None)
+        if not folder:
+            return None
+        result = scorer_agent.install_template(folder, text)
+    except Exception:
+        return None
+    if result in ("installed", "updated"):
+        print(f"\n  [OK] Put the scoreboard template in NV Play's Templates folder:")
+        print(f"       {os.path.join(folder, 'scoreboard.template')}")
+        print("       In NV Play: Tools -> Configuration -> Scoreboard -> Template File")
+        print("       -> choose scoreboard.template (once).")
+    return result
+
+def default_replay_folder():
+    # The same folder server.py falls back to (_default_replay_folder), so a club that
+    # accepts the default and one that leaves config.ini blank end up in the same place.
+    return os.path.join(os.path.expanduser("~"), "Videos", "Replays")
+
 def configure():
     heading("Club details")
     print("  These appear on the scorebar and graphics.\n")
@@ -340,7 +392,15 @@ def configure():
     print("    - Different networks, reached over Tailscale -> see BRIDGE.md")
     print("    - Two laptops on the same club wifi, found automatically -> see")
     print("      TWO_LAPTOP_SETUP.md\n")
-    pcs_folder = ask("PCS output folder")
+    found, how = detect_pcs_folder()
+    if found:
+        why = {"live": "NV Play is writing to it right now",
+               "stale": "it has a scoreboard file from an earlier match",
+               "empty": "it's NV Play's usual output folder (nothing in it yet)"}.get(how, "")
+        print(f"  Found one on this laptop:\n    {found}\n  ({why})")
+        pcs_folder = found if ask_yn("  Use this folder?", default=True) else ask("PCS output folder")
+    else:
+        pcs_folder = ask("PCS output folder")
 
     heading("Scorebar style")
     print("  The look of the score strip along the bottom of the stream. All four use")
@@ -359,8 +419,13 @@ def configure():
     print(f"  [OK] {scorebar_style.capitalize()}")
 
     heading("OBS")
-    obs_pw = ask("OBS WebSocket password")
-    replay_folder = ask("Replay buffer folder")
+    # No password question: quickstart switches OBS's WebSocket server on itself and
+    # writes the password into config.ini (obs_prep.py). Asking for it here meant a new
+    # club enabling it by hand in OBS first and copying it between the two.
+    print("  Nothing to set up in OBS — it's switched on for you on match day.")
+    print("  Replay clips are saved to this folder (press Enter for the default).\n")
+    obs_pw = ""
+    replay_folder = ask("Replay buffer folder", default=default_replay_folder())
 
     heading("Stream")
     yt_title = ask("YouTube title template", default="LIVE: {home} vs {away}")
@@ -500,6 +565,7 @@ def main():
         sys.exit(0)
 
     write_config(values)
+    install_nvplay_template(values.get("pcs_folder", ""))
 
     print("\n  [OK] Setup complete!\n")
     print("  Next steps:")

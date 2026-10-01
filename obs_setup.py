@@ -208,6 +208,56 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
             err = r.get("requestStatus",{}).get("comment","") if r else "no response"
             log_msg(f"ReplayClip source issue: {err}", "warn")
 
+    # ── Graphics on top, replay clip full-screen ───────────────
+    # OBS puts every newly added source on TOP of its scene. A camera added after this
+    # setup (the control panel's "Add camera to OBS") therefore covered the Overlay in
+    # Main and the ReplayClip in Replay — no scorebar, and a replay that showed the live
+    # camera — verified on OBS 32.1.1. Re-asserting the order every run also repairs an
+    # install where that already happened. The ReplayClip is fitted to the canvas because
+    # replays are recorded at the OUTPUT resolution (720p by default), so a clip played back
+    # at native size filled only the top-left corner.
+    for scene_name, source in (("Main", "Overlay"), ("Replay", "ReplayClip")):
+        items = request("GetSceneItemList", {"sceneName": scene_name})
+        lst = (items or {}).get("responseData", {}).get("sceneItems", [])
+        item = next((i for i in lst if i.get("sourceName") == source), None)
+        if not item:
+            continue
+        item_id = item.get("sceneItemId")
+        tr = (request("GetSceneItemTransform", {"sceneName": scene_name,
+                                                "sceneItemId": item_id}) or {}
+              ).get("responseData", {}).get("sceneItemTransform", {})
+        try:                # placement rules shared with the server's camera placement
+            from obs_prep import untouched_placement, fill_canvas_transform
+        except ImportError:
+            untouched_placement = None
+        if source == "ReplayClip" and untouched_placement and untouched_placement(tr):
+            vs = (request("GetVideoSettings") or {}).get("responseData", {})
+            request("SetSceneItemTransform", {
+                "sceneName": scene_name, "sceneItemId": item_id,
+                "sceneItemTransform": fill_canvas_transform(
+                    (vs.get("baseWidth") or 1920, vs.get("baseHeight") or 1080))})
+        # Any camera/video covering it is moved DOWN to just beneath it; nothing else moves,
+        # so a sponsor logo someone put above the scorebar stays there (obs_prep).
+        try:
+            from obs_prep import covering_pictures
+        except ImportError:
+            covering_pictures = None
+        moved = []
+        for _ in range(len(lst)):            # one camera per pass; re-read after each move
+            over = covering_pictures(lst, source) if covering_pictures else []
+            if not over:
+                break
+            mine = next(i for i in lst if i.get("sourceName") == source).get("sceneItemIndex", 0)
+            request("SetSceneItemIndex", {"sceneName": scene_name,
+                                          "sceneItemId": over[0].get("sceneItemId"),
+                                          "sceneItemIndex": mine})
+            moved.append(over[0].get("sourceName"))
+            items = request("GetSceneItemList", {"sceneName": scene_name})
+            lst = (items or {}).get("responseData", {}).get("sceneItems", [])
+        if moved:
+            log_msg(f"{', '.join(moved)} moved back under the {source} in {scene_name} "
+                    f"(it had covered it)", "ok")
+
     # ── Point OBS's recording/replay output at the configured folder ──────────
     # config.ini's replay_folder is where the server LOOKS for saved clips; without this,
     # OBS could be SAVING them somewhere else entirely and the replay would silently never
@@ -374,32 +424,72 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
     return True, log
 
 
-if __name__ == "__main__":
-    import configparser, os
+def setup_from_config(config_path, state_path=None, verbose=False, allow_restart=False):
+    """obs_setup() with everything read from config.ini — the one place that does it, for
+    quickstart, the control panel's "Start OBS" checklist button, and running this file.
 
+    A blank bitrate_kbps uses the last upload-speed test's recommendation (from
+    match_state.json at state_path), which also undoes a leftover quality downshift from
+    the last match; "manual" leaves OBS's bitrate alone; no test yet leaves it alone too.
+    """
+    import configparser
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
-    if os.path.exists(cfg_path):
-        cfg.read(cfg_path)
-
-    password      = cfg.get("OBS", "obs_password",   fallback="")
-    replay_folder = cfg.get("OBS", "replay_folder",  fallback="")
-    replay_folder = os.path.expanduser(replay_folder)
-    stream_key    = cfg.get("Stream", "youtube_stream_key", fallback="").strip()
     try:
-        bitrate_kbps = int(cfg.get("Stream", "bitrate_kbps", fallback="").strip() or 0)
+        cfg.read(config_path, encoding="utf-8")
+    except Exception:
+        pass
+    raw = cfg.get("Stream", "bitrate_kbps", fallback="").strip()
+    try:
+        bitrate_kbps = int(raw or 0)
     except ValueError:
         bitrate_kbps = 0
+    if not bitrate_kbps and raw.lower() not in ("manual", "off", "no") and state_path:
+        try:
+            import obs_prep
+            mbps = obs_prep.last_upload_mbps(state_path)
+            if mbps:
+                bitrate_kbps = obs_prep.recommend_stream_settings(mbps)[0]
+        except Exception:
+            pass
+    def run():
+        # Re-read: on a first run prepare_obs may have just written the password.
+        cfg.read(config_path, encoding="utf-8")
+        return obs_setup(
+            password      = cfg.get("OBS", "obs_password", fallback=""),
+            replay_folder = os.path.expanduser(cfg.get("OBS", "replay_folder", fallback="")),
+            stream_key    = cfg.get("Stream", "youtube_stream_key", fallback="").strip(),
+            bitrate_kbps  = bitrate_kbps,
+            verbose       = verbose,
+        )
 
+    ok, messages = run()
+
+    # First run on a brand-new OBS: the replay buffer has just been switched on, but OBS
+    # only builds outputs when it starts, so it can't run until OBS restarts. That used to
+    # be a "restart OBS once and run setup again" instruction for the operator; when we
+    # manage OBS, do it for them — close OBS cleanly (it saves the new scenes on the way
+    # out) and reopen it, which now starts the buffer itself. Never with anything on air:
+    # obs_setup refuses to touch a live OBS, and close_obs gives up if OBS asks to confirm.
+    if ok and allow_restart and any("wouldn't start yet" in m for m in messages):
+        try:
+            import obs_prep
+            if obs_prep.manage_obs_enabled(config_path) and obs_prep.close_obs():
+                obs_prep.prepare_obs(config_path, say=lambda m: None)
+                ok, again = run()
+                messages = messages + ["  ✓ Restarted OBS once so the replay buffer could "
+                                       "start (first run only)"] + again
+        except Exception as e:
+            messages.append(f"  ⚠ Couldn't restart OBS by itself ({e}) — restart it once")
+    return ok, messages
+
+
+if __name__ == "__main__":
+    here = os.path.dirname(os.path.abspath(__file__))
     print()
     print("OBS Auto-Setup — CricketStream Overlay")
     print("────────────────────────────────────────")
-    ok, messages = obs_setup(
-        password      = password,
-        replay_folder = replay_folder,
-        stream_key    = stream_key,
-        bitrate_kbps  = bitrate_kbps,
-    )
+    ok, messages = setup_from_config(os.path.join(here, "config.ini"),
+                                     os.path.join(here, "match_state.json"), verbose=True)
     print()
     if ok:
         print("  OBS is configured and ready.")

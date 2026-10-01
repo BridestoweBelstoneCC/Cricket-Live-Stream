@@ -333,7 +333,7 @@ _RATE_LIMITS = {
     "/commentary/test":        60,   # test button — 60 s cooldown
     "/report/generate":       120,   # AI match report — 2 min
     "/social/image/generate": 120,   # AI social graphic — 2 min
-    "/obs/stream_check":      300,   # runs real test recordings in OBS — 5 min cooldown
+    "/obs/stream_check":      300,   # a real upload-speed test uses data — 5 min cooldown
     "/agent/discover":          3,   # broadcasts on the LAN — short cooldown, not a heavy op,
                                       # just enough to stop a script (not a human clicking
                                       # "Find scorer laptop") from flooding the network
@@ -1601,6 +1601,7 @@ PORT       = 5000
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_state.json")
 MAX_CLIPS  = 100
 MAX_BODY_BYTES = 1024 * 1024   # 1 MB — every POST body is small JSON; cheap guard against junk
+SPONSOR_UPLOAD_MAX_BYTES = 8 * 1024 * 1024   # a logo exported from a phone; see /sponsor/upload
 
 DEFAULT_STATE = {
     "home_team":               "Home CC",
@@ -1752,17 +1753,49 @@ def load_state():
         print(f"  ⚠  state read failed ({e}); using last-good")
         return dict(_last_good_state) if _last_good_state else DEFAULT_STATE.copy()
 
+_state_write_lock = threading.Lock()
+_state_rmw_lock = threading.RLock()
+
+
+def update_state(change):
+    """Load the state, change it, save it — as one step. `change` mutates the dict in
+    place. save_state's own lock only covers the file write, so two threads doing
+    load→modify→save at once (a logo upload and a panel Save, say) could each write back a
+    stale copy of the other's keys, silently undoing one change. Returns the saved dict."""
+    with _state_rmw_lock:
+        s = load_state()
+        change(s)
+        save_state(s)
+        return s
+
+
+
 def save_state(s):
     # Atomic write: a reader (overlay polling /state) must never see a half-written file.
     # Write to a temp file on the same directory, then os.replace (atomic on POSIX & Windows).
+    #
+    # Serialised: every writer shares the one .tmp name, and the server writes from many
+    # threads (panel saves, the checklist's Start OBS job, logo uploads...). Two at once
+    # on Windows gave "Permission denied" on the .tmp, an unhandled error, and a dropped
+    # connection — found by two logo uploads landing together. The retry covers the other
+    # Windows-only failure: os.replace is refused while another thread has the state file
+    # open for reading, which the overlay's poll can be doing at that instant.
     global _last_good_state
     tmp = STATE_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(s, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, STATE_FILE)
-    _last_good_state = dict(s)
+    with _state_write_lock:
+        with open(tmp, "w") as f:
+            json.dump(s, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        for attempt in range(20):           # backs off to ~2s in all
+            try:
+                os.replace(tmp, STATE_FILE)
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(min(0.01 * (attempt + 1), 0.2))
+        _last_good_state = dict(s)
     try:
         stt = os.stat(STATE_FILE)
         with _state_cache_lock:
@@ -3158,17 +3191,10 @@ def _watchdog_tick():
     # laptop, so this just logs the transition instead of silently sitting stale all match.
     # A live manual scoring session outranks the PCS file in /live, so it counts as fresh —
     # otherwise a manual match day gets "feed has gone stale" warnings all afternoon.
+    # One shared rule for every feed consumer (score_feed_status: manual > agent >
+    # bridge/local), not a copy that can drift — see CLAUDE.md's precedence gotcha.
     try:
-        if manual_session_active():
-            fresh = True
-        else:
-            s = load_state()
-            if s.get("pcs_source", "local") == "agent":
-                fresh = bool(_agent_last_ok) and (now - _agent_last_ok) < 120
-            else:
-                pcs_dir  = effective_pcs_folder(s)
-                pcs_path = find_pcs_output_file(pcs_dir) if pcs_dir else None
-                fresh    = bool(pcs_path) and (now - os.path.getmtime(pcs_path)) < 120
+        fresh = score_feed_status(load_state(), now)[0]
     except Exception:
         fresh = None
     with _watchdog_lock:
@@ -4512,11 +4538,9 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None, extra
     deactivating and drifting on reconnect, same rule as the single-camera case, just
     generalized across more scenes). Returns (ok, message).
 
-    UNTESTED against real two-camera OBS hardware as of 2026-09-20 — the single-camera
-    path this extends from was verified against real OBS (see CHANGELOG v2.7.3); this
-    generalization has only been exercised by the test suite's mocked/no-OBS paths.
-    Confirm scene creation and cross-presence with a real second camera before relying on
-    it match day."""
+    Two-camera scene creation, cross-presence and stacking verified on a real OBS 32.1.1
+    on 2026-10-01 with two video files standing in for the cameras; not yet with two live
+    RTSP cameras, so a second feed's reconnect/drift behaviour is still unverified."""
     try:
         import websocket
     except ImportError:
@@ -4635,6 +4659,7 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None, extra
         # it, without disturbing one that's already correctly placed (position, transform,
         # enabled state all survive — CreateSceneItem is only called where it's missing).
         added_to = []
+        fresh = {scene} if not exists else set()   # CreateInput placed it in `scene`
         targets = [scene, replay_scene] + list(extra_scenes or [])
         for target in targets:
             if not target or target in added_to:
@@ -4654,12 +4679,120 @@ def obs_add_camera(rtsp_url, input_name=None, scene_name=None, state=None, extra
                                {"sceneName": target, "sourceName": name, "sceneItemEnabled": True})
             if (r2 or {}).get("d", {}).get("requestStatus", {}).get("result", False):
                 added_to.append(target)
+                fresh.add(target)
+
+        # Size and stacking. OBS adds a new source at its native size in the top-left
+        # corner, on TOP of everything else in the scene. Verified on OBS 32.1.1: a 720p
+        # camera sat in the corner of the 1920x1080 canvas, above the Overlay in Main
+        # (hiding every graphic) and above ReplayClip in Replay (so a replay showed the
+        # live camera instead). Placement an operator has adjusted by hand is left alone.
+        vs = _rdata(send_request(ws, "GetVideoSettings"))
+        canvas = (vs.get("baseWidth") or 1920, vs.get("baseHeight") or 1080)
+        overlay_exists = "Overlay" in [i.get("inputName")
+                                       for i in _rdata(inputs).get("inputs", [])]
+        for target in added_to:
+            _arrange_camera_item(lambda rt, rd=None: send_request(ws, rt, rd), _rdata,
+                                 target, name, canvas,
+                                 home=(target == scene), fresh=(target in fresh),
+                                 overlay_exists=overlay_exists)
         ws.close()
         if not added_to:
             return False, f"Updated '{name}' but could not place it in any scene"
         return True, f"'{name}' is set up in {', '.join(added_to)}"
     except Exception as e:
         return False, f"Could not reach OBS: {e}"
+
+
+def add_camera_from_state(which="1", posted_url=None, name=None, scene=None):
+    """Add/update camera 1 or 2 in OBS from the saved settings (or posted overrides).
+    Shared by Setup → Cameras' buttons and the checklist's "Add to OBS". Returns (ok, msg)."""
+    cfg = load_state()
+    # which=2 adds/updates the second (e.g. bowler-end) camera instead of the first
+    # — same obs_add_camera() call, just different state keys.
+    url_key, name_key, scene_key, default_scene, default_name = (
+        ("camera2_rtsp_url", "obs_camera2_name", "obs_bowler_scene",
+         "Main-Bowler", "Bowler End Camera") if which == "2" else
+        ("camera_rtsp_url", "obs_camera_name", "obs_main_scene",
+         "Main", "Cricket Camera"))
+    # If the field still shows the redacted sentinel (the operator loaded the panel
+    # without retyping the URL), fall back to the real stored value — otherwise this
+    # would try to add "••••••••" itself as the camera source.
+    posted_url = (posted_url or "").strip()
+    url = (cfg.get(url_key) or "").strip() if posted_url == SECRET_SENTINEL \
+          else (posted_url or cfg.get(url_key) or "").strip()
+    name  = name  or cfg.get(name_key)  or default_name
+    scene = scene or cfg.get(scene_key) or default_scene
+    # The OTHER camera's scene, if that camera is configured — ensures both cameras
+    # sit in both cameras' scenes (plus Replay), not just their own "home" scene.
+    if which == "2":
+        other_scene, other_url = cfg.get("obs_main_scene") or "Main", cfg.get("camera_rtsp_url")
+    else:
+        other_scene, other_url = cfg.get("obs_bowler_scene") or "Main-Bowler", cfg.get("camera2_rtsp_url")
+    extra = [other_scene] if (other_url or "").strip() else []
+    return obs_add_camera(url, name, scene, cfg, extra_scenes=extra)
+
+
+GRAPHICS_SOURCES = ("Overlay", "ReplayClip")   # must always sit above any camera
+
+
+def _fill_canvas_transform(canvas):
+    import obs_prep           # the one copy, shared with obs_setup.py's ReplayClip fit
+    return obs_prep.fill_canvas_transform(canvas)
+
+
+def _untouched_placement(tr):
+    import obs_prep
+    return obs_prep.untouched_placement(tr)
+
+
+def _arrange_camera_item(send_request, rdata, scene, name, canvas, home, fresh,
+                         overlay_exists):
+    """Fit a camera's scene item to the canvas and put it in the right place in the stack.
+
+    home: the scene this camera is shown in (Main, or the bowler-end scene). It goes
+    directly under the graphics, above anything else, so it's the camera you see. That
+    scene also gets the Overlay if it lacks it: the bowler-end scene used to be created
+    with cameras only, so cutting to it hid the scorebar.
+    Not home (Replay, the other camera's scene): it's only there to stay active (a source
+    missing from the live scene deactivates and drifts — see CLAUDE.md), so it goes to the
+    bottom, under the replay clip or the other camera.
+    """
+    def items():
+        lst = rdata(send_request("GetSceneItemList", {"sceneName": scene})).get("sceneItems", [])
+        return {i.get("sourceName"): i for i in lst}
+
+    if home and overlay_exists and "Overlay" not in items():
+        send_request("CreateSceneItem", {"sceneName": scene, "sourceName": "Overlay",
+                                         "sceneItemEnabled": True})
+    cur = items()
+    cam = cur.get(name)
+    if not cam:
+        return
+    cam_id = cam.get("sceneItemId")
+
+    tr = rdata(send_request("GetSceneItemTransform",
+                            {"sceneName": scene, "sceneItemId": cam_id})).get("sceneItemTransform", {})
+    if fresh or _untouched_placement(tr):
+        send_request("SetSceneItemTransform", {"sceneName": scene, "sceneItemId": cam_id,
+                                               "sceneItemTransform": _fill_canvas_transform(canvas)})
+
+    graphics = [cur[g] for g in GRAPHICS_SOURCES if g in cur]
+    covers_graphics = any(g.get("sceneItemIndex", 0) < cam.get("sceneItemIndex", 0)
+                          for g in graphics)
+    if not (fresh or covers_graphics):
+        return
+    if home:
+        # Directly beneath the lowest graphic: above any other camera sharing the scene,
+        # and without touching anything that sits above the graphics. (An earlier version
+        # lifted the graphics to the very top, which on a real install moved the club's
+        # sponsor-logo images underneath the scorebar.)
+        lowest = min((g.get("sceneItemIndex", 0) for g in graphics), default=None)
+        if lowest is not None and cam.get("sceneItemIndex", 0) > lowest:
+            send_request("SetSceneItemIndex", {"sceneName": scene, "sceneItemId": cam_id,
+                                               "sceneItemIndex": lowest})
+    else:
+        send_request("SetSceneItemIndex", {"sceneName": scene, "sceneItemId": cam_id,
+                                           "sceneItemIndex": 0})
 
 
 def _default_replay_folder():
@@ -5320,6 +5453,687 @@ def start_stream_monitor():
     threading.Thread(target=_stream_monitor_loop, daemon=True).start()
 
 
+# ── Sponsor airtime ────────────────────────────────────────────
+# How long the weekend sponsor's strap was actually on screen, for the club to pass on to
+# the sponsor. The overlay reports each show/hide (it's the only thing that knows: the
+# strap rides on whichever end-of-over panels the rotation picks, and those get skipped
+# or reordered). The server times the gap with its own clock, so a slow overlay can't
+# stretch it, and a lost "hide" adds at most SPONSOR_SHOW_MAX_SEC; it takes the sponsor's
+# name from state rather than from the request. Only time while the stream was LIVE is the headline figure; time on screen
+# before going live (a rehearsal, say) is kept separately and never presented as airtime.
+SPONSOR_AIRTIME_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "sponsor_airtime.json")
+SPONSOR_SHOW_MAX_SEC   = 12   # the panels it rides on last 5-9s (plus a fade). A missed
+                              # "hide" (overlay reloaded mid-panel, a failed beacon) is only
+                              # closed by the next "show" minutes later, so whatever this cap
+                              # is, it is added as phantom airtime — keep it near the longest
+                              # panel. It was 60, which over-reported to the sponsor.
+
+_sponsor_air      = {"open": None}
+_sponsor_air_lock = threading.Lock()
+
+
+def _load_airtime():
+    try:
+        with open(SPONSOR_AIRTIME_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_airtime(data):
+    tmp = SPONSOR_AIRTIME_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1)
+    os.replace(tmp, SPONSOR_AIRTIME_FILE)
+
+
+def sponsor_airtime_event(event, now=None):
+    """Record the strap appearing ("show") or going ("hide"). Never raises: this sits
+    behind an overlay beacon and must never be able to disturb the graphics."""
+    try:
+        now = now or time.time()
+        sponsor = (load_state().get("sponsor_name") or "").strip()
+        with _stream_mon_lock:
+            live = bool(_stream_mon["streaming"])
+        with _sponsor_air_lock:
+            data, changed = None, False
+            op = _sponsor_air["open"]
+            if op:
+                # Closes on "hide", and also on a second "show" with no hide in between.
+                secs = min(max(now - op["start"], 0.0), SPONSOR_SHOW_MAX_SEC)
+                data = _load_airtime()
+                rec = data.setdefault(op["day"], {}).setdefault(op["sponsor"], {
+                    "on_air_sec": 0.0, "on_air_shows": 0,
+                    "off_air_sec": 0.0, "off_air_shows": 0})
+                # Live at either end counts: the stream monitor polls every 15s, so a
+                # strap shown just as the stream went live shouldn't fall through.
+                key = "on_air" if (op["on_air"] or live) else "off_air"
+                rec[key + "_sec"] = round(rec[key + "_sec"] + secs, 1)
+                rec[key + "_shows"] += 1
+                rec["last"] = now
+                _sponsor_air["open"] = None
+                changed = True
+            if event == "show" and sponsor:
+                _sponsor_air["open"] = {"sponsor": sponsor[:100], "start": now, "on_air": live,
+                                        "day": datetime.date.fromtimestamp(now).isoformat()}
+            if changed:
+                _save_airtime(data)
+    except Exception as e:
+        print(f"  ✗  Sponsor airtime not recorded: {e}")
+
+
+def _fmt_duration(secs):
+    secs = int(round(secs))
+    m, s = divmod(secs, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h} hr {m} min"
+    return f"{m} min {s} s" if m else f"{s} s"
+
+
+def sponsor_airtime_summary(day=None):
+    """Totals for one day (today by default), plus a ready-to-send line per sponsor."""
+    day = day or datetime.date.today().isoformat()
+    data = _load_airtime()
+    out = {"date": day, "days": sorted(data, reverse=True)[:30], "sponsors": []}
+    for name, rec in sorted(data.get(day, {}).items()):
+        on, shows = rec.get("on_air_sec", 0.0), rec.get("on_air_shows", 0)
+        out["sponsors"].append({
+            "sponsor": name, "on_air_sec": on, "on_air_shows": shows,
+            "off_air_sec": rec.get("off_air_sec", 0.0),
+            "off_air_shows": rec.get("off_air_shows", 0),
+            "line": (f"{name} was on screen for {_fmt_duration(on)} of the live stream, "
+                     f"across {shows} appearance{'s' if shows != 1 else ''}."
+                     if shows else f"{name} wasn't on screen while the stream was live."),
+        })
+    return out
+
+
+# ── Match-day checklist ────────────────────────────────────────
+# The control panel's checklist: every item DETECTED here, never ticked by hand, and each
+# with the button that does that step where one can (start OBS, add the camera, start the
+# replay buffer, go live). It used to be eight checkboxes saved in the browser, most of
+# which only remembered that someone had clicked them.
+_checklist_job      = {"action": None, "running": False, "ok": None, "messages": [],
+                       "finished": None}
+_checklist_job_lock = threading.Lock()
+
+_MEDIA_STATE = {"OBS_MEDIA_STATE_PLAYING": "playing", "OBS_MEDIA_STATE_OPENING": "connecting",
+                "OBS_MEDIA_STATE_BUFFERING": "buffering", "OBS_MEDIA_STATE_PAUSED": "paused",
+                "OBS_MEDIA_STATE_STOPPED": "stopped", "OBS_MEDIA_STATE_ENDED": "ended",
+                "OBS_MEDIA_STATE_ERROR": "error", "OBS_MEDIA_STATE_NONE": "no picture"}
+
+
+def score_feed_status(s, now=None):
+    """(fresh, detail) for whichever score source is in use — manual scoring outranks
+    the PCS file, then agent / bridge / local, the same precedence /live applies."""
+    now = now or time.time()
+    if manual_session_active():
+        return True, "Scoring by hand on the /scoring page."
+    if s.get("pcs_source", "local") == "agent":
+        if _agent_last_ok and now - _agent_last_ok < 120:
+            return True, "Scorer's laptop connected and sending."
+        return False, "Can't see the scorer's laptop yet."
+    folder = effective_pcs_folder(s)
+    if not folder:
+        return False, "No scoreboard folder set (Setup → Scoring source)."
+    path = find_pcs_output_file(folder)
+    if not path:
+        return False, "No scoreboard file yet — NV Play writes it after the first ball."
+    age = now - os.path.getmtime(path)
+    if age < 120:
+        return True, f"Scoreboard updated {int(age)}s ago."
+    return False, f"Last scoreboard update {_fmt_duration(age)} ago — has the scorer started?"
+
+
+def checklist_status():
+    """The checklist as the panel shows it. One OBS connection per call, and none at all
+    if OBS's port is shut (so an OBS that's closed answers instantly, not after a timeout)."""
+    import obs_prep
+    st, now = load_state(), time.time()
+    host = str(st.get("obs_host", "localhost")).strip()
+    local = host in ("localhost", "127.0.0.1", "")
+    port = int(st.get("obs_port", 4455) or 4455)
+    cam_url = (st.get("camera_rtsp_url") or "").strip()
+    cam_name = (st.get("obs_camera_name") or "Cricket Camera").strip()
+    with _checklist_job_lock:
+        job = dict(_checklist_job, messages=list(_checklist_job["messages"]))
+    starting = job["running"] and job["action"] == "start_obs"
+
+    res = None
+    if not local or obs_prep.port_open(port):
+        reqs = [("GetReplayBufferStatus", None), ("GetStreamStatus", None)]
+        if cam_url:
+            reqs.append(("GetMediaInputStatus", {"inputName": cam_name}))
+        res = _obs_call(st, reqs, timeout=4)
+    obs_ok = res is not None
+
+    items = []
+
+    def item(id_, label, state, detail, action=None, action_label=None):
+        items.append({"id": id_, "label": label, "state": state, "detail": detail,
+                      "action": action, "action_label": action_label})
+
+    if obs_ok:
+        item("obs", "OBS", "done", "Open and connected.")
+    elif starting:
+        item("obs", "OBS", "busy", (job["messages"] or ["Starting OBS…"])[-1])
+    elif not local:
+        item("obs", "OBS", "todo", f"Can't reach OBS on {host}:{port}. It's on another "
+             "computer, so it has to be started there.")
+    elif obs_prep.obs_running():
+        item("obs", "OBS", "todo", "Open but not answering — it may be asking about Safe "
+             "Mode. Close it on the laptop, then press Start OBS.", "start_obs", "Start OBS")
+    else:
+        item("obs", "OBS", "todo", "Not open.", "start_obs", "Start OBS")
+
+    if not cam_url:
+        item("camera", "Camera", "na", "No camera address set (Setup → Cameras). Fine if "
+             "you've added your camera in OBS yourself.")
+    elif not obs_ok:
+        item("camera", "Camera", "todo", "Waiting for OBS.")
+    else:
+        media = res[2] if len(res) > 2 else None
+        if media is None:
+            item("camera", "Camera", "todo", "Not in OBS yet.", "add_camera", "Add to OBS")
+        else:
+            state = _MEDIA_STATE.get(media.get("mediaState"), media.get("mediaState") or "unknown")
+            if state == "playing":
+                item("camera", "Camera", "done", "Picture coming in.")
+            else:
+                item("camera", "Camera", "todo", f"In OBS but {state} — check the camera is "
+                     "on and on the network.", "add_camera", "Reconnect")
+
+    if not obs_ok:
+        item("replay", "Replay buffer", "todo", "Waiting for OBS.")
+    elif (res[0] or {}).get("outputActive"):
+        item("replay", "Replay buffer", "done", "Running — replays ready.")
+    else:
+        item("replay", "Replay buffer", "todo", "Not running, so no replays.",
+             "start_replay", "Start replay buffer")
+
+    away = (st.get("away_team") or "").strip()
+    if away and away != "Opposition CC":
+        item("match", "Today's match", "done", f"vs {away}.")
+    elif (st.get("playcricket_api_key") or "").strip():
+        item("match", "Today's match", "todo", "Opposition not set yet.",
+             "fetch_match", "Fetch today's match")
+    else:
+        item("match", "Today's match", "todo", "Opposition not set — type it in Match day → Match.")
+
+    try:
+        fresh, detail = score_feed_status(st, now)
+    except Exception as e:
+        fresh, detail = False, f"Couldn't check the score feed: {e}"
+    if fresh:
+        item("scorer", "Scorer feed", "done", detail)
+    elif st.get("pcs_source") == "agent":
+        item("scorer", "Scorer feed", "todo", detail, "find_agent", "Find scorer laptop")
+    else:
+        item("scorer", "Scorer feed", "todo", detail)
+
+    if obs_ok and (res[1] or {}).get("outputActive"):
+        item("live", "Live on YouTube", "done", "Streaming.")
+    elif obs_ok:
+        item("live", "Live on YouTube", "todo", "Not live yet.", "go_live", "Go live")
+    else:
+        item("live", "Live on YouTube", "todo", "Waiting for OBS.")
+
+    return {"items": items, "job": job}
+
+
+def _checklist_run_start_obs():
+    """Background job: get OBS ready exactly the way quickstart does — obs_prep (WebSocket
+    on, replay buffer, video, encoder, open OBS) then obs_setup (scenes, overlay, stream
+    key) — reporting each step into the job's messages for the panel."""
+    import obs_prep
+    import obs_setup as _obs_setup
+    msgs = []
+
+    def say(m):
+        m = (m or "").strip()
+        if m:
+            msgs.append(m.replace("[OK] ", "").replace("[!!] ", ""))
+            with _checklist_job_lock:
+                _checklist_job["messages"] = msgs[-12:]
+
+    ok = False
+    try:
+        cfg_path = _config_ini_path()
+        if obs_prep.manage_obs_enabled(cfg_path):
+            obs_prep.prepare_obs(cfg_path, say=say)
+        # prepare_obs may have just written a NEW WebSocket password into config.ini; the
+        # server's copy in state has to follow, or every _obs_call after this fails auth.
+        # Only when we manage OBS (then config.ini holds OBS's real password) and only a
+        # non-blank one: with manage_obs = no, or nothing in config.ini, the password typed
+        # into the panel is the working one, and copying "" over it broke every OBS call.
+        pw = obs_prep._read_config_value(cfg_path, "OBS", "obs_password")
+        if obs_prep.manage_obs_enabled(cfg_path) and pw:
+            update_state(lambda s: s.__setitem__("obs_password", pw))
+        say("Setting up scenes and the overlay…")
+        ok, log = _obs_setup.setup_from_config(cfg_path, STATE_FILE, allow_restart=True)
+        for line in log:
+            say(line.replace("✓", "").replace("⚠", "").replace("✗", ""))
+        say("OBS is ready." if ok else "OBS setup didn't finish — see above.")
+    except Exception as e:
+        say(f"Couldn't start OBS: {e}")
+    with _checklist_job_lock:
+        _checklist_job.update({"running": False, "ok": ok, "finished": time.time()})
+
+
+def checklist_action(action):
+    """Do one checklist step. Returns (http_status, body)."""
+    st = load_state()
+    if action == "start_obs":
+        with _checklist_job_lock:
+            if _checklist_job["running"]:
+                return 409, {"ok": False, "error": "Already starting OBS."}
+            _checklist_job.update({"action": action, "running": True, "ok": None,
+                                   "messages": ["Starting OBS…"], "finished": None})
+        threading.Thread(target=_checklist_run_start_obs, daemon=True).start()
+        return 202, {"ok": True, "started": True}
+    if action == "start_replay":
+        r = _obs_call(st, [("StartReplayBuffer", None)], timeout=8)
+        if r is None:
+            return 200, {"ok": False, "error": "Couldn't reach OBS."}
+        if r[0] is None:      # OBS answered, and said no
+            return 200, {"ok": False, "error": "OBS wouldn't start the replay buffer. On a "
+                         "brand-new OBS it needs one restart first: press Start OBS."}
+        return 200, {"ok": True}
+    if action == "add_camera":
+        ok, msg = add_camera_from_state("1")
+        return 200, {"ok": ok, "message": msg}
+    if action == "go_live":
+        r = _obs_call(st, [("GetStreamStatus", None)], timeout=5)
+        if r is None:
+            return 200, {"ok": False, "error": "Couldn't reach OBS."}
+        if (r[0] or {}).get("outputActive"):
+            return 200, {"ok": True, "message": "Already live."}
+        r = _obs_call(st, [("StartStream", None)], timeout=8)
+        if r is None or r[0] is None:
+            return 200, {"ok": False, "error": "OBS wouldn't start the stream — check the "
+                         "stream key (OBS → Settings → Stream)."}
+        return 200, {"ok": True, "message": "Going live…"}
+    return 400, {"ok": False, "error": f"Unknown action: {action}"}
+
+
+# ── Sponsor logo upload ────────────────────────────────────────
+# The weekend sponsor's logo used to mean copying a file into sponsors/ on the streaming
+# laptop by hand — awkward with the panel open on a phone at the ground. The panel now
+# sends the image itself; it's saved under the next free numeric ID and that ID becomes
+# the sponsor image straight away.
+SPONSOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors")
+
+# Judged by the file's first bytes, never its name or the browser's claimed type. No SVG:
+# an SVG can carry script, and these are served from this origin.
+_IMAGE_MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"),
+                (b"GIF87a", "gif"), (b"GIF89a", "gif"))
+
+
+def sniff_image(data):
+    """The file extension for an accepted image, or None."""
+    for magic, ext in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return ext
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+_sponsor_upload_lock = threading.Lock()
+
+SPONSOR_IMAGE_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
+
+
+def find_sponsor_image(sponsor_id):
+    """Path of sponsors/<id>.<ext> for a raster image, or None. The id is reduced to a
+    bare file name first, so it can't point outside the folder."""
+    name = os.path.basename(str(sponsor_id or "").replace("..", "").replace("/", "")
+                            .replace("\\", "").replace(":", "")).strip()
+    if not name:
+        return None
+    for ext in SPONSOR_IMAGE_EXTS:
+        path = os.path.join(SPONSOR_DIR, f"{name}.{ext}")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def sponsor_transparent_version(sponsor_id, mode):
+    """(PIL image, None) for a transparent-background version of a sponsor logo, or
+    (None, reason). Nothing is saved."""
+    import logo_bg
+    from PIL import Image
+    if mode not in logo_bg.MODES:
+        return None, "Unknown mode."
+    path = find_sponsor_image(sponsor_id)
+    if not path:
+        return None, "No image with that ID in the sponsors folder."
+    try:
+        with Image.open(path) as im:
+            out, _removed, why = logo_bg.remove_background(im, mode)
+    except Exception as e:
+        return None, f"Couldn't read that image ({e})."
+    return out, why
+
+
+def save_transparent_sponsor(sponsor_id, mode):
+    """Save the chosen transparent version as a NEW image (the original is kept, so
+    Undo is just going back to its ID) and make it the sponsor image. (ok, body)."""
+    out, why = sponsor_transparent_version(sponsor_id, mode)
+    if out is None:
+        return False, {"ok": False, "error": why}
+    buf = io.BytesIO()
+    out.save(buf, "PNG", optimize=True)
+    previous = str(sponsor_id)
+    with _sponsor_upload_lock:
+        new_id = _save_sponsor_logo_locked(buf.getvalue(), "png")
+    return True, {"ok": True, "sponsor_id": new_id, "previous_id": previous}
+
+
+def save_sponsor_logo(data):
+    """Save an uploaded logo as sponsors/<next free number>.<ext> and make it the
+    sponsor image. Returns (ok, id_or_error). Locked: two uploads at once would otherwise
+    both pick the same "next free" number and the second would overwrite the first."""
+    ext = sniff_image(data)
+    if not ext:
+        return False, "That isn't a PNG, JPEG, WebP or GIF image."
+    with _sponsor_upload_lock:
+        return True, _save_sponsor_logo_locked(data, ext)
+
+
+def _save_sponsor_logo_locked(data, ext):
+    os.makedirs(SPONSOR_DIR, exist_ok=True)
+    taken = set()
+    for f in os.listdir(SPONSOR_DIR):
+        stem = os.path.splitext(f)[0]
+        if stem.isdigit():
+            taken.add(int(stem))
+    new_id = str(max(taken, default=0) + 1)
+    path = os.path.join(SPONSOR_DIR, f"{new_id}.{ext}")
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    update_state(lambda s: s.__setitem__("sponsor_id", new_id))
+    return new_id
+
+
+# ── OBS crash recovery ─────────────────────────────────────────
+# If OBS crashes mid-match, nobody may be at the laptop to reopen it, and reopening it from
+# the desktop icon stops on OBS's "Run in Safe Mode?" prompt anyway (Safe Mode skips the
+# WebSocket plugin, so even answering it wrong breaks everything here). This reopens it the
+# same way quickstart does (obs_prep: clear the crash marker, launch, wait for the
+# WebSocket), puts the Main scene back, and restarts the stream if it was live.
+#
+# Crash vs. closed on purpose is OBS's own call, not a guess: a clean exit deletes its
+# .sentinel/run_* marker, a crash or force-close leaves it. So closing OBS at the end of
+# the match never makes it pop back up. Polled every few seconds rather than on the 90s
+# watchdog: every second OBS is down, the stream is down.
+OBS_GUARD_POLL_SEC     = 5
+OBS_GUARD_MAX_RESTARTS = 3        # within OBS_GUARD_WINDOW_SEC; a crash loop needs a human
+OBS_GUARD_WINDOW_SEC   = 1800
+OBS_GUARD_STARTUP_SEC  = 45
+# Frozen ("Not Responding") for this long before it's treated as dead. Long enough that a
+# slow start or a heavy scene switch never qualifies; short against a match.
+OBS_FREEZE_SEC         = 60
+OBS_FREEZE_RECHECK_SEC = 30       # frozen window, stream still flowing: look again this often
+
+_obs_guard = {"armed": False, "streaming": False, "restarts": [], "gave_up": False,
+              "last_event": None, "enabled": None, "hung_since": None,
+              "freeze_checked": None}
+_obs_guard_lock = threading.Lock()
+
+
+def _obs_guard_enabled():
+    """config.ini [OBS] manage_obs (default yes), and only for an OBS on this machine —
+    a process check can't see an OBS on another computer, nor relaunch it."""
+    import obs_prep
+    if not obs_prep.manage_obs_enabled(_config_ini_path()):
+        return False
+    return str(load_state().get("obs_host", "localhost")).strip() in ("localhost", "127.0.0.1", "")
+
+
+def _obs_guard_event(what):
+    with _obs_guard_lock:
+        _obs_guard["last_event"] = {"time": time.time(), "what": what}
+
+
+def _obs_is_streaming(st):
+    """True/False from OBS itself, or None if it didn't answer."""
+    r = _obs_call(st, [("GetStreamStatus", None)], timeout=3)
+    if r is None or r[0] is None:
+        return None
+    return bool(r[0].get("outputActive"))
+
+
+def _obs_stream_flowing(st):
+    """Is OBS still sending the stream? Two readings a few seconds apart; True only if it's
+    live AND the byte count moved. Anything else (not live, no answer, a stalled count) is
+    "can't confirm", which is all a frozen OBS gets the benefit of the doubt for."""
+    first = _obs_call(st, [("GetStreamStatus", None)], timeout=5)
+    if not first or not first[0] or not first[0].get("outputActive"):
+        return False
+    time.sleep(5)
+    second = _obs_call(st, [("GetStreamStatus", None)], timeout=5)
+    if not second or not second[0] or not second[0].get("outputActive"):
+        return False
+    return (second[0].get("outputBytes") or 0) > (first[0].get("outputBytes") or 0)
+
+
+def _obs_freeze_check(st, now):
+    """Called while OBS is running. Returns "frozen_killed", "frozen_streaming" or None.
+
+    Kills only when BOTH: Windows says OBS's window has been Not Responding for
+    OBS_FREEZE_SEC, AND the stream isn't visibly sending. A frozen window over a stream
+    that's still going out is left alone: encoding runs on its own threads, so the viewers
+    may see nothing wrong, and killing OBS would turn that into a real outage.
+    """
+    import obs_prep
+    with _obs_guard_lock:
+        pids = _obs_guard.get("pids")
+    if not pids:
+        pids = obs_prep.obs_pids()
+    hung = obs_prep.obs_window_hung(pids=pids)
+    with _obs_guard_lock:
+        # Keep the ids while they still find OBS's windows; drop them when they don't
+        # (OBS restarted with new ids), so the next check looks them up again.
+        _obs_guard["pids"] = pids if hung is not None else None
+        if not hung:
+            if _obs_guard["hung_since"] is not None:
+                print("  ✓  OBS is responding again")
+            _obs_guard["hung_since"] = None
+            _obs_guard["freeze_checked"] = None
+            return None
+        if _obs_guard["hung_since"] is None:
+            _obs_guard["hung_since"] = now
+            print("  ⚠  OBS is not responding — watching it")
+            return None
+        frozen_for = now - _obs_guard["hung_since"]
+        checked = _obs_guard["freeze_checked"]
+    if frozen_for < OBS_FREEZE_SEC:
+        return None
+    if checked is not None and now - checked < OBS_FREEZE_RECHECK_SEC:
+        return "frozen_streaming"
+    if _obs_stream_flowing(st):
+        with _obs_guard_lock:
+            first_time = _obs_guard["freeze_checked"] is None
+            _obs_guard["freeze_checked"] = now
+        if first_time:
+            print("  ⚠  OBS's window is frozen, but the stream is still going out — leaving "
+                  "it alone. Closing OBS would stop the stream.")
+            _obs_guard_event("OBS window frozen; stream still flowing, left alone")
+        return "frozen_streaming"
+    print(f"  ⚠  OBS has been frozen for {int(frozen_for)}s and isn't streaming — "
+          f"closing it so it can be reopened")
+    obs_prep.kill_obs()
+    with _obs_guard_lock:
+        _obs_guard["hung_since"] = None
+        _obs_guard["freeze_checked"] = None
+    _obs_guard_event("OBS frozen — force-closed for reopening")
+    return "frozen_killed"
+
+
+def _obs_guard_tick(now=None):
+    """One check. Returns what it did ("armed", "closed", "restarted", "restart_failed",
+    "gave_up", "frozen_killed", "frozen_streaming") or None, so tests can drive it
+    without threads."""
+    import obs_prep
+    now = now or time.time()
+
+    # Stand aside while the checklist's Start OBS job runs: on a first run it closes OBS
+    # cleanly and reopens it on purpose, and the guard reading that close as "closed
+    # normally" would disarm and switch the update check back on mid-launch.
+    with _checklist_job_lock:
+        if _checklist_job["running"]:
+            return None
+
+    st = load_state()
+    port = int(st.get("obs_port", 4455) or 4455)
+
+    # The port answering is proof enough of a running OBS. The process check (a tasklist
+    # spawn) is only needed once armed — to tell a dead OBS from one whose WebSocket is
+    # merely busy — not every few seconds for an OBS that was never there.
+    with _obs_guard_lock:
+        armed = _obs_guard["armed"]
+    port_up = obs_prep.port_open(port)
+    running = port_up or (armed and obs_prep.obs_running())
+    if running:
+        with _obs_guard_lock:
+            first = not _obs_guard["armed"]
+            _obs_guard["armed"] = True
+        # Remember whether it is streaming, asked of OBS itself on every check: the stream
+        # monitor's flag can be 15s old, so an operator who pressed Stop Streaming just
+        # before a crash would have been put back on air. Falls back to the monitor if OBS
+        # doesn't answer; never overwritten by "not reachable", or a crash would erase the
+        # "it WAS live" this needs to restore.
+        live = _obs_is_streaming(st) if port_up else None
+        if live is None:
+            with _stream_mon_lock:
+                if _stream_mon["reachable"]:
+                    live = bool(_stream_mon["streaming"])
+        if live is not None:
+            with _obs_guard_lock:
+                _obs_guard["streaming"] = live
+        if first:
+            print("  ✓  OBS crash recovery: watching OBS")
+            return "armed"
+        # A force-close leaves OBS's crash marker, so the next tick takes the crash path
+        # below: reopened, scene reset, stream restarted if it was live, same 3-in-30 cap.
+        return _obs_freeze_check(st, now)
+
+    with _obs_guard_lock:
+        if not _obs_guard["armed"]:
+            return None        # never seen OBS this session — not ours to start
+        was_streaming = _obs_guard["streaming"]
+
+    cfg_dir = obs_prep.obs_config_dir()
+    sentinel = os.path.join(cfg_dir, ".sentinel")
+    try:
+        crashed = any(n.startswith("run_") for n in os.listdir(sentinel))
+    except OSError:
+        crashed = False
+    if not crashed:
+        with _obs_guard_lock:
+            _obs_guard["armed"] = False
+            _obs_guard["streaming"] = False
+        print("  ⚠  OBS was closed (normally) — not reopening it. Run quickstart again, "
+              "or open OBS yourself, to carry on.")
+        _obs_guard_event("OBS closed normally — left closed")
+        # The one moment that's both after the match and safe to edit OBS's settings
+        # (closed, so it won't write over them): put its update check back.
+        try:
+            if obs_prep.resume_update_check(cfg_dir):
+                print("  ✓  OBS's update check is back on")
+        except Exception:
+            pass
+        return "closed"
+
+    with _obs_guard_lock:
+        _obs_guard["restarts"] = [t for t in _obs_guard["restarts"]
+                                  if now - t < OBS_GUARD_WINDOW_SEC]
+        if len(_obs_guard["restarts"]) >= OBS_GUARD_MAX_RESTARTS:
+            _obs_guard["armed"] = False
+            _obs_guard["gave_up"] = True
+            gave_up = True
+        else:
+            _obs_guard["restarts"].append(now)
+            attempt = len(_obs_guard["restarts"])
+            gave_up = False
+    if gave_up:
+        print(f"  ✗  OBS has crashed {OBS_GUARD_MAX_RESTARTS} times in "
+              f"{OBS_GUARD_WINDOW_SEC // 60} minutes — no longer reopening it automatically. "
+              f"Something needs a human look (OBS's log: Help → Log Files).")
+        _obs_guard_event("OBS keeps crashing — gave up reopening it")
+        return "gave_up"
+
+    exe = obs_prep.find_obs()
+    if not exe:
+        _obs_guard_event("OBS crashed but its program couldn't be found to reopen it")
+        return "restart_failed"
+    print(f"  ⚠  OBS crashed{' mid-stream' if was_streaming else ''} — reopening it "
+          f"(attempt {attempt}/{OBS_GUARD_MAX_RESTARTS})")
+    obs_prep.clear_crash_sentinel(cfg_dir)
+    try:
+        obs_prep.launch_obs(exe, obs_prep.launch_args(cfg_dir))
+    except OSError as e:
+        _watchdog_log_fix(f"OBS crashed and couldn't be reopened: {e}")
+        _obs_guard_event(f"reopen failed: {e}")
+        return "restart_failed"
+    if not obs_prep.wait_for_websocket(port, timeout=OBS_GUARD_STARTUP_SEC):
+        _watchdog_log_fix("OBS crashed and was reopened, but isn't answering yet")
+        _obs_guard_event("reopened, not answering")
+        return "restart_failed"
+    time.sleep(3)    # past "port open" to "scene collection loaded"
+
+    # The replay buffer is started by obs_prep's launch flag. Scene: OBS restores whichever
+    # was live at the crash, which could be mid-replay. Stream: only if it WAS live — a
+    # crash before kick-off must not put the club on air. Key-based streaming means
+    # YouTube picks the same broadcast back up.
+    requests = [("SetCurrentProgramScene", {"sceneName": st.get("obs_main_scene", "Main")})]
+    if was_streaming:
+        requests.append(("StartStream", None))
+    _obs_call(st, requests, timeout=10)
+    what = "OBS crashed — reopened" + (" and the stream restarted" if was_streaming else "")
+    _watchdog_log_fix(what)
+    _obs_guard_event(what)
+    return "restarted"
+
+
+def _obs_guard_loop():
+    while True:
+        try:
+            _obs_guard_tick()
+        except Exception as e:
+            print(f"  ✗  OBS crash recovery check failed (will retry): {e}")
+        time.sleep(OBS_GUARD_POLL_SEC)
+
+
+def start_obs_guard():
+    enabled = _obs_guard_enabled()
+    with _obs_guard_lock:
+        _obs_guard["enabled"] = enabled
+    if enabled:
+        threading.Thread(target=_obs_guard_loop, daemon=True).start()
+
+
+def obs_guard_status():
+    with _obs_guard_lock:
+        return {
+            "enabled":  _obs_guard["enabled"],
+            "watching": _obs_guard["armed"],
+            "was_streaming": _obs_guard["streaming"],
+            "restarts_recent": len([t for t in _obs_guard["restarts"]
+                                    if time.time() - t < OBS_GUARD_WINDOW_SEC]),
+            "gave_up":  _obs_guard["gave_up"],
+            "frozen_for_sec": (int(time.time() - _obs_guard["hung_since"])
+                               if _obs_guard["hung_since"] else None),
+            "last_event": _obs_guard["last_event"],
+        }
+
+
 def stream_monitor_status():
     with _stream_mon_lock:
         recent = list(_stream_mon["samples"][-4:])
@@ -5379,17 +6193,10 @@ def get_upload_mbps(state, force=False):
     return mbps, True
 
 def _recommend_bitrate_and_resolution(upload_mbps):
-    """Standard streaming guidance: keep bitrate comfortably under measured upload speed (25%
-    headroom) so real-world jitter doesn't cause buffering, then pick a resolution/fps tier
-    that bitrate can actually support well."""
-    safe_kbps = int(upload_mbps * 1000 * 0.75)
-    if safe_kbps < 1500:
-        return max(safe_kbps, 800), "720p", 30, "Upload speed is limited — 720p30 keeps quality watchable without buffering."
-    if safe_kbps < 2800:
-        return safe_kbps, "720p", 30, "Enough headroom for a clean 720p30 stream."
-    if safe_kbps < 4500:
-        return min(safe_kbps, 4000), "1080p", 30, "Good enough for 1080p30 — the standard for this project."
-    return min(safe_kbps, 6000), "1080p", 30, "Plenty of headroom for a strong 1080p30 stream (60fps rarely helps for cricket — the action is slower-moving than most sports)."
+    """(kbps, resolution, fps, note) for a measured upload speed. Lives in obs_prep so
+    quickstart applies exactly what /obs/stream_check shows — one table, not two."""
+    import obs_prep
+    return obs_prep.recommend_stream_settings(upload_mbps)
 
 def obs_bitrate_sanity_check(state):
     """
@@ -5439,190 +6246,6 @@ def obs_bitrate_sanity_check(state):
                  f"from a previous match. Check OBS Settings → Output before going live."
                 ) if suspicious else "",
     }
-
-def obs_stream_health_check(state, test_seconds=8):
-    """Connects to OBS, refuses to touch anything if a real stream/recording is already live,
-    then runs one or two short throwaway test recordings to measure actual encoder
-    performance (dropped/skipped frames) rather than trusting hardware specs alone. Restores
-    whatever encoder was configured before returning, always. Returns a result dict."""
-    try:
-        import websocket
-    except ImportError:
-        return {"ok": False, "error": "websocket-client not installed — run: pip install websocket-client"}
-
-    host     = state.get("obs_host", "localhost")
-    port     = state.get("obs_port", 4455)
-    password = state.get("obs_password", "")
-    ws_url   = f"ws://{host}:{port}"
-    mid = [0]
-    def nid():
-        mid[0] += 1
-        return str(mid[0])
-    def send_msg(ws, op, data=None):
-        ws.send(json.dumps({"op": op, "d": data or {}}))
-    def wait_for_op(ws, target, timeout=6):
-        ws.settimeout(timeout)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                raw = ws.recv()
-                if not raw: continue
-                msg = json.loads(raw)
-                if msg.get("op") == target:
-                    return msg
-            except Exception:
-                break
-        return None
-    def send_request(ws, rt, rd=None, timeout=10):
-        rid = nid()
-        payload = {"requestType": rt, "requestId": rid}
-        if rd is not None:
-            payload["requestData"] = rd
-        send_msg(ws, 6, payload)
-        ws.settimeout(timeout)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                raw = ws.recv()
-                if not raw: continue
-                msg = json.loads(raw)
-                if msg.get("op") == 7 and msg.get("d", {}).get("requestId") == rid:
-                    return msg.get("d", {})
-            except Exception:
-                break
-        return None
-
-    def _run_recording_test(ws, label):
-        """Starts a recording, waits test_seconds, stops it, and returns dropped-frame stats.
-        Deletes the throwaway file it produces.
-
-        GetRecordStatus does NOT carry frame-drop counters (verified against a real OBS
-        32.1.2 instance — it only has outputActive/outputBytes/outputDuration/outputTimecode).
-        The frame counters live in the general GetStats request instead, and — also verified
-        empirically, since this isn't documented anywhere obvious — outputTotalFrames/
-        outputSkippedFrames reset to ~0 the moment a new output (recording or stream) starts
-        and count up cleanly from there for that session; they're not a lifetime-cumulative
-        total. So a single read right before stopping is the right number, no before/after
-        diff needed."""
-        status = send_request(ws, "GetRecordStatus")
-        if (status or {}).get("responseData", {}).get("outputActive"):
-            return {"error": "a recording was already active — skipped"}
-        start_resp = send_request(ws, "StartRecord")
-        if not (start_resp or {}).get("requestStatus", {}).get("result"):
-            comment = (start_resp or {}).get("requestStatus", {}).get("comment", "unknown error")
-            return {"error": f"could not start test recording: {comment}"}
-        time.sleep(test_seconds)
-        stats = (send_request(ws, "GetStats") or {}).get("responseData", {})
-        stop_resp = send_request(ws, "StopRecord")
-        out_path = (stop_resp or {}).get("responseData", {}).get("outputPath")
-        if out_path and os.path.exists(out_path):
-            try:
-                os.remove(out_path)
-            except Exception:
-                pass   # not worth failing the whole check over a leftover test clip
-        total   = stats.get("outputTotalFrames", 0) or 0
-        skipped = stats.get("outputSkippedFrames", 0) or 0
-        skip_pct = round((skipped / total) * 100, 1) if total else None
-        return {"label": label, "total_frames": total, "skipped_frames": skipped,
-                "skip_pct": skip_pct}
-
-    result = {"ok": False}
-    try:
-        ws = websocket.create_connection(ws_url, timeout=10)
-        hello = wait_for_op(ws, 0, 5)
-        if not hello:
-            return {"ok": False, "error": "No response from OBS — is it running with the WebSocket server enabled?"}
-        auth = hello["d"].get("authentication")
-        identify = {"rpcVersion": 1}
-        if auth and password:
-            identify["authentication"] = _obs_auth_response(password, auth["salt"], auth["challenge"])
-        send_msg(ws, 1, identify)
-        if not wait_for_op(ws, 2, 5):
-            ws.close()
-            return {"ok": False, "error": "OBS authentication failed — check the WebSocket password"}
-
-        # Safety: never touch encoder settings or start a test recording while the real
-        # stream (or an unrelated recording) is actually running.
-        stream_status = send_request(ws, "GetStreamStatus")
-        if (stream_status or {}).get("responseData", {}).get("outputActive"):
-            ws.close()
-            return {"ok": False, "error": "OBS is currently live streaming — refusing to run "
-                                          "the health check while the real stream is active."}
-
-        # The frame-drop counters below are pipeline-wide, not scoped to the test recording —
-        # if the Replay Buffer or Virtual Camera is already running (both normal during a real
-        # match), their frames land in the same counters and make the test noisier. Doesn't
-        # block the check (stopping either would itself be disruptive); just says so.
-        caveats = []
-        rb = send_request(ws, "GetReplayBufferStatus")
-        if (rb or {}).get("responseData", {}).get("outputActive"):
-            caveats.append("Replay Buffer is running — its frames count towards the test too, "
-                          "so results are less precise than running this before match prep starts.")
-        vc = send_request(ws, "GetVirtualCamStatus")
-        if (vc or {}).get("responseData", {}).get("outputActive"):
-            caveats.append("Virtual Camera is running — same caveat as the Replay Buffer above.")
-
-        mode_resp = send_request(ws, "GetProfileParameter",
-                                 {"parameterCategory": "Output", "parameterName": "Mode"})
-        mode = (mode_resp or {}).get("responseData", {}).get("parameterValue", "Simple")
-        if mode != "Simple":
-            ws.close()
-            return {"ok": False, "error": "OBS is set to Advanced output mode — the automatic "
-                                          "encoder test only supports the default Simple mode "
-                                          "for now. Bitrate/resolution recommendations below "
-                                          "still apply; set the encoder manually in "
-                                          "Settings → Output."}
-
-        enc_resp = send_request(ws, "GetProfileParameter",
-                                {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder"})
-        baseline_encoder = (enc_resp or {}).get("responseData", {}).get("parameterValue", "x264")
-
-        tests = {"baseline": dict(_run_recording_test(ws, baseline_encoder), encoder=baseline_encoder)}
-
-        is_hardware = baseline_encoder != "x264" and "x264" not in baseline_encoder
-        if is_hardware:
-            # Compare against software (x264) — the one encoder ID that's been stable across
-            # OBS versions — since that's the exact comparison the operator needs: "is my
-            # hardware encoder actually pulling its weight, or would plain CPU do better?"
-            send_request(ws, "SetProfileParameter",
-                         {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder",
-                          "parameterValue": "x264"})
-            tests["alternate"] = dict(_run_recording_test(ws, "x264"), encoder="x264")
-            # Always restore what was configured before, whether the test above succeeded or not.
-            send_request(ws, "SetProfileParameter",
-                        {"parameterCategory": "SimpleOutput", "parameterName": "StreamEncoder",
-                         "parameterValue": baseline_encoder})
-
-        ws.close()
-
-        # Decide: keep the baseline unless the alternate clearly did better (a couple of
-        # points of skipped-frame difference is noise; this needs to be a real gap).
-        recommended_encoder = baseline_encoder
-        notes = []
-        base_pct = tests["baseline"].get("skip_pct")
-        if "error" in tests["baseline"]:
-            notes.append(f"Could not test the currently configured encoder: {tests['baseline']['error']}")
-        elif base_pct and base_pct > 2:
-            notes.append(f"Currently configured encoder ({baseline_encoder}) dropped {base_pct}% "
-                        f"of frames in an {test_seconds}s test.")
-        if "alternate" in tests:
-            alt_pct = tests["alternate"].get("skip_pct")
-            if "error" in tests["alternate"]:
-                notes.append(f"Could not test x264 for comparison: {tests['alternate']['error']}")
-            elif base_pct is not None and alt_pct is not None:
-                if alt_pct + 2 < base_pct:
-                    recommended_encoder = "x264"
-                    notes.append(f"Software (x264) dropped fewer frames ({alt_pct}% vs {base_pct}%) — "
-                                f"recommending it over {baseline_encoder} on this machine.")
-                else:
-                    notes.append(f"Hardware encoder ({baseline_encoder}) performed at least as well "
-                                f"as software ({alt_pct}% vs {base_pct}% dropped) — keeping it.")
-
-        result = {"ok": True, "tests": tests, "recommended_encoder": recommended_encoder,
-                  "notes": notes, "caveats": caveats}
-    except Exception as e:
-        result = {"ok": False, "error": f"Could not reach OBS: {e}"}
-    return result
 
 # ── Control panel HTML ────────────────────────────────────────
 
@@ -6415,6 +7038,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
 
+        elif path == "/sponsor/bg_preview":
+            # Before the /sponsor/<id> prefix below, like /sponsor/airtime. A PNG of what
+            # "make transparent" WOULD give, for the panel to show side by side; not saved.
+            if not self._check_token(): return
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            out, why = sponsor_transparent_version(q.get("id", [""])[0], q.get("mode", [""])[0])
+            if out is None:
+                self._json({"ok": False, "error": why}, 400)
+            else:
+                buf = io.BytesIO()
+                out.save(buf, "PNG")
+                self._bytes(buf.getvalue(), "image/png")
+
+        elif path == "/sponsor/airtime":
+            # Before the /sponsor/<id> prefix below, which would otherwise take it as a
+            # logo id. Open like /health: a sponsor name and some durations, no secrets.
+            from urllib.parse import parse_qs
+            day = parse_qs(urlparse(self.path).query).get("date", [""])[0].strip()
+            if day and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                day = ""
+            self._json(sponsor_airtime_summary(day or None))
+
         elif path.startswith("/sponsor/"):
             # Serve the weekend sponsor image from the sponsors/ folder, named by ID
             # (e.g. sponsor_id "3" -> sponsors/3.png) so the same set of images can be
@@ -6422,7 +7068,7 @@ class Handler(BaseHTTPRequestHandler):
             raw_name = path[9:].split("?")[0].strip("/")
             name     = os.path.basename(raw_name.replace("..", "").replace("/", "")
                                         .replace("\\", "").replace(":", ""))
-            sponsor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors")
+            sponsor_dir = SPONSOR_DIR
             mimes    = {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
                         "svg":"image/svg+xml","webp":"image/webp","gif":"image/gif"}
             found = False
@@ -6692,6 +7338,7 @@ class Handler(BaseHTTPRequestHandler):
                 "server":  _self_metrics(),
                 "thermal": _thermal_state(),
                 "obs_bitrate": obs_bitrate_sanity_check(s_h),
+                "obs_recovery": obs_guard_status(),
                 "errors":  _recent_server_errors(),
             })
 
@@ -6721,8 +7368,17 @@ class Handler(BaseHTTPRequestHandler):
                                   "recommended_fps": fps, "note": bitrate_note}
             except Exception as e:
                 out["network"] = {"error": f"Could not test upload speed: {e}"}
-            out["encoder"] = obs_stream_health_check(s)
+            # No encoder test any more: it switched OBS's encoder setting over the WebSocket
+            # and test-recorded, but OBS only builds encoders at startup, so it measured the
+            # same encoder twice (verified on OBS 32.1.1). obs_prep.ensure_encoder() picks
+            # one from what OBS itself reports it can use, while OBS is closed.
             self._json(out)
+
+        elif path == "/checklist":
+            # Auth-gated like the rest of the operator's controls: it's the read side of
+            # buttons that start OBS and go live.
+            if not self._check_token(): return
+            self._json(checklist_status())
 
         elif path == "/stream/monitor":
             # Live congestion/quality picture for the panel (no secrets — open)
@@ -6877,6 +7533,35 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path   = urlparse(self.path).path
         length = int(self.headers.get("Content-Length",0) or 0)
+
+        if path == "/sponsor/upload":
+            # Before the generic body read: an image is bigger than MAX_BODY_BYTES, and
+            # whoever sends one has to be logged in BEFORE we read megabytes of it.
+            if not self._origin_ok():
+                self._json({"ok": False, "error": "Cross-origin request rejected"}, status=403)
+                return
+            if not self._check_token():
+                return
+            if length <= 0 or length > SPONSOR_UPLOAD_MAX_BYTES:
+                self._json({"ok": False, "error": "Logo must be under "
+                            f"{SPONSOR_UPLOAD_MAX_BYTES // (1024 * 1024)} MB."}, status=413)
+                return
+            data = self.rfile.read(length)
+            ok, result = save_sponsor_logo(data)
+            if ok:
+                plain = False
+                try:
+                    import logo_bg
+                    from PIL import Image
+                    with Image.open(io.BytesIO(data)) as im:
+                        plain = logo_bg.has_plain_background(im)
+                except Exception:
+                    pass
+                self._json({"ok": True, "sponsor_id": result, "plain_background": plain})
+            else:
+                self._json({"ok": False, "error": result}, status=400)
+            return
+
         if length > MAX_BODY_BYTES:
             self.send_response(413)
             self.send_header("Content-Length", "0")
@@ -6900,11 +7585,45 @@ class Handler(BaseHTTPRequestHandler):
         # this list when the auto-cut feature was added — it was operator-only before that
         # (see the endpoint's own comment).
         OVERLAY_ENDPOINTS = ("/commentary/over/generate", "/replay", "/weather/show",
-                             "/weather/hide", "/camera/scene")
+                             "/weather/hide", "/camera/scene", "/sponsor/airtime")
         if path in OVERLAY_ENDPOINTS:
             if not (self._is_trusted_loopback() or self._check_token()):
                 return
         elif not self._check_token():
+            return
+
+        if path == "/sponsor/remove_background":
+            try:
+                d = json.loads(body or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            d = d if isinstance(d, dict) else {}
+            ok, out = save_transparent_sponsor(str(d.get("id") or ""), str(d.get("mode") or ""))
+            self._json(out, 200 if ok else 400)
+            return
+
+        if path == "/checklist/action":
+            try:
+                d = json.loads(body or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            status, out = checklist_action(str((d or {}).get("action") or ""))
+            self._json(out, status)
+            return
+
+        if path == "/sponsor/airtime":
+            # The overlay's show/hide beacon. Only the event is taken from the request:
+            # the time comes from this clock and the sponsor's name from state.
+            try:
+                d = json.loads(body or "{}")
+            except json.JSONDecodeError:
+                d = {}
+            event = d.get("event") if isinstance(d, dict) else None
+            if event not in ("show", "hide"):
+                self._json({"ok": False, "error": "event must be show or hide"}, 400)
+                return
+            sponsor_airtime_event(event)
+            self._json({"ok": True})
             return
 
         if path == "/state":
@@ -6925,17 +7644,20 @@ class Handler(BaseHTTPRequestHandler):
                 # panel form only posts its own fields, so a plain replace would wipe keys that
                 # have no form input — notably home_club_id / away_club_id (badges), the season
                 # stats config, drinks_over, etc. Merging preserves them across saves.
-                current = load_state()
-                # If the user retyped the scorer laptop's address or switched source,
-                # forget where we thought the agent was so the next poll honours what
-                # they just asked for instead of a stale cached resolution.
-                if (incoming.get("agent_host") != current.get("agent_host")
-                        or incoming.get("pcs_source") != current.get("pcs_source")):
-                    globals()["_agent_resolved"] = ""
-                    globals()["_agent_last_error"] = ""
-                    globals()["_agent_next_discover"] = 0.0
-                current.update(incoming)
-                save_state(current)
+                # One locked load→merge→save (update_state), so a save from the panel can't
+                # write back a stale copy over a change another thread made meanwhile (a
+                # logo upload setting sponsor_id, say).
+                def _merge(current):
+                    # If the user retyped the scorer laptop's address or switched source,
+                    # forget where we thought the agent was so the next poll honours what
+                    # they just asked for instead of a stale cached resolution.
+                    if (incoming.get("agent_host") != current.get("agent_host")
+                            or incoming.get("pcs_source") != current.get("pcs_source")):
+                        globals()["_agent_resolved"] = ""
+                        globals()["_agent_last_error"] = ""
+                        globals()["_agent_next_discover"] = 0.0
+                    current.update(incoming)
+                update_state(_merge)
                 self._json({"ok":True})
                 s = load_state()
                 print(f"  ✓  {s.get('away_team','?')}  "
@@ -6970,32 +7692,8 @@ class Handler(BaseHTTPRequestHandler):
                 d = json.loads(body or "{}")
             except json.JSONDecodeError:
                 d = {}
-            cfg = load_state()
-            # which=2 adds/updates the second (e.g. bowler-end) camera instead of the first
-            # — same endpoint, same obs_add_camera() call, just different state keys. See
-            # TODO.md's camera-cut notes; UNTESTED against real two-camera hardware.
-            which = str(d.get("which") or "1").strip()
-            url_key, name_key, scene_key, default_scene, default_name = (
-                ("camera2_rtsp_url", "obs_camera2_name", "obs_bowler_scene",
-                 "Main-Bowler", "Bowler End Camera") if which == "2" else
-                ("camera_rtsp_url", "obs_camera_name", "obs_main_scene",
-                 "Main", "Cricket Camera"))
-            # If the field still shows the redacted sentinel (the operator loaded the panel
-            # without retyping the URL), fall back to the real stored value — otherwise this
-            # would try to add "••••••••" itself as the camera source.
-            posted_url = (d.get("url") or "").strip()
-            url = (cfg.get(url_key) or "").strip() if posted_url == SECRET_SENTINEL \
-                  else (posted_url or cfg.get(url_key) or "").strip()
-            name  = d.get("name")  or cfg.get(name_key)  or default_name
-            scene = d.get("scene") or cfg.get(scene_key) or default_scene
-            # The OTHER camera's scene, if that camera is configured — ensures both cameras
-            # sit in both cameras' scenes (plus Replay), not just their own "home" scene.
-            if which == "2":
-                other_scene, other_url = cfg.get("obs_main_scene") or "Main", cfg.get("camera_rtsp_url")
-            else:
-                other_scene, other_url = cfg.get("obs_bowler_scene") or "Main-Bowler", cfg.get("camera2_rtsp_url")
-            extra = [other_scene] if (other_url or "").strip() else []
-            ok, msg = obs_add_camera(url, name, scene, cfg, extra_scenes=extra)
+            ok, msg = add_camera_from_state(str(d.get("which") or "1").strip(),
+                                            d.get("url"), d.get("name"), d.get("scene"))
             self._json({"ok": ok, "message": msg})
 
         elif path == "/camera/scene":
@@ -7318,6 +8016,7 @@ if __name__ == "__main__":
     _ensure_control_token()
     start_watchdog()
     start_stream_monitor()
+    start_obs_guard()
     start_pcs_bridge_sync()
 
     if _CLOUDFLARE_TUNNEL:

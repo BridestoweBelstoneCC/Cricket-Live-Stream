@@ -34,7 +34,7 @@ This software does exactly that — for your club's YouTube live stream. It runs
 
 If you (or someone at your club) has access to Claude, Anthropic's AI assistant, it can walk
 you through this entire setup conversationally — installing OBS, running the setup wizard,
-configuring OBS's WebSocket server and Replay Buffer, and getting your camera working. This
+and getting your camera working. This
 is genuinely the fastest route if you're not confident with computers, and it's how the most
 recent setup of this project was actually done.
 
@@ -53,8 +53,7 @@ recent setup of this project was actually done.
    > I've just downloaded CricketStream Overlay for my cricket club and I have no coding
    > experience. Please read CLAUDE.md and FOR_NON_TECHNICAL_USERS.md in this folder, then
    > walk me through the entire setup step by step: installing OBS Studio, running the setup
-   > wizard, configuring OBS's WebSocket server and Replay Buffer, and getting my camera
-   > source working. Ask me one question at a time, explain what each step does in plain
+   > wizard, and getting my camera source working. Ask me one question at a time, explain what each step does in plain
    > English, and don't assume I know any technical terms.
 
 4. Answer its questions as you go — club name, kit colour, camera type, and so on. It'll tell
@@ -79,10 +78,8 @@ Here's the full manual walkthrough.
 1. Go to **https://obsproject.com**
 2. Click the button for your operating system (Windows or macOS)
 3. Run the installer and follow the prompts
-4. Open OBS — it will ask to run the Auto-Configuration Wizard. Click **Yes**
-5. Select **Optimise for streaming** → Next
-6. Set Video Resolution to **1280x720** → Next
-7. It will test your connection. Click **Apply Settings** when done
+4. That's it — you don't need to open OBS. CricketStream opens it and sets it up for you
+   (resolution, encoder, replays, the lot), including the first time
 
 ---
 
@@ -121,8 +118,8 @@ A window opens and asks you a few questions:
 - **Home kit colour** — the hex code for your kit colour. Go to **htmlcolorcodes.com**, pick your colour, copy the code that starts with `#`
 - **PlayCricket club ID** — the number in your club's play-cricket.com URL
 - **PlayCricket API key** — email PlayCricket support to request one (it's free)
-- **NV Play output folder** — where your scorer's NV Play software saves its data (your scorer knows this — it's set in NV Play under Tools → Configuration → Scoreboard)
-- **OBS WebSocket password** — you'll set this in Step 4, then come back and update it if needed
+- **NV Play output folder** — where NV Play saves the live score. If NV Play is on this laptop, setup usually finds it and just asks you to confirm; otherwise your scorer can see it in NV Play under Tools → Configuration → Scoreboard
+- **Replay folder** — where replay clips are saved; press Enter for the default
 
 For anything you don't have yet, just press Enter to skip it — you can fill it in later via the control panel.
 
@@ -136,25 +133,12 @@ When the wizard finishes, it offers to launch the server straight away.
 
 ## Step 4 — Set up OBS
 
-### Turn on WebSocket (lets the software talk to OBS)
+**Nothing to switch on.** The WebSocket server (how the software talks to OBS) and the
+Replay Buffer (saves clips for replays) are both turned on for you, and OBS is opened for
+you, every time you double-click `CricketStream.exe` / `CricketStream.command`.
 
-1. Open OBS
-2. Go to **Tools** in the menu bar → **WebSocket Server Settings**
-3. Tick **Enable WebSocket server**
-4. Make sure Port says **4455**
-5. Tick **Enable Authentication**
-6. Type a password — anything you'll remember
-7. Copy that password into `config.ini` next to **obs_password**
-8. Click OK
-
-### Turn on Replay Buffer (saves clips for replays)
-
-1. OBS → **Settings** (bottom right) → **Output**
-2. Change Output Mode from Simple to **Advanced**
-3. Click the **Recording** tab
-4. Scroll down to **Replay Buffer** → tick **Enable**
-5. Set Maximum Replay Time to **25**
-6. Click OK
+If OBS is already open when you do, it may ask you to close OBS first. That only happens
+when something needs changing, and OBS can only have its settings changed while it's shut.
 
 ---
 
@@ -172,13 +156,12 @@ When the wizard finishes, it offers to launch the server straight away.
 
 **30 minutes before you go live:**
 
-1. Make sure OBS is open
-2. Double-click the **same file you used to set it up**:
+1. Double-click the **same file you used to set it up**:
    **Windows:** `CricketStream.exe` · **Mac:** `CricketStream.command`
 
    It skips the setup questions this time (it can see you've already answered them) and
-   goes straight to starting the match — finding today's fixture, checking OBS is ready,
-   and starting the server.
+   goes straight to starting the match — opening OBS, finding today's fixture, and
+   starting the server.
 
    > Already have Python and prefer running from source? `quickstart.bat` (Windows) /
    > `quickstart.sh` (Mac) do the same match-day job.
@@ -186,26 +169,34 @@ When the wizard finishes, it offers to launch the server straight away.
    > ⚠️ Don't run `server.py` directly on a match day — it skips the fixture lookup and
    > the pre-flight checks.
 
-3. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
-4. Open your browser and go to **http://127.0.0.1:5000/control**
-   This is your control panel — you can see the live data from the scorer here
-5. In OBS, click **Start Replay Buffer** (in the Controls panel on the right)
+2. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
+3. Open your browser and go to **http://127.0.0.1:5000/control**
+   This is your control panel. The **Match-day checklist** at the top ticks itself as
+   things become ready, and anything not ready has a button next to it that does it —
+   **Start OBS**, **Start replay buffer**, **Fetch today's match**, and **Go live** when
+   you're ready
+4. In OBS, the Controls panel on the right should say **Stop Replay Buffer** — that means
+   replays are ready (it's started for you)
 
 **When the scorer starts:**
 
-6. Your scorer opens NV Play and starts the match
-7. After the first ball, the scorebar on the overlay fills in with live batter names and bowler figures
+5. Your scorer opens NV Play and starts the match
+6. After the first ball, the scorebar on the overlay fills in with live batter names and bowler figures
 
 **Going live:**
 
-8. In OBS, click **Start Streaming**
-9. Your stream is live on YouTube
+7. In OBS, click **Start Streaming**
+8. Your stream is live on YouTube
 
 **After the match:**
 
-10. In the control panel, click **Compile Highlights Reel** — this automatically stitches all the replay clips into one video
-11. Click **Stop Streaming** in OBS
-12. Close the black command window to stop the server
+9. In the control panel, click **Compile Highlights Reel** — this automatically stitches all the replay clips into one video
+10. Click **Stop Streaming** in OBS
+11. Close the black command window to stop the server
+
+> **If OBS crashes during the match**, leave it — it reopens by itself within a few
+> seconds and the stream carries on. Closing OBS yourself after the match is fine; it
+> stays closed.
 
 ---
 
@@ -307,8 +298,10 @@ The overlay will appear white/blank in a browser — that's normal. It only show
 ### The stream is choppy
 
 - Close all other programs on the laptop while streaming
-- In OBS → Settings → Output → lower the bitrate to 1500
-- In OBS → Settings → Video → change Output Resolution to 1280×720
+- Open `config.ini` in Notepad (TextEdit on a Mac). Under `[Stream]`, set
+  `output_resolution = 720p` and `bitrate_kbps = 1500`, save, and run quickstart again.
+  (Don't change these in OBS itself — quickstart sets OBS's video settings every time it
+  runs, so a change made in OBS only lasts until then.)
 
 ### I can't see the control panel
 
