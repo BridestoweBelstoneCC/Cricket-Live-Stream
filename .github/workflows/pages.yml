@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages (attempt 1)
         id: deploy1
-        uses: actions/deploy-pages@v5.0.0
+        uses: actions/deploy-pages@v5.0.1
         continue-on-error: true
 
       - name: Wait before retry
@@ -52,7 +52,7 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 2)
         id: deploy2
         if: steps.deploy1.outcome == 'failure'
-        uses: actions/deploy-pages@v5.0.0
+        uses: actions/deploy-pages@v5.0.1
         continue-on-error: true
 
       - name: Wait before final retry
@@ -62,7 +62,7 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 3)
         id: deploy3
         if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
-        uses: actions/deploy-pages@v5.0.0
+        uses: actions/deploy-pages@v5.0.1
 
       - name: Fail the job if every attempt failed
         if: always() && steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure' && steps.deploy3.outcome == 'failure'
