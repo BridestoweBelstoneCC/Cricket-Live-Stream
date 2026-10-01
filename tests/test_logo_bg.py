@@ -16,7 +16,13 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from PIL import Image, ImageDraw
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    # The suite is stdlib-only by design (CI installs nothing), and logo_bg needs Pillow —
+    # a runtime requirement, not a test one. Skip, the way the JS tests skip without an
+    # engine; any machine with the project's requirements installed runs these.
+    raise unittest.SkipTest("Pillow not installed")
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
