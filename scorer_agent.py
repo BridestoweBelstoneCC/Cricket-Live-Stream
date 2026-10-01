@@ -30,6 +30,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -128,6 +129,9 @@ COMMON_FOLDER_PATTERNS = [
     "Desktop/Scoreboard*",
     "Desktop/Output",
 ]
+# Windows 11 commonly redirects Documents (and Desktop) into OneDrive, so the same places
+# also live under OneDrive/ — or "OneDrive - <organisation>/" on a work or school account.
+COMMON_FOLDER_PATTERNS += ["OneDrive*/" + p for p in COMMON_FOLDER_PATTERNS]
 
 
 # ── Finding the scoreboard folder ────────────────────────────────────────────
@@ -163,7 +167,23 @@ def find_output_file(folder, max_age=600):
 
 
 def folder_has_scoreboard(folder, max_age=None):
-    return find_output_file(folder, max_age=max_age) is not None
+    """Does `folder` hold a scoreboard file, written within max_age seconds if given?
+
+    Checks the age itself rather than leaving it to find_output_file(), which returns a
+    known filename (nvplay-scoreboard1.xml...) whatever its age — right for serving the
+    file, wrong here: it made a folder holding last season's scoreboard count as "live",
+    so autodetect_folder() could pick an old PCS Pro folder over the one NV Play was
+    writing to at that moment.
+    """
+    path = find_output_file(folder, max_age=None)
+    if not path:
+        return False
+    if max_age is None:
+        return True
+    try:
+        return (time.time() - os.path.getmtime(path)) < max_age
+    except OSError:
+        return False
 
 
 def autodetect_folder():
@@ -177,6 +197,9 @@ def autodetect_folder():
     for pattern in COMMON_FOLDER_PATTERNS:
         try:
             for path in sorted(glob.glob(os.path.join(home, pattern))):
+                # normpath: the patterns use "/" but Windows paths use "\"; a mixed path
+                # works but is what ends up shown to the scorer and saved to config.
+                path = os.path.normpath(path)
                 if os.path.isdir(path) and path not in seen:
                     seen.append(path)
         except OSError:
@@ -189,6 +212,93 @@ def autodetect_folder():
         if folder_has_scoreboard(path, max_age=None):
             return path, "stale"
     return None, None
+
+
+# ── The NV Play scoreboard template ──────────────────────────────────────────
+# NV Play fills in scoreboard.template on every ball to produce the file this agent
+# serves. Scorers used to copy it into NV Play's Templates folder by hand, from a full
+# project download they otherwise didn't need: the agent exe didn't carry it. It's now
+# bundled into the exe (--add-data in build-executables.yml) and installed on start.
+# Choosing it in NV Play (Tools -> Configuration -> Scoreboard -> Template File) is still
+# the scorer's job: NV Play's own settings aren't ours to edit.
+TEMPLATE_NAME = "scoreboard.template"
+NVPLAY_TEMPLATE_PATTERNS = [
+    "Documents/Cricket Matches/_Scoreboards/Templates",
+    "OneDrive*/Documents/Cricket Matches/_Scoreboards/Templates",
+]
+
+
+def bundled_template():
+    """The template's text: from inside the frozen exe, else beside this script. None
+    if it can't be found (an old exe, or the file deleted from the folder)."""
+    for folder in (getattr(sys, "_MEIPASS", None), HERE):
+        if not folder:
+            continue
+        try:
+            with open(os.path.join(folder, TEMPLATE_NAME), encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            continue
+    return None
+
+
+def find_templates_folder(output_folder=None):
+    """NV Play's Templates folder: beside the output folder first (they share a parent,
+    .../_Scoreboards/Output and .../_Scoreboards/Templates), else the usual places."""
+    if output_folder:
+        sibling = os.path.join(os.path.dirname(os.path.normpath(output_folder)), "Templates")
+        if os.path.isdir(sibling):
+            return sibling
+    home = os.path.expanduser("~")
+    for pattern in NVPLAY_TEMPLATE_PATTERNS:
+        try:
+            for path in sorted(glob.glob(os.path.join(home, pattern))):
+                if os.path.isdir(path):
+                    return os.path.normpath(path)
+        except OSError:
+            continue
+    return None
+
+
+def install_template(templates_dir, text):
+    """Put the template in NV Play's Templates folder. Returns "installed", "updated",
+    "current" (already identical) or None (couldn't write). A different existing copy
+    is kept as scoreboard.template.old rather than lost."""
+    dest = os.path.join(templates_dir, TEMPLATE_NAME)
+    norm = lambda s: s.replace("\r\n", "\n").strip()
+    existing = None
+    try:
+        with open(dest, encoding="utf-8") as f:
+            existing = f.read()
+    except OSError:
+        pass
+    except UnicodeDecodeError:
+        existing = ""
+    if existing is not None and norm(existing) == norm(text):
+        return "current"
+    try:
+        if existing is not None:
+            shutil.copy2(dest, dest + ".old")
+        tmp = dest + ".tmp"
+        # newline="": an exact copy. Text mode on Windows would turn every \n into \r\n.
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        os.replace(tmp, dest)
+    except OSError:
+        return None
+    return "updated" if existing is not None else "installed"
+
+
+def ensure_template(output_folder=None):
+    """Best-effort: (result, templates_dir) — see install_template — or (None, None)."""
+    try:
+        text = bundled_template()
+        folder = find_templates_folder(output_folder)
+        if not text or not folder:
+            return None, folder
+        return install_template(folder, text), folder
+    except Exception:
+        return None, None
 
 
 def load_saved_folder():
@@ -522,10 +632,31 @@ def main():
                     help=f"HTTP port to serve on (default {DEFAULT_HTTP_PORT})")
     ap.add_argument("--discovery-port", type=int, default=DEFAULT_DISCOVERY_PORT,
                     help=f"UDP port to answer discovery on (default {DEFAULT_DISCOVERY_PORT})")
+    ap.add_argument("--check-template", action="store_true",
+                    help="report whether the NV Play scoreboard template is bundled, then exit")
     args = ap.parse_args()
+
+    if args.check_template:
+        # For the build's smoke test: proves --add-data actually put the template in the
+        # exe, which would otherwise only show up as a scorer finding nothing installed.
+        text = bundled_template()
+        print(f"scoreboard template bundled: {'yes' if text else 'NO'}"
+              + (f" ({len(text)} chars)" if text else ""))
+        sys.exit(0 if text else 1)
 
     folder, how = resolve_folder(args.folder)
     STATE = AgentState(folder, args.port)
+
+    result, templates = ensure_template(folder)
+    if result in ("installed", "updated"):
+        print()
+        print(f"  {'Copied' if result == 'installed' else 'Updated'} the CricketStream "
+              f"scoreboard template into NV Play's Templates folder:")
+        print(f"     {os.path.join(templates, TEMPLATE_NAME)}")
+        if result == "updated":
+            print(f"  (the previous one is kept as {TEMPLATE_NAME}.old)")
+        print("  If NV Play isn't using it yet: Tools -> Configuration -> Scoreboard ->")
+        print(f"  Template File -> choose {TEMPLATE_NAME}.")
 
     try:
         httpd = ThreadingHTTPServer(("0.0.0.0", args.port), AgentHandler)

@@ -170,6 +170,11 @@ class TestRunServerWithRestarts(unittest.TestCase):
         self.report_patcher = mock.patch("quickstart.offer_match_report")
         self.mock_report = self.report_patcher.start()
         self.addCleanup(self.report_patcher.stop)
+        # Shutdown puts OBS's update check back — in the REAL OBS settings folder. Never
+        # from a test: on a machine that's run a real match it would edit live settings.
+        resume = mock.patch("quickstart._resume_obs_updates")
+        self.mock_resume = resume.start()
+        self.addCleanup(resume.stop)
         self.sleeps = []
 
     def fake_sleep(self, secs):

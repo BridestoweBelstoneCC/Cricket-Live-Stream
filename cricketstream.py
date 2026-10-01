@@ -129,6 +129,7 @@ def run_setup_wizard():
         wiz.pause()
         sys.exit(0)
     wiz.write_config(values)
+    wiz.install_nvplay_template(values.get("pcs_folder", ""))
 
 
 def main():

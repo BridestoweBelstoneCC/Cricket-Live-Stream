@@ -5,22 +5,37 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title id="page-title">Stream Control Panel</title>
 <style>
+  /* ── Design tokens ──────────────────────────────────────────────────────────
+     Every colour in the panel comes from here (stage 1 of the 2026-10 refresh), so the
+     look can change in one place. --accent is overwritten at runtime from the club's
+     home kit colour (applyClubAccent), guarded for contrast against these backgrounds. */
+  :root{
+    --bg:#0b1422; --surface:#122033; --surface-2:#0d1828; --surface-3:#172840;
+    --line:#22364f; --line-strong:#304a69;
+    --text:#eef3f8; --text-2:#b3c3d6; --muted:#8197b0;
+    --accent:#5b9bd5; --accent-strong:#2f6fb5; --on-accent:#ffffff;
+    --ok:#3fb950; --bad:#f85149; --warn:#d6a42b;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 0 rgba(255,255,255,.035) inset, 0 10px 30px rgba(0,0,0,.28);
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;background:#0d1b2e;color:#e8edf2;padding:20px;min-height:100vh}
+  body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);padding:20px;min-height:100vh}
   header{display:flex;align-items:center;gap:14px;margin-bottom:22px;
          border-bottom:2px solid #1a3a5c;padding-bottom:14px}
   .badge{width:42px;height:42px;background:#1a3a5c;border-radius:50%;border:2px solid #2a5a8c;
          display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0}
   h1{font-size:17px;font-weight:700;color:#fff}
-  h1 span{color:#5b9bd5;font-weight:400;font-size:12px;display:block;margin-top:2px}
-  #remote-pill{margin-left:auto;display:flex;align-items:center;gap:8px;background:#0a1628;
-      border:1px solid #1e3550;border-radius:20px;padding:6px 12px 6px 10px;cursor:pointer;
-      font-size:11px;color:#8ba3c0;white-space:nowrap}
+  h1 span{color:var(--accent);font-weight:400;font-size:12px;display:block;margin-top:2px}
+  #remote-pill{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--surface-2);
+      border:1px solid var(--line);border-radius:20px;padding:6px 12px 6px 10px;cursor:pointer;
+      font-size:11px;color:var(--text-2);white-space:nowrap}
   #remote-pill:hover{border-color:#2a5a8c}
-  #remote-pill .dot{width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0}
-  #remote-pill.via-tailscale .dot{background:#5b9bd5}
+  #remote-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0}
+  #remote-pill.via-tailscale .dot{background:var(--accent)}
   #remote-pill.via-cloudflare .dot{background:#f5a623}
-  #remote-pill.via-local .dot{background:#8ba3c0}
+  #remote-pill.via-local .dot{background:var(--text-2)}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
   .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -35,23 +50,33 @@
     #live-status-bar{grid-template-columns:1fr !important}
     h1{font-size:15px}
   }
-  .card{background:#152237;border:1px solid #1e3550;border-radius:9px;padding:16px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:16px}
+  .bg-choice{display:flex;flex-direction:column;gap:4px;text-align:left;cursor:pointer;
+    background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--text);}
+  .bg-choice:hover{border-color:var(--accent)}
+  .bg-choice strong{font-size:12px} .bg-choice small{font-size:10px;color:var(--muted)}
+  .bg-stage{display:flex;align-items:center;justify-content:center;height:90px;border-radius:4px;
+    background-color:var(--bg);background-size:16px 16px;
+    background-image:linear-gradient(45deg,var(--surface-3) 25%,transparent 25%,transparent 75%,var(--surface-3) 75%),
+      linear-gradient(45deg,var(--surface-3) 25%,transparent 25%,transparent 75%,var(--surface-3) 75%);
+    background-position:0 0,8px 8px;}
+  .bg-stage img{max-width:100%;max-height:82px;object-fit:contain}
   .pcs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:10px}
-  .pcs-cell{background:#0a1628;border:1px solid #1e3550;border-radius:6px;padding:8px 10px}
-  .pcs-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#3d5a7a;font-weight:600;margin-bottom:3px}
-  .pcs-cell-value{font-size:16px;font-weight:700;color:#e8edf2}
-  .pcs-cell-sub{font-size:10px;color:#3d5a7a;margin-top:1px}
-  .pcs-cell.live .pcs-cell-label{color:#4caf50}
+  .pcs-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+  .pcs-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);font-weight:600;margin-bottom:3px}
+  .pcs-cell-value{font-size:16px;font-weight:700;color:var(--text)}
+  .pcs-cell-sub{font-size:10px;color:var(--muted);margin-top:1px}
+  .pcs-cell.live .pcs-cell-label{color:var(--ok)}
   .pcs-ball-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
   .pcs-ball{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:800;color:#fff;background:#1e3550}
-  .pcs-ball.four{background:#1a5fa8}
+            font-size:11px;font-weight:800;color:#fff;background:var(--line)}
+  .pcs-ball.four{background:var(--accent-strong)}
   .pcs-ball.six{background:#7c3ab5}
   .pcs-ball.wicket{background:#c0392b}
   .pcs-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;
-                  padding:8px 10px;background:#0a1628;border-radius:6px;border:1px solid #1e3550}
+                  padding:8px 10px;background:var(--surface-2);border-radius:6px;border:1px solid var(--line)}
   .pcs-dot{width:8px;height:8px;border-radius:50%;background:#4a4a4a;flex-shrink:0}
-  .pcs-dot.live{background:#4caf50;animation:livePulse 1.5s infinite}
+  .pcs-dot.live{background:var(--ok);animation:livePulse 1.5s infinite}
     .card.highlight{border-color:#7c1a7c;background:#1a1230}
   .card.highlight h2{color:#c060c0}
   .btn-commentary{background:#5c1a7c;margin-top:8px;font-size:12px;padding:8px}
@@ -64,21 +89,21 @@
   }
   .commentary-meta{font-size:10px;color:#5b3a7a;margin-top:5px;font-style:normal}
   .card.full{grid-column:1/-1}
-  .card h2{font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:#5b9bd5;margin-bottom:12px;font-weight:600}
+  .card h2{font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:var(--accent);margin-bottom:12px;font-weight:600}
   .field{margin-bottom:10px}
-  label{display:block;font-size:12px;color:#8aa8c4;margin-bottom:3px;font-weight:500}
+  label{display:block;font-size:12px;color:var(--text-2);margin-bottom:3px;font-weight:500}
   input[type=text],input[type=number],textarea,select{
-    width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:5px;
-    color:#e8edf2;font-size:13px;padding:7px 9px;outline:none;transition:border-color .2s;font-family:inherit}
-  input:focus,textarea:focus,select:focus{border-color:#5b9bd5}
+    width:100%;background:var(--bg);border:1px solid var(--line-strong);border-radius:5px;
+    color:var(--text);font-size:13px;padding:7px 9px;outline:none;transition:border-color .2s;font-family:inherit}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   textarea{resize:vertical;min-height:52px}
-  .hint{font-size:11px;color:#3d5a7a;margin-top:2px}
+  .hint{font-size:11px;color:var(--muted);margin-top:2px}
   /* Colour picker */
   .colour-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
   .colour-swatch{width:32px;height:32px;border-radius:4px;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;cursor:pointer}
-  .colour-hex{width:86px;background:#0d1b2e;border:1px solid #2a4060;border-radius:4px;
-              color:#e8edf2;font-size:12px;padding:6px 7px;outline:none;font-family:monospace}
-  .colour-hex:focus{border-color:#5b9bd5}
+  .colour-hex{width:86px;background:var(--bg);border:1px solid var(--line-strong);border-radius:4px;
+              color:var(--text);font-size:12px;padding:6px 7px;outline:none;font-family:monospace}
+  .colour-hex:focus{border-color:var(--accent)}
   .presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
   .preset-btn{width:22px;height:22px;border-radius:3px;border:2px solid transparent;cursor:pointer;transition:border-color .15s,transform .1s}
   .preset-btn:hover{border-color:#fff;transform:scale(1.15)}
@@ -91,19 +116,19 @@
   /* Toggle */
   .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1a2a40}
   .toggle-row:last-child{border-bottom:none}
-  .toggle-label{font-size:13px;color:#e8edf2}
-  .toggle-desc{font-size:10px;color:#3d5a7a;margin-top:1px}
+  .toggle-label{font-size:13px;color:var(--text)}
+  .toggle-desc{font-size:10px;color:var(--muted);margin-top:1px}
   .toggle{position:relative;width:40px;height:22px;flex-shrink:0}
   .toggle input{opacity:0;width:0;height:0;position:absolute}
-  .track{position:absolute;inset:0;background:#2a4060;border-radius:11px;cursor:pointer;transition:background .2s}
+  .track{position:absolute;inset:0;background:var(--line-strong);border-radius:11px;cursor:pointer;transition:background .2s}
   .toggle input:checked+.track{background:#1a6ab5}
   .track::after{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;
                background:#fff;border-radius:50%;transition:transform .2s}
   .toggle input:checked+.track::after{transform:translateX(18px)}
-  hr{border:none;border-top:1px solid #1e3550;margin:10px 0}
+  hr{border:none;border-top:1px solid var(--line);margin:10px 0}
   /* Buttons */
   .btn{display:block;width:100%;padding:11px;border:none;border-radius:6px;
-       font-size:14px;font-weight:700;cursor:pointer;background:#1a5fa8;color:#fff;
+       font-size:14px;font-weight:700;cursor:pointer;background:var(--accent-strong);color:#fff;
        transition:background .15s,transform .1s}
   .btn:hover{background:#2272c0}
   .btn:active{transform:scale(.98)}
@@ -115,15 +140,94 @@
   .cam-btn{transition:background .12s ease,box-shadow .12s ease}
   .cam-btn.live{background:#1f6feb;box-shadow:inset 0 0 0 2px #58a6ff;font-weight:700}
   .cam-btn.live:hover{background:#2a7bf5}
-  .cam-btn.failed{background:#6e1f1f;box-shadow:inset 0 0 0 2px #f85149}
-  kbd{background:#21344a;border:1px solid #3d5a7a;border-bottom-width:2px;border-radius:4px;
+  .cam-btn.failed{background:#6e1f1f;box-shadow:inset 0 0 0 2px var(--bad)}
+  kbd{background:#21344a;border:1px solid var(--muted);border-bottom-width:2px;border-radius:4px;
       padding:1px 5px;font-family:inherit;font-size:11px;color:#c9d6e4}
   .status{margin-top:10px;padding:8px 11px;border-radius:4px;font-size:12px;text-align:center;display:none}
-  .ok{background:#0d3a1a;color:#4caf50;border:1px solid #1e6b30;display:block}
-  .err{background:#3a0d0d;color:#f44336;border:1px solid #6b1e1e;display:block}
-  .links{margin-top:14px;font-size:11px;color:#3d5a7a;display:flex;gap:14px;flex-wrap:wrap}
-  .links a{color:#5b9bd5}
-  .section-note{font-size:11px;color:#3d5a7a;margin-bottom:10px;line-height:1.5}
+  .ok{background:#0d3a1a;color:var(--ok);border:1px solid #1e6b30;display:block}
+  .err{background:#3a0d0d;color:var(--bad);border:1px solid #6b1e1e;display:block}
+  .links{margin-top:14px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+  .links a{color:var(--accent)}
+  .section-note{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+
+  /* ── Refreshed components ── */
+  body{font-family:var(--font);background:var(--bg);
+       background-image:radial-gradient(1200px 500px at 50% -200px, rgba(91,155,213,.10), transparent);
+       background-repeat:no-repeat;line-height:1.45;-webkit-font-smoothing:antialiased}
+  header{border-bottom:1px solid var(--line)}
+  h1{font-size:18px;letter-spacing:.2px}
+  h1 span{color:var(--text-2)}
+  .badge{background:var(--accent-strong);border-color:var(--accent);color:var(--on-accent)}
+  .card{background:linear-gradient(180deg,var(--surface),var(--surface-2));
+        border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+  .card h2{font-size:11px;letter-spacing:1.6px;color:var(--text-2);margin-bottom:14px;
+           display:flex;align-items:center;gap:8px}
+  .card h2::before{content:"";width:4px;height:14px;border-radius:2px;background:var(--accent);flex-shrink:0}
+  .card.highlight{background:linear-gradient(180deg,#1b1530,#140f24);border-color:#4a2a6a}
+  .card.highlight h2::before{background:#c060c0}
+  .grid{gap:16px;margin-bottom:16px;align-items:start}
+  label{color:var(--text-2);font-size:12.5px}
+  .hint,.section-note,.toggle-desc{color:var(--muted)}
+  .section-note{font-size:12px}
+  input[type=text],input[type=number],input[type=password],textarea,select{
+    background:var(--bg);border:1px solid var(--line-strong);border-radius:var(--radius-sm);
+    padding:8px 10px;font-size:13.5px;transition:border-color .15s, box-shadow .15s}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent)}
+  .btn{border-radius:var(--radius-sm);background:var(--accent-strong);color:var(--on-accent);
+       font-weight:650;letter-spacing:.2px;box-shadow:0 1px 0 rgba(255,255,255,.08) inset}
+  .btn:hover{background:var(--accent-strong);filter:brightness(1.12)}
+  .btn-test{background:var(--surface-3);color:var(--text);border:1px solid var(--line-strong);
+            font-weight:600}
+  .btn-test:hover{background:var(--surface-3);border-color:var(--accent);filter:none}
+  .btn-commentary{background:#5c1a7c;color:#fff;border:none}
+  .toggle-row{border-bottom-color:var(--line);padding:8px 0}
+  .track{background:var(--line-strong)}
+  .toggle input:checked+.track{background:var(--accent-strong)}
+  hr{border-top-color:var(--line)}
+  .status{border-radius:var(--radius-sm)}
+  .cam-btn.live{background:var(--accent-strong);box-shadow:inset 0 0 0 2px var(--accent)}
+  a{color:var(--accent)}
+  code{background:var(--surface-3);padding:1px 5px;border-radius:4px;font-size:.92em}
+
+  /* ── Top bar (live status + Save), pinned on every tab ── */
+  #topbar{position:sticky;top:0;z-index:50;display:flex;gap:10px;align-items:stretch;
+          padding:10px 0;margin:-10px 0 4px;
+          background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(10px)}
+  #topbar #live-status{flex:1;min-width:0}
+  #save-btn{width:auto;flex:0 0 auto;padding:0 22px;white-space:nowrap}
+  #status{margin:0 0 10px}
+
+  /* ── Tabs ── */
+  #tabbar{display:flex;gap:2px;margin:18px 0 16px;border-bottom:1px solid var(--line);
+          overflow-x:auto;scrollbar-width:none}
+  #tabbar::-webkit-scrollbar{display:none}
+  #tabbar button{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
+          color:var(--text-2);font:600 14px var(--font);padding:11px 16px;cursor:pointer;white-space:nowrap;
+          border-radius:8px 8px 0 0;transition:color .15s, background .15s}
+  #tabbar button:hover{color:var(--text);background:var(--surface)}
+  #tabbar button.active{color:var(--text);border-bottom-color:var(--accent)}
+  /* Class-only rules: an #id rule here would outrank them and pin a tab open (it did). */
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+  #live-status-bar{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:stretch}
+  @media(max-width:768px){
+    #topbar{gap:8px}
+    #save-btn{padding:0 14px;font-size:13px;min-height:0}
+    #tabbar button{padding:10px 12px;font-size:13px}
+  }
+  /* Phones: the pinned bar must stay one slim line, or it eats the screen. */
+  @media(max-width:600px){
+    .long{display:none}
+    header{flex-wrap:wrap;gap:10px;margin-bottom:14px}
+    header h1{flex:1 1 auto;min-width:0;font-size:15px}
+    #remote-pill{margin-left:0}
+    #topbar{padding:8px 0}
+    #topbar #live-status{padding:8px 12px !important;gap:8px !important}
+    #status-line2,#status-source{display:none !important}
+    #status-line1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #save-btn{padding:0 18px}
+  }
 </style>
 </head>
 <body>
@@ -131,29 +235,29 @@
 <!-- ── Auth overlay — shown on first visit or after token rejection ── -->
 <div id="auth-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.97);
      z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:32px 28px;
+  <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:32px 28px;
        width:100%;max-width:380px;text-align:center;">
-    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">
       CONTROL PANEL
     </div>
-    <h2 style="font-size:15px;color:#e8edf2;margin-bottom:6px;">Enter club password</h2>
-    <p style="font-size:12px;color:#5b9bd5;margin-bottom:20px;">
-      Set as <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">club_password</code>
-      in <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">config.ini [Auth]</code>
+    <h2 style="font-size:15px;color:var(--text);margin-bottom:6px;">Enter club password</h2>
+    <p style="font-size:12px;color:var(--accent);margin-bottom:20px;">
+      Set as <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">club_password</code>
+      in <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">config.ini [Auth]</code>
     </p>
     <input type="password" id="auth-input" placeholder="Club password"
-           style="width:100%;background:#0d1b2e;border:1px solid #2a4060;border-radius:6px;
-                  color:#e8edf2;font-size:14px;padding:10px 12px;outline:none;
+           style="width:100%;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;
+                  color:var(--text);font-size:14px;padding:10px 12px;outline:none;
                   margin-bottom:10px;font-family:monospace;"
            onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()"
             style="width:100%;padding:11px;border:none;border-radius:6px;font-size:14px;
-                   font-weight:700;cursor:pointer;background:#1a5fa8;color:#fff;margin-bottom:8px;">
+                   font-weight:700;cursor:pointer;background:var(--accent-strong);color:#fff;margin-bottom:8px;">
       Unlock
     </button>
-    <p id="auth-error" style="font-size:12px;color:#f44336;margin-bottom:10px;display:none;"></p>
+    <p id="auth-error" style="font-size:12px;color:var(--bad);margin-bottom:10px;display:none;"></p>
     <button onclick="doSkip()"
-            style="background:none;border:none;font-size:11px;color:#3d5a7a;cursor:pointer;
+            style="background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;
                    text-decoration:underline;">
       No token configured? Click to continue
     </button>
@@ -167,9 +271,9 @@
     <span class="dot"></span><span id="remote-pill-label">This machine</span>
   </div>
   <div id="security-pill" onclick="showSecurityOverlay()" title="Recent sign-in activity and session controls"
-       style="margin-left:8px;display:flex;align-items:center;gap:6px;background:#0a1628;
-              border:1px solid #1e3550;border-radius:20px;padding:6px 12px;cursor:pointer;
-              font-size:11px;color:#8ba3c0;white-space:nowrap;">
+       style="margin-left:8px;display:flex;align-items:center;gap:6px;background:var(--surface-2);
+              border:1px solid var(--line);border-radius:20px;padding:6px 12px;cursor:pointer;
+              font-size:11px;color:var(--text-2);white-space:nowrap;">
     &#128274; Security
   </div>
 </header>
@@ -177,16 +281,16 @@
 <!-- ── Remote access overlay — QR code for pairing another device ── -->
 <div id="remote-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
      z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideRemoteOverlay()">
-  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+  <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;
        width:100%;max-width:340px;text-align:center;">
-    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">
       REMOTE ACCESS
     </div>
     <div id="remote-modal-body">
-      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+      <p style="font-size:12px;color:var(--text-2);">Checking…</p>
     </div>
     <button onclick="hideRemoteOverlay()"
-            style="margin-top:16px;background:none;border:none;font-size:11px;color:#3d5a7a;
+            style="margin-top:16px;background:none;border:none;font-size:11px;color:var(--muted);
                    cursor:pointer;text-decoration:underline;">
       Close
     </button>
@@ -196,176 +300,104 @@
 <!-- ── Security overlay — recent auth activity + session revocation ── -->
 <div id="security-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,0.85);
      z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideSecurityOverlay()">
-  <div style="background:#152237;border:1px solid #1e3550;border-radius:12px;padding:28px;
+  <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;
        width:100%;max-width:400px;text-align:center;">
-    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#5b9bd5;margin-bottom:14px;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">
       SECURITY
     </div>
     <div id="security-modal-body" style="text-align:left;">
-      <p style="font-size:12px;color:#8ba3c0;">Checking…</p>
+      <p style="font-size:12px;color:var(--text-2);">Checking…</p>
     </div>
     <button onclick="logoutAllSessions()"
             style="width:100%;margin-top:16px;padding:11px;border:none;border-radius:6px;
                    font-size:13px;font-weight:700;cursor:pointer;background:#7a2020;color:#fff;">
       Log out everyone
     </button>
-    <p style="font-size:11px;color:#3d5a7a;margin-top:8px;">
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;">
       Sessions also expire on their own after 12 hours, and restarting the server has the
       same effect as this button — both invalidate every signed-in device at once.
     </p>
     <button onclick="hideSecurityOverlay()"
-            style="margin-top:10px;background:none;border:none;font-size:11px;color:#3d5a7a;
+            style="margin-top:10px;background:none;border:none;font-size:11px;color:var(--muted);
                    cursor:pointer;text-decoration:underline;">
       Close
     </button>
   </div>
 </div>
 
-<!-- ── Pre-match checklist ── -->
-<div id="checklist-bar" style="background:#0a1628;border:1px solid #1e3550;border-radius:9px;padding:16px 18px;margin-bottom:16px;">
+<!-- ── Top bar: live status + Save, pinned on every tab ── -->
+<div id="topbar">
+  <div id="live-status" style="
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:12px 16px;
+  ">
+    <div id="status-dot" style="
+      width:10px; height:10px; border-radius:50%;
+      background:#4a4a4a; flex-shrink:0;
+      transition:background .3s;
+    "></div>
+    <div style="flex:1">
+      <div id="status-line1" style="font-size:13px;font-weight:600;color:var(--text);">Checking connection...</div>
+      <div id="status-line2" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+    </div>
+    <div id="status-source" style="
+      font-size:10px; font-weight:700; text-transform:uppercase;
+      letter-spacing:1.2px; padding:3px 8px; border-radius:3px;
+      background:var(--line); color:var(--accent); flex-shrink:0;
+    "></div>
+  </div>
+  <button class="btn" id="save-btn" onclick="saveState()">Save<span class="long"> &amp; Update Overlay</span></button>
+</div>
+<div class="status" id="status"></div>
+
+<!-- ── Match-day checklist ── -->
+<div id="checklist-bar" style="background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:16px 18px;margin-bottom:16px;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-    <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:#5b9bd5;font-weight:600;">Pre-match checklist</span>
-    <button onclick="resetChecklist()" style="font-size:10px;color:#3d5a7a;background:none;border:none;cursor:pointer;padding:0;">Reset</button>
+    <span id="checklist-title" style="font-size:10px;text-transform:uppercase;letter-spacing:1.8px;color:var(--accent);font-weight:600;">Match-day checklist</span>
+    <span style="font-size:10px;color:var(--muted);">Ticks itself — use the buttons to do each step</span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px;" id="checklist-items"></div>
-</div>
-
-<!-- ── Stream health check ── -->
-<div class="card" style="margin-bottom:14px;border-color:#2a6496;">
-  <h2 style="color:#5b9bd5;">&#128225; Stream Health Check</h2>
-  <p class="section-note">
-    Recommends a bitrate/resolution from your actual measured upload speed, and tests whether
-    your hardware video encoder is really performing better than plain CPU encoding — instead
-    of just guessing from your computer's specs. Runs automatically once OBS is detected;
-    briefly starts and stops a short throwaway test recording in OBS to measure it (never
-    while the real stream is live).
-  </p>
-  <div id="stream-check-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
-       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:36px;">
-    Waiting to detect OBS…
-  </div>
-  <button class="btn" onclick="runStreamHealthCheck(true)"
-          style="background:#2a6496;margin-top:10px;">
-    &#128225; Check now
-  </button>
-
-  <hr style="margin:14px 0;">
-  <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
-              font-weight:600;margin-bottom:8px;">Live quality scaling</div>
-  <p class="section-note">
-    OBS's dynamic bitrate (enabled automatically by setup) flexes with the connection
-    seamlessly. If the line struggles badly for a sustained period, quality can also be
-    stepped down a ladder — each step briefly restarts the stream (viewers see a few
-    seconds of buffering; the broadcast survives). <b style="color:#c8a84b;">Requires
-    streaming with a plain stream key</b> — OBS's connected-YouTube-account mode with
-    auto-stop ENDS the broadcast when the stream stops, so a quality step would kill it.
-    In YouTube Studio copy the stream key and paste it into OBS Settings &rarr; Stream.
-  </p>
-  <div id="stream-monitor-body" style="font-size:12px;color:#3d5a7a;padding:10px 12px;
-       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:32px;">
-    Waiting for the stream to start&hellip;
-  </div>
-  <div class="toggle-row" style="margin-top:8px;">
-    <div>
-      <div class="toggle-label">Auto quality scaling</div>
-      <div class="toggle-desc">Step bitrate down automatically on sustained congestion (never steps up on its own)</div>
-    </div>
-    <label class="toggle"><input type="checkbox" id="stream_auto_downshift"
-           onchange="saveState()"><span class="track"></span></label>
-  </div>
-  <div class="btn-row" style="margin-top:8px;">
-    <button class="btn btn-test" onclick="streamQuality('down')" style="flex:1;">&#9660; Reduce quality now</button>
-    <button class="btn btn-test" onclick="streamQuality('restore')" style="flex:1;">&#9650; Restore full quality</button>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px;" id="checklist-items">
+    <div style="font-size:12px;color:var(--muted);padding:5px 8px;">Checking…</div>
   </div>
 </div>
 
-<!-- ── AI Commentary card ── -->
-<div class="card highlight" style="margin-bottom:14px;">
-  <h2>&#129302; AI Commentary <span style="text-transform:none;letter-spacing:0;font-size:10px;
-      color:#5b3a7a;font-weight:400;">(NEW — test feature)</span></h2>
-  <p class="section-note" style="color:#8060a0;">
-    End-of-over AI commentary and new-batter player cards. Uses Claude Haiku — fast and
-    very cheap (fractions of a penny per line). Requires an Anthropic API key below.
-  </p>
-  <div class="toggle-row">
-    <div>
-      <div class="toggle-label">AI commentary (end of over)</div>
-      <div class="toggle-desc">4th panel after over summary, partnership, run rate</div>
-    </div>
-    <label class="toggle">
-      <input type="checkbox" id="graphics_commentary_over">
-      <span class="track"></span>
-    </label>
-  </div>
-  <div class="toggle-row">
-    <div>
-      <div class="toggle-label">Player card on new batter</div>
-      <div class="toggle-desc">Shows name + season stats when a new batter arrives</div>
-    </div>
-    <label class="toggle">
-      <input type="checkbox" id="graphics_player_card">
-      <span class="track"></span>
-    </label>
-  </div>
-  <div class="field">
-    <label>Anthropic API key</label>
-    <input type="text" id="anthropic_api_key"
-           placeholder="sk-ant-api03-...">
-    <p class="hint">Get a free key at <a href="https://console.anthropic.com"
-       target="_blank" style="color:#5b9bd5;">console.anthropic.com</a> —
-       Claude Haiku costs ~$0.001 per commentary line</p>
-  </div>
-  <div class="commentary-preview" id="commentary-preview">
-    Commentary will appear here during the match...
-  </div>
-  <div class="commentary-meta" id="commentary-meta"></div>
-  <button class="btn btn-commentary" onclick="testCommentary()">
-    &#129302; Generate test commentary
-  </button>
-</div>
+<!-- ── Tabs, by the moment you need them (2026-10 refresh) ── -->
+<nav id="tabbar" role="tablist">
+  <button type="button" role="tab" data-tab="match" onclick="showTab('match')">Match day</button>
+  <button type="button" role="tab" data-tab="graphics" onclick="showTab('graphics')">Graphics<span class="long"> &amp; sponsor</span></button>
+  <button type="button" role="tab" data-tab="after" onclick="showTab('after')">After<span class="long"> the match</span></button>
+  <button type="button" role="tab" data-tab="setup" onclick="showTab('setup')">Setup</button>
+</nav>
 
-<!-- PlayCricket API card -->
-<div class="card" style="margin-bottom:14px;border-color:#2a6496;">
-  <h2 style="color:#5b9bd5;">&#9889; PlayCricket API — Auto-fill</h2>
-  <p class="section-note">
-    Fetches today's fixture automatically — fills in opposition name,
-    umpires, competition, and ground coordinates for weather.
-    The API only works from your registered laptop.
-  </p>
-  <div class="split-grid" style="gap:10px;margin-bottom:10px;">
-    <div class="field" style="margin-bottom:0">
-      <label>PlayCricket API key</label>
-      <input type="text" id="playcricket_api_key" placeholder="Paste your API key here">
-    </div>
-    <div class="field" style="margin-top:10px;">
-      <label>Ground name filter</label>
-      <input type="text" id="ground_filter" placeholder="e.g. The Green">
-      <p class="hint">Only fetch home fixtures at this ground. Partial match, case-insensitive. Leave blank for any home ground.</p>
-    </div>
+<section class="tab-panel active" id="tab-match" role="tabpanel">
+<div class="grid">
+  <div class="card">
+    <h2>Today's match</h2>
     <button class="btn" onclick="fetchTodaysMatch()"
-            style="background:#2a6496;white-space:nowrap;height:38px;">
+            style="background:var(--accent-strong);white-space:nowrap;height:38px;">
       &#128203; Fetch today's match
     </button>
-  </div>
-  <div id="pc-api-result" style="font-size:12px;color:#3d5a7a;padding:8px 10px;
-       background:#0a1628;border-radius:5px;border:1px solid #1e3550;min-height:36px;">
+  <div id="pc-api-result" style="font-size:12px;color:var(--muted);padding:8px 10px;
+       background:var(--surface-2);border-radius:5px;border:1px solid var(--line);min-height:36px;">
     Enter your API key and click Fetch — opposition name, umpires and competition
     will be filled in automatically.
   </div>
   <div id="pc-api-details" style="display:none;margin-top:10px;">
     <div class="pcs-grid" id="pc-api-grid"></div>
   </div>
-</div>
-
-<div class="grid">
-
-  <!-- Match -->
+    <div class="field" style="margin-top:10px;">
+      <label>Season batting stats <span style="color:var(--muted);font-weight:400;">(pulled from PlayCricket, cached for the day)</span></label>
+      <button class="btn btn-test" onclick="refreshSeasonStats()" style="width:100%;margin-top:4px;">&#128202; Refresh season stats from PlayCricket</button>
+      <span id="season-stats-status" style="font-size:12px;color:var(--muted);display:block;margin-top:8px;">Builds player averages/best/innings from this season's scorecards. Click once before the match to pre-load. Uses your PlayCricket API key.</span>
+    </div>
+  </div>
   <div class="card">
     <h2>Match</h2>
     <div id="demo-row" class="toggle-row" style="margin-bottom:12px;padding:8px 10px;
          background:#0a1a0a;border:1px solid #1a4a1a;border-radius:6px;">
       <div>
-        <div class="toggle-label" id="demo-label" style="color:#4caf50;">Demo mode OFF</div>
+        <div class="toggle-label" id="demo-label" style="color:var(--ok);">Demo mode OFF</div>
         <div class="toggle-desc">Shows dummy data on the overlay — must be OFF when streaming</div>
       </div>
       <label class="toggle">
@@ -405,283 +437,36 @@
       <label>Max overs per innings</label>
       <input type="number" id="max_overs" min="1" max="100" style="width:90px">
     </div>
-
-    <div class="field" style="padding:10px;background:#0a1f0a;border:1px solid #1e4a1e;border-radius:5px;margin-bottom:10px;">
-      <label style="color:#4caf50;">&#9679; PCS Pro output folder <span style="color:#3d7a3d;font-size:10px;font-weight:400;">— recommended data source</span></label>
-      <input type="text" id="pcs_output_folder" placeholder="e.g. C:/Users/Scorer/Documents/Cricket Matches/_Scoreboards/Output">
-      <p class="hint" style="color:#3d7a3d;">Paste the scorer's PCS Pro output folder. Gives batter names, bowler, run rate — updated every ball. No internet needed.</p>
-    </div>
-    <div class="field" style="padding:10px;background:#0a1428;border:1px solid #1e3550;border-radius:5px;margin-bottom:10px;">
-      <label style="color:#5b9bd5;">&#9679; NV Play on separate hardware <span style="color:#3d5a7a;font-size:10px;font-weight:400;">— optional, instead of the folder above</span></label>
-      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (run nvplay_bridge.py on that machine)" style="margin-bottom:6px;">
-      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (printed when nvplay_bridge.py starts)">
-      <p class="hint" style="color:#3d5a7a;">If NV Play runs on its own machine (not this one) so its heat/CPU doesn't share the
-      streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
-      IP is the recommended way to reach it.</p>
-    </div>
-    <input type="hidden" id="pcs_source" value="local">
-    <div class="field" style="padding:10px;background:#1a1405;border:1px solid #4a3800;border-radius:5px;margin-bottom:10px;">
-      <div class="toggle-row" style="margin:0;">
-        <div>
-          <div class="toggle-label" style="color:#c8a000;">Run the stream from a second laptop</div>
-          <div class="toggle-desc">Scorer runs <code>scorer_agent.py</code> once at the start of the day and is otherwise left alone;
-          this laptop finds it on the club wifi automatically. See TWO_LAPTOP_SETUP.md.</div>
-        </div>
-        <label class="toggle"><input type="checkbox" id="pcs_source_agent" onchange="onAgentToggle()"><span class="track"></span></label>
-      </div>
-      <div id="agent-box" style="display:none;margin-top:10px;">
-        <div style="display:flex;gap:8px;align-items:flex-end;">
-          <div style="flex:1;">
-            <label>Scorer laptop address <span style="color:#8a6a20;font-size:10px;font-weight:400;">— leave blank to find it automatically</span></label>
-            <input type="text" id="agent_host" placeholder="found automatically — or type e.g. 192.168.1.40:8788">
-          </div>
-          <button type="button" onclick="discoverAgent()" style="white-space:nowrap;">Find scorer laptop</button>
-        </div>
-        <div id="agent-status" class="hint" style="margin-top:8px;padding:8px;border-radius:4px;background:#150f03;border:1px solid #3a2c00;color:#8a6a20;">
-          Checking&hellip;
-        </div>
-      </div>
-    </div>
-    <div class="toggle-row" style="margin-top:8px;">
-      <div>
-        <div class="toggle-label">Use widget as fallback</div>
-        <div class="toggle-desc">Poll PlayCricket widget if PCS file not found. Disable if PCS is always in use.</div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="use_widget"><span class="track"></span></label>
-    </div>
     <div class="field">
       <label>Toss / match notes</label>
       <textarea id="match_notes" placeholder="e.g. Home won toss, elected to bat"></textarea>
       <p class="hint">Shown in the status segment of the scorebar</p>
     </div>
-  </div>
-
-  <!-- Kit colours -->
-  <div class="card">
-    <h2>Kit Colours</h2>
-    <div class="field">
-      <label>Home kit</label>
-      <div class="colour-row">
-        <div class="colour-swatch" id="home-swatch"></div>
-        <input type="text" class="colour-hex" id="home_colour" maxlength="7">
-      </div>
-      <div class="presets" id="home-presets"></div>
-    </div>
-    <div class="field" style="margin-top:12px">
-      <label>Away kit</label>
-      <div class="colour-row">
-        <div class="colour-swatch" id="away-swatch"></div>
-        <input type="text" class="colour-hex" id="away_colour" maxlength="7">
-      </div>
-      <div class="presets" id="away-presets"></div>
-    </div>
-    <div class="preview-bar" id="colour-preview">
-      <div class="preview-home" id="prev-home">HOME</div>
-      <div class="preview-centre">147-4 &nbsp; 28.3/50</div>
-      <div class="preview-away" id="prev-away">OPP</div>
-      <div class="preview-bowler" id="prev-bowler">Harrison 1-34</div>
-    </div>
-
-    <!-- Logos folder -->
-    <div class="field" style="margin-top:14px;">
-      <label>Logos folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
-      <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
-      <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
-    </div>
-
     <div class="field" style="margin-top:10px;">
-      <label>Headshots folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
-      <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
-      <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
-    </div>
-
-    <div class="field" style="margin-top:10px;">
-      <label>Season batting stats <span style="color:#3d5a7a;font-weight:400;">(pulled from PlayCricket, cached for the day)</span></label>
-      <button class="btn btn-test" onclick="refreshSeasonStats()" style="width:100%;margin-top:4px;">&#128202; Refresh season stats from PlayCricket</button>
-      <span id="season-stats-status" style="font-size:12px;color:#3d5a7a;display:block;margin-top:8px;">Builds player averages/best/innings from this season's scorecards. Click once before the match to pre-load. Uses your PlayCricket API key.</span>
-    </div>
-
-    <div class="field" style="margin-top:10px;">
-      <label>Socials folder <span style="color:#3d5a7a;font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
-      <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
-      <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
-    </div>
-
-    <div class="field" style="margin-top:10px;">
-      <label>Drinks break over <span style="color:#3d5a7a;font-weight:400;">(weather card shows at end of this over)</span></label>
+      <label>Drinks break over <span style="color:var(--muted);font-weight:400;">(weather card shows at end of this over)</span></label>
       <input type="number" id="drinks_over" placeholder="25" min="1" max="49">
       <p class="hint">Set to 0 to disable. Weather card shows automatically at the end of this over.</p>
     </div>
-
-    <!-- Club Badge Status -->
-    <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.07);padding-top:16px;">
-      <label style="font-size:11px;font-weight:700;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;display:block;margin-bottom:12px;">Club Badges</label>
-      <div class="half-grid" style="gap:12px;">
-
-        <!-- Home badge -->
-        <div style="display:flex;align-items:center;gap:10px;background:#0d1e35;border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
-          <div id="badge-home-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
-            <img id="badge-home-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('home')">
-            <span id="badge-home-icon" style="font-size:18px;color:#3d5a7a;">⚪</span>
-          </div>
-          <div style="min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-home-label">Home badge</div>
-            <div style="font-size:11px;margin-top:2px;" id="badge-home-status">Checking...</div>
-            <div style="font-size:10px;color:#3d5a7a;margin-top:1px;" id="badge-home-id"></div>
-          </div>
-        </div>
-
-        <!-- Away badge -->
-        <div style="display:flex;align-items:center;gap:10px;background:#0d1e35;border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
-          <div id="badge-away-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
-            <img id="badge-away-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('away')">
-            <span id="badge-away-icon" style="font-size:18px;color:#3d5a7a;">⚪</span>
-          </div>
-          <div style="min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-away-label">Away badge</div>
-            <div style="font-size:11px;margin-top:2px;" id="badge-away-status">Checking...</div>
-            <div style="font-size:10px;color:#3d5a7a;margin-top:1px;" id="badge-away-id"></div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Manual badge picker -->
-      <div class="half-grid" style="margin-top:12px;gap:12px;">
-        <div>
-          <label style="font-size:11px;color:#3d5a7a;display:block;margin-bottom:4px;">Home badge file</label>
-          <select id="home-logo-pick" onchange="applyBadgePick('home')" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:7px;font-size:12px;box-sizing:border-box;">
-            <option value="">— pick a logo —</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:11px;color:#3d5a7a;display:block;margin-bottom:4px;">Away badge file</label>
-          <select id="away-logo-pick" onchange="applyBadgePick('away')" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:7px;font-size:12px;box-sizing:border-box;">
-            <option value="">— pick a logo —</option>
-          </select>
-        </div>
-      </div>
-      <p class="hint" style="margin-top:8px;">Manually set each side's badge from your logos folder — handy when PlayCricket didn't supply the opposition's club ID. Picking a file sets that side's badge immediately.</p>
-    </div>
   </div>
-
-  <!-- Squad roster (shirt number → player) -->
   <div class="card">
-    <label>Squad Roster — tells brothers apart</label>
-    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
-    <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
-    <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
-    <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
-  </div>
-
-  <!-- Graphics toggles -->
-  <div class="card">
-    <h2>Graphics</h2>
-    <div class="field" style="margin-bottom:14px;">
-      <label>Scorebar style</label>
-      <select id="scorebar_style">
-        <option value="classic">Classic — light grey panels (the original)</option>
-        <option value="modern">Modern — dark broadcast slab, team-colour top rule</option>
-        <option value="impact">Impact — bold angled cuts, white score plate</option>
-        <option value="minimal">Minimal — clean white, high contrast</option>
-      </select>
-      <p class="hint">Changes the look of the bottom scorebar. Takes effect on the overlay's
-        next poll (a few seconds), no restart needed. All four use your team colours.
-        Impact reads best on phones; Minimal sits better under a bright daytime picture.</p>
-      <!-- Live preview: the REAL overlay in ?preview=1 mode (one static frame of demo
-           data, no polling — it must never call /live or /commands, both of which have
-           side effects). Scaled 1920->full width so it shows the actual CSS rather than a
-           mock-up that could drift out of step with it. -->
-      <div style="margin-top:10px;">
-        <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
-                    font-weight:600;margin-bottom:6px;">Preview</div>
-        <div id="scorebar-preview-wrap"
-             style="position:relative;width:100%;height:0;padding-bottom:3.75%;overflow:hidden;
-                    border-radius:6px;background:#11161f;border:1px solid #21344a;">
-          <iframe id="scorebar-preview" title="Scorebar preview" scrolling="no"
-                  style="position:absolute;top:0;left:0;width:1920px;height:72px;border:0;
-                         transform-origin:top left;"></iframe>
-        </div>
-        <p class="hint" style="margin-top:6px;">Sample match data — your own team names and
-          colours are used.</p>
-      </div>
+    <h2>Cameras</h2>
+    <div class="half-grid" style="margin-top:8px;">
+      <button class="btn btn-test cam-btn" id="cam-btn-main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
     </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Fall of wicket card</div>
-           <div class="toggle-desc">Slides up when a wicket falls</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_fow"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Partnership milestones</div>
-           <div class="toggle-desc">Shows at 50, 100, 150... run partnerships</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_partnership"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Batting lineup card</div>
-           <div class="toggle-desc">Appears at start of each innings</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_lineup"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Boundary / six flash</div>
-           <div class="toggle-desc">FOUR! and SIX! banner on boundaries</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_boundary_flash"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Player milestones</div>
-           <div class="toggle-desc">Gold graphic at 50 and 100 runs</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_milestones"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Innings summary card</div>
-           <div class="toggle-desc">Top scorers &amp; bowlers at end of innings</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_innings_summary"><span class="track"></span></label>
-    </div>
-    <hr>
-    <div style="font-size:10px;color:#3d5a7a;text-transform:uppercase;letter-spacing:1.5px;
-                font-weight:600;margin:6px 0 4px;">PCS Pro live features</div>
-
-    <div class="toggle-row">
-      <div><div class="toggle-label">Over summary card</div>
-           <div class="toggle-desc">Slides up at end of each over with runs &amp; bowler figures</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_over_summary"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Partnership display</div>
-           <div class="toggle-desc">Current partnership runs &amp; balls — bottom left</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_partnership_display"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Run rate trend</div>
-           <div class="toggle-desc">Bar chart of runs per over — top left corner</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_runrate_trend"><span class="track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">League table context</div>
-           <div class="toggle-desc">Where today's result leaves the home club in the table — once pre-match, once per innings. Needs competition_id (set automatically by "Fetch today's match")</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_league_table"><span class="track"></span></label>
-    </div>
-    <hr>
-    <div class="field">
-      <label>Weekend sponsor name</label>
-      <input type="text" id="sponsor_name" placeholder="e.g. Acme Builders — leave blank to disable">
-      <p class="hint">Shown after the over summary/partnership/AI commentary sequence at the end of each over (not with the run rate chart). Blank = off.</p>
-    </div>
-    <div class="field" style="margin-top:8px;">
-      <label>Weekend sponsor image ID</label>
-      <input type="text" id="sponsor_id" placeholder="e.g. 3 — matches sponsors/3.png">
-      <p class="hint">Matches an image in the sponsors/ folder next to server.py, named by this ID (sponsors/3.png, sponsors/3.jpg, ...). Optional — the name still shows on its own if no image is found.</p>
-    </div>
-  </div>
-
-  <!-- Instant replay -->
-  <div class="card">
-    <h2>Instant Replay</h2>
-    <p class="section-note">
-      Requires OBS WebSocket enabled (Tools → WebSocket Server Settings)
-      and a scene named <strong style="color:#e8edf2">Replay</strong> with a
-      Media Source named <strong style="color:#e8edf2">ReplayClip</strong>.
-      Also enable the Replay Buffer in OBS Settings → Output.
+    <p class="hint" style="margin-top:6px;">
+      Press <kbd>C</kbd> to flick between the two without aiming at a button — the quickest
+      way to cut while you're watching the play. The live angle is highlighted.
     </p>
+    <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Automatic cut at over boundary</div>
+           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera is set up (Setup → Cameras). <strong>New, unverified against real hardware</strong> — watch the first live over closely.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Replays</h2>
     <div class="toggle-row">
       <div><div class="toggle-label">Enable instant replay</div>
            <div class="toggle-desc">Auto-triggers on wickets &amp; boundaries</div></div>
@@ -698,85 +483,6 @@
            <div class="toggle-desc">Also replay when a batter reaches 50, 150, 200...</div></div>
       <label class="toggle"><input type="checkbox" id="replay_on_fifty"><span class="track"></span></label>
     </div>
-    <hr>
-    <div class="field">
-      <label>OBS WebSocket password</label>
-      <input type="text" id="obs_password" placeholder="Set in OBS → Tools → WebSocket Server">
-    </div>
-    <div class="half-grid">
-      <div class="field">
-        <label>OBS host</label>
-        <input type="text" id="obs_host" placeholder="localhost">
-      </div>
-      <div class="field">
-        <label>Port</label>
-        <input type="number" id="obs_port" placeholder="4455" style="width:100%">
-      </div>
-    </div>
-    <div class="half-grid">
-      <div class="field">
-        <label>Main scene name</label>
-        <input type="text" id="obs_main_scene" placeholder="Main">
-      </div>
-      <div class="field">
-        <label>Replay scene name</label>
-        <input type="text" id="obs_replay_scene" placeholder="Replay">
-      </div>
-    </div>
-    <hr>
-    <div class="field">
-      <label>Camera RTSP URL <span style="color:#3d5a7a;font-weight:400;">(adds the match camera to OBS for you)</span></label>
-      <input type="text" id="camera_rtsp_url" placeholder="rtsp://user:pass@192.168.1.50:554/stream">
-    </div>
-    <div class="field">
-      <label>Camera source name</label>
-      <input type="text" id="obs_camera_name" placeholder="Cricket Camera">
-    </div>
-    <button class="btn btn-test" onclick="addCameraToObs(1)" style="width:100%;">&#128247; Add camera to OBS</button>
-    <div id="camera-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
-    <hr>
-    <p class="section-note">
-      Second camera (e.g. bowler-end) for a hard cut between two angles &mdash; optional,
-      leave the URL blank to skip. <strong>New, not yet verified against real two-camera
-      hardware</strong> &mdash; test it on a real match before relying on it. Both cameras
-      end up placed in Main, the bowler-end scene, and Replay, so switching never leaves a
-      camera deactivated (see CLAUDE.md's camera-source gotcha).
-    </p>
-    <div class="field">
-      <label>Bowler-end camera RTSP URL</label>
-      <input type="text" id="camera2_rtsp_url" placeholder="rtsp://user:pass@192.168.1.51:554/stream">
-    </div>
-    <div class="half-grid">
-      <div class="field">
-        <label>Camera 2 source name</label>
-        <input type="text" id="obs_camera2_name" placeholder="Bowler End Camera">
-      </div>
-      <div class="field">
-        <label>Bowler-end scene name</label>
-        <input type="text" id="obs_bowler_scene" placeholder="Main-Bowler">
-      </div>
-    </div>
-    <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add bowler-end camera to OBS</button>
-    <div id="camera2-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
-    <div class="half-grid" style="margin-top:8px;">
-      <button class="btn btn-test cam-btn" id="cam-btn-main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
-      <button class="btn btn-test cam-btn" id="cam-btn-bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
-    </div>
-    <p class="hint" style="margin-top:6px;">
-      Press <kbd>C</kbd> to flick between the two without aiming at a button — the quickest
-      way to cut while you're watching the play. The live angle is highlighted.
-    </p>
-    <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
-    <div class="toggle-row" style="margin-top:10px">
-      <div><div class="toggle-label">Automatic cut at over boundary</div>
-           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera URL is set above. <strong>New, unverified against real hardware</strong> — watch the first live over closely.</div></div>
-      <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
-    </div>
-    <div class="field">
-      <label>Replay folder path (leave blank to auto-detect)</label>
-      <input type="text" id="replay_folder" placeholder="C:/Users/You/Videos/Replays">
-      <p class="hint">Where OBS saves replay buffer clips. Max 100 clips — oldest deleted automatically.</p>
-    </div>
     <div class="field">
       <label>Replay scene duration (seconds)</label>
       <input type="number" id="replay_duration" min="5" max="60" style="width:90px">
@@ -784,8 +490,91 @@
     </div>
     <button class="btn btn-test" onclick="testReplay()">&#9654; Test replay now</button>
   </div>
-
-  <!-- YouTube broadcast manager -->
+  <div class="card">
+    <h2>On-screen extras</h2>
+    <p class="section-note">Shows current conditions at your ground in the top-left corner of the stream. Use during rain delays.</p>
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn btn-test" onclick="showWeather()" style="flex:1;">&#9728; Show weather</button>
+      <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
+      <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
+      <button class="btn btn-test" onclick="showPlayerCards()" style="flex:1;">&#9786; Show player cards</button>
+    </div>
+    <div id="weather-preview" style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:12px;color:var(--accent);">Click "Show weather" to fetch current conditions</div>
+  </div>
+  <div class="card">
+    <h2>Stream quality</h2>
+  <p class="section-note">
+    OBS's dynamic bitrate (enabled automatically by setup) flexes with the connection
+    seamlessly. If the line struggles badly for a sustained period, quality can also be
+    stepped down a ladder — each step briefly restarts the stream (viewers see a few
+    seconds of buffering; the broadcast survives). <b style="color:var(--warn);">Requires
+    streaming with a plain stream key</b> — OBS's connected-YouTube-account mode with
+    auto-stop ENDS the broadcast when the stream stops, so a quality step would kill it.
+    In YouTube Studio copy the stream key and paste it into OBS Settings &rarr; Stream.
+  </p>
+  <div id="stream-monitor-body" style="font-size:12px;color:var(--muted);padding:10px 12px;
+       background:var(--surface-2);border-radius:5px;border:1px solid var(--line);min-height:32px;">
+    Waiting for the stream to start&hellip;
+  </div>
+  <div class="toggle-row" style="margin-top:8px;">
+    <div>
+      <div class="toggle-label">Auto quality scaling</div>
+      <div class="toggle-desc">Step bitrate down automatically on sustained congestion (never steps up on its own)</div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="stream_auto_downshift"
+           onchange="saveState()"><span class="track"></span></label>
+  </div>
+  <div class="btn-row" style="margin-top:8px;">
+    <button class="btn btn-test" onclick="streamQuality('down')" style="flex:1;">&#9660; Reduce quality now</button>
+    <button class="btn btn-test" onclick="streamQuality('restore')" style="flex:1;">&#9650; Restore full quality</button>
+  </div>
+  </div>
+  <div class="card full">
+    <h2>System health</h2>
+    <div id="live-status-bar">
+  <!-- Health strip: one dot per subsystem, refreshed every 10s from /health -->
+  <div id="health-strip" style="
+    display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:8px 14px; margin:8px 0 0 0; font-size:11px; color:var(--text-2);
+  ">
+    <span style="color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;font-size:9px;">Health</span>
+    <span class="hl-item"><span class="hl-dot" id="hl-feed"></span>Feed: <b id="hl-feed-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-stats"></span>Stats: <b id="hl-stats-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
+    <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
+    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
+    <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
+  </div>
+  <style>
+    .hl-item { display:inline-flex; align-items:center; gap:6px; }
+    .hl-item b { color:var(--text); font-weight:600; }
+    .hl-dot { width:8px; height:8px; border-radius:50%; background:#4a4a4a; display:inline-block; }
+    .hl-ok   { background:var(--ok) !important; }
+    .hl-warn { background:var(--warn) !important; }
+    .hl-bad  { background:var(--bad) !important; }
+  </style>
+  <div style="
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:10px 16px; min-width:110px; gap:2px;
+  ">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;">Uptime</div>
+    <div id="server-uptime" style="font-size:16px;font-weight:700;color:var(--ok);">—</div>
+    <div id="server-clips" style="font-size:10px;color:var(--muted);">— clips</div>
+  </div>
+    </div>
+  </div>
+  <div class="card" id="pcs-monitor">
+      <h2>&#128200; PCS Pro — Live Data Feed</h2>
+      <p class="section-note">Live view of what is being received from the PCS Pro output file and sent to the overlay.</p>
+      <div id="pcs-monitor-body">
+        <div style="color:var(--muted);font-size:12px;padding:10px 0;">
+          Waiting for PCS data — set the scoreboard folder in Setup → Scoring source, and start scoring.
+        </div>
+      </div>
+    </div>
   <div class="card">
     <h2>YouTube Broadcast</h2>
     <p class="section-note">
@@ -833,43 +622,284 @@
     </p>
     <button class="btn btn-test" onclick="updateYouTubeBroadcast()" style="margin-top:8px;">&#9654; Update YouTube broadcast now</button>
     <div id="youtube-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
-    <div style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:11px;color:#3d5a7a;line-height:1.6;">
-      <strong style="color:#5b9bd5;">One-time setup:</strong><br>
-      1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:#5b9bd5;">console.cloud.google.com</a><br>
+    <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:11px;color:var(--muted);line-height:1.6;">
+      <strong style="color:var(--accent);">One-time setup:</strong><br>
+      1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">console.cloud.google.com</a><br>
       2. Create a project → Enable YouTube Data API v3<br>
       3. Create OAuth2 credentials (Desktop app) → Download JSON<br>
-      4. Rename file to <strong style="color:#e8edf2;">yt_credentials.json</strong> and place in the same folder as server.py<br>
-      5. Run: <code style="color:#e8edf2;">pip install google-api-python-client google-auth-oauthlib</code><br>
+      4. Rename file to <strong style="color:var(--text);">yt_credentials.json</strong> and place in the same folder as server.py<br>
+      5. Run: <code style="color:var(--text);">pip install google-api-python-client google-auth-oauthlib</code><br>
       6. Click the button above — a browser window will open to authorise once<br>
-      <span style="color:#c8a84b;">Tip: create the broadcast first (YouTube Studio → Go Live → Stream), then click Update to fill in its details.</span>
+      <span style="color:var(--warn);">Tip: create the broadcast first (YouTube Studio → Go Live → Stream), then click Update to fill in its details.</span>
     </div>
   </div>
+</div>
+</section>
 
-  <!-- Weather widget -->
+<section class="tab-panel" id="tab-graphics" role="tabpanel">
+<div class="grid">
   <div class="card">
-    <h2>Weather Widget</h2>
-    <p class="section-note">Shows current conditions at your ground in the top-left corner of the stream. Use during rain delays.</p>
-    <div class="btn-row" style="margin-top:4px;">
-      <button class="btn btn-test" onclick="showWeather()" style="flex:1;">&#9728; Show weather</button>
-      <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
-      <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
-      <button class="btn btn-test" onclick="showPlayerCards()" style="flex:1;">&#9786; Show player cards</button>
+    <h2>Graphics</h2>
+    <div class="field" style="margin-bottom:14px;">
+      <label>Scorebar style</label>
+      <select id="scorebar_style">
+        <option value="classic">Classic — light grey panels (the original)</option>
+        <option value="modern">Modern — dark broadcast slab, team-colour top rule</option>
+        <option value="impact">Impact — bold angled cuts, white score plate</option>
+        <option value="minimal">Minimal — clean white, high contrast</option>
+      </select>
+      <p class="hint">Changes the look of the bottom scorebar. Takes effect on the overlay's
+        next poll (a few seconds), no restart needed. All four use your team colours.
+        Impact reads best on phones; Minimal sits better under a bright daytime picture.</p>
+      <!-- Live preview: the REAL overlay in ?preview=1 mode (one static frame of demo
+           data, no polling — it must never call /live or /commands, both of which have
+           side effects). Scaled 1920->full width so it shows the actual CSS rather than a
+           mock-up that could drift out of step with it. -->
+      <div style="margin-top:10px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;
+                    font-weight:600;margin-bottom:6px;">Preview</div>
+        <div id="scorebar-preview-wrap"
+             style="position:relative;width:100%;height:0;padding-bottom:3.75%;overflow:hidden;
+                    border-radius:6px;background:#11161f;border:1px solid #21344a;">
+          <iframe id="scorebar-preview" title="Scorebar preview" scrolling="no"
+                  style="position:absolute;top:0;left:0;width:1920px;height:72px;border:0;
+                         transform-origin:top left;"></iframe>
+        </div>
+        <p class="hint" style="margin-top:6px;">Sample match data — your own team names and
+          colours are used.</p>
+      </div>
     </div>
-    <div id="weather-preview" style="margin-top:10px;padding:10px;background:#0a1628;border-radius:5px;font-size:12px;color:#5b9bd5;">Click "Show weather" to fetch current conditions</div>
-  </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Fall of wicket card</div>
+           <div class="toggle-desc">Slides up when a wicket falls</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_fow"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Partnership milestones</div>
+           <div class="toggle-desc">Shows at 50, 100, 150... run partnerships</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_partnership"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Batting lineup card</div>
+           <div class="toggle-desc">Appears at start of each innings</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_lineup"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Boundary / six flash</div>
+           <div class="toggle-desc">FOUR! and SIX! banner on boundaries</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_boundary_flash"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Player milestones</div>
+           <div class="toggle-desc">Gold graphic at 50 and 100 runs</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_milestones"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Innings summary card</div>
+           <div class="toggle-desc">Top scorers &amp; bowlers at end of innings</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_innings_summary"><span class="track"></span></label>
+    </div>
+    <hr>
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;
+                font-weight:600;margin:6px 0 4px;">PCS Pro live features</div>
 
-  <!-- Match report & social posts -->
-  <div class="card" style="grid-column:1/-1;border-color:#2a6496;">
+    <div class="toggle-row">
+      <div><div class="toggle-label">Over summary card</div>
+           <div class="toggle-desc">Slides up at end of each over with runs &amp; bowler figures</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_over_summary"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Partnership display</div>
+           <div class="toggle-desc">Current partnership runs &amp; balls — bottom left</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_partnership_display"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Run rate trend</div>
+           <div class="toggle-desc">Bar chart of runs per over — top left corner</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_runrate_trend"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">League table context</div>
+           <div class="toggle-desc">Where today's result leaves the home club in the table — once pre-match, once per innings. Needs competition_id (set automatically by "Fetch today's match")</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_league_table"><span class="track"></span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Weekend sponsor</h2>
+    <div class="field">
+      <label>Weekend sponsor name</label>
+      <input type="text" id="sponsor_name" placeholder="e.g. Acme Builders — leave blank to disable">
+      <p class="hint">Shown after the over summary/partnership/AI commentary sequence at the end of each over (not with the run rate chart). Blank = off.</p>
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Weekend sponsor image ID</label>
+      <input type="text" id="sponsor_id" placeholder="e.g. 3 — matches sponsors/3.png"
+             oninput="showSponsorPreview()">
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+        <img id="sponsor-preview" alt="" style="max-height:48px;max-width:160px;display:none;
+             background:var(--line);border-radius:4px;padding:4px;flex:0 0 auto;">
+        <label class="btn" style="background:var(--accent-strong);cursor:pointer;margin:0;flex:1 1 auto;
+               text-align:center;">
+          Upload logo…
+          <input type="file" id="sponsor-file" accept="image/png,image/jpeg,image/webp,image/gif"
+                 style="display:none;" onchange="uploadSponsorLogo(this)">
+        </label>
+      </div>
+      <div id="sponsor-upload-msg" style="font-size:11px;color:var(--text-2);margin-top:5px;"></div>
+      <button type="button" class="btn" style="background:#2b3d57;margin-top:8px;font-size:12px;padding:8px;"
+              onclick="openBgChooser(false)">Make background transparent…</button>
+      <div id="sponsor-bg-chooser" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line);
+           border-radius:6px;background:var(--surface-2);">
+        <div style="font-size:11px;color:var(--text-2);margin-bottom:8px;">
+          Shown as it will look on the stream's dark strap. Pick the one that looks right:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button type="button" class="bg-choice" onclick="pickBg('outside')">
+            <span class="bg-stage"><img id="bg-prev-outside" alt=""></span>
+            <strong>Around the logo</strong><small>Best for badges and round logos — keeps any white inside them</small>
+          </button>
+          <button type="button" class="bg-choice" onclick="pickBg('everywhere')">
+            <span class="bg-stage"><img id="bg-prev-everywhere" alt=""></span>
+            <strong>Everywhere</strong><small>Best for words and lettering — clears the insides of letters too</small>
+          </button>
+        </div>
+        <button type="button" onclick="closeBgChooser()" style="margin-top:8px;background:none;border:none;
+                color:var(--accent);font-size:11px;cursor:pointer;padding:0;">Cancel — keep it as it is</button>
+      </div>
+      <div id="sponsor-bg-msg" style="font-size:11px;color:var(--text-2);margin-top:5px;"></div>
+      <p class="hint">Upload a logo from this device (PNG, JPEG, WebP or GIF, up to 8 MB) and it's saved on the streaming laptop and used straight away. Or type the ID of an image already in the sponsors/ folder (sponsors/3.png, ...). Optional — the name still shows on its own without one.</p>
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Sponsor airtime today</label>
+      <div id="sponsor-airtime" style="font-size:12px;color:var(--text-2);">—</div>
+      <p class="hint">How long the sponsor's strap has been on screen while the stream was live, to pass on to the sponsor. Time on screen before going live isn't counted. Past days: <code>/sponsor/airtime?date=YYYY-MM-DD</code></p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Team colours &amp; badges</h2>
+    <div class="field">
+      <label>Home kit</label>
+      <div class="colour-row">
+        <div class="colour-swatch" id="home-swatch"></div>
+        <input type="text" class="colour-hex" id="home_colour" maxlength="7">
+      </div>
+      <div class="presets" id="home-presets"></div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>Away kit</label>
+      <div class="colour-row">
+        <div class="colour-swatch" id="away-swatch"></div>
+        <input type="text" class="colour-hex" id="away_colour" maxlength="7">
+      </div>
+      <div class="presets" id="away-presets"></div>
+    </div>
+    <div class="preview-bar" id="colour-preview">
+      <div class="preview-home" id="prev-home">HOME</div>
+      <div class="preview-centre">147-4 &nbsp; 28.3/50</div>
+      <div class="preview-away" id="prev-away">OPP</div>
+      <div class="preview-bowler" id="prev-bowler">Harrison 1-34</div>
+    </div>
+    <!-- Club Badge Status -->
+    <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.07);padding-top:16px;">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;display:block;margin-bottom:12px;">Club Badges</label>
+      <div class="half-grid" style="gap:12px;">
+
+        <!-- Home badge -->
+        <div style="display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
+          <div id="badge-home-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img id="badge-home-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('home')">
+            <span id="badge-home-icon" style="font-size:18px;color:var(--muted);">⚪</span>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-home-label">Home badge</div>
+            <div style="font-size:11px;margin-top:2px;" id="badge-home-status">Checking...</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px;" id="badge-home-id"></div>
+          </div>
+        </div>
+
+        <!-- Away badge -->
+        <div style="display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.07);">
+          <div id="badge-away-circle" style="width:44px;height:44px;border-radius:50%;background:#1a2a3a;border:2px solid #2a3a4a;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img id="badge-away-img" src="" style="width:100%;height:100%;object-fit:contain;display:none" onerror="badgeError('away')">
+            <span id="badge-away-icon" style="font-size:18px;color:var(--muted);">⚪</span>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="badge-away-label">Away badge</div>
+            <div style="font-size:11px;margin-top:2px;" id="badge-away-status">Checking...</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px;" id="badge-away-id"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Manual badge picker -->
+      <div class="half-grid" style="margin-top:12px;gap:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Home badge file</label>
+          <select id="home-logo-pick" onchange="applyBadgePick('home')" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:7px;font-size:12px;box-sizing:border-box;">
+            <option value="">— pick a logo —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Away badge file</label>
+          <select id="away-logo-pick" onchange="applyBadgePick('away')" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:7px;font-size:12px;box-sizing:border-box;">
+            <option value="">— pick a logo —</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:8px;">Manually set each side's badge from your logos folder — handy when PlayCricket didn't supply the opposition's club ID. Picking a file sets that side's badge immediately.</p>
+    </div>
+  </div>
+  <div class="card highlight">
+  <h2>&#129302; AI Commentary <span style="text-transform:none;letter-spacing:0;font-size:10px;
+      color:#5b3a7a;font-weight:400;">(NEW — test feature)</span></h2>
+  <p class="section-note" style="color:#8060a0;">
+    End-of-over AI commentary and new-batter player cards. Uses Claude Haiku — fast and
+    very cheap (fractions of a penny per line). Requires an Anthropic API key below.
+  </p>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">AI commentary (end of over)</div>
+      <div class="toggle-desc">4th panel after over summary, partnership, run rate</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="graphics_commentary_over">
+      <span class="track"></span>
+    </label>
+  </div>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Player card on new batter</div>
+      <div class="toggle-desc">Shows name + season stats when a new batter arrives</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="graphics_player_card">
+      <span class="track"></span>
+    </label>
+  </div>
+  <div class="commentary-preview" id="commentary-preview">
+    Commentary will appear here during the match...
+  </div>
+  <div class="commentary-meta" id="commentary-meta"></div>
+  <button class="btn btn-commentary" onclick="testCommentary()">
+    &#129302; Generate test commentary
+  </button>
+  </div>
+</div>
+</section>
+
+<section class="tab-panel" id="tab-after" role="tabpanel">
+<div class="grid">
+  <div class="card full">
     <h2>&#128221; Match Report &amp; Social Posts</h2>
-    <p class="section-note">Generate an AI-written match report or a short social media post from the match so far. Needs an Anthropic API key (set in the AI Commentary card). Best run at the end of the match.</p>
+    <p class="section-note">Generate an AI-written match report or a short social media post from the match so far. Needs an Anthropic API key (Setup → Accounts &amp; keys). Best run at the end of the match.</p>
     <div class="btn-row" style="margin-top:4px;">
       <button class="btn btn-test" onclick="generateReport('report')" style="flex:1;">&#128240; Generate match report</button>
       <button class="btn btn-test" onclick="generateReport('social')" style="flex:1;">&#128241; Generate social post</button>
     </div>
-    <textarea id="report-output" placeholder="Generated text will appear here — edit freely before copying." style="width:100%;margin-top:12px;min-height:140px;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
+    <textarea id="report-output" placeholder="Generated text will appear here — edit freely before copying." style="width:100%;margin-top:12px;min-height:140px;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
     <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
       <button class="btn btn-test" onclick="copyReport()" style="flex:0 0 auto;">&#128203; Copy</button>
-      <span id="report-status" style="font-size:12px;color:#3d5a7a;"></span>
+      <span id="report-status" style="font-size:12px;color:var(--muted);"></span>
     </div>
     <div id="social-photos" style="margin-top:12px;"></div>
 
@@ -878,17 +908,17 @@
       <h2 style="font-size:15px;margin:0 0 4px;">&#128247; Instagram Result Graphic</h2>
       <p class="section-note">Builds a ready-to-post 1080&times;1350 image using a photo from your socials folder as the backdrop, with the result and key match facts laid over it. Needs an Anthropic API key.</p>
       <div class="field" style="margin-top:8px;">
-        <label>Match <span style="color:#3d5a7a;font-weight:400;">(pick a past result, or use the streamed match)</span></label>
+        <label>Match <span style="color:var(--muted);font-weight:400;">(pick a past result, or use the streamed match)</span></label>
         <div class="split-grid">
-          <select id="ig-match" onchange="onMatchPick()" style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:8px;font-size:13px;box-sizing:border-box;">
+          <select id="ig-match" onchange="onMatchPick()" style="flex:1;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:8px;font-size:13px;box-sizing:border-box;">
             <option value="">Streamed match (live data)</option>
           </select>
           <button class="btn btn-test" onclick="loadRecentMatches()" style="white-space:nowrap;">&#8635; Load results</button>
         </div>
       </div>
       <div class="field" style="margin-top:8px;">
-        <label>Backdrop photo <span style="color:#3d5a7a;font-weight:400;">(optional — newest photo used if blank)</span></label>
-        <select id="ig-photo" style="width:100%;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:8px;font-size:13px;box-sizing:border-box;">
+        <label>Backdrop photo <span style="color:var(--muted);font-weight:400;">(optional — newest photo used if blank)</span></label>
+        <select id="ig-photo" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:8px;font-size:13px;box-sizing:border-box;">
           <option value="">Newest photo in socials folder</option>
         </select>
       </div>
@@ -896,45 +926,28 @@
       <div id="ig-youth-note" style="display:none;margin-top:8px;padding:8px 10px;background:#2a2410;border:1px solid #5c4a18;border-radius:6px;font-size:11px;color:#d2c08a;line-height:1.5;">
         &#9888;&#65039; Youth match selected. Backdrop photos are drawn from <b>socials/youth</b> (use club/ground stock images, not photos of children), and player names use the discreet first-name + initial form. Check your club's safeguarding/consent policy before posting.
       </div>
-      <span id="ig-status" style="font-size:12px;color:#3d5a7a;display:block;margin-top:8px;"></span>
+      <span id="ig-status" style="font-size:12px;color:var(--muted);display:block;margin-top:8px;"></span>
       <div id="ig-preview-wrap" style="display:none;margin-top:12px;">
         <img id="ig-preview" style="width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.1);" alt="Instagram graphic preview">
         <div class="btn-row" style="margin-top:8px;">
           <a id="ig-download" class="btn btn-test" download="bbcc_instagram.png" style="flex:1;text-align:center;text-decoration:none;">&#11015;&#65039; Download image</a>
           <button class="btn btn-test" onclick="copyIgCaption()" style="flex:1;">&#128203; Copy caption</button>
         </div>
-        <textarea id="ig-caption" placeholder="Caption will appear here." style="width:100%;margin-top:8px;min-height:70px;background:#0a1628;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e8edf2;padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
+        <textarea id="ig-caption" placeholder="Caption will appear here." style="width:100%;margin-top:8px;min-height:70px;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>&#128202; Match data</h2>
-      <p class="section-note">Every ball is logged to a local database (<code>match_data.db</code>) as you stream — your own season-long dataset. The current over is rewritten live so scorer edits are captured; "Reconcile" then pulls the final scorecard from PlayCricket as the authoritative record.</p>
-      <div id="data-status" style="margin:8px 0;padding:10px;background:#0a1628;border-radius:6px;font-size:13px;color:#9fb3c8;">Loading…</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-test" onclick="reconcileMatch()" style="flex:1;">&#10003; Reconcile latest</button>
-        <button class="btn btn-test" onclick="exportLatestCsv()" style="flex:1;">&#8681; Export CSV</button>
-        <button class="btn btn-test" onclick="loadDataStatus()" style="flex:1;">&#8635; Refresh</button>
-      </div>
-      <div id="data-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     </div>
   </div>
-
-  <!-- Highlights + PCS monitor side by side (full width row) -->
-  <div class="side-grid" style="grid-column:1/-1;">
-
-    <!-- Highlights compiler -->
-    <div class="card">
+  <div class="card">
       <h2>Post-match Highlights</h2>
       <p class="section-note">
         Stitches all saved replay clips into a single highlights reel.
-        Requires FFmpeg — <a href="https://ffmpeg.org/download.html" target="_blank" style="color:#5b9bd5;">download here</a> and add to PATH.
+        Requires FFmpeg — <a href="https://ffmpeg.org/download.html" target="_blank" style="color:var(--accent);">download here</a> and add to PATH.
       </p>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 10px;
-                  background:#0a1628;border-radius:5px;font-size:12px;">
-        <span style="color:#5b9bd5;">&#127916;</span>
-        <span id="clip-count-display" style="color:#e8edf2;">— clips saved</span>
-        <span style="color:#3d5a7a;margin-left:auto;font-size:10px;overflow:hidden;
+                  background:var(--surface-2);border-radius:5px;font-size:12px;">
+        <span style="color:var(--accent);">&#127916;</span>
+        <span id="clip-count-display" style="color:var(--text);">— clips saved</span>
+        <span style="color:var(--muted);margin-left:auto;font-size:10px;overflow:hidden;
                      text-overflow:ellipsis;max-width:180px;" id="clip-folder-display"></span>
       </div>
       <div class="field">
@@ -945,86 +958,235 @@
       <button class="btn btn-test" onclick="compileHighlights()" style="margin-top:4px;">
         &#127916; Compile highlights reel
       </button>
-      <div id="highlights-status" style="margin-top:8px;font-size:12px;color:#3d5a7a;"></div>
+      <div id="highlights-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
     </div>
+  <div class="card">
+      <h2>&#128202; Match data</h2>
+      <p class="section-note">Every ball is logged to a local database (<code>match_data.db</code>) as you stream — your own season-long dataset. The current over is rewritten live so scorer edits are captured; "Reconcile" then pulls the final scorecard from PlayCricket as the authoritative record.</p>
+      <div id="data-status" style="margin:8px 0;padding:10px;background:var(--surface-2);border-radius:6px;font-size:13px;color:var(--text-2);">Loading…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-test" onclick="reconcileMatch()" style="flex:1;">&#10003; Reconcile latest</button>
+        <button class="btn btn-test" onclick="exportLatestCsv()" style="flex:1;">&#8681; Export CSV</button>
+        <button class="btn btn-test" onclick="loadDataStatus()" style="flex:1;">&#8635; Refresh</button>
+      </div>
+      <div id="data-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    </div>
+</div>
+</section>
 
-    <!-- PCS Live Data monitor -->
-    <div class="card" id="pcs-monitor">
-      <h2>&#128200; PCS Pro — Live Data Feed</h2>
-      <p class="section-note">Live view of what is being received from the PCS Pro output file and sent to the overlay.</p>
-      <div id="pcs-monitor-body">
-        <div style="color:#3d5a7a;font-size:12px;padding:10px 0;">
-          Waiting for PCS data — set the output folder in the Match card above and start scoring.
+<section class="tab-panel" id="tab-setup" role="tabpanel">
+<div class="grid">
+  <div class="card">
+    <h2>OBS</h2>
+    <div class="field">
+      <label>OBS WebSocket password</label>
+      <input type="text" id="obs_password" placeholder="Set in OBS → Tools → WebSocket Server">
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>OBS host</label>
+        <input type="text" id="obs_host" placeholder="localhost">
+      </div>
+      <div class="field">
+        <label>Port</label>
+        <input type="number" id="obs_port" placeholder="4455" style="width:100%">
+      </div>
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>Main scene name</label>
+        <input type="text" id="obs_main_scene" placeholder="Main">
+      </div>
+      <div class="field">
+        <label>Replay scene name</label>
+        <input type="text" id="obs_replay_scene" placeholder="Replay">
+      </div>
+    </div>
+    <div class="field">
+      <label>Replay folder path (leave blank to auto-detect)</label>
+      <input type="text" id="replay_folder" placeholder="C:/Users/You/Videos/Replays">
+      <p class="hint">Where OBS saves replay buffer clips. Max 100 clips — oldest deleted automatically.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Cameras</h2>
+    <div class="field">
+      <label>Camera RTSP URL <span style="color:var(--muted);font-weight:400;">(adds the match camera to OBS for you)</span></label>
+      <input type="text" id="camera_rtsp_url" placeholder="rtsp://user:pass@192.168.1.50:554/stream">
+    </div>
+    <div class="field">
+      <label>Camera source name</label>
+      <input type="text" id="obs_camera_name" placeholder="Cricket Camera">
+    </div>
+    <button class="btn btn-test" onclick="addCameraToObs(1)" style="width:100%;">&#128247; Add camera to OBS</button>
+    <div id="camera-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <hr>
+    <p class="section-note">
+      Second camera (e.g. bowler-end) for a hard cut between two angles &mdash; optional,
+      leave the URL blank to skip. <strong>New, not yet verified against real two-camera
+      hardware</strong> &mdash; test it on a real match before relying on it. Both cameras
+      end up placed in Main, the bowler-end scene, and Replay, so switching never leaves a
+      camera deactivated (see CLAUDE.md's camera-source gotcha).
+    </p>
+    <div class="field">
+      <label>Bowler-end camera RTSP URL</label>
+      <input type="text" id="camera2_rtsp_url" placeholder="rtsp://user:pass@192.168.1.51:554/stream">
+    </div>
+    <div class="half-grid">
+      <div class="field">
+        <label>Camera 2 source name</label>
+        <input type="text" id="obs_camera2_name" placeholder="Bowler End Camera">
+      </div>
+      <div class="field">
+        <label>Bowler-end scene name</label>
+        <input type="text" id="obs_bowler_scene" placeholder="Main-Bowler">
+      </div>
+    </div>
+    <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add bowler-end camera to OBS</button>
+    <div id="camera2-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+  </div>
+  <div class="card">
+    <h2>Scoring source</h2>
+    <div class="field" style="padding:10px;background:#0a1f0a;border:1px solid #1e4a1e;border-radius:5px;margin-bottom:10px;">
+      <label style="color:var(--ok);">&#9679; PCS Pro output folder <span style="color:#3d7a3d;font-size:10px;font-weight:400;">— recommended data source</span></label>
+      <input type="text" id="pcs_output_folder" placeholder="e.g. C:/Users/Scorer/Documents/Cricket Matches/_Scoreboards/Output">
+      <p class="hint" style="color:#3d7a3d;">Paste the scorer's PCS Pro output folder. Gives batter names, bowler, run rate — updated every ball. No internet needed.</p>
+    </div>
+    <div class="field" style="padding:10px;background:#0a1428;border:1px solid var(--line);border-radius:5px;margin-bottom:10px;">
+      <label style="color:var(--accent);">&#9679; NV Play on separate hardware <span style="color:var(--muted);font-size:10px;font-weight:400;">— optional, instead of the folder above</span></label>
+      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (run nvplay_bridge.py on that machine)" style="margin-bottom:6px;">
+      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (printed when nvplay_bridge.py starts)">
+      <p class="hint" style="color:var(--muted);">If NV Play runs on its own machine (not this one) so its heat/CPU doesn't share the
+      streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
+      IP is the recommended way to reach it.</p>
+    </div>
+    <input type="hidden" id="pcs_source" value="local">
+    <div class="field" style="padding:10px;background:#1a1405;border:1px solid #4a3800;border-radius:5px;margin-bottom:10px;">
+      <div class="toggle-row" style="margin:0;">
+        <div>
+          <div class="toggle-label" style="color:#c8a000;">Run the stream from a second laptop</div>
+          <div class="toggle-desc">Scorer runs <code>scorer_agent.py</code> once at the start of the day and is otherwise left alone;
+          this laptop finds it on the club wifi automatically. See TWO_LAPTOP_SETUP.md.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="pcs_source_agent" onchange="onAgentToggle()"><span class="track"></span></label>
+      </div>
+      <div id="agent-box" style="display:none;margin-top:10px;">
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;">
+            <label>Scorer laptop address <span style="color:#8a6a20;font-size:10px;font-weight:400;">— leave blank to find it automatically</span></label>
+            <input type="text" id="agent_host" placeholder="found automatically — or type e.g. 192.168.1.40:8788">
+          </div>
+          <button type="button" onclick="discoverAgent()" style="white-space:nowrap;">Find scorer laptop</button>
+        </div>
+        <div id="agent-status" class="hint" style="margin-top:8px;padding:8px;border-radius:4px;background:#150f03;border:1px solid #3a2c00;color:#8a6a20;">
+          Checking&hellip;
         </div>
       </div>
     </div>
-
-  </div>
-
-</div>
-
-<!-- ── Live status bar ── -->
-<div id="live-status-bar" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;">
-
-  <div id="live-status" style="
-    display:flex; align-items:center; gap:12px;
-    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
-    padding:12px 16px;
-  ">
-    <div id="status-dot" style="
-      width:10px; height:10px; border-radius:50%;
-      background:#4a4a4a; flex-shrink:0;
-      transition:background .3s;
-    "></div>
-    <div style="flex:1">
-      <div id="status-line1" style="font-size:13px;font-weight:600;color:#e8edf2;">Checking connection...</div>
-      <div id="status-line2" style="font-size:11px;color:#3d5a7a;margin-top:2px;"></div>
+    <div class="toggle-row" style="margin-top:8px;">
+      <div>
+        <div class="toggle-label">Use widget as fallback</div>
+        <div class="toggle-desc">Poll PlayCricket widget if PCS file not found. Disable if PCS is always in use.</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="use_widget"><span class="track"></span></label>
     </div>
-    <div id="status-source" style="
-      font-size:10px; font-weight:700; text-transform:uppercase;
-      letter-spacing:1.2px; padding:3px 8px; border-radius:3px;
-      background:#1e3550; color:#5b9bd5; flex-shrink:0;
-    "></div>
   </div>
-
-  <!-- Health strip: one dot per subsystem, refreshed every 10s from /health -->
-  <div id="health-strip" style="
-    display:flex; flex-wrap:wrap; gap:14px; align-items:center;
-    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
-    padding:8px 14px; margin:8px 0 0 0; font-size:11px; color:#9fb3c8;
-  ">
-    <span style="color:#3d5a7a;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-size:9px;">Health</span>
-    <span class="hl-item"><span class="hl-dot" id="hl-feed"></span>Feed: <b id="hl-feed-t">—</b></span>
-    <span class="hl-item"><span class="hl-dot" id="hl-stats"></span>Stats: <b id="hl-stats-t">—</b></span>
-    <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
-    <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
-    <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
-    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
-    <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
+  <div class="card">
+    <h2>Accounts &amp; keys</h2>
+  <p class="section-note">
+    Fetches today's fixture automatically — fills in opposition name,
+    umpires, competition, and ground coordinates for weather.
+    The API only works from your registered laptop.
+  </p>
+    <div class="field" style="margin-bottom:0">
+      <label>PlayCricket API key</label>
+      <input type="text" id="playcricket_api_key" placeholder="Paste your API key here">
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Ground name filter</label>
+      <input type="text" id="ground_filter" placeholder="e.g. The Green">
+      <p class="hint">Only fetch home fixtures at this ground. Partial match, case-insensitive. Leave blank for any home ground.</p>
+    </div>
+  <div class="field">
+    <label>Anthropic API key</label>
+    <input type="text" id="anthropic_api_key"
+           placeholder="sk-ant-api03-...">
+    <p class="hint">Get a free key at <a href="https://console.anthropic.com"
+       target="_blank" style="color:var(--accent);">console.anthropic.com</a> —
+       Claude Haiku costs ~$0.001 per commentary line</p>
   </div>
-  <style>
-    .hl-item { display:inline-flex; align-items:center; gap:6px; }
-    .hl-item b { color:#e8edf2; font-weight:600; }
-    .hl-dot { width:8px; height:8px; border-radius:50%; background:#4a4a4a; display:inline-block; }
-    .hl-ok   { background:#3fb950 !important; }
-    .hl-warn { background:#d29922 !important; }
-    .hl-bad  { background:#f85149 !important; }
-  </style>
-
-  <div style="
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    background:#0a1628; border:1px solid #1e3550; border-radius:8px;
-    padding:10px 16px; min-width:110px; gap:2px;
-  ">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#3d5a7a;font-weight:600;">Uptime</div>
-    <div id="server-uptime" style="font-size:16px;font-weight:700;color:#4caf50;">—</div>
-    <div id="server-clips" style="font-size:10px;color:#3d5a7a;">— clips</div>
   </div>
-
+  <div class="card">
+    <h2>Stream health check</h2>
+  <p class="section-note">
+    Measures your actual upload speed and recommends a bitrate and resolution from it. Both
+    are applied to OBS for you the next time quickstart runs (pin your own in config.ini's
+    [Stream] section). Quickstart also picks OBS's video encoder: a hardware one if this
+    laptop has one. Runs automatically once per session.
+  </p>
+  <div id="stream-check-body" style="font-size:12px;color:var(--muted);padding:10px 12px;
+       background:var(--surface-2);border-radius:5px;border:1px solid var(--line);min-height:36px;">
+    Waiting to run…
+  </div>
+  <button class="btn" onclick="runStreamHealthCheck(true)"
+          style="background:var(--accent-strong);margin-top:10px;">
+    &#128225; Check now
+  </button>
+  </div>
+  <div class="card">
+    <h2>Folders</h2>
+    <!-- Logos folder -->
+    <div class="field" style="margin-top:14px;">
+      <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
+      <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
+      <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Headshots folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
+      <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
+      <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Socials folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
+      <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
+      <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Squad roster</h2>
+    <label>Squad Roster — tells brothers apart</label>
+    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
+    <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
+    <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
+    <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
+  </div>
 </div>
+</section>
 
-<button class="btn" onclick="saveState()">Save &amp; Update Overlay</button>
-<div class="status" id="status"></div>
+<script>
+function showTab(name) {
+  if (!document.getElementById('tab-' + name)) name = 'match';
+  document.querySelectorAll('.tab-panel').forEach(function (p) {
+    const on = p.id === 'tab-' + name;
+    p.classList.toggle('active', on);
+  });
+  document.querySelectorAll('#tabbar button').forEach(function (b) {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  try { localStorage.setItem('cs_panel_tab', name); } catch (e) {}
+  // The scorebar preview sizes itself from its box's width, which is 0 while its tab is
+  // hidden; re-measure when it becomes visible. (Defined in the main script below; a
+  // click can only happen after that has run.)
+  if (name === 'graphics' && typeof scaleScorebarPreview === 'function') scaleScorebarPreview();
+}
+(function () {
+  let t = 'match';
+  try { t = localStorage.getItem('cs_panel_tab') || 'match'; } catch (e) {}
+  showTab(t);
+})();
+</script>
 
 <div class="links">
   <span>OBS browser source:</span>
@@ -1044,7 +1206,7 @@ window.onerror = function (message, source, lineno, colno) {
     el.id = "panel-fatal-error";
     el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;" +
       "background:#3a0d0d;color:#ffb4b4;font:13px monospace;padding:10px 16px;" +
-      "border-bottom:2px solid #f44336;white-space:pre-wrap;";
+      "border-bottom:2px solid var(--bad);white-space:pre-wrap;";
     document.body.insertBefore(el, document.body.firstChild);
   }
   el.textContent = "Control panel script error: " + message +
@@ -1098,6 +1260,7 @@ async function doLogin() {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
+      refreshChecklist();        // same: /checklist is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
@@ -1119,6 +1282,7 @@ async function doSkip() {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
+      refreshChecklist();        // same: /checklist is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
@@ -1166,70 +1330,37 @@ function remoteVia() {
 })();
 
 // ── Stream health check ─────────────────────────────────────
-const STREAM_ENCODER_LABEL = {
-  x264: 'Software (x264 / CPU)', nvenc: 'NVIDIA NVENC', nvenc_hevc: 'NVIDIA NVENC (HEVC)',
-  amd: 'AMD hardware', amd_hevc: 'AMD hardware (HEVC)',
-  qsv: 'Intel QuickSync', qsv_hevc: 'Intel QuickSync (HEVC)',
-};
-function encoderLabel(id) { return STREAM_ENCODER_LABEL[id] || id || '—'; }
-
 async function runStreamHealthCheck(force) {
   const body = document.getElementById('stream-check-body');
-  body.style.color = '#3d5a7a';
-  body.textContent = 'Checking your connection and OBS encoder — this takes a few seconds and '
-    + 'may briefly show REC in OBS (a throwaway test, deleted automatically)…';
+  body.style.color = 'var(--muted)';
+  body.textContent = 'Checking your upload speed — this takes a few seconds…';
   try {
     const res = await apiFetch('/obs/stream_check' + (force ? '?force=1' : ''));
     const d = await res.json();
     if (res.status === 429) {
-      body.innerHTML = '<span style="color:#8ba3c0;">' + (d.error || 'Checked recently — try again shortly.') + '</span>';
+      body.innerHTML = '<span style="color:var(--text-2);">' + (d.error || 'Checked recently — try again shortly.') + '</span>';
       return;
     }
     let html = '';
     const n = d.network || {};
     if (n.error) {
-      html += '<div style="color:#f44336;margin-bottom:8px;">' + n.error + '</div>';
+      html += '<div style="color:var(--bad);margin-bottom:8px;">' + n.error + '</div>';
     } else if (n.recommended_kbps) {
-      html += '<div style="margin-bottom:8px;"><strong style="color:#e8edf2;">Recommended: '
+      html += '<div style="margin-bottom:8px;"><strong style="color:var(--text);">Recommended: '
         + n.recommended_kbps + ' kbps, ' + n.recommended_resolution + ' ' + n.recommended_fps + 'fps</strong><br>'
-        + '<span style="color:#8ba3c0;">Measured upload speed: ' + n.upload_mbps + ' Mbps'
+        + '<span style="color:var(--text-2);">Measured upload speed: ' + n.upload_mbps + ' Mbps'
         + (n.freshly_tested ? '' : ' (cached from an earlier test)') + ' — ' + n.note + '</span></div>';
-    }
-    const enc = d.encoder || {};
-    if (enc.ok) {
-      const base = (enc.tests || {}).baseline || {};
-      const alt  = (enc.tests || {}).alternate;
-      html += '<div style="margin-bottom:4px;"><strong style="color:#e8edf2;">Encoder: '
-        + encoderLabel(enc.recommended_encoder) + ' recommended</strong></div>';
-      if (base.error) {
-        html += '<div style="color:#8ba3c0;">' + base.error + '</div>';
-      } else if (base.skip_pct !== undefined) {
-        html += '<div style="color:#8ba3c0;">' + encoderLabel(base.encoder) + ': '
-          + (base.skip_pct ?? 0) + '% of frames dropped in a short test</div>';
-      }
-      if (alt && !alt.error && alt.skip_pct !== undefined) {
-        html += '<div style="color:#8ba3c0;">' + encoderLabel(alt.encoder) + ': '
-          + (alt.skip_pct ?? 0) + '% of frames dropped in the same test</div>';
-      }
-      (enc.notes || []).forEach(function (note) {
-        html += '<div style="color:#8ba3c0;margin-top:4px;">' + note + '</div>';
-      });
-      (enc.caveats || []).forEach(function (c) {
-        html += '<div style="color:#c8a84b;margin-top:4px;">&#9888; ' + c + '</div>';
-      });
-    } else if (enc.error) {
-      html += '<div style="color:#8ba3c0;">' + enc.error + '</div>';
     }
     body.innerHTML = html || 'No data yet — click Check now.';
   } catch (err) {
-    body.style.color = '#f44336';
+    body.style.color = 'var(--bad)';
     body.textContent = 'Could not reach the server.';
   }
 }
 
 // Auto-run once per browser session (a tab staying open through a match), not on every page
-// refresh — the check briefly starts/stops a real OBS recording, so it shouldn't fire
-// silently every time the panel reloads mid-match.
+// refresh — the upload test sends real data (4 MB), which a ground's mobile connection
+// shouldn't pay for on every panel reload mid-match.
 // Deferred until logged in: /obs/stream_check is token-gated, so firing pre-login just
 // 401s — which used to burn the once-per-session flag AND stamp "Session expired" over
 // the fresh login overlay. doLogin/doSkip re-invoke this once a token exists.
@@ -1248,25 +1379,25 @@ async function pollStreamMonitor() {
   try {
     const d = await (await apiFetch('/stream/monitor')).json();
     if (d.reachable === false) {
-      body.innerHTML = '<span style="color:#8ba3c0;">OBS not reachable — monitor idle.</span>';
+      body.innerHTML = '<span style="color:var(--text-2);">OBS not reachable — monitor idle.</span>';
       return;
     }
     // Tier-1 status: OBS's own Dynamic Bitrate (verified live, not assumed from setup)
     const dyn = d.dynamic_bitrate === true
-      ? '<div style="color:#3fb950;margin-top:4px;">&#10003; OBS dynamic bitrate: on — '
+      ? '<div style="color:var(--ok);margin-top:4px;">&#10003; OBS dynamic bitrate: on — '
         + 'congestion handled seamlessly, no disconnects</div>'
       : d.dynamic_bitrate === false
-      ? '<div style="color:#d29922;margin-top:4px;">&#9888; OBS dynamic bitrate: OFF '
+      ? '<div style="color:var(--warn);margin-top:4px;">&#9888; OBS dynamic bitrate: OFF '
         + '<button onclick="enableDynamicBitrate()" style="font-size:11px;padding:3px 10px;'
-        + 'margin-left:6px;border:none;border-radius:4px;background:#2a6496;color:#fff;'
+        + 'margin-left:6px;border:none;border-radius:4px;background:var(--accent-strong);color:#fff;'
         + 'cursor:pointer;">Enable now</button></div>'
       : '';
     const modeNote = d.simple_mode === false
-      ? '<div style="color:#d29922;margin-top:4px;">&#9888; OBS is in Advanced output mode — '
+      ? '<div style="color:var(--warn);margin-top:4px;">&#9888; OBS is in Advanced output mode — '
         + 'the quality ladder is disabled (OBS dynamic bitrate still applies)</div>'
       : '';
     if (!d.streaming) {
-      body.innerHTML = '<span style="color:#8ba3c0;">Not streaming — the monitor watches '
+      body.innerHTML = '<span style="color:var(--text-2);">Not streaming — the monitor watches '
         + 'congestion automatically once you go live.</span>' + dyn + modeNote;
       return;
     }
@@ -1274,12 +1405,12 @@ async function pollStreamMonitor() {
     const cong = d.congestion !== null && d.congestion !== undefined
       ? Math.round(d.congestion * 100) + '%' : '—';
     const healthy = d.step === 0 && d.congestion !== null && d.congestion < 0.1;
-    let html = '<div><strong style="color:' + (healthy ? '#3fb950' : '#d29922') + ';">LIVE — '
+    let html = '<div><strong style="color:' + (healthy ? 'var(--ok)' : 'var(--warn)') + ';">LIVE — '
       + (d.current_kbps || '?') + ' kbps (' + pct + '% of baseline)</strong>'
       + ' &middot; congestion ' + cong + '</div>'
-      + '<div style="color:#8ba3c0;margin-top:3px;">' + (d.verdict || '') + '</div>';
+      + '<div style="color:var(--text-2);margin-top:3px;">' + (d.verdict || '') + '</div>';
     (d.shifts || []).slice(-2).forEach(function (s) {
-      html += '<div style="color:#c8a84b;margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
+      html += '<div style="color:var(--warn);margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
         + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
     });
     body.innerHTML = html + dyn + modeNote;
@@ -1291,30 +1422,162 @@ async function enableDynamicBitrate() {
   try {
     const d = await (await apiFetch('/stream/dynamic', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: '{}'})).json();
-    if (body) body.innerHTML = '<span style="color:' + (d.ok ? '#3fb950' : '#f85149') + ';">'
+    if (body) body.innerHTML = '<span style="color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';">'
       + (d.message || d.error || '') + '</span>';
     setTimeout(pollStreamMonitor, 2500);
   } catch (e) {
-    if (body) body.innerHTML = '<span style="color:#f85149;">Could not reach server</span>';
+    if (body) body.innerHTML = '<span style="color:var(--bad);">Could not reach server</span>';
   }
 }
 pollStreamMonitor();
 setInterval(pollStreamMonitor, 10000);
 
+// ── Sponsor logo: preview + upload from this device ──
+function showSponsorPreview() {
+  const id = (document.getElementById('sponsor_id').value || '').trim();
+  const img = document.getElementById('sponsor-preview');
+  if (!id) { img.style.display = 'none'; img.removeAttribute('src'); return; }
+  img.onload  = function () { img.style.display = ''; };
+  img.onerror = function () { img.style.display = 'none'; };
+  img.src = '/sponsor/' + encodeURIComponent(id) + '?t=' + Date.now();
+}
+
+async function uploadSponsorLogo(input) {
+  const file = input.files && input.files[0];
+  const msg = document.getElementById('sponsor-upload-msg');
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { msg.textContent = 'That image is over 8 MB.'; input.value = ''; return; }
+  msg.textContent = 'Uploading…';
+  try {
+    // The image itself is the body (no form encoding); the server checks what it really is.
+    const res = await apiFetch('/sponsor/upload', { method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+    const d = await res.json().catch(function () { return {}; });
+    if (d.ok) {
+      document.getElementById('sponsor_id').value = d.sponsor_id;
+      showSponsorPreview();
+      msg.textContent = 'Saved as image ' + d.sponsor_id + ' — on screen from the next sponsor slot.';
+      if (d.plain_background) {
+        msg.textContent += ' It has a plain background: pick a transparent version below, or keep it.';
+        openBgChooser(true);
+      }
+    } else {
+      msg.textContent = d.error || ('Upload failed (' + res.status + ').');
+    }
+  } catch (e) { msg.textContent = 'Could not reach the server.'; }
+  input.value = '';
+}
+
+// ── Sponsor logo: transparent background ──
+// The server can't tell a badge's white middle from a letter's white hole, so it renders
+// both versions and the operator picks by eye. Nothing is saved until they click one, and
+// the original is kept, so Undo is just going back to its ID.
+function closeBgChooser() {
+  document.getElementById('sponsor-bg-chooser').style.display = 'none';
+  ['outside', 'everywhere'].forEach(function (m) {
+    document.getElementById('bg-prev-' + m).removeAttribute('src');
+  });
+}
+
+async function openBgChooser(fromUpload) {
+  const id = (document.getElementById('sponsor_id').value || '').trim();
+  const msg = document.getElementById('sponsor-bg-msg');
+  closeBgChooser();
+  if (!id) { msg.textContent = 'Set or upload a logo first.'; return; }
+  msg.textContent = 'Working…';
+  for (const mode of ['outside', 'everywhere']) {
+    const res = await apiFetch('/sponsor/bg_preview?id=' + encodeURIComponent(id) + '&mode=' + mode,
+                               { headers: {} });
+    if (!res.ok) {
+      const d = await res.json().catch(function () { return {}; });
+      // After an upload this is only a suggestion; say nothing if it doesn't apply.
+      msg.textContent = fromUpload ? '' : (d.error || 'Couldn\'t make a transparent version.');
+      return;
+    }
+    // As a data: URL, not URL.createObjectURL: the panel's Content-Security-Policy allows
+    // img-src 'self' data: only, so a blob: preview was silently refused (blank boxes).
+    const blob = await res.blob();
+    document.getElementById('bg-prev-' + mode).src = await new Promise(function (ok) {
+      const fr = new FileReader();
+      fr.onload = function () { ok(fr.result); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  msg.textContent = '';
+  document.getElementById('sponsor-bg-chooser').style.display = '';
+}
+
+async function pickBg(mode) {
+  const field = document.getElementById('sponsor_id');
+  const msg = document.getElementById('sponsor-bg-msg');
+  msg.textContent = 'Saving…';
+  try {
+    const res = await apiFetch('/sponsor/remove_background', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: field.value.trim(), mode: mode }) });
+    const d = await res.json().catch(function () { return {}; });
+    if (!d.ok) { msg.textContent = d.error || 'Couldn\'t save it.'; return; }
+    closeBgChooser();
+    field.value = d.sponsor_id;
+    showSponsorPreview();
+    msg.textContent = 'Saved as image ' + d.sponsor_id + ' and now in use. ';
+    const undo = document.createElement('a');
+    undo.href = '#'; undo.textContent = 'Undo';
+    undo.style.color = 'var(--accent)';
+    undo.onclick = function (e) {
+      e.preventDefault();
+      field.value = d.previous_id;
+      showSponsorPreview();
+      saveState();
+      msg.textContent = 'Back to image ' + d.previous_id + '.';
+    };
+    msg.appendChild(undo);
+  } catch (e) { msg.textContent = 'Could not reach the server.'; }
+}
+
+// ── Sponsor airtime (read-only; the overlay reports, the server times it) ──
+async function pollSponsorAirtime() {
+  const box = document.getElementById('sponsor-airtime');
+  if (!box) return;
+  try {
+    const d = await (await fetch('/sponsor/airtime')).json();
+    const rows = (d.sponsors || []).filter(function (s) { return s.on_air_shows || s.off_air_shows; });
+    if (!rows.length) { box.textContent = 'Nothing on screen yet today.'; return; }
+    box.textContent = '';
+    rows.forEach(function (s, i) {
+      // Text nodes, not innerHTML: the sponsor's name is whatever the operator typed.
+      if (i) box.appendChild(document.createElement('br'));
+      const line = document.createElement('strong');
+      line.style.color = 'var(--text)';
+      line.textContent = s.line;
+      box.appendChild(line);
+      if (s.off_air_shows) {
+        box.appendChild(document.createElement('br'));
+        const note = document.createElement('span');
+        note.style.color = 'var(--muted)';
+        note.textContent = 'Plus ' + Math.round(s.off_air_sec) + 's before going live (not counted).';
+        box.appendChild(note);
+      }
+    });
+  } catch (e) { /* server briefly away; next poll will catch up */ }
+}
+pollSponsorAirtime();
+setInterval(pollSponsorAirtime, 30000);
+
 async function streamQuality(action) {
   const body = document.getElementById('stream-monitor-body');
   const verb = action === 'restore' ? 'Restoring full quality' : 'Reducing quality';
   if (!confirm(verb + ' briefly restarts the stream (~5-10s of buffering for viewers). Continue?')) return;
-  if (body) body.innerHTML = '<span style="color:#5b9bd5;">' + verb + '…</span>';
+  if (body) body.innerHTML = '<span style="color:var(--accent);">' + verb + '…</span>';
   try {
     const d = await (await apiFetch('/stream/quality', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({action: action})})).json();
-    if (body) body.innerHTML = '<span style="color:' + (d.ok ? '#3fb950' : '#f85149') + ';">'
+    if (body) body.innerHTML = '<span style="color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';">'
       + (d.message || d.error || '') + '</span>';
     setTimeout(pollStreamMonitor, 4000);
   } catch (e) {
-    if (body) body.innerHTML = '<span style="color:#f85149;">Could not reach server</span>';
+    if (body) body.innerHTML = '<span style="color:var(--bad);">Could not reach server</span>';
   }
 }
 
@@ -1332,41 +1595,41 @@ function renderRemoteTarget(via) {
       const active = x.via === t.via;
       return '<button onclick="renderRemoteTarget(\'' + x.via + '\')" style="font-size:11px;' +
         'padding:5px 10px;border-radius:14px;cursor:pointer;margin:0 3px;border:1px solid ' +
-        (active ? '#5b9bd5' : '#1e3550') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
-        ';color:#e8edf2;">' + REMOTE_TAB_LABEL[x.via] + '</button>';
+        (active ? 'var(--accent)' : 'var(--line)') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
+        ';color:var(--text);">' + REMOTE_TAB_LABEL[x.via] + '</button>';
     }).join('') + '</div>';
   body.innerHTML = tabs +
-    '<p style="font-size:12px;color:#8ba3c0;margin-bottom:12px;">Scan on a phone or tablet ' +
+    '<p style="font-size:12px;color:var(--text-2);margin-bottom:12px;">Scan on a phone or tablet ' +
     REMOTE_SCAN_NOTE[t.via] + ':</p>' +
     '<img src="/remote/qr.png?via=' + t.via + '&t=' + Date.now() + '" style="width:200px;height:200px;' +
     'background:#fff;border-radius:8px;padding:8px;" ' +
     'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
     '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
-    'style:\'font-size:12px;color:#8ba3c0\'}))">' +
-    '<p style="font-size:11px;color:#3d5a7a;margin-top:12px;word-break:break-all;">' + t.url + '</p>';
+    'style:\'font-size:12px;color:var(--text-2)\'}))">' +
+    '<p style="font-size:11px;color:var(--muted);margin-top:12px;word-break:break-all;">' + t.url + '</p>';
 }
 
 async function showRemoteOverlay() {
   const ov   = document.getElementById('remote-overlay');
   const body = document.getElementById('remote-modal-body');
   ov.style.display = 'flex';
-  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  body.innerHTML = '<p style="font-size:12px;color:var(--text-2);">Checking…</p>';
   try {
     const res = await fetch('/remote/info');
     const d = await res.json();
     _remoteTargets = d.targets || [];
     if (!_remoteTargets.length) {
-      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;line-height:1.5;">' +
-        'Not reachable from another device yet — set <code style="background:#0d1b2e;' +
+      body.innerHTML = '<p style="font-size:12px;color:var(--text-2);line-height:1.5;">' +
+        'Not reachable from another device yet — set <code style="background:var(--bg);' +
         'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
-        '#0d1b2e;padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
-        'Tailscale, or enable <code style="background:#0d1b2e;padding:1px 5px;border-radius:3px;">' +
+        'var(--bg);padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
+        'Tailscale, or enable <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">' +
         'cloudflare_tunnel</code>, then restart the server.</p>';
       return;
     }
     renderRemoteTarget(_remoteTargets[0].via);
   } catch (err) {
-    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+    body.innerHTML = '<p style="font-size:12px;color:var(--bad);">Could not reach server</p>';
   }
 }
 
@@ -1392,33 +1655,33 @@ async function showSecurityOverlay() {
   const ov   = document.getElementById('security-overlay');
   const body = document.getElementById('security-modal-body');
   ov.style.display = 'flex';
-  body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Checking…</p>';
+  body.innerHTML = '<p style="font-size:12px;color:var(--text-2);">Checking…</p>';
   try {
     const res = await apiFetch('/auth/log');
     const d = await res.json();
     if (!d.ok) {
-      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">Could not load auth activity.</p>';
+      body.innerHTML = '<p style="font-size:12px;color:var(--text-2);">Could not load auth activity.</p>';
       return;
     }
     if (!d.entries.length) {
-      body.innerHTML = '<p style="font-size:12px;color:#8ba3c0;">No auth activity recorded yet this session.</p>';
+      body.innerHTML = '<p style="font-size:12px;color:var(--text-2);">No auth activity recorded yet this session.</p>';
       return;
     }
-    body.innerHTML = '<p style="font-size:11px;color:#5b9bd5;text-transform:uppercase;' +
+    body.innerHTML = '<p style="font-size:11px;color:var(--accent);text-transform:uppercase;' +
       'letter-spacing:1px;margin-bottom:8px;">Recent activity</p>' +
       '<div style="max-height:220px;overflow-y:auto;">' +
       d.entries.map(function(e) {
         const label = AUTH_EVENT_LABEL[e.event] || e.event;
-        const color = (e.event === 'login_ok') ? '#4caf50' :
-                      (e.event === 'logout_all') ? '#5b9bd5' : '#f44336';
+        const color = (e.event === 'login_ok') ? 'var(--ok)' :
+                      (e.event === 'logout_all') ? 'var(--accent)' : 'var(--bad)';
         return '<div style="display:flex;justify-content:space-between;gap:10px;' +
-          'font-size:11px;padding:5px 0;border-bottom:1px solid #1e3550;">' +
+          'font-size:11px;padding:5px 0;border-bottom:1px solid var(--line);">' +
           '<span style="color:' + color + '">' + label + '</span>' +
-          '<span style="color:#3d5a7a;">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
+          '<span style="color:var(--muted);">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
           '</div>';
       }).join('') + '</div>';
   } catch (err) {
-    body.innerHTML = '<p style="font-size:12px;color:#f44336;">Could not reach server</p>';
+    body.innerHTML = '<p style="font-size:12px;color:var(--bad);">Could not reach server</p>';
   }
 }
 
@@ -1468,15 +1731,77 @@ function shade(hex, amt) {
   return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
 }
 
+// ── Club colours as the panel's accent (2026-10 refresh, stage 3) ──
+// A kit colour can't be used as-is on a dark panel: navy (a common club colour) is near-
+// invisible as text or an outline on #0b1422, and yellow or white buttons need dark text.
+// So: --accent (text, outlines, the active tab) is lightened until it reads against the
+// background (contrast 4.5:1); --accent-strong (button fills) is the kit colour itself,
+// lightened only if it would vanish into the background (3:1); --on-accent is black or
+// white, whichever reads better on that fill.
+function _hexRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function _lum(rgb) {
+  const c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function _contrast(a, b) {
+  const la = _lum(a), lb = _lum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// Lighten by raising HSL lightness, keeping hue and saturation: mixing towards white
+// washed navy out into grey slate and lost the club's colour.
+function _lighter(rgb, dl) {
+  let [r, g, b] = rgb.map(function (v) { return v / 255; });
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let h = 0, s = 0, l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  l = Math.min(1, l + dl);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = function (t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+  };
+  return (s === 0 ? [l, l, l] : [f(h + 1 / 3), f(h), f(h - 1 / 3)]).map(function (v) { return Math.round(v * 255); });
+}
+function _css(rgb) { return 'rgb(' + rgb.join(',') + ')'; }
+const PANEL_BG = [11, 20, 34];   // --bg
+
+function applyClubAccent(hex) {
+  const rgb = _hexRgb(hex);
+  const root = document.documentElement.style;
+  if (!rgb) {                    // not a colour: back to the stylesheet's defaults
+    ['--accent', '--accent-strong', '--on-accent'].forEach(function (v) { root.removeProperty(v); });
+    return;
+  }
+  let fill = rgb, t = 0;
+  while (_contrast(fill, PANEL_BG) < 3 && t < 1) { t += 0.02; fill = _lighter(rgb, t); }
+  let text = fill; t = 0;
+  while (_contrast(text, PANEL_BG) < 4.5 && t < 1) { t += 0.02; text = _lighter(fill, t); }
+  const onFill = _contrast(fill, [255, 255, 255]) >= _contrast(fill, [10, 14, 20]) ? '#ffffff' : '#0a0e14';
+  root.setProperty('--accent', _css(text));
+  root.setProperty('--accent-strong', _css(fill));
+  root.setProperty('--on-accent', onFill);
+}
+
 function updatePreview() {
   const home = document.getElementById('home_colour').value || '#1a3a5c';
+  applyClubAccent(home);
   const away = document.getElementById('away_colour').value || '#7b2d2d';
   document.getElementById('prev-home').style.background   = home;
   document.getElementById('prev-away').style.background   = away;
   document.getElementById('prev-bowler').style.background = shade(away,-30);
   const homeAb = (document.getElementById('home_abbrev')?.value||'').trim().toUpperCase();
   const awayAb = (document.getElementById('away_abbrev')?.value||'').trim().toUpperCase();
-  const hn = homeAb || (document.getElementById('home_team').value||'BRIDES').split(' ')[0].toUpperCase().slice(0,6);
+  const hn = homeAb || (document.getElementById('home_team').value||'HOME').split(' ')[0].toUpperCase().slice(0,6);
   const an = awayAb || (document.getElementById('away_team').value||'OPP').split(' ')[0].toUpperCase().slice(0,6);
   document.getElementById('prev-home').textContent = hn;
   document.getElementById('prev-away').textContent = an;
@@ -1495,7 +1820,7 @@ const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
   document.getElementById('badge-'+side+'-icon').textContent = '—';
-  document.getElementById('badge-'+side+'-icon').style.color = '#3d5a7a';
+  document.getElementById('badge-'+side+'-icon').style.color = 'var(--muted)';
   document.getElementById('badge-'+side+'-status').textContent = 'No badge file found';
   document.getElementById('badge-'+side+'-status').style.color = '#c87800';
   document.getElementById('badge-'+side+'-circle').style.borderColor = '#4a3800';
@@ -1505,21 +1830,21 @@ function checkBadges(homeId, awayId, homeAbbrev, awayAbbrev) {
   function check(side, id, abbrev) {
     if (!id) {
       document.getElementById('badge-'+side+'-status').textContent = 'No club ID set';
-      document.getElementById('badge-'+side+'-status').style.color = '#3d5a7a';
+      document.getElementById('badge-'+side+'-status').style.color = 'var(--muted)';
       document.getElementById('badge-'+side+'-icon').textContent = '?';
       return;
     }
     document.getElementById('badge-'+side+'-label').textContent = abbrev || (side === 'home' ? 'Home' : 'Away');
     document.getElementById('badge-'+side+'-id').textContent = 'ID: ' + id;
     document.getElementById('badge-'+side+'-status').textContent = 'Checking...';
-    document.getElementById('badge-'+side+'-status').style.color = '#3d5a7a';
+    document.getElementById('badge-'+side+'-status').style.color = 'var(--muted)';
 
     const img = document.getElementById('badge-'+side+'-img');
     img.onload = function() {
       img.style.display = 'block';
       document.getElementById('badge-'+side+'-icon').style.display = 'none';
       document.getElementById('badge-'+side+'-status').textContent = '✓ Badge found';
-      document.getElementById('badge-'+side+'-status').style.color = '#4caf50';
+      document.getElementById('badge-'+side+'-status').style.color = 'var(--ok)';
       document.getElementById('badge-'+side+'-circle').style.borderColor = '#2a5a2a';
     };
     img.onerror = function() { badgeError(side); };
@@ -1558,7 +1883,7 @@ async function saveRoster() {
                            body: JSON.stringify({roster: roster})});
     var n = Object.keys(roster).length;
     if (st){ st.textContent = '✓ Saved ' + n + ' players'; st.style.color = '#34c759'; }
-  } catch(e){ if (st){ st.textContent = 'Error: ' + e.message; st.style.color = '#f44336'; } }
+  } catch(e){ if (st){ st.textContent = 'Error: ' + e.message; st.style.color = 'var(--bad)'; } }
 }
 
 async function loadLogoOptions() {  try {
@@ -1591,13 +1916,36 @@ async function applyBadgePick(side) {
 // CSS rather than a mock-up that could drift. Preview mode renders one static frame and
 // never polls — see the comment on startPreview() in overlay.html for why that matters
 // (/live and /commands both have side effects and are single-consumer).
+// The overlay lays the scorebar out at the BOTTOM of its full 1920x1080 canvas (y=1008),
+// so a 72px-tall frame showed the empty top strip and the preview box was blank — found
+// while checking the 2026-10 panel refresh in a browser. The frame is the overlay's full
+// height and shifted up so only the scorebar's strip shows through the wrap; where the bar
+// actually sits is measured from the frame once it loads (same origin), 1008 until then.
+const PREVIEW_CANVAS_H = 1080;
+let _previewBarTop = 1008;
 function scaleScorebarPreview() {
   const wrap = document.getElementById('scorebar-preview-wrap');
   const frame = document.getElementById('scorebar-preview');
   if (!wrap || !frame) return;
   const scale = wrap.clientWidth / 1920;
+  frame.style.height = PREVIEW_CANVAS_H + 'px';
+  // Measure only while visible: inside a hidden tab the frame has no layout and the bar
+  // reports top 0, which pinned the preview to the empty top of the canvas.
+  if (scale > 0) {
+    try {
+      const bar = frame.contentDocument && frame.contentDocument.getElementById('scorebar');
+      const top = bar ? bar.getBoundingClientRect().top : 0;
+      if (top > 0) _previewBarTop = top;
+    } catch (e) { /* keep the last good value */ }
+  }
+  frame.style.top = (-_previewBarTop * scale) + 'px';
   frame.style.transform = 'scale(' + scale + ')';
 }
+(function () {
+  const frame = document.getElementById('scorebar-preview');
+  if (!frame) return;
+  frame.addEventListener('load', scaleScorebarPreview);
+})();
 
 function refreshScorebarPreview() {
   const frame = document.getElementById('scorebar-preview');
@@ -1629,6 +1977,7 @@ async function loadState() {
   checkBadges(s.home_club_id||'', s.away_club_id||'', s.home_abbrev||'Home', s.away_abbrev||'Away');
   document.getElementById('pcs_source_agent').checked = (s.pcs_source === 'agent');
   onAgentToggle();
+  showSponsorPreview();
   const clubName = s.home_team || 'Your Club';
   const clubBadgeEl = document.getElementById('panel-club-badge');
   const clubNameEl  = document.getElementById('panel-club-name');
@@ -1686,7 +2035,7 @@ function setAgentStatus(text, kind) {
   const el = document.getElementById('agent-status');
   if (!el) return;
   el.innerHTML = text;
-  if (kind === 'ok')       { el.style.background='#071507'; el.style.borderColor='#1e4a1e'; el.style.color='#4caf50'; }
+  if (kind === 'ok')       { el.style.background='#071507'; el.style.borderColor='#1e4a1e'; el.style.color='var(--ok)'; }
   else if (kind === 'warn'){ el.style.background='#1a1405'; el.style.borderColor='#4a3800'; el.style.color='#c8a000'; }
   else if (kind === 'err') { el.style.background='#1a0707'; el.style.borderColor='#4a1e1e'; el.style.color='#e06060'; }
   else                     { el.style.background='#150f03'; el.style.borderColor='#3a2c00'; el.style.color='#8a6a20'; }
@@ -1771,7 +2120,7 @@ async function updateYouTubeBroadcast() {
     privacy:     document.getElementById('youtube_privacy').value,
     category:    document.getElementById('youtube_category').value,
   };
-  if (msg) { msg.textContent = 'Updating YouTube broadcast…'; msg.style.color = '#5b9bd5'; }
+  if (msg) { msg.textContent = 'Updating YouTube broadcast…'; msg.style.color = 'var(--accent)'; }
   try {
     // Save first so the settings persist for next time, then push to YouTube
     await saveState();
@@ -1781,26 +2130,26 @@ async function updateYouTubeBroadcast() {
     if (msg) {
       msg.textContent = d.ok ? ('✓ ' + (d.title || '') + ' — ' + (d.message || 'updated'))
                              : ('✗ ' + (d.error || 'unknown error'));
-      msg.style.color = d.ok ? '#3fb950' : '#f85149';
+      msg.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
     }
-  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; } }
 }
 
 async function showWeather() {
   const prev = document.getElementById('weather-preview');
-  prev.textContent = 'Fetching...'; prev.style.color='#5b9bd5';
+  prev.textContent = 'Fetching...'; prev.style.color='var(--accent)';
   try {
     const res  = await apiFetch('/weather');
     const data = await res.json();
     if (data.ok) {
       prev.textContent = `${data.icon} ${data.temp}°C · ${data.description} · Wind ${data.wind} · Humidity ${data.humidity}%`;
-      prev.style.color = '#4caf50';
+      prev.style.color = 'var(--ok)';
       await apiFetch('/weather/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     } else {
       prev.textContent = 'Error: ' + (data.error||'unknown');
-      prev.style.color = '#f44336';
+      prev.style.color = 'var(--bad)';
     }
-  } catch(e) { prev.textContent = 'Could not reach server'; prev.style.color='#f44336'; }
+  } catch(e) { prev.textContent = 'Could not reach server'; prev.style.color='var(--bad)'; }
 }
 
 async function showScorecard() {
@@ -1824,16 +2173,16 @@ async function addCameraToObs(which) {
   const sceneField= which === 2 ? 'obs_bowler_scene'  : 'obs_main_scene';
   const msg = document.getElementById(which === 2 ? 'camera2-msg' : 'camera-msg');
   const url = (document.getElementById(urlField) || {}).value || '';
-  if (!url.trim()) { if (msg) { msg.textContent = 'Enter the camera RTSP URL first'; msg.style.color = '#d29922'; } return; }
-  if (msg) { msg.textContent = 'Adding camera to OBS…'; msg.style.color = '#5b9bd5'; }
+  if (!url.trim()) { if (msg) { msg.textContent = 'Enter the camera RTSP URL first'; msg.style.color = 'var(--warn)'; } return; }
+  if (msg) { msg.textContent = 'Adding camera to OBS…'; msg.style.color = 'var(--accent)'; }
   try {
     await saveState();   // make sure the URL/name/scene are persisted before we call OBS
     const name  = (document.getElementById(nameField)  || {}).value || '';
     const scene = (document.getElementById(sceneField) || {}).value || '';
     const d = await (await apiFetch('/obs/add_camera', {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({which: String(which), url:url.trim(), name:name.trim(), scene:scene.trim()})})).json();
-    if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? '#3fb950' : '#f85149'; }
-  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+    if (msg) { msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || ''); msg.style.color = d.ok ? 'var(--ok)' : 'var(--bad)'; }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; } }
 }
 
 // ── Manual camera cut — same SetCurrentProgramScene call /replay uses internally ──
@@ -1876,14 +2225,14 @@ async function cutToCameraScene(which) {
       // Put the truth back on screen — the optimistic highlight was a guess and it was wrong.
       const b = document.getElementById('cam-btn-' + which);
       if (b) b.classList.add('failed');
-      if (msg) { msg.textContent = '✗ ' + (d.message || 'Switch failed'); msg.style.color = '#f85149'; }
+      if (msg) { msg.textContent = '✗ ' + (d.message || 'Switch failed'); msg.style.color = 'var(--bad)'; }
     } else if (msg) {
       msg.textContent = '';                    // success is shown by the highlight itself
     }
   } catch (e) {
     const b = document.getElementById('cam-btn-' + which);
     if (b) b.classList.add('failed');
-    if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; }
+    if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; }
   } finally {
     _camInFlight = false;
     if (_camPending && _camPending !== which) { const next = _camPending; _camPending = null; cutToCameraScene(next); }
@@ -1919,8 +2268,8 @@ async function loadDataStatus() {
       html += '<div style="margin-top:6px;font-size:12px;line-height:1.6;">'
         + d.recent.slice(0, 5).map(function(m){
             return (m.date || '') + ' &nbsp;' + (m.home || '') + ' v ' + (m.away || '')
-              + (m.reconciled ? ' <span style="color:#3fb950;">&#10003; reconciled</span>'
-                              : ' <span style="color:#d29922;">live only</span>');
+              + (m.reconciled ? ' <span style="color:var(--ok);">&#10003; reconciled</span>'
+                              : ' <span style="color:var(--warn);">live only</span>');
           }).join('<br>')
         + '</div>';
     }
@@ -1929,17 +2278,17 @@ async function loadDataStatus() {
 }
 async function reconcileMatch() {
   const msg = document.getElementById('data-msg');
-  if (msg) { msg.textContent = 'Reconciling with PlayCricket…'; msg.style.color = '#5b9bd5'; }
+  if (msg) { msg.textContent = 'Reconciling with PlayCricket…'; msg.style.color = 'var(--accent)'; }
   try {
     const body = JSON.stringify(_latestMatchId ? { match_id: _latestMatchId } : {});
     const d = await (await apiFetch('/data/reconcile', {method:'POST',headers:{'Content-Type':'application/json'},body:body})).json();
-    if (d.ok) { if (msg) { msg.textContent = 'Reconciled ✓ ' + (d.result || '') + ' (' + d.innings + ' innings)'; msg.style.color = '#3fb950'; } loadDataStatus(); }
-    else { if (msg) { msg.textContent = d.error || 'Could not reconcile'; msg.style.color = '#f85149'; } }
-  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = '#f85149'; } }
+    if (d.ok) { if (msg) { msg.textContent = 'Reconciled ✓ ' + (d.result || '') + ' (' + d.innings + ' innings)'; msg.style.color = 'var(--ok)'; } loadDataStatus(); }
+    else { if (msg) { msg.textContent = d.error || 'Could not reconcile'; msg.style.color = 'var(--bad)'; } }
+  } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; } }
 }
 async function exportLatestCsv() {
   const msg = document.getElementById('data-msg');
-  if (!_latestMatchId) { if (msg) { msg.textContent = 'No match logged yet'; msg.style.color = '#d29922'; } return; }
+  if (!_latestMatchId) { if (msg) { msg.textContent = 'No match logged yet'; msg.style.color = 'var(--warn)'; } return; }
   // Download via apiFetch + blob, NOT window.open: the endpoint is auth-gated and
   // window.open can't carry the Bearer header, so it just 401'd once a password was set.
   try {
@@ -1953,25 +2302,25 @@ async function exportLatestCsv() {
     a.click();
     a.remove();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
-    if (msg) { msg.textContent = 'CSV downloaded'; msg.style.color = '#3fb950'; }
+    if (msg) { msg.textContent = 'CSV downloaded'; msg.style.color = 'var(--ok)'; }
   } catch(e) {
-    if (msg) { msg.textContent = 'Export failed: ' + e.message; msg.style.color = '#f85149'; }
+    if (msg) { msg.textContent = 'Export failed: ' + e.message; msg.style.color = 'var(--bad)'; }
   }
 }
 async function hideWeather() {
   await apiFetch('/weather/hide', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   const prev = document.getElementById('weather-preview');
-  prev.textContent = 'Weather widget hidden'; prev.style.color='#3d5a7a';
+  prev.textContent = 'Weather widget hidden'; prev.style.color='var(--muted)';
 }
 
 let _hlPollTimer = null;
 async function compileHighlights() {
   const st = document.getElementById('highlights-status');
-  st.textContent = 'Starting compile...'; st.style.color='#5b9bd5';
+  st.textContent = 'Starting compile...'; st.style.color='var(--accent)';
   try {
     const res = await apiFetch('/highlights', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d = await res.json();
-    if (!d.ok) { st.textContent = 'Error: ' + (d.error||'unknown'); st.style.color='#f44336'; return; }
+    if (!d.ok) { st.textContent = 'Error: ' + (d.error||'unknown'); st.style.color='var(--bad)'; return; }
     st.textContent = 'Compiling ' + d.clip_count + ' clip' + (d.clip_count!==1?'s':'')
       + ' (' + (d.tagged||0) + ' auto-tagged with wicket/boundary captions)…';
     // The compile runs server-side in the background — poll until it resolves
@@ -1982,35 +2331,35 @@ async function compileHighlights() {
         if (!s2.running && s2.message) {
           clearInterval(_hlPollTimer); _hlPollTimer = null;
           st.textContent = (s2.ok ? '✓ ' : '✗ ') + s2.message;
-          st.style.color = s2.ok ? '#4caf50' : '#f44336';
+          st.style.color = s2.ok ? 'var(--ok)' : 'var(--bad)';
         }
       } catch(e) {}
     }, 3000);
-  } catch(e) { st.textContent = 'Could not reach server'; st.style.color='#f44336'; }
+  } catch(e) { st.textContent = 'Could not reach server'; st.style.color='var(--bad)'; }
 }
 
 async function generateReport(type) {
   const out = document.getElementById('report-output');
   const st  = document.getElementById('report-status');
   out.value = 'Generating ' + (type==='social'?'social post':'match report') + '...';
-  st.textContent = ''; st.style.color = '#3d5a7a';
+  st.textContent = ''; st.style.color = 'var(--muted)';
   try {
     const url = '/report/generate' + (type==='social' ? '?type=social' : '');
     const d = await (await apiFetch(url)).json();
     if (d.ok) {
       out.value = d.text;
       st.textContent = 'Generated ' + new Date().toLocaleTimeString() + ' · edit before posting';
-      st.style.color = '#4caf50';
+      st.style.color = 'var(--ok)';
       if (type==='social') loadSocialPhotos();
     } else {
       out.value = '';
       st.textContent = 'Error: ' + (d.error||'unknown');
-      st.style.color = '#f44336';
+      st.style.color = 'var(--bad)';
     }
   } catch(e) {
     out.value = '';
     st.textContent = 'Could not reach server';
-    st.style.color = '#f44336';
+    st.style.color = 'var(--bad)';
   }
 }
 
@@ -2021,11 +2370,11 @@ function copyReport() {
   try {
     document.execCommand('copy');
     st.textContent = 'Copied to clipboard';
-    st.style.color = '#4caf50';
+    st.style.color = 'var(--ok)';
   } catch(e) {
     if (navigator.clipboard) navigator.clipboard.writeText(out.value);
     st.textContent = 'Copied';
-    st.style.color = '#4caf50';
+    st.style.color = 'var(--ok)';
   }
 }
 
@@ -2038,8 +2387,8 @@ async function loadSocialPhotos() {
       box.innerHTML = '<p class="hint" style="margin-bottom:6px;">Photos in your socials folder ('
         + d.photos.length + ') — attach one when posting:</p>'
         + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-        + d.photos.map(function(p){ return '<span style="font-size:11px;background:#0d1e35;'
-          + 'border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:3px 8px;color:#5b9bd5;">'
+        + d.photos.map(function(p){ return '<span style="font-size:11px;background:var(--surface-2);'
+          + 'border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:3px 8px;color:var(--accent);">'
           + p + '</span>'; }).join('')
         + '</div>';
     } else {
@@ -2064,10 +2413,10 @@ let _matchTeams = {};   // match_id -> team_key (1st/2nd/3rd), for per-team phot
 async function loadRecentMatches() {
   const sel = document.getElementById('ig-match');
   const status = document.getElementById('ig-status');
-  if (status) { status.textContent = 'Loading recent results from PlayCricket…'; status.style.color = '#5b9bd5'; }
+  if (status) { status.textContent = 'Loading recent results from PlayCricket…'; status.style.color = 'var(--accent)'; }
   try {
     const d = await (await apiFetch('/social/recent')).json();
-    if (!d.ok) { if (status) { status.textContent = d.error || 'Could not load results'; status.style.color = '#f85149'; } return; }
+    if (!d.ok) { if (status) { status.textContent = d.error || 'Could not load results'; status.style.color = 'var(--bad)'; } return; }
     _matchTeams = {};
     (d.matches || []).forEach(function(m){ _matchTeams[m.id] = m.team_key || ''; });
     sel.innerHTML = '<option value="">Streamed match (live data)</option>'
@@ -2075,8 +2424,8 @@ async function loadRecentMatches() {
           var tag = m.team_key ? (' [' + m.team_key + ' XI]') : '';
           return '<option value="' + m.id + '">' + (m.label || m.id) + tag + '</option>';
         }).join('');
-    if (status) { status.textContent = (d.matches || []).length + ' recent match(es) loaded — pick one above'; status.style.color = '#3fb950'; }
-  } catch(e) { if (status) { status.textContent = 'Could not reach server'; status.style.color = '#f85149'; } }
+    if (status) { status.textContent = (d.matches || []).length + ' recent match(es) loaded — pick one above'; status.style.color = 'var(--ok)'; }
+  } catch(e) { if (status) { status.textContent = 'Could not reach server'; status.style.color = 'var(--bad)'; } }
 }
 
 // When the chosen match changes, reload the backdrop list from that team's photo folder
@@ -2133,13 +2482,13 @@ async function generateIgGraphic() {
       if (wrap) wrap.style.display = 'block';
       if (status) {
         status.textContent = 'Done' + (d.used_photo ? (' — backdrop: ' + d.used_photo) : ' — plain backdrop (no photo found)');
-        status.style.color = '#4caf50';
+        status.style.color = 'var(--ok)';
       }
     } else {
-      if (status) { status.textContent = 'Error: ' + (d.error || 'unknown'); status.style.color = '#f44336'; }
+      if (status) { status.textContent = 'Error: ' + (d.error || 'unknown'); status.style.color = 'var(--bad)'; }
     }
   } catch(e) {
-    if (status) { status.textContent = 'Request failed: ' + e; status.style.color = '#f44336'; }
+    if (status) { status.textContent = 'Request failed: ' + e; status.style.color = 'var(--bad)'; }
   }
 }
 
@@ -2150,7 +2499,7 @@ function copyIgCaption() {
   try { document.execCommand('copy'); } catch(e) {}
   if (navigator.clipboard) { navigator.clipboard.writeText(cap.value).catch(function(){}); }
   const status = document.getElementById('ig-status');
-  if (status) { status.textContent = 'Caption copied to clipboard'; status.style.color = '#4caf50'; }
+  if (status) { status.textContent = 'Caption copied to clipboard'; status.style.color = 'var(--ok)'; }
 }
 
 async function refreshSeasonStats() {
@@ -2168,11 +2517,11 @@ async function refreshSeasonStats() {
         s.style.color = '#c47d00';
       } else {
         s.textContent = 'Loaded ' + (d.players||0) + ' players from ' + (d.matches_used||0) + ' matches (' + (d.api_calls||0) + ' API calls). Cached for today.';
-        s.style.color = '#4caf50';
+        s.style.color = 'var(--ok)';
       }
     }
   } catch(e) {
-    if (s) { s.textContent = 'Request failed: ' + e; s.style.color = '#f44336'; }
+    if (s) { s.textContent = 'Request failed: ' + e; s.style.color = 'var(--bad)'; }
   }
 }
 
@@ -2188,9 +2537,9 @@ async function testCommentary() {
       if (prev) { prev.textContent = d.text; prev.style.color='#e8e0f0'; }
       if (meta) meta.textContent = `Generated ${new Date().toLocaleTimeString()} · Claude Haiku`;
     } else {
-      if (prev) { prev.textContent = 'Error: '+(d.error||'unknown'); prev.style.color='#f44336'; }
+      if (prev) { prev.textContent = 'Error: '+(d.error||'unknown'); prev.style.color='var(--bad)'; }
     }
-  } catch(e) { if(prev) { prev.textContent='Could not reach server'; prev.style.color='#f44336'; } }
+  } catch(e) { if(prev) { prev.textContent='Could not reach server'; prev.style.color='var(--bad)'; } }
 }
 
 async function pollCommentary() {
@@ -2224,8 +2573,8 @@ async function updatePCSMonitor() {
                      data.source === 'pcs'    ? 'PCS Pro' : 'None';
       body.innerHTML = `<div class="pcs-status-bar">
         <div class="pcs-dot"></div>
-        <span style="font-size:12px;color:#3d5a7a;">
-          Source: <strong style="color:#e8edf2;">${source}</strong>
+        <span style="font-size:12px;color:var(--muted);">
+          Source: <strong style="color:var(--text);">${source}</strong>
           — Set the PCS output folder and start scoring to see live data here.
         </span></div>`;
       return;
@@ -2242,17 +2591,17 @@ async function updatePCSMonitor() {
                       : s.last_ball.toLowerCase().includes('4') && !s.last_ball.includes('14') ? 'four'
                       : s.last_ball.toLowerCase().includes('w') ? 'wicket' : '';
       ballsHtml = `<div class="pcs-ball-row">
-        <div style="font-size:10px;color:#3d5a7a;align-self:center;margin-right:4px;">Last ball:</div>
+        <div style="font-size:10px;color:var(--muted);align-self:center;margin-right:4px;">Last ball:</div>
         <div class="pcs-ball ${ballClass}">${s.last_ball.replace(/[^0-9WwNnBb]/g,'').slice(0,2)||'·'}</div>
-        <div style="font-size:11px;color:#8aa8c4;align-self:center;margin-left:4px;">${s.last_ball}</div>
+        <div style="font-size:11px;color:var(--text-2);align-self:center;margin-left:4px;">${s.last_ball}</div>
       </div>`;
     }
 
     body.innerHTML = `
       <div class="pcs-status-bar">
         <div class="pcs-dot live"></div>
-        <span style="font-size:12px;color:#4caf50;font-weight:600;">PCS Pro connected — live data</span>
-        <span style="font-size:10px;color:#3d5a7a;margin-left:auto;">Updated: ${new Date().toLocaleTimeString()}</span>
+        <span style="font-size:12px;color:var(--ok);font-weight:600;">PCS Pro connected — live data</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:auto;">Updated: ${new Date().toLocaleTimeString()}</span>
       </div>
 
       <div class="pcs-grid">
@@ -2316,7 +2665,7 @@ async function updatePCSMonitor() {
     `;
   } catch(e) {
     const body = document.getElementById('pcs-monitor-body');
-    if (body) body.innerHTML = '<div style="color:#f44336;font-size:12px;padding:8px 0;">Cannot reach server</div>';
+    if (body) body.innerHTML = '<div style="color:var(--bad);font-size:12px;padding:8px 0;">Cannot reach server</div>';
   }
 }
 
@@ -2330,12 +2679,12 @@ function updateDemoStyle(on) {
   if (on) {
     row.style.background  = '#1a0a0a';
     row.style.borderColor = '#6a1a1a';
-    label.style.color     = '#f44336';
+    label.style.color     = 'var(--bad)';
     label.textContent     = 'Demo mode ON';
   } else {
     row.style.background  = '#0a1a0a';
     row.style.borderColor = '#1a4a1a';
-    label.style.color     = '#4caf50';
+    label.style.color     = 'var(--ok)';
     label.textContent     = 'Demo mode OFF';
   }
 }
@@ -2352,7 +2701,7 @@ async function fetchTodaysMatch() {
   const grid_el    = document.getElementById('pc-api-grid');
 
   result_el.textContent  = "Fetching today's fixture...";
-  result_el.style.color  = '#5b9bd5';
+  result_el.style.color  = 'var(--accent)';
 
   try {
     const res  = await apiFetch('/match/fetch');
@@ -2360,13 +2709,13 @@ async function fetchTodaysMatch() {
 
     if (!data.ok) {
       result_el.textContent = '✗ ' + (data.result?.error || 'Unknown error');
-      result_el.style.color = '#f44336';
+      result_el.style.color = 'var(--bad)';
       details_el.style.display = 'none';
       return;
     }
 
     const r = data.result;
-    result_el.style.color = '#4caf50';
+    result_el.style.color = 'var(--ok)';
     result_el.textContent = `✓ Found: ${r.home_team} vs ${r.away_team} — ${r.competition} (${r.match_date} ${r.match_time})`;
 
     // Show details grid
@@ -2398,7 +2747,7 @@ async function fetchTodaysMatch() {
 
   } catch(e) {
     result_el.textContent = '✗ Could not reach server: ' + e.message;
-    result_el.style.color = '#f44336';
+    result_el.style.color = 'var(--bad)';
   }
 }
 
@@ -2413,100 +2762,108 @@ loadLogoOptions();
 loadRoster();
 loadDataStatus();
 
-// ── Pre-match checklist ──────────────────────────────────────
-const CHECKLIST = [
-  { id:'obs',     label:'OBS is open',              hint:'Open OBS Studio' },
-  { id:'buffer',  label:'Replay Buffer started',    hint:'Controls panel → Start Replay Buffer' },
-  { id:'stream',  label:'Streaming started',        hint:'Controls panel → Start Streaming' },
-  { id:'server',  label:'server.py is running',     hint:'Run: python.exe server.py' },
-  { id:'opp',     label:'Opposition name set',      hint:'Enter opposition in the Match section' },
-  { id:'pcs',     label:'PCS Pro output connected', hint:'Set PCS output folder in Match section' },
-  { id:'scorer',  label:'Scorer has started PCS',   hint:'Scorer begins ball-by-ball on first delivery' },
-  { id:'camera',  label:'Camera feed visible',      hint:'Check RTSP source is connected in OBS' },
-];
+// ── Match-day checklist ──────────────────────────────────────
+// Every item is detected by the server (/checklist), never ticked by hand, and carries the
+// button that does that step where one can. Text goes in with textContent: details can
+// include the opposition's name, and the operator can type that.
+const CHECK_COLOURS = { done: 'var(--ok)', todo: 'var(--warn)', busy: 'var(--accent)', na: 'var(--muted)' };
+let _checklistTimer = null;
 
-function buildChecklist() {
-  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
-  const grid  = document.getElementById('checklist-items');
-  grid.innerHTML = '';
-  CHECKLIST.forEach(item => {
-    const checked = !!saved[item.id];
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 8px;border-radius:5px;transition:background .15s;';
-    div.style.background = checked ? 'rgba(76,175,80,0.1)' : 'rgba(255,255,255,0.03)';
-    div.innerHTML = `
-      <div style="width:18px;height:18px;border-radius:4px;border:2px solid ${checked?'#4caf50':'#2a4060'};
-           background:${checked?'#4caf50':'transparent'};display:flex;align-items:center;justify-content:center;
-           flex-shrink:0;transition:all .15s;">
-        ${checked ? '<svg width=10 height=10 viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>' : ''}
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:600;color:${checked?'#4caf50':'#e8edf2'};">${item.label}</div>
-        <div style="font-size:10px;color:#3d5a7a;">${item.hint}</div>
-      </div>`;
-    div.onclick = () => toggleCheck(item.id);
-    div.onmouseenter = () => { if (!saved[item.id]) div.style.background='rgba(255,255,255,0.06)'; };
-    div.onmouseleave = () => { div.style.background = saved[item.id]?'rgba(76,175,80,0.1)':'rgba(255,255,255,0.03)'; };
-    grid.appendChild(div);
-  });
-  // Update header count
-  const done  = Object.values(saved).filter(Boolean).length;
-  const total = CHECKLIST.length;
-  const pct   = Math.round((done/total)*100);
-  const bar   = document.querySelector('#checklist-bar span');
-  if (bar) bar.textContent = `Pre-match checklist (${done}/${total})`;
-  // Flash green border when all done
-  const box = document.getElementById('checklist-bar');
-  box.style.borderColor = done === total ? '#4caf50' : '#1e3550';
+function checklistTick(state) {
+  const box = document.createElement('div');
+  const c = CHECK_COLOURS[state] || 'var(--muted)';
+  box.style.cssText = 'width:18px;height:18px;border-radius:4px;flex-shrink:0;display:flex;'
+    + 'align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;'
+    + 'border:2px solid ' + c + ';background:' + (state === 'done' ? c : 'transparent') + ';';
+  box.textContent = state === 'done' ? '✓' : state === 'busy' ? '…' : state === 'na' ? '–' : '';
+  return box;
 }
 
-function toggleCheck(id) {
-  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
-  saved[id] = !saved[id];
-  localStorage.setItem('bbcc_checklist', JSON.stringify(saved));
-  buildChecklist();
-}
-
-function resetChecklist() {
-  localStorage.removeItem('bbcc_checklist');
-  buildChecklist();
-}
-
-// Auto-check items we can detect programmatically
-async function autoCheck() {
-  const saved = JSON.parse(localStorage.getItem('bbcc_checklist') || '{}');
-  let changed = false;
-
-  // server.py running — if we're here, it is
-  if (!saved['server']) { saved['server'] = true; changed = true; }
-
+async function runChecklistAction(action, btn) {
+  // Two actions are already panel functions; reuse them rather than duplicate.
+  if (action === 'fetch_match') { await fetchTodaysMatch(); return refreshChecklist(); }
+  if (action === 'find_agent')  { await discoverAgent();    return refreshChecklist(); }
+  if (action === 'go_live' && !confirm('Go live on YouTube now? The stream will be public '
+      + 'to anyone with the link (or as your broadcast settings say).')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
   try {
-    const s = await (await apiFetch('/state')).json();
-    const hasOpp = !!(s.away_team && s.away_team !== 'Opposition CC');
-    const hasPCS = (s.pcs_source === 'agent') ? true :
-                   !!((s.pcs_output_folder && s.pcs_output_folder.trim()) ||
-                      (s.pcs_bridge_url && s.pcs_bridge_url.trim()));
-    if (hasOpp !== !!saved['opp']) { saved['opp'] = hasOpp; changed = true; }
-    if (hasPCS !== !!saved['pcs']) { saved['pcs'] = hasPCS; changed = true; }
-  } catch(e) {}
+    const res = await apiFetch('/checklist/action', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action }) });
+    const d = await res.json().catch(function () { return {}; });
+    if (!d.ok && (d.error || d.message)) alertBanner(d.error || d.message);
+  } catch (e) { alertBanner('Could not reach the server.'); }
+  refreshChecklist();
+}
 
-  // Live data coming in → scorer has started
-  try {
-    const live = await (await apiFetch('/live/view')).json();
-    if (live.state && live.state.score > 0 && !saved['scorer']) {
-      saved['scorer'] = true; changed = true;
-    }
-  } catch(e) {}
+function alertBanner(msg) {
+  // A quiet line under the checklist rather than a browser alert() box.
+  let el = document.getElementById('checklist-msg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'checklist-msg';
+    el.style.cssText = 'font-size:11px;color:#f0a24b;margin-top:8px;';
+    document.getElementById('checklist-bar').appendChild(el);
+  }
+  el.textContent = msg;
+  setTimeout(function () { if (el.textContent === msg) el.textContent = ''; }, 15000);
+}
 
-  if (changed) {
-    localStorage.setItem('bbcc_checklist', JSON.stringify(saved));
-    buildChecklist();
+// The next poll is ALWAYS scheduled, success or not. It used to be set only at the end of
+// a successful render, so one failed request (a server restart, a wifi blip, a 401) froze
+// the checklist on its last state — "Live: done" after the stream had died — until reload.
+async function refreshChecklist() {
+  let busy = false;
+  try { busy = await _renderChecklist(); }
+  catch (e) { /* next poll retries */ }
+  finally {
+    clearTimeout(_checklistTimer);
+    // Quicker while OBS is starting, so its progress reads as it happens.
+    _checklistTimer = setTimeout(refreshChecklist, busy ? 1500 : 8000);
   }
 }
 
-buildChecklist();
-setInterval(autoCheck, 10000);
-autoCheck();
+async function _renderChecklist() {
+  if (getToken() === null) return false;     // login overlay still up; /checklist is gated
+  const d = await (await apiFetch('/checklist')).json();
+  if (!d || !d.items) return false;
+  const grid = document.getElementById('checklist-items');
+  grid.textContent = '';
+  d.items.forEach(function (item) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:5px;'
+      + 'background:' + (item.state === 'done' ? 'rgba(76,175,80,0.1)' : 'rgba(255,255,255,0.03)') + ';';
+    row.appendChild(checklistTick(item.state));
+    const text = document.createElement('div');
+    text.style.cssText = 'flex:1;min-width:0;';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:12px;font-weight:600;color:'
+      + (item.state === 'done' ? 'var(--ok)' : item.state === 'na' ? 'var(--muted)' : 'var(--text)') + ';';
+    label.textContent = item.label;
+    const detail = document.createElement('div');
+    detail.style.cssText = 'font-size:10px;color:var(--muted);margin-top:1px;';
+    detail.textContent = item.detail || '';
+    text.appendChild(label); text.appendChild(detail);
+    if (item.action && item.state !== 'done' && item.state !== 'busy') {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.style.cssText = 'margin-top:5px;padding:3px 9px;font-size:11px;'
+        + (item.action === 'go_live' ? 'background:#c62828;' : 'background:var(--accent-strong);');
+      btn.textContent = item.action_label || 'Do it';
+      btn.onclick = function () { runChecklistAction(item.action, btn); };
+      text.appendChild(btn);
+    }
+    row.appendChild(text);
+    grid.appendChild(row);
+  });
+  const counted = d.items.filter(function (i) { return i.state !== 'na'; });
+  const done = counted.filter(function (i) { return i.state === 'done'; }).length;
+  document.getElementById('checklist-title').textContent =
+    'Match-day checklist (' + done + '/' + counted.length + ')';
+  document.getElementById('checklist-bar').style.borderColor =
+    done === counted.length ? 'var(--ok)' : 'var(--line)';
+  return !!(d.job && d.job.running);
+}
+refreshChecklist();
 
 // ── Live status polling ───────────────────────────────────────
 const dot   = document.getElementById('status-dot');
@@ -2533,25 +2890,25 @@ async function checkLiveStatus() {
       // A live manual-scoring session outranks the scorer's file — make that IMPOSSIBLE
       // to miss, or a leftover test session could silently replace the real feed
       const manualFeed = (data.feed === 'manual');
-      dot.style.background = manualFeed ? '#c87800' : '#4caf50';
+      dot.style.background = manualFeed ? '#c87800' : 'var(--ok)';
       line1.textContent=`${manualFeed ? 'MANUAL SCORING' : 'PCS'} LIVE — ${data.state.battingTeamName} ${data.state.score}-${data.state.wickets} (${data.state.overs} ov)`;
       line2.textContent = manualFeed
         ? `Scored at /scoring — outranks the PCS file · ${new Date().toLocaleTimeString()}`
         : `Ball-by-ball · ${new Date().toLocaleTimeString()}`;
       src.textContent = manualFeed ? 'MANUAL' : 'PCS';
       src.style.background = manualFeed ? '#2a1a00' : '#0d3a1a';
-      src.style.color = manualFeed ? '#c87800' : '#4caf50';
+      src.style.color = manualFeed ? '#c87800' : 'var(--ok)';
     } else if (data.source === 'widget') {
       if (data.state) {
         // Live match found via widget
         const st = data.state;
-        dot.style.background = '#4caf50';
+        dot.style.background = 'var(--ok)';
         dot.style.animation  = 'livePulse 1.5s infinite';
         line1.textContent    = `LIVE — ${st.battingTeamName || 'Batting'} ${st.score}-${st.wickets} (${st.overs} ov)`;
         line2.textContent    = `Last updated: ${new Date().toLocaleTimeString()}`;
         src.textContent      = 'Widget';
         src.style.background = '#0d3a1a';
-        src.style.color      = '#4caf50';
+        src.style.color      = 'var(--ok)';
       } else {
         // Widget reachable but no live match today
         dot.style.background = '#c87800';
@@ -2573,13 +2930,13 @@ async function checkLiveStatus() {
       src.style.color      = '#f5c842';
     }
   } catch(e) {
-    dot.style.background = '#f44336';
+    dot.style.background = 'var(--bad)';
     dot.style.animation  = 'none';
     line1.textContent    = e.name === 'AbortError' ? 'Server slow — retrying' : 'Cannot reach server';
     line2.textContent    = 'Make sure server.py is running';
     src.textContent      = 'Offline';
     src.style.background = '#3a0d0d';
-    src.style.color      = '#f44336';
+    src.style.color      = 'var(--bad)';
   }
 }
 
@@ -2597,7 +2954,7 @@ async function checkServerStatus() {
     const res  = await apiFetch('/status');
     const data = await res.json();
     document.getElementById('server-uptime').textContent = data.uptime || '—';
-    document.getElementById('server-uptime').style.color = '#4caf50';
+    document.getElementById('server-uptime').style.color = 'var(--ok)';
     document.getElementById('server-clips').textContent  =
       `${data.clip_count} / ${data.max_clips} clips`;
     // Update clip count display in highlights card
@@ -2608,7 +2965,7 @@ async function checkServerStatus() {
     if (cf) cf.textContent = data.folder || '';
   } catch(e) {
     document.getElementById('server-uptime').textContent = 'offline';
-    document.getElementById('server-uptime').style.color = '#f44336';
+    document.getElementById('server-uptime').style.color = 'var(--bad)';
   }
 }
 

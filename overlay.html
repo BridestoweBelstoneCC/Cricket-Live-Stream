@@ -2007,9 +2007,22 @@ function updateSponsorStrap() {
 // Sponsor strap show/hide, called from nextGraphic() -- kept as standalone functions (rather
 // than inline) so a try/catch there can isolate this from the core graphic-queue advancement.
 var SPONSOR_STRAP_PANELS = ['over-summary-panel', 'partnership-display', 'over-commentary-display'];
+// Airtime beacon: the server times show->hide on its own clock and reports the total to
+// the club (/sponsor/airtime). Fire-and-forget: a failed beacon costs a few seconds of
+// counted airtime, never a graphic. Never from preview mode, which must make no requests
+// with side effects (and whose strap nobody watching the stream ever saw).
+var SPONSOR_PREVIEW = new URLSearchParams(location.search).get('preview') === '1';
+function sponsorAirtime(event) {
+  if (SPONSOR_PREVIEW) return;
+  fetch(SERVER + '/sponsor/airtime', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({event: event})}).catch(function() {});
+}
 function fadeSponsorStrap() {
   var s = document.getElementById('sponsor-strap');
-  if (s) s.classList.remove('show');
+  if (s && s.classList.contains('show')) {
+    s.classList.remove('show');
+    sponsorAirtime('hide');
+  }
 }
 function hideSponsorStrap() {
   fadeSponsorStrap();
@@ -2024,7 +2037,10 @@ function hideSponsorStrap() {
 function showSponsorStripFor(panelId) {
   if (!cfg.sponsor_name || SPONSOR_STRAP_PANELS.indexOf(panelId) < 0) return;
   var s = document.getElementById('sponsor-strap');
-  if (s) s.classList.add('show');
+  if (s) {
+    if (!s.classList.contains('show')) sponsorAirtime('show');
+    s.classList.add('show');
+  }
   // Shift that panel's own centered content up out of the strap's space instead of the two
   // overlapping -- see .sponsor-space-reserved (CSS above).
   var p = document.getElementById(panelId);

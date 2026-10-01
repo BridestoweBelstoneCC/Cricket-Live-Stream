@@ -96,7 +96,7 @@ pcs_output_folder = C:/Users/Scorer/Documents/Cricket Matches/_Scoreboards/Outpu
                                   ← Output folder from NV Play (see Step 5)
 
 [OBS]
-obs_password = CHANGE_ME          ← Password you set in OBS WebSocket settings
+obs_password =                    ← Leave blank — filled in for you on first run
 replay_folder = C:/Users/You/Videos/Replays
                                   ← Where OBS saves replay clips
 
@@ -128,35 +128,41 @@ Save and close config.ini when done.
 
 ## Step 4 — Set up OBS
 
-### Enable OBS WebSocket
+### OBS WebSocket and replay buffer — done for you
+
+**There's nothing to switch on in OBS any more.** Every time quickstart runs it:
+
+- switches on OBS's WebSocket server (how this software talks to OBS) with a random
+  password, and writes that password into `config.ini` for you;
+- turns on the replay buffer (25 seconds) and points it at your replay folder;
+- opens OBS, so you don't need to open it first.
+
+If OBS is already open with the WebSocket server switched off, quickstart asks you to
+close OBS and carries on once you have: OBS saves its settings when it closes,
+so they can only be changed while it's shut. If OBS already has a WebSocket server set up,
+it's left exactly as it is and its password is reused.
+
+To check it worked: the **Controls** panel in OBS should show **Stop Replay Buffer**.
+
+Running OBS on a different computer, or would rather set it up yourself? Put
+`manage_obs = no` under `[OBS]` in `config.ini`, then do the steps below by hand.
+
+<details>
+<summary>Doing it manually (only with manage_obs = no, or if the above didn't work)</summary>
+
+**WebSocket server:**
 
 1. Open OBS
 2. Go to **Tools → WebSocket Server Settings**
-3. Tick **Enable WebSocket server**
-4. Port: `4455`
-5. Tick **Enable Authentication** and set a password
-6. Copy that password into `config.ini` under `obs_password`
-7. Click OK
+3. Tick **Enable WebSocket server**, port `4455`
+4. Tick **Enable Authentication** and set a password
+5. Copy that password into `config.ini` under `obs_password`
+6. Click OK
 
-### Enable Replay Buffer
-
-**You shouldn't need to do this by hand** — quickstart turns the replay buffer on for you
-(25 seconds) the first time it configures OBS. There's one catch: OBS only creates the
-buffer when it starts up, so the very first time you'll see
-
-```
-⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup
-```
-
-Close OBS, open it again, run quickstart again, and you'll get `✓ Replay buffer started`.
-From then on it starts automatically every match day. *(Verified on a clean Windows 11 with
-a fresh OBS install.)*
-
-To check it worked: the **Controls** panel on the right should have a **Start Replay
-Buffer** button. If it doesn't, the buffer isn't enabled and the steps below will fix it.
-
-<details>
-<summary>Doing it manually (only if the above didn't work)</summary>
+**Replay buffer:** quickstart can still switch it on over the WebSocket, but OBS only
+creates the buffer when it starts. The first time, you'll see
+`⚠ Replay buffer enabled but wouldn't start yet — restart OBS once and re-run setup`:
+close OBS, open it again, and run quickstart again. Or tick it yourself:
 
 1. OBS → **Settings → Output**
 2. Set Output Mode to **Advanced**
@@ -167,22 +173,31 @@ Buffer** button. If it doesn't, the buffer isn't enabled and the steps below wil
 
 </details>
 
-### Output settings (for streaming)
+### Video settings and bitrate — done for you
+
+Quickstart sets these every time it opens OBS:
+
+- **Canvas (Base Resolution): 1920×1080**, always. The overlay graphics are drawn at that
+  size, so any other canvas puts them in the wrong place.
+- **Output resolution and frame rate:** from your last upload-speed test (the control
+  panel's **Stream Health Check** runs one the first time it sees OBS). 1080p on a good
+  connection, 720p otherwise, at 30fps. Before the first test: 720p at 30fps.
+- **Bitrate:** from the same test, comfortably under your measured upload speed.
+
+To pin your own choices, set them in `config.ini` under `[Stream]` rather than in OBS
+(OBS's own settings get replaced next time quickstart runs): `output_resolution = 720p`
+or `1080p`, `fps = 25` or `30`, `bitrate_kbps = 2500`. Set `output_resolution = manual`
+or `bitrate_kbps = manual` to have them left alone entirely.
+
+### Encoder (the one OBS setting left to you)
 
 1. OBS → Settings → Output → **Streaming** tab
-2. Encoder: **x264** (or NVIDIA/AMD hardware encoder if your PC has one)
-3. Rate Control: **CBR**
-4. Bitrate: **2500 Kbps** (reduce to 2000 if stream is choppy)
-5. Preset: **veryfast**
-6. Click OK
+2. Video Encoder: a **hardware** encoder (NVIDIA NVENC, AMD, or Intel QuickSync) if
+   your PC has one, otherwise **x264**
+3. Click OK
 
-### Video settings
-
-1. OBS → Settings → Video
-2. Base Resolution: **1920×1080**
-3. Output Resolution: **1280×720** (or 1920×1080 if your laptop is powerful)
-4. FPS: **30** (or 25 for UK YouTube)
-5. Click OK
+Not sure? The control panel's **Stream Health Check** test-records with your encoder and
+with x264 and tells you which dropped fewer frames on this laptop.
 
 ---
 
@@ -193,17 +208,23 @@ The scorer needs to do this once before the first match.
 1. Open NV Play on the scorer's laptop
 2. Go to **Tools → Configuration → Scoreboard**
 3. Tick **Enable Scoreboard Output**
-4. Set the **Output Folder** — note this path exactly
-5. Click the **Template File** browse button
-6. Navigate to NV Play's Templates folder:
-   ```
-   C:\Users\[ScorerName]\Documents\Cricket Matches\_Scoreboards\Templates\
-   ```
-7. Copy `scoreboard.template` (from the CricketStream folder) into that Templates folder
-8. Select `scoreboard.template` as the Template File
-9. Click OK
+4. Leave the **Output Folder** as NV Play's own (`...\Cricket Matches\_Scoreboards\Output`)
+   unless you have a reason to change it
+5. Click the **Template File** browse button, open NV Play's `Templates` folder and
+   select **`scoreboard.template`**
+6. Click OK
 
-Paste the output folder path from step 4 into `config.ini` under `pcs_output_folder`.
+You don't copy the template or the folder path anywhere by hand any more:
+
+- **NV Play on this laptop:** setup puts `scoreboard.template` into NV Play's Templates
+  folder for you, and finds the output folder itself (it asks you to confirm it).
+- **NV Play on a separate scoring laptop:** `CricketStreamScorerAgent.exe` does both on
+  that laptop — see `TWO_LAPTOP_SETUP.md`.
+
+If step 5 shows no `scoreboard.template`, run setup (or the scorer agent) first, then
+come back to it. To do it by hand instead, copy `scoreboard.template` from the
+CricketStream folder into
+`C:\Users\[ScorerName]\Documents\Cricket Matches\_Scoreboards\Templates\`.
 
 **Note:** The template folder and output folder are different locations — the template goes in `\Templates\`, the data comes out of `\Output\`.
 
@@ -306,11 +327,11 @@ still works; the AI features simply stay off.
 ### Before the match (30 minutes before)
 
 1. Double-click `quickstart.bat` — everything configures automatically
-2. Open `http://localhost:5000/control` to verify:
-   - Opposition name is correct
-   - Demo mode is **OFF** (green)
-   - PCS Pro output folder path is showing
-3. Open OBS — check the preview shows your camera with the overlay
+2. Open `http://localhost:5000/control` and work down the **Match-day checklist** at the
+   top. It ticks itself as things are ready; anything that isn't has a button that does
+   it (Start OBS, Add camera to OBS, Start replay buffer, Fetch today's match, Go live).
+   Also check Demo mode is **OFF** (green)
+3. In OBS (quickstart opens it for you), check the preview shows your camera with the overlay
 4. In OBS Controls, verify **Stop Replay Buffer** is showing (buffer is running)
 
 ### When the scorer starts
@@ -369,16 +390,31 @@ If you're sure you already ran setup, it saved `config.ini` somewhere else — a
 version wrote it next to itself rather than next to `server.py`. Find it and move it into
 the folder with `server.py`.
 
+### OBS crashed during the match
+
+You shouldn't need to do anything. The server notices within a few seconds, reopens OBS
+(without the Safe Mode question), switches back to the Main scene, and restarts the stream
+if it was live. The black server window shows `⚠ OBS crashed — reopening it`. If OBS
+crashes three times inside half an hour, it stops reopening it and says so: something
+needs looking at (OBS → Help → Log Files).
+
+Closing OBS yourself is different. It stays closed, so you can shut down normally after
+the match.
+
+If OBS **freezes** ("Not Responding") for a minute and the stream has stopped getting out,
+it's closed and reopened the same way. A frozen OBS window while the stream is still going
+out is left alone, because closing it would stop the stream; the server window says so.
+
 ### Quickstart says "Cannot connect to OBS"
 
-- Make sure OBS is open before running quickstart
-- Check the WebSocket password in `config.ini` matches the one in OBS → Tools → WebSocket Server Settings
-- Check the port is 4455 in both places
-- **Did OBS offer you Safe Mode when it started?** If OBS didn't shut down cleanly last
+- Close OBS and run quickstart again — it opens OBS itself with the WebSocket server on,
+  and skips OBS's Safe Mode question after a crash (Safe Mode switches the WebSocket
+  server off, which used to be the usual cause of this)
+- **Opened OBS yourself and it offered Safe Mode?** If OBS didn't shut down cleanly last
   time, it asks *"Run in Safe Mode (third-party plugins, scripting, and **WebSockets
-  disabled**)?"*. Safe Mode switches the WebSocket server off, so nothing here can reach
-  OBS — no replays, no scene switching, no auto-setup, and the only symptom is "cannot
-  connect". Close OBS, open it again, and choose **Run in Normal Mode**.
+  disabled**)?"*. Choose **Run in Normal Mode**, or close it and let quickstart open it.
+- With `manage_obs = no`: check the WebSocket password in `config.ini` matches OBS →
+  Tools → WebSocket Server Settings, and the port is 4455 in both places
 
 ### PCS monitor says "Widget" not "PCS"
 
@@ -402,9 +438,10 @@ the folder with `server.py`.
 ### Stream is choppy or dropping frames
 
 - OBS → Settings → Output → change preset from **veryfast** to **superfast**
-- Reduce bitrate to 1500 Kbps
 - Close all other applications during the stream, including the control panel browser tab
-- OBS → Settings → Video → reduce Output Resolution to 1280×720
+- In `config.ini` under `[Stream]`, set `output_resolution = 720p` and/or
+  `bitrate_kbps = 1500`, then run quickstart again. (Changing these in OBS's own settings
+  only lasts until the next quickstart, which sets them again.)
 
 ### "Match not found" on quickstart
 
@@ -482,7 +519,7 @@ See **`CLUB_LOGOS.md`** for full instructions and tips on finding club badges.
 | `server.py` | Main server | Never |
 | `overlay.html` | OBS overlay graphics | Never |
 | `obs_setup.py` | OBS auto-configuration | Never |
-| `scoreboard.template` | NV Play template | Copy to NV Play once |
+| `scoreboard.template` | NV Play template | Installed into NV Play for you |
 | `headshots/` | Player photos (new in v2) | Add your players |
 | `socials/` | Match photos for social posts (new in v2) | Optional |
 | `logos/` | Club badges (named by club ID) | Add your badges |

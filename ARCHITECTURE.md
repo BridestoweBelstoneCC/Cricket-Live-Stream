@@ -122,7 +122,7 @@ Two subtleties worth knowing (they've caused real bugs):
 | `scoreboard.template` | What NV Play fills in — the contract every source imitates |
 | `nvplay_bridge.py` | Standalone stdlib script: serves NV Play's file over HTTP when it's on separate hardware from the server, not on the same network (Tailscale, token-gated) |
 | `scorer_agent.py` | Standalone stdlib script: same idea, for two laptops already on the same club wifi (UDP auto-discovery, no token) |
-| `obs_setup.py` / `quickstart.py` / `setup_wizard.py` | OBS auto-config · match-day launcher · setup interview + shared installer plumbing |
+| `obs_prep.py` / `obs_setup.py` / `quickstart.py` / `setup_wizard.py` | OBS config-file prep + launch (OBS closed) · OBS auto-config over WebSocket · match-day launcher · setup interview + shared installer plumbing |
 | `cricketstream.py` | The one launcher for the streaming laptop (`CricketStream.exe`): checks folder/Python/packages/config, then hands over to `quickstart.py`. Freezes neither it nor `server.py` |
 | `stream_quality_test.py` | Standalone: automates the quality-ladder test against a live broadcast |
 | `scripts/` | Verification tooling: `compile_check_all.py` (syntax), `check_panel_js.py` (embedded JS), `render_scorebar.py` (headless screenshots of every scorebar style — the only check that catches visual regressions) |

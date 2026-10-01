@@ -413,6 +413,23 @@ def main():
                 log("Keeping it — the overlay will show the MANUAL session, not the scorer", "warn")
     print()
 
+    # ── Get OBS ready (before config.ini is loaded) ──
+    # Switches on OBS's WebSocket server and replay buffer while OBS is closed, then opens
+    # it — the steps a new club used to do by hand, see obs_prep.py. Has to run before
+    # load_config() because it can write the WebSocket password into config.ini.
+    # [OBS] manage_obs = no turns it off (OBS on another machine, or a hand-tuned setup).
+    config_path = os.path.join(script_dir, "config.ini")
+    try:
+        sys.path.insert(0, script_dir)
+        import obs_prep
+        if obs_prep.manage_obs_enabled(config_path):
+            log("Getting OBS ready...")
+            obs_prep.prepare_obs(config_path,
+                                 wait_enter=pause if _interactive() else None)
+            print()
+    except Exception as e:
+        log(f"Skipped getting OBS ready ({e}) — open OBS yourself", "warn")
+
     # ── Load config ──
     log("Loading config.ini...")
     cfg = load_config()
@@ -456,20 +473,12 @@ def main():
 
     # ── Configure OBS ──
     log("Configuring OBS...")
-    obs_pw     = cfg["OBS"].get("obs_password","")
-    replay_dir = os.path.expanduser(cfg["OBS"].get("replay_folder",""))
-    try:
-        bitrate_kbps = int(cfg["Stream"].get("bitrate_kbps", "").strip() or 0)
-    except ValueError:
-        bitrate_kbps = 0
     try:
         # Import obs_setup from same directory
         sys.path.insert(0, script_dir)
-        from obs_setup import obs_setup
-        ok, messages = obs_setup(password=obs_pw, replay_folder=replay_dir, verbose=False,
-                                 stream_key=cfg["Stream"].get("youtube_stream_key",
-                                                              "").strip(),
-                                 bitrate_kbps=bitrate_kbps)
+        from obs_setup import setup_from_config
+        ok, messages = setup_from_config(os.path.join(script_dir, "config.ini"), state_path,
+                                         allow_restart=True)
         if ok:
             log("OBS configured — scenes and sources ready", "ok")
         else:
@@ -803,11 +812,59 @@ def run_server_with_restarts(proc, launch, token="", max_restarts=SERVER_MAX_RES
         except Exception:
             proc.kill()
         print("  Server stopped. Bye!")
+        _resume_obs_updates()
+
+
+def _resume_obs_updates():
+    """Put OBS's update check back after the match (obs_prep paused it). Usually the
+    server already did this when OBS was closed; this catches OBS closed AFTER the server
+    stopped watching. OBS still open: it can't be changed yet, so say how it'll come back."""
+    try:
+        import obs_prep
+        cfg_dir = obs_prep.obs_config_dir()
+        if not os.path.exists(os.path.join(cfg_dir, obs_prep.UPDATES_MARKER)):
+            return
+        if obs_prep.obs_running():
+            print("  (OBS's update check stays paused until OBS is closed while CricketStream")
+            print("   is running, or until the next match. Close OBS first next time to have")
+            print("   it switched straight back on.)")
+        elif obs_prep.resume_update_check(cfg_dir):
+            print("  OBS's update check is back on.")
+    except Exception:
+        pass
+
+
+def report_sponsor_airtime():
+    """Print today's sponsor airtime and save it to a file the club can forward. Returns
+    the text, or "" if there was none. Needs no API key, so it doesn't wait on the AI
+    report question below."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:5000/sponsor/airtime", timeout=5) as r:
+            data = json.loads(r.read().decode())
+    except Exception:
+        return ""
+    lines = [s["line"] for s in data.get("sponsors", []) if s.get("on_air_shows")]
+    if not lines:
+        return ""
+    text = "\n".join(lines)
+    print()
+    print("  ─── SPONSOR AIRTIME ──────────────")
+    for line in lines:
+        print("  " + line)
+    try:
+        fn = os.path.join(os.getcwd(), f"sponsor_airtime_{data.get('date', 'today')}.txt")
+        with open(fn, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+        print(f"  Saved to: {fn}")
+    except OSError:
+        pass
+    return text
 
 
 def offer_match_report(token=""):
     """Offer to generate an AI match report from the still-running server."""
     print()
+    airtime = report_sponsor_airtime()
     try:
         ans = input("  Generate an AI match report for this game? [y/N]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -831,13 +888,17 @@ def offer_match_report(token=""):
                  f"match_report_{datetime.date.today().isoformat()}.txt")
             with open(fn, "w", encoding="utf-8") as f:
                 f.write(result["text"])
+                # Below the report, not in it: the report is written for the club's
+                # website, and an airtime figure in the middle would read like an advert.
+                if airtime:
+                    f.write("\n\n---\nSponsor airtime\n" + airtime + "\n")
             print(f"\n  Saved to: {fn}")
         else:
             print(f"  Could not generate report: {result.get('error','unknown')}")
     except Exception as e:
         print(f"  Report generation failed: {e}")
         print("  Tip: you can still generate it from the control panel "
-              "(Match Report & Social Posts card) while the server is running.")
+              "(After the match tab) while the server is running.")
 
 
 if __name__ == "__main__":

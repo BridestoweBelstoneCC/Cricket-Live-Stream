@@ -4,6 +4,200 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **New: nothing to switch on in OBS.** Quickstart now gets OBS ready itself, before
+  anything else: it switches on OBS's WebSocket server with a random password (and writes
+  that into `config.ini`), turns on the replay buffer and points it at the replay folder,
+  then opens OBS. This removes three manual steps from first-time setup: switching on the
+  WebSocket server and copying its password into setup, restarting OBS once before replays
+  would work, and having to open OBS before running quickstart. The setup wizard no
+  longer asks for an OBS password, and offers a default replay folder.
+  - OBS's settings files can only be changed while OBS is closed (it saves over them on
+    exit), so if OBS is open with its WebSocket server off, quickstart asks you to close it
+    and carries on. A WebSocket server that's already set up is left alone and its
+    password reused.
+  - After a crash, a power cut or a force-close, OBS is reopened without stopping on its
+    "Run in Safe Mode?" prompt, which nobody is there to answer on a match day and which,
+    if Safe Mode is picked, switches off the WebSocket server. OBS marks an unclean exit
+    with a file in its `.sentinel` folder, and quickstart clears it before opening OBS.
+    An OBS that's already open but not answering (sat on that prompt, or running in Safe
+    Mode) is no longer reported as ready; the operator is asked to close it so it can be
+    reopened properly.
+  - `[OBS] manage_obs = no` in `config.ini` turns all of this off, for OBS on another
+    computer or a hand-tuned setup.
+  - Verified against a real OBS 32.1.1 (a separate portable copy, so no real install was
+    touched): a never-opened OBS came up with the WebSocket server on and accepting the
+    password; the replay buffer was running at launch with no restart and saved a clip to
+    the replay folder. For Safe Mode, the check is OBS's own log, not whether the WebSocket
+    answers, since a person clicking the prompt makes it answer too. Across five
+    force-kill-and-relaunch cycles with the marker cleared, OBS logged no crash and no
+    prompt; with it left in place, it prompted every time. OBS's own
+    `--disable-shutdown-check` option, which looks like the obvious fix, does nothing on
+    OBS 32. Not yet tried on a Mac.
+- **New: OBS is reopened automatically if it crashes mid-match.** The server checks on OBS
+  every 5 seconds. If OBS crashes (or is force-closed), it reopens it without the Safe
+  Mode prompt, switches back to the Main scene, and restarts the stream if it was live
+  when OBS went down. It never goes on air by itself if the stream wasn't already live.
+  - Closing OBS normally (at the end of the match, say) leaves it closed. OBS's own crash
+    marker tells the two apart, so this isn't a guess.
+  - It only looks after an OBS it has seen running this session, gives up after 3 crashes
+    in 30 minutes (a crash loop needs a person), and is off with `manage_obs = no`. Status
+    is in `/health` under `obs_recovery`.
+  - Verified against a real OBS 32.1.1 (portable copy): force-killed on the Replay scene,
+    it was back in about 6 seconds on Main with the replay buffer running, and OBS's log
+    showed no crash prompt. Closed normally, it stayed closed. Restarting the stream
+    itself was only tested with OBS's responses mocked, since a test stream needs
+    somewhere to stream to.
+- **New: a frozen OBS is closed and reopened too (Windows).** If OBS stops responding for
+  a minute and the stream isn't getting out, it's closed and goes through the same
+  recovery as a crash. A frozen OBS *window* over a stream that's still sending is left
+  alone, with a warning: OBS encodes separately from its window, so viewers may not
+  notice anything wrong, and closing OBS would stop the stream.
+  - Verified on a real OBS 32.1.1 frozen by suspending its process: detected, closed and
+    reopened, responsive again with no crash prompt. A dialog box sitting open (OBS's
+    own crash prompt, in that test) was correctly not treated as a freeze.
+  - Windows' own "Not Responding" check turned out to be unreliable for this: it only
+    notices once something is waiting on the window, so a frozen OBS that nobody touches
+    went unnoticed for two minutes. The check now pings OBS's window directly.
+  - Not on Mac or Linux, which have no equivalent check; there, only crashes are handled.
+- **New: OBS's video settings and bitrate are set for you.** Every time quickstart opens
+  OBS it sets the canvas to 1920×1080 (the size the overlay is drawn at; a fresh OBS
+  sizes its canvas to the laptop's screen, which put the graphics in the wrong place on
+  anything else), and the output resolution, frame rate and bitrate from your last
+  upload-speed test: the same recommendation the Stream Health Check already showed but
+  nothing applied. 720p at 30fps until there's been a test. `[Stream] output_resolution`,
+  `fps` and `bitrate_kbps` in `config.ini` pin your own values; `manual` leaves OBS alone.
+  - **Changed:** a blank `bitrate_kbps` used to mean "leave OBS's bitrate alone". It now
+    means "use the recommendation", which also undoes a leftover downshift from the last
+    match for clubs that never filled it in. `bitrate_kbps = manual` keeps the old
+    behaviour.
+  - Verified on a real OBS 32.1.1: 720p before a speed test, 1080p after a good one, 25
+    and 30fps both applied, and a 1366×768 canvas corrected to 1920×1080. The first
+    attempt at the frame rate wrote a value OBS accepted, saved, and then ignored (it ran
+    at 30fps when told 25); it now uses the setting OBS actually honours.
+  - The encoder is still chosen by hand (or by OBS's own setup wizard); the Stream Health
+    Check says which works best.
+- **Fixed: adding a camera hid the graphics and broke replays.** OBS puts a newly added
+  source on top of everything in its scene, at its own size in the top-left corner. So the
+  control panel's "Add camera to OBS" put the camera over the scorebar in Main and over the
+  replay clip in Replay (a replay showed the live camera instead), and a 720p camera filled
+  only a quarter of the picture. Unless someone had rearranged OBS by hand, a club
+  following the setup steps got no graphics and no replays. Now:
+  - cameras fill the frame and sit under the graphics, and quickstart puts the graphics
+    back on top every match day, which also repairs a setup the old code already broke;
+  - the bowler-end camera's scene gets the scorebar too (it was created with cameras only,
+    so cutting to it at the end of an over hid the scorebar);
+  - replay clips fill the frame (they're recorded at the stream's resolution, 720p by
+    default, so they played in a corner);
+  - a camera someone has positioned by hand (picture-in-picture, say) is left where it is.
+  - Verified on a real OBS 32.1.1 with test videos standing in for cameras, including
+    screenshots of each scene and the two-camera setup, which had never been run against a
+    real OBS before. Not yet with two live RTSP cameras.
+- **New: NV Play's output folder and template are set up for you.**
+  - Setup finds NV Play's output folder itself (including when Documents lives in
+    OneDrive, the Windows 11 default on many laptops) and asks you to confirm it, instead
+    of asking you to type the path.
+  - The scoreboard template no longer has to be copied into NV Play's Templates folder by
+    hand. Setup does it when NV Play is on the same laptop, and the scorer agent does it on
+    the scoring laptop: `CricketStreamScorerAgent.exe` now carries the template inside it.
+    An older copy is kept as `scoreboard.template.old`. Choosing the template inside NV
+    Play is still a one-time step for the scorer.
+  - Verified by building the agent exe and running it, on its own in an empty folder,
+    against a fake scorer's laptop: installed an exact copy, left it alone the second time,
+    and replaced an older one keeping the original. The release build now checks the
+    template really is inside the exe.
+- **Fixed: the Stream Health Check could leave a test clip in your recordings folder**, and
+  its second test (the x264 comparison) was usually skipped as "a recording was already
+  active". OBS reports a recording stopped before it has finished closing the file; the
+  check now waits for it.
+- **Removed: the Stream Health Check's encoder comparison.** Testing it against a real OBS
+  showed it never compared anything: changing the encoder setting over OBS's remote
+  control doesn't switch the encoder OBS uses (OBS only builds encoders when it starts),
+  so its "hardware vs x264" result was the same encoder measured twice. The upload-speed
+  test, and the bitrate and resolution it recommends, stay.
+- **New: quickstart picks OBS's video encoder.** If OBS is on CPU encoding (x264) and the
+  laptop has a hardware encoder (NVIDIA, AMD, Intel or Apple), quickstart switches to it,
+  using the list of encoders OBS itself reports as working on that laptop. A hardware
+  encoder you've chosen is never changed; `[Stream] encoder = manual` turns it off.
+  Verified with OBS's own log naming the encoder it actually ran: x264 before, NVENC after.
+- **New: no "New update available" box during matches.** Quickstart pauses OBS's update
+  check for the match and puts it back when OBS is closed afterwards (a crash keeps it
+  paused, so the box can't appear when OBS is reopened mid-match). A club that had it off
+  already is left off. Measured on OBS 32.1.1: the box appeared on 4 of 6 launches
+  normally, and none of 4 with the check paused.
+- **Fixed: a fresh OBS stopped on a "No Sources" question at first launch.** Starting the
+  replay buffer from the command line before the scenes exist makes OBS ask whether to
+  carry on; nobody's there to answer. The buffer is now started that way only once the
+  scenes have been built (first time, the setup script starts it after building them).
+- **New: the control panel's checklist does the steps, not just lists them.** The
+  Match-day checklist at the top of the panel now ticks itself from what's actually true,
+  and every item that isn't ready has a button that does it: **Start OBS** (the same
+  preparation quickstart does, then the scenes and overlay), **Add camera to OBS** /
+  **Reconnect**, **Start replay buffer**, **Fetch today's match**, **Find scorer laptop**,
+  and **Go live** (asks first). The old manual tick-boxes are gone, along with items that
+  could never be false ("server.py is running"). Works from a phone too, so OBS can be
+  started without being at the laptop.
+  - Verified in a real browser against a freshly installed OBS: one press of Start OBS,
+    and about ten seconds later OBS was open, set up, and holding replays, with no
+    dialogs left on screen.
+- **New: a brand-new OBS no longer needs restarting by hand.** The replay buffer can't
+  run until OBS has restarted once after it's switched on; quickstart and Start OBS now
+  close OBS cleanly and reopen it themselves, the first time only. OBS's own first-run
+  Auto-Configuration Wizard is skipped (it's another window nobody answers, and it
+  stopped OBS closing); everything it sets is set by CricketStream already.
+- **Fixed (before release): match-day setup moved sponsor logos under the scorebar.** An
+  unreleased version of the "graphics above the camera" repair lifted the scorebar to
+  the very top of the scene. It now moves only cameras and other video down beneath the
+  graphics, leaving anything placed above the scorebar where it was.
+- **New: upload the sponsor's logo from the control panel.** "Upload logo…" in the
+  sponsor section sends an image from whatever device the panel is open on (a phone at the
+  ground, say) to the streaming laptop, saves it under the next free image number, and
+  makes it the sponsor image straight away, with a preview. PNG, JPEG, WebP or GIF up to
+  8 MB, checked by what the file actually is rather than its name. No more copying files
+  into the sponsors/ folder by hand.
+- **New: a refreshed control panel.** Organised by when you need things, in four tabs —
+  **Match day** (today's match, cameras, replays, on-screen extras, stream quality, system
+  health, the live data feed, YouTube), **Graphics & sponsor**, **After the match** (report,
+  Instagram graphic, highlights, match data) and **Setup** (OBS, cameras, scoring source,
+  accounts and keys, health check, folders, squad roster) — instead of one 6,800-pixel page.
+  The live status and the Save button are pinned to the top of every tab, and the
+  checklist stays above the tabs. A new look throughout: readable hint text (much of it was
+  too dim), consistent cards and controls, and the accent colour taken from your club's
+  home kit colour, adjusted so it always reads on the dark panel (a navy club gets a
+  readable club blue; a yellow club gets dark text on its buttons). Works at phone width:
+  the pinned bar stays one line and the tabs fit. Your last tab is remembered per device.
+  Every control and setting is where the panel's code expects it — checked by a new test
+  that every saved field and every button handler survived the move.
+- **Fixed: the scorebar style preview was always blank.** The overlay draws the scorebar
+  at the bottom of a full 1080-pixel canvas and the preview frame was only 72 pixels tall,
+  so it showed the empty top strip. It now shows the real scorebar in the chosen style.
+- **New: make a sponsor logo's background transparent.** Most logos arrive on a white box,
+  which shows as a hard rectangle on the stream. "Make background transparent…" in the
+  sponsor section (offered automatically after an upload, when the logo has a plain
+  background) shows two versions over the strap's dark background and you pick the one
+  that looks right: **Around the logo** (for badges and round logos: keeps white inside
+  them) or **Everywhere** (for lettering: clears the insides of letters too). It saves a new
+  image and keeps the original, with an Undo. Works on solid-colour backgrounds; a photo or
+  gradient is refused with an explanation, as is a logo that's already transparent.
+  Checked on a real club's sponsor logos: a gold wordmark and a round badge, both on white.
+- **Fixed: saving settings from two places at once could fail.** Every save writes
+  through one temporary file, and two at the same moment collided on Windows ("Permission
+  denied"), dropping one request — found when two logo uploads landed together. Saves are
+  now one at a time, and also ride out Windows briefly refusing to replace the settings
+  file while it's being read.
+- **New: sponsor airtime.** How long the weekend sponsor's strap was actually on screen
+  while the stream was live, ready to pass on to the sponsor: shown in the control
+  panel's sponsor card, printed and saved by quickstart after the match
+  (`sponsor_airtime_<date>.txt`, and below the match report if you make one), and at
+  `/sponsor/airtime`. Timed by the server from the overlay's show/hide reports; time on
+  screen before going live (a rehearsal) is shown separately and never counted. The
+  server-side timing is tested end to end; the overlay's reporting is checked in its
+  source but hasn't yet been watched in OBS during a real match.
+- **Fixed: the scorer agent could pick an old scoreboard folder over the live one.** Its
+  "prefer the folder being written right now" check ignored the file's age for the
+  standard NV Play filenames, so a folder holding last season's scoreboard counted as live.
+
 ## v2.8 — 2026-09-24
 
 - **Changed: camera cuts are ~3.6x quicker, and the control panel is built for flicking.**

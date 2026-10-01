@@ -44,6 +44,13 @@ manual_scoring.json
 # bridge_config.ini.bak, which the bare filename would not catch.
 .pcs_bridge_cache/
 bridge_config.ini*
+# Scorer agent's remembered folder (a machine-specific path), written beside the script.
+scorer_agent.json*
+# Per-club match-day output: sponsor airtime log + the files quickstart writes after a
+# match for the club to pass on. Not code, and not for publishing from a bare `git add .`.
+sponsor_airtime.json*
+sponsor_airtime_*.txt
+match_report_*.txt
 
 # Scorer's live output. If the scoreboard output folder is ever pointed at the repo
 # directory — easily done, and it was during setup here — these land in the working
