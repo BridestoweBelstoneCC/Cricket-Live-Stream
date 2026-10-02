@@ -1694,6 +1694,7 @@ DEFAULT_STATE = {
     "roster":                 {},
     "socials_folder":         "",
     "sponsor_name":           "",
+    "social_handle":          "",      # shown on vertical social clips, e.g. @YourClubCC
     "sponsor_id":             "",
     "home_club_id":           "",
     "ground_filter":          "",
@@ -6919,6 +6920,129 @@ def _ff_filter_path(path):
     return path.replace("\\", "/").replace(":", "\\:")
 
 
+# ── Social clips (vertical 9:16, for Shorts / Reels / TikTok) ──
+# After the match, every tagged replay (wicket, six, fifty…) becomes a vertical clip with a
+# headline, a short line about the moment and the club badge, plus a ready-to-paste post
+# caption. Post-match by design: re-encoding video on the streaming laptop mid-match would
+# compete with OBS's encoder. Rendering lives in social_clips.py.
+_social_clips_status = {"running": False, "ok": None, "message": "", "done": 0, "total": 0}
+
+
+def social_clips_dir(folder=None):
+    folder = folder or (load_state().get("replay_folder", "") or _default_replay_folder())
+    return os.path.join(folder, "social_clips", datetime.date.today().isoformat())
+
+
+def ai_clip_texts(caption, reason, cfg):
+    """(on-screen line, post caption) for one clip. Claude Haiku writes both from the clip's
+    tag (who, what, the score); without a key — or if the call fails — the tag itself and a
+    plain caption are used, so clips are still made offline."""
+    club = cfg.get("home_team", "") or "the club"
+    fallback = (caption, f"{caption} 🏏 #cricket #villagecricket")
+    key = (cfg.get("anthropic_api_key") or "").strip()
+    if not key or not caption:
+        return fallback
+    try:
+        import anthropic
+        prompt = (
+            f"A cricket club ({club}) is posting a short vertical video clip of this moment "
+            f"from their live stream:\n{caption}\n\n"
+            "That text doesn't say which team the player is on — it could be the club's "
+            "player or the opposition's — so never write \"we\", \"us\" or \"our\" about "
+            "the moment. Name the player and what happened.\n"
+            "Return ONLY a JSON object with two keys:\n"
+            '  "line": one punchy line shown on the video, max 70 characters, no hashtags, '
+            "no emojis — use only facts given above\n"
+            '  "post": a caption for Instagram/TikTok, max 40 words, at most 1 emoji and 3 '
+            "hashtags, facts from above only")
+        msg = anthropic.Anthropic(api_key=key).messages.create(
+            model="claude-haiku-4-5", max_tokens=300,
+            messages=[{"role": "user", "content": prompt}])
+        raw = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+        d = json.loads(raw)
+        line = str(d.get("line") or "").strip()[:90] or caption
+        post = str(d.get("post") or "").strip() or fallback[1]
+        return line, post
+    except Exception:
+        return fallback
+
+
+def make_social_clips(folder=None):
+    """Render a vertical clip for every tagged replay in the replay folder (replay-test and
+    untagged clips are skipped). Already-made clips are kept, so re-running only adds new
+    ones. Returns (ok, message, made)."""
+    import social_clips
+    import tempfile
+    if not shutil.which("ffmpeg"):
+        return False, "FFmpeg not found — download from https://ffmpeg.org/download.html and add to PATH", []
+    cfg = load_state()
+    folder = folder or (cfg.get("replay_folder", "") or _default_replay_folder())
+    clips = [c for p in ("*.mkv", "*.mp4", "*.flv", "*.mov")
+             for c in glob.glob(os.path.join(folder, p))
+             if "highlights" not in os.path.basename(c).lower()]
+    tags = clip_tags(clips)
+    for name, caption in guess_clip_tags(
+            [c for c in clips if os.path.basename(c) not in tags]).items():
+        tags[name] = {"reason": "auto", "caption": caption}
+    plan = [e for e in plan_highlights(clips, tags) if e["caption"]]
+    if not plan:
+        return False, "No tagged replays to make clips from yet", []
+    out_dir = social_clips_dir(folder)
+    os.makedirs(out_dir, exist_ok=True)
+    logos = os.path.expanduser((cfg.get("logos_folder") or "").strip()) or \
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos")
+    cid = str(cfg.get("home_club_id") or "").strip()
+    badge = next((p for p in (os.path.join(logos, cid + e) for e in (".png", ".webp", ".jpg"))
+                  if cid and os.path.exists(p)), None)
+    try:
+        import result_card
+        accent = "0x%02X%02X%02X" % result_card.palette(cfg.get("home_colour", "#1a3a5c"))["hi"]
+    except Exception:
+        accent = "0xFFFFFF"
+    handle = (cfg.get("social_handle") or "").strip()
+    work = tempfile.mkdtemp(prefix="social_clips_")
+    made, failed = [], 0
+    _social_clips_status.update(total=len(plan), done=0)
+    try:
+        for i, e in enumerate(plan, start=1):
+            reason = tags.get(os.path.basename(e["file"]), {}).get("reason", "")
+            headline = social_clips.headline_for(reason if reason != "auto" else e["caption"])
+            slug = re.sub(r"[^a-z0-9]+", "-", headline.lower()).strip("-") or "clip"
+            out = os.path.join(out_dir, f"{i:02d}_{slug}.mp4")
+            if not (os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(e["file"])):
+                line, post = ai_clip_texts(e["caption"], reason, cfg)
+                ok, msg = social_clips.render(e["file"], out, headline, line, work,
+                                              badge=badge, handle=handle, accent=accent)
+                if not ok:
+                    failed += 1
+                    print(f"  ✗  Social clip {i}: {msg}")
+                    continue
+                with open(os.path.splitext(out)[0] + ".txt", "w", encoding="utf-8") as fh:
+                    fh.write(post + "\n")
+            made.append(os.path.basename(out))
+            _social_clips_status.update(done=i)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    msg = f"{len(made)} clip{'s' if len(made) != 1 else ''} ready in {out_dir}"
+    if failed:
+        msg += f" ({failed} failed — see the server window)"
+    return bool(made), msg, made
+
+
+def list_social_clips():
+    out_dir = social_clips_dir()
+    clips = []
+    for f in sorted(glob.glob(os.path.join(out_dir, "*.mp4"))):
+        txt = os.path.splitext(f)[0] + ".txt"
+        try:
+            with open(txt, encoding="utf-8") as fh:
+                caption = fh.read().strip()
+        except OSError:
+            caption = ""
+        clips.append({"name": os.path.basename(f), "caption": caption})
+    return clips
+
+
 def compile_highlights(folder, output_path, max_clips=100):
     """
     Stitch replay clips into a captioned highlights reel using FFmpeg.
@@ -7562,6 +7686,19 @@ class Handler(BaseHTTPRequestHandler):
                     hint = (" — Pillow isn't installed on this machine. Run the installer "
                             "again, or: pip3 install Pillow") if "PIL" in str(e) else ""
                     self._json({"ok": False, "error": f"Image build failed: {e}{hint}"})
+
+        elif path == "/social/clips":
+            if not self._check_token(): return
+            self._json({**_social_clips_status, "clips": list_social_clips()})
+
+        elif path.startswith("/social/clips/file/"):
+            # Same exposure as /social/image/latest: content made to be posted publicly.
+            name = os.path.basename(path[len("/social/clips/file/"):].replace("\\", "/"))
+            full = os.path.join(social_clips_dir(), name)
+            if name.endswith(".mp4") and os.path.isfile(full):
+                self._file(full, "video/mp4")
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
 
         elif path == "/social/image/latest":
             # Serve the most recently generated Instagram graphic for preview/download.
@@ -8419,6 +8556,21 @@ class Handler(BaseHTTPRequestHandler):
                             "message": msg if ok else "", "error": msg if not ok else ""})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
+
+        elif path == "/social/clips":
+            if _social_clips_status["running"]:
+                self._json({"ok": False, "error": "Already making clips"}, status=409)
+                return
+            _social_clips_status.update(running=True, ok=None, message="", done=0, total=0)
+            def run_clips():
+                try:
+                    ok, msg, _ = make_social_clips()
+                except Exception as exc:
+                    ok, msg = False, str(exc)
+                _social_clips_status.update(running=False, ok=ok, message=msg)
+                print(f"  {'✓' if ok else '✗'}  Social clips: {msg}")
+            threading.Thread(target=run_clips, daemon=True).start()
+            self._json({"ok": True, "started": True})
 
         elif path == "/highlights":
             try:

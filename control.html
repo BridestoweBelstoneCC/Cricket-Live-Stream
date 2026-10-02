@@ -953,6 +953,22 @@
     </div>
   </div>
   <div class="card">
+      <h2>Social clips</h2>
+      <p class="section-note">
+        Every wicket, six, four and milestone replay as a vertical video for Shorts, Reels
+        and TikTok &mdash; headline, a line about the moment and the club badge, with a
+        caption ready to paste. Made after the match (it uses a lot of the laptop's power).
+        Needs FFmpeg, like the highlights reel.
+      </p>
+      <div class="field">
+        <label>Channel / social handle shown on the clips</label>
+        <input type="text" id="social_handle" placeholder="@YourClubCC">
+      </div>
+      <button class="btn btn-test" id="social-clips-btn" onclick="makeSocialClips()" style="width:100%;">&#127909; Make social clips</button>
+      <div id="social-clips-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+      <div id="social-clips-list" style="margin-top:8px;"></div>
+  </div>
+  <div class="card">
       <h2>Post-match Highlights</h2>
       <p class="section-note">
         Stitches all saved replay clips into a single highlights reel.
@@ -1287,6 +1303,7 @@ async function doLogin() {
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      loadSocialClips();         // same: /social/clips is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
@@ -1310,6 +1327,7 @@ async function doSkip() {
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      loadSocialClips();         // same: /social/clips is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
@@ -1561,6 +1579,67 @@ async function pickBg(mode) {
     msg.appendChild(undo);
   } catch (e) { msg.textContent = 'Could not reach the server.'; }
 }
+
+// ── Social clips ──
+let _socialPoll = null;
+async function makeSocialClips() {
+  const st = document.getElementById('social-clips-status');
+  await saveState();                       // the handle goes on the clips
+  try {
+    const res = await apiFetch('/social/clips', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await res.json();
+    if (!res.ok) { st.textContent = d.error || 'Could not start'; return; }
+    st.textContent = 'Making clips…';
+    if (!_socialPoll) _socialPoll = setInterval(loadSocialClips, 3000);
+  } catch (e) { st.textContent = 'Could not reach the server'; }
+}
+
+async function loadSocialClips() {
+  const st = document.getElementById('social-clips-status');
+  const list = document.getElementById('social-clips-list');
+  if (!st || !list) return;
+  try {
+    const res = await apiFetch('/social/clips');
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.running) {
+      st.textContent = 'Making clips… ' + (d.total ? d.done + ' of ' + d.total : '');
+    } else {
+      if (_socialPoll) { clearInterval(_socialPoll); _socialPoll = null; }
+      st.textContent = d.message || (d.clips.length ? '' : 'No clips made yet today.');
+      st.style.color = d.ok === false ? 'var(--bad)' : 'var(--muted)';
+    }
+    // Built with textContent: captions are AI-written text.
+    list.textContent = '';
+    (d.clips || []).forEach(function (c) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);';
+      const name = document.createElement('div');
+      name.style.cssText = 'flex:1;min-width:0;font-size:12px;';
+      const strong = document.createElement('strong');
+      strong.textContent = c.name;
+      const cap = document.createElement('div');
+      cap.textContent = c.caption;
+      cap.style.cssText = 'color:var(--muted);font-size:11px;';
+      name.appendChild(strong); name.appendChild(cap);
+      const dl = document.createElement('a');
+      dl.className = 'btn btn-test';
+      dl.style.cssText = 'width:auto;margin:0;padding:6px 10px;';
+      dl.textContent = 'Download';
+      dl.href = '/social/clips/file/' + encodeURIComponent(c.name);
+      dl.download = c.name;
+      const copy = document.createElement('button');
+      copy.className = 'btn btn-test';
+      copy.style.cssText = 'width:auto;margin:0;padding:6px 10px;';
+      copy.textContent = 'Copy caption';
+      copy.onclick = function () { navigator.clipboard.writeText(c.caption); copy.textContent = 'Copied'; };
+      row.appendChild(name); row.appendChild(dl); row.appendChild(copy);
+      list.appendChild(row);
+    });
+  } catch (e) {}
+}
+loadSocialClips();
 
 // ── Pre-match check ──
 // Every row is built with textContent: the details include error text from outside services.
@@ -1931,7 +2010,7 @@ function updatePreview() {
   document.getElementById('prev-away').textContent = an;
 }
 
-const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
+const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbrev','home_colour','away_colour',
   'pcs_output_folder','pcs_bridge_url','pcs_bridge_token','pcs_source','agent_host','match_url','match_notes','replay_folder',
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
   'camera2_rtsp_url','obs_camera2_name','obs_bowler_scene',

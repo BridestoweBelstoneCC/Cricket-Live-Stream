@@ -70,6 +70,14 @@ shipped without it and misreported a manual match day until fixed.
   conceded/pairs result from totals) or, for the streamed match, `generate_social_graphic_facts()`
   (deterministic from the ball log; the AI only writes the caption). Visual changes: render it
   and look — `tests/test_result_card.py` checks contrast and layout robustness, not looks.
+- **`social_clips.py`** — vertical 9:16 clips for Shorts/Reels/TikTok from tagged replays
+  (`server.make_social_clips()` picks the clips, gets Claude Haiku's line + post caption
+  via `ai_clip_texts()`, falls back to the replay tag offline). Text reaches ffmpeg only via
+  `textfile=` (no caption can break the filter graph) and rendering runs at below-normal
+  priority. Post-match on purpose — don't trigger it from a replay mid-stream; x264 on the
+  streaming laptop competes with OBS. The caption prompt must keep saying the tag doesn't
+  know which side a player is on: without it, Haiku wrote "takes us to 60-1" about an
+  opposition batter.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is

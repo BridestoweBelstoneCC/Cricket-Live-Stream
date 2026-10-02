@@ -4,6 +4,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **New: social clips.** After the match, After the match → **Make social clips** turns
+  every wicket, six, four and milestone replay into a vertical video for YouTube Shorts,
+  Instagram Reels and TikTok: the replay (with the scorebar) in the middle, a big headline
+  ("SIX!"), a line about the moment, the club badge and your handle — plus a caption ready
+  to paste, written by Claude Haiku (under 1p a match; without an AI key the replay's own
+  tag is used). Download each from the panel, phone included. Made after the match on
+  purpose: encoding video while streaming would compete with OBS. Needs FFmpeg.
+
 ## v2.11 — 2026-10-02
 
 - **New: pre-match check.** Control panel → Setup → **Run pre-match check**, meant for a
