@@ -109,6 +109,54 @@ class TestRemoteAuthGuard(unittest.TestCase):
             self.assertIn("authoris", msg.lower())
 
 
+class TestExpiredLogin(TestRemoteAuthGuard):
+    """A stored login Google now rejects (revoked, or a Testing-mode app's 7-day expiry):
+    found on the maintainer's laptop, where it raised a traceback out of every YouTube call."""
+
+    def stubs(self, refresh_error):
+        class RefreshError(Exception):
+            pass
+
+        class TransportError(Exception):
+            pass
+        stub = {name: mock.MagicMock() for name in (
+            "google", "google.oauth2", "google.oauth2.credentials",
+            "google_auth_oauthlib", "google_auth_oauthlib.flow",
+            "google.auth", "google.auth.transport", "google.auth.transport.requests",
+            "googleapiclient", "googleapiclient.discovery", "google.auth.exceptions")}
+        stub["google.auth.exceptions"].RefreshError = RefreshError
+        stub["google.auth.exceptions"].TransportError = TransportError
+        creds = mock.MagicMock(valid=False, expired=True, refresh_token="r")
+        creds.refresh.side_effect = (RefreshError if refresh_error == "refresh"
+                                     else TransportError)("invalid_grant")
+        stub["google.oauth2.credentials"].Credentials.from_authorized_user_file.return_value = creds
+        open(server.YT_TOKEN_FILE, "w").close()
+        return stub
+
+    def test_expired_login_says_reconnect_and_opens_no_browser(self):
+        stub = self.stubs("refresh")
+        with mock.patch.dict("sys.modules", stub):
+            yt, err = server._youtube_service(allow_interactive=False)
+        self.assertIsNone(yt)
+        self.assertIn("expired", err)
+        self.assertIn("Update YouTube broadcast now", err)
+        stub["google_auth_oauthlib.flow"].InstalledAppFlow.from_client_secrets_file.assert_not_called()
+
+    def test_expired_login_on_the_laptop_itself_opens_the_login(self):
+        stub = self.stubs("refresh")
+        with mock.patch.dict("sys.modules", stub),                 mock.patch.object(server, "_write_token_private"):
+            server._youtube_service(allow_interactive=True)
+        stub["google_auth_oauthlib.flow"].InstalledAppFlow.from_client_secrets_file.assert_called_once()
+
+    def test_network_trouble_is_not_an_expired_login(self):
+        stub = self.stubs("network")
+        with mock.patch.dict("sys.modules", stub):
+            yt, err = server._youtube_service(allow_interactive=True)
+        self.assertIsNone(yt)
+        self.assertIn("Couldn't reach Google", err)
+        stub["google_auth_oauthlib.flow"].InstalledAppFlow.from_client_secrets_file.assert_not_called()
+
+
 class _Req:
     def __init__(self, result, fail=None):
         self._result, self._fail = result, fail

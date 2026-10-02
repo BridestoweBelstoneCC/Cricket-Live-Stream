@@ -4,8 +4,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.10 — 2026-10-02
 
+- **Fixed: an expired YouTube login now says so.** Google rejects a stored YouTube login
+  once it's revoked, or after 7 days if the club's Google Cloud app is still in "Testing"
+  mode. That used to crash every YouTube call with an error, so title updates (and now
+  viewer-minutes) quietly stopped. It now says the login has expired and how to reconnect:
+  press "Update YouTube broadcast now" on the streaming laptop, which opens the Google
+  login. A network blip is no longer mistaken for an expired login, so it never pops a
+  login up mid-match. To stop the weekly expiry, set the app to "In production" in Google
+  Cloud (OAuth consent screen).
 - **New: sponsor viewer-minutes.** While the stream is live and YouTube is connected, the
   server reads YouTube's live viewer count once a minute, and the sponsor airtime line adds
   an estimate: "…on screen for 4 min 30 s of the live stream, across 31 appearances — an
