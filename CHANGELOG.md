@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.10 — 2026-10-02
 
 - **New: sponsor viewer-minutes.** While the stream is live and YouTube is connected, the
   server reads YouTube's live viewer count once a minute, and the sponsor airtime line adds
