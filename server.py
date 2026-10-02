@@ -1022,17 +1022,38 @@ def _youtube_service(allow_interactive=True):
     if os.path.exists(YT_TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(YT_TOKEN_FILE, YT_SCOPES)
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            _write_token_private(creds)
-        elif allow_interactive:
-            flow = InstalledAppFlow.from_client_secrets_file(YT_CREDS_FILE, YT_SCOPES)
-            creds = flow.run_local_server(port=8091, open_browser=True)
-            _write_token_private(creds)
-        else:
-            return None, ("YouTube isn't authorised yet — do it once ON THE STREAMING "
-                          "LAPTOP (the control panel there), not remotely: the Google "
-                          "login opens a browser on the machine running the server.")
+            from google.auth.exceptions import RefreshError, TransportError
+            try:
+                creds.refresh(Request())
+                _write_token_private(creds)
+                refreshed = True
+            except RefreshError as e:
+                # Revoked — or, most often, a Google OAuth app left in "Testing" mode,
+                # whose logins expire after 7 days. Only a fresh login fixes it. This used
+                # to raise straight out, so title updates and viewer-minutes failed with
+                # a traceback instead of saying "reconnect YouTube".
+                print(f"  ✗  YouTube login has expired ({e}) — reconnect it in the panel")
+            except TransportError as e:
+                # Network trouble isn't an expired login: never pop a Google login up on
+                # the streaming laptop because the wifi blipped.
+                return None, f"Couldn't reach Google to refresh the YouTube login ({e})"
+        if not refreshed:
+            if allow_interactive:
+                flow = InstalledAppFlow.from_client_secrets_file(YT_CREDS_FILE, YT_SCOPES)
+                creds = flow.run_local_server(port=8091, open_browser=True)
+                _write_token_private(creds)
+            elif creds:
+                return None, ("YouTube's login has expired — reconnect it ON THE STREAMING "
+                              "LAPTOP: Match day tab → \"Update YouTube broadcast now\" "
+                              "opens the Google login there. If it keeps expiring every "
+                              "week, publish the app in Google Cloud (OAuth consent screen "
+                              "→ In production).")
+            else:
+                return None, ("YouTube isn't authorised yet — do it once ON THE STREAMING "
+                              "LAPTOP (the control panel there), not remotely: the Google "
+                              "login opens a browser on the machine running the server.")
     return build("youtube", "v3", credentials=creds), None
 
 
