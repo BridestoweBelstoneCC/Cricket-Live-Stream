@@ -547,6 +547,23 @@ def db_init():
                 match_id TEXT, file TEXT, ts TEXT, reason TEXT,
                 caption TEXT,
                 PRIMARY KEY (match_id, file));
+            -- The scorer's own running figures, kept current by log_live_figures(): exact
+            -- where the balls table is a reconstruction, and they survive a restart.
+            CREATE TABLE IF NOT EXISTS live_innings (
+                match_id TEXT, innings INTEGER, batting_team TEXT, score INTEGER,
+                wickets INTEGER, overs TEXT, limit_balls INTEGER, ts TEXT,
+                PRIMARY KEY (match_id, innings));
+            CREATE TABLE IF NOT EXISTS live_batting (
+                match_id TEXT, innings INTEGER, name TEXT, runs INTEGER, balls INTEGER,
+                out INTEGER DEFAULT 0,
+                PRIMARY KEY (match_id, innings, name));
+            CREATE TABLE IF NOT EXISTS live_bowling (
+                match_id TEXT, innings INTEGER, name TEXT, overs TEXT, runs INTEGER,
+                wickets INTEGER,
+                PRIMARY KEY (match_id, innings, name));
+            CREATE TABLE IF NOT EXISTS live_fow (
+                match_id TEXT, innings INTEGER, wicket INTEGER, batter TEXT, score INTEGER,
+                PRIMARY KEY (match_id, innings, wicket));
             """)
     except sqlite3.Error as e:
         print(f"  ⚠  match DB init failed: {e}")
@@ -637,17 +654,54 @@ def log_ball_data(state):
         striker, nonstriker = b1.get("name", ""), b2.get("name", "")
         mid      = current_match_id()
         prev     = _ball_log_prev
+        # NV Play usually does NOT update the ticker when an over completes (CLAUDE.md):
+        # it keeps showing the finished over as it was before the final ball, on every
+        # write, until the next ball. Those balls are already logged, so read the write as
+        # a cleared ticker — otherwise the final delivery reads as negative runs and is
+        # never recovered, and the stale balls are logged again under the NEXT over
+        # against the next bowler. Matched as a prefix so a ticker that DOES carry the
+        # final ball still counts as stale: that extra ball (`tail`) goes into the
+        # finished over where it belongs. Only while no legal ball of the new over has
+        # been bowled, and only for a ticker at least as long as the logged one, so a new
+        # over's opening wide can't be mistaken for it.
+        sig = tuple(b["outcome"] for b in balls)
+        tail = []
+        rolled = (prev["mid"] == mid and prev["innings"] == innings
+                  and prev["over"] is not None and over_idx > prev["over"])
+        ref = prev.get("sig") if rolled else (
+            prev["done"][3] if prev.get("done") and prev["done"][:3] == (mid, innings, over_idx - 1)
+            else None)
+        if (balls and ref and _overs_to_balls(state.get("overs", 0) or 0) % 6 == 0
+                and len(sig) >= len(ref) and sig[:len(ref)] == ref):
+            tail = balls[len(ref):] if rolled else []
+            balls = []
 
         # ── Recover the invisible over-completing delivery ──
         # The over we were logging has rolled on (same match+innings, over advanced):
         # whatever score/wickets moved beyond the balls we HAVE seen is the final
         # delivery (or, across a missed poll, final deliveries — logged as one
         # aggregate ball; totals stay exact even when the per-ball split is unknowable).
-        if (prev["mid"] == mid and prev["innings"] == innings
-                and prev["over"] is not None and over_idx > prev["over"]):
+        if rolled:
+            if tail:
+                # The final ball(s) are in the ticker after all: log them as bowled.
+                now_s = datetime.datetime.now().isoformat(timespec="seconds")
+                run, wk = prev["score"], prev["wickets"]
+                with _db_lock, _db() as c:
+                    for i, b in enumerate(tail, start=prev["count"] + 1):
+                        run += b["runs"]
+                        wk += 1 if b["wicket"] else 0
+                        c.execute(
+                            "INSERT OR REPLACE INTO balls(match_id,innings,over,ball,batting_team,"
+                            "batter,non_striker,bowler,outcome,runs,extra,is_wicket,legal,"
+                            "cum_runs,cum_wkts,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (mid, innings, prev["over"], i, bteam,
+                             prev["striker"] or striker, prev["nonstriker"] or nonstriker,
+                             prev["bowler"] or bowler, b["outcome"], b["runs"], b["extra"],
+                             int(b["wicket"]), int(b["legal"]), run, wk, now_s))
+                prev.update({"count": prev["count"] + len(tail), "score": run, "wickets": wk})
             miss_runs = score - prev["score"] - sum(b["runs"] for b in balls)
             miss_wkts = wkts - prev["wickets"] - sum(1 for b in balls if b["wicket"])
-            if miss_runs >= 0 and (miss_runs > 0 or miss_wkts > 0 or prev["count"] > 0):
+            if miss_runs >= 0 and (miss_runs > 0 or miss_wkts > 0 or (prev["count"] > 0 and not tail)):
                 synth_outcome = "W" if miss_wkts > 0 else (str(miss_runs) if miss_runs else "dot")
                 now_s = datetime.datetime.now().isoformat(timespec="seconds")
                 with _db_lock, _db() as c:
@@ -660,7 +714,8 @@ def log_ball_data(state):
                          prev["bowler"] or bowler, synth_outcome, miss_runs, None,
                          int(miss_wkts > 0), 1, prev["score"] + miss_runs,
                          prev["wickets"] + miss_wkts, now_s))
-            prev.update({"over": None, "count": 0, "score": score, "wickets": wkts})
+            prev.update({"over": None, "count": 0, "score": score, "wickets": wkts,
+                         "done": (mid, innings, prev["over"], prev.get("sig"))})
 
         if not balls:
             # Between overs (or pre-match): remember the baseline so the next over's
@@ -695,7 +750,8 @@ def log_ball_data(state):
                      run, wkts, now))
         prev.update({"mid": mid, "innings": innings, "over": over_idx,
                      "score": score, "wickets": wkts, "count": len(balls),
-                     "striker": striker, "nonstriker": nonstriker, "bowler": bowler})
+                     "striker": striker, "nonstriker": nonstriker, "bowler": bowler,
+                     "sig": tuple(b["outcome"] for b in balls)})
     except Exception:
         pass
 
@@ -706,9 +762,18 @@ def reconcile_match(match_id):
     api_key = (cfg.get("playcricket_api_key") or cfg.get("api_token") or "").strip()
     if not api_key:
         return {"ok": False, "error": "No PlayCricket API key set"}
+    if not str(match_id).isdigit():
+        # current_match_id()'s date+teams fallback: PlayCricket only answers "404".
+        return {"ok": False, "error": "This match isn't linked to a PlayCricket fixture "
+                "(use \"Fetch today's match\" first), so there's no scorecard to check against."}
     try:
         det = _pc_get_json(f"https://play-cricket.com/api/v2/match_detail.json"
                            f"?api_token={api_key}&match_id={match_id}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"ok": False, "error": f"PlayCricket has no match {match_id} — check the "
+                    "fixture, or try again once the scorecard is published."}
+        return {"ok": False, "error": f"PlayCricket fetch failed: {e}"}
     except Exception as e:
         return {"ok": False, "error": f"PlayCricket fetch failed: {e}"}
     md = (det.get("match_details") or [{}])[0]
@@ -2394,6 +2459,251 @@ def start_pcs_bridge_sync():
     threading.Thread(target=_pcs_bridge_sync_loop, daemon=True).start()
 
 
+NO_MATCH_DATA_ERROR = ("No match data recorded yet — the report is written from the scorer's "
+                       "feed, so it needs at least one ball logged for today's match.")
+
+
+def _overs_to_balls(overs):
+    """6.0 / '6' -> 36, 22.3 -> 135 (the digit after the point is balls, not tenths)."""
+    try:
+        whole, _, part = f"{float(overs):.1f}".partition(".")
+        return int(whole) * 6 + int(part or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _balls_to_overs(balls):
+    return f"{balls // 6}.{balls % 6}" if balls % 6 else str(balls // 6)
+
+
+# What the previous poll looked like, so log_live_figures can tell who was dismissed (the
+# batter who left the pair) and finish the over of a bowler who has just been rotated off.
+_live_prev = {"key": None}
+
+
+# Every table keyed by match_id, for follow_match_id().
+_MATCH_TABLES = ("balls", "live_innings", "live_batting", "live_bowling", "live_fow",
+                 "innings_totals", "batting", "bowling", "clips")
+_logged_mid = {"mid": None}
+MATCH_ID_FOLLOW_SEC = 600
+
+
+def follow_match_id(state):
+    """Keep one match's logged data under one id when the id changes mid-innings.
+    current_match_id() is the PlayCricket id once "Fetch today's match" has run, else the
+    date plus both team names — so fetching after the first ball, or correcting the
+    opposition name mid-match, used to start a new id and split the match: the report
+    and result card then saw only the part logged since. Rows move to the new id only
+    when it's genuinely the same match: the innings is under way, the old id was logging
+    in the last 10 minutes, and the new id has nothing yet — so a morning rehearsal is
+    never pulled into the afternoon's match. Never raises."""
+    try:
+        mid = current_match_id()
+        old, _logged_mid["mid"] = _logged_mid["mid"], mid
+        if not old or old == mid or not _overs_to_balls(state.get("overs", 0) or 0):
+            return
+        with _db_lock, _db() as c:
+            if c.execute("SELECT 1 FROM balls WHERE match_id=? UNION ALL "
+                         "SELECT 1 FROM live_innings WHERE match_id=? LIMIT 1",
+                         (mid, mid)).fetchone():
+                return
+            last = c.execute("SELECT MAX(ts) FROM (SELECT ts FROM balls WHERE match_id=? "
+                             "UNION ALL SELECT ts FROM live_innings WHERE match_id=?)",
+                             (old, old)).fetchone()[0]
+            try:
+                age = (datetime.datetime.now()
+                       - datetime.datetime.fromisoformat(last)).total_seconds()
+            except (TypeError, ValueError):
+                return
+            if age > MATCH_ID_FOLLOW_SEC:
+                return
+            for t in _MATCH_TABLES:
+                c.execute(f"UPDATE OR IGNORE {t} SET match_id=? WHERE match_id=?", (mid, old))
+            c.execute("UPDATE OR IGNORE matches SET match_id=? WHERE match_id=?", (mid, old))
+        if _ball_log_prev.get("mid") == old:
+            _ball_log_prev["mid"] = mid
+        if _live_prev.get("key") and _live_prev["key"][0] == old:
+            _live_prev["key"] = (mid, _live_prev["key"][1])
+        print(f"  ✓  Match id changed mid-innings ({old} → {mid}) — logged data moved with it")
+    except Exception:
+        pass
+
+
+def log_live_figures(state):
+    """Keep the live_* tables in step with the scorer's running figures: innings total,
+    each batter's runs/balls, each bowler's figures, and who fell at what score. These are
+    the scorer's OWN totals, so they're exact — unlike the balls table, whose batter column
+    is whoever was batter1 at the last write and which can't see an over's final ball.
+    They're what the match report and the result card read after a server restart.
+    Never raises — logging must not affect the stream."""
+    try:
+        innings = int(state.get("innings", 1) or 1)
+        score   = int(state.get("score", 0) or 0)
+        wkts    = int(state.get("wickets", 0) or 0)
+        balls   = _overs_to_balls(state.get("overs", 0) or 0)
+        if not (score or wkts or balls):
+            return            # pre-match frame (or a blank file): not an innings yet
+        mid = current_match_id()
+        key = (mid, innings)
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        remaining = int(state.get("ballsRemaining", 0) or 0)
+        limit = balls + remaining if remaining > 0 else None
+        pair = []
+        for b in (state.get("batter1") or {}, state.get("batter2") or {}):
+            name = (b.get("name") or "").strip()
+            if name and name not in ("—", "-"):
+                pair.append((name, int(b.get("runs", 0) or 0), int(b.get("balls", 0) or 0)))
+        bw = state.get("bowler") or {}
+        bowler = (bw.get("name") or "").strip()
+        bowler = bowler if bowler not in ("", "—", "-") else ""
+
+        prev = _live_prev if _live_prev.get("key") == key else None
+        with _db_lock, _db() as c:
+            c.execute(
+                "INSERT INTO live_innings(match_id,innings,batting_team,score,wickets,overs,"
+                "limit_balls,ts) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(match_id,innings) DO UPDATE SET "
+                "batting_team=excluded.batting_team, score=excluded.score, wickets=excluded.wickets,"
+                " overs=excluded.overs, limit_balls=COALESCE(excluded.limit_balls, limit_balls),"
+                " ts=excluded.ts",
+                (mid, innings, state.get("battingTeamName", ""), score, wkts,
+                 _balls_to_overs(balls), limit, now))
+            for name, runs, faced in pair:
+                c.execute("INSERT INTO live_batting(match_id,innings,name,runs,balls,out) "
+                          "VALUES(?,?,?,?,?,0) ON CONFLICT(match_id,innings,name) DO UPDATE SET "
+                          "runs=excluded.runs, balls=excluded.balls, out=0",
+                          (mid, innings, name, runs, faced))
+            if prev and wkts > prev["wkts"]:
+                # Whoever left the pair is out. Two gone at once (a missed poll) still
+                # pairs them up in order; a wicket we can't name keeps its score.
+                gone = [n for n in prev["pair"] if n not in {p[0] for p in pair}]
+                for i, w in enumerate(range(prev["wkts"] + 1, wkts + 1)):
+                    who = gone[i] if i < len(gone) else ""
+                    c.execute("INSERT OR REPLACE INTO live_fow(match_id,innings,wicket,batter,score)"
+                              " VALUES(?,?,?,?,?)", (mid, innings, w, who, score))
+                    if who:
+                        c.execute("UPDATE live_batting SET out=1 WHERE match_id=? AND innings=? "
+                                  "AND name=?", (mid, innings, who))
+            if bowler:
+                c.execute("INSERT INTO live_bowling(match_id,innings,name,overs,runs,wickets) "
+                          "VALUES(?,?,?,?,?,?) ON CONFLICT(match_id,innings,name) DO UPDATE SET "
+                          "overs=excluded.overs, runs=excluded.runs, wickets=excluded.wickets",
+                          (mid, innings, bowler, str(bw.get("overs", "") or "0"),
+                           int(bw.get("runs", 0) or 0), int(bw.get("wickets", 0) or 0)))
+            if (prev and prev["bowler"] and prev["bowler"] != bowler
+                    and balls % 6 == 0 and balls > prev["balls"]):
+                # On the over-completing write the bowler has ALREADY rotated (CLAUDE.md),
+                # so the finished over's last ball never reaches the old bowler's figures.
+                # Finish them from the score movement; if they bowl again, the scorer's own
+                # cumulative figures overwrite this.
+                c.execute("UPDATE live_bowling SET overs=?, runs=runs+?, wickets=wickets+? "
+                          "WHERE match_id=? AND innings=? AND name=?",
+                          (_balls_to_overs((prev["bowler_overs"] // 6 + 1) * 6),
+                           max(score - prev["score"], 0), max(wkts - prev["wkts"], 0),
+                           mid, innings, prev["bowler"]))
+        _live_prev.update({"key": key, "pair": [p[0] for p in pair], "wkts": wkts,
+                           "score": score, "balls": balls, "bowler": bowler,
+                           "bowler_overs": _overs_to_balls(bw.get("overs", 0) or 0)})
+    except Exception:
+        pass
+
+
+def match_facts_from_db(match_id):
+    """Innings totals, fall of wickets, batters, bowlers and milestones for one match, from
+    the live_* tables (see log_live_figures). _match_log lives only in memory, so a server
+    restart wipes it — and given only "Match: X v Y" the model wrote a confident result
+    anyway. Never raises: returns empty collections instead."""
+    out = {"innings": {}, "fall_of_wickets": [], "milestones": [], "top_scorers": {},
+           "batters": {}, "bowlers": {}}
+    try:
+        with _db_lock, _db() as c:
+            inns = c.execute("SELECT innings,batting_team,score,wickets,overs,limit_balls "
+                             "FROM live_innings WHERE match_id=? ORDER BY innings",
+                             (match_id,)).fetchall()
+            bats = c.execute("SELECT innings,name,runs,balls,out FROM live_batting "
+                             "WHERE match_id=?", (match_id,)).fetchall()
+            bowls = c.execute("SELECT innings,name,overs,runs,wickets FROM live_bowling "
+                              "WHERE match_id=?", (match_id,)).fetchall()
+            fow = c.execute("SELECT innings,wicket,batter,score FROM live_fow WHERE match_id=? "
+                            "ORDER BY innings,wicket", (match_id,)).fetchall()
+    except sqlite3.Error:
+        return out
+    for inn, team, score, wkts, overs, limit in inns:
+        out["innings"][str(inn)] = {"batting_team": team or "", "score": score or 0,
+                                    "wickets": wkts or 0, "overs": overs or "0",
+                                    "limit_balls": limit}
+    for inn, name, runs, faced, is_out in bats:
+        out["batters"].setdefault(str(inn), []).append(
+            {"name": name, "runs": runs or 0, "balls": faced or 0, "out": bool(is_out)})
+    for inn, name, overs, runs, wkts in bowls:
+        out["bowlers"].setdefault(str(inn), []).append(
+            {"name": name, "o": overs or "0", "r": runs or 0, "w": wkts or 0})
+    for inn, wicket, batter, score in fow:
+        out["fall_of_wickets"].append({"batter": batter or "?", "score": f"{score}-{wicket}",
+                                       "howout": ""})
+    for inn, rows in out["batters"].items():
+        rows.sort(key=lambda b: -b["runs"])
+        out["top_scorers"][inn] = [f"{b['name']} {b['runs']}{'' if b['out'] else '*'} "
+                                   f"({b['balls']} balls)" for b in rows[:3] if b["runs"] > 0]
+        out["milestones"] += [{"batter": b["name"], "milestone": f"{b['runs'] // 50 * 50}"}
+                              for b in rows if b["runs"] >= 50]
+    return out
+
+
+def _has_innings(rec):
+    """An innings that has actually started — not the 0-0 a pre-match or blank frame gives."""
+    return bool(rec.get("score") or rec.get("wickets") or _overs_to_balls(rec.get("overs") or 0))
+
+
+def merged_match_facts():
+    """(db facts, innings) for the current match — the one merge both the AI write-ups and
+    the result card use, so they can't disagree. The live_* tables first (exact, and they
+    survive restarts); the in-memory log only fills an innings the DB doesn't have. Empty
+    0-0 innings are dropped either way."""
+    db = match_facts_from_db(current_match_id())
+    innings = {k: dict(v) for k, v in db["innings"].items() if _has_innings(v)}
+    for k, v in match_log_snapshot_copy()["innings"].items():
+        if k not in innings and _has_innings(v):
+            innings[k] = dict(v)
+    return db, innings
+
+
+def build_match_summary(cfg):
+    """The facts handed to the report / social generators, as (text, has_data). has_data
+    is False until an innings has actually started — callers must refuse rather than let
+    the model invent a match."""
+    snap = match_log_snapshot_copy()
+    db, innings = merged_match_facts()
+    # The DB names every wicket; the memory list starts afresh at a restart.
+    fow = db["fall_of_wickets"] if len(db["fall_of_wickets"]) >= len(snap["fall_of_wickets"]) \
+        else snap["fall_of_wickets"]
+    seen = {m.get("batter") for m in snap["milestones"]}
+    milestones = snap["milestones"] + [m for m in db["milestones"] if m["batter"] not in seen]
+
+    home = cfg.get("home_team","") or cfg.get("name","Home")
+    away = cfg.get("away_team","Opposition")
+    comp = cfg.get("competition","")
+    lines = [f"Match: {home} v {away}" + (f" ({comp})" if comp else "")]
+    for inn_no in sorted(innings.keys()):
+        r = innings[inn_no]
+        lines.append(
+            f"Innings {inn_no}: {r.get('batting_team','?')} "
+            f"{r.get('score',0)}-{r.get('wickets',0)} ({r.get('overs',0)} overs)")
+        if db["top_scorers"].get(inn_no):
+            lines.append("  Top scorers: " + "; ".join(db["top_scorers"][inn_no]))
+    if fow:
+        lines.append("Wickets:")
+        for w in fow[:12]:
+            lines.append(f"  {w.get('batter','?')} {w.get('howout','')} "
+                         f"at {w.get('score','?')}")
+    if milestones:
+        lines.append("Milestones: " + "; ".join(
+            f"{m.get('batter','?')} {m.get('milestone','')}" for m in milestones[:8]))
+    if snap["events"]:
+        recent = [e["detail"] for e in snap["events"][-25:]]
+        lines.append("Key moments: " + " | ".join(recent))
+    return "\n".join(lines), bool(innings)
+
+
 def generate_match_report(report_type="report"):
     """Generate an AI match report or social post from the match log.
     report_type: 'report' (full written report) | 'social' (short post).
@@ -2408,31 +2718,10 @@ def generate_match_report(report_type="report"):
     except ImportError:
         return {"ok": False, "error": "anthropic package not installed (pip install anthropic)"}
 
-    # Build a factual match summary from a defensive snapshot of the log (see helper).
-    snap = match_log_snapshot_copy()
-
-    st = _pcs_last_state or {}
+    summary, has_data = build_match_summary(cfg)
+    if not has_data:
+        return {"ok": False, "error": NO_MATCH_DATA_ERROR}
     home = cfg.get("home_team","") or cfg.get("name","Home")
-    away = cfg.get("away_team","Opposition")
-    comp = cfg.get("competition","")
-    lines = [f"Match: {home} v {away}" + (f" ({comp})" if comp else "")]
-    for inn_no in sorted(snap["innings"].keys()):
-        r = snap["innings"][inn_no]
-        lines.append(
-            f"Innings {inn_no}: {r.get('batting_team','?')} "
-            f"{r.get('score',0)}-{r.get('wickets',0)} ({r.get('overs',0)} overs)")
-    if snap["fall_of_wickets"]:
-        lines.append("Wickets:")
-        for w in snap["fall_of_wickets"][:12]:
-            lines.append(f"  {w.get('batter','?')} {w.get('howout','')} "
-                         f"at {w.get('score','?')}")
-    if snap["milestones"]:
-        lines.append("Milestones: " + "; ".join(
-            f"{m.get('batter','?')} {m.get('milestone','')}" for m in snap["milestones"][:8]))
-    if snap["events"]:
-        recent = [e["detail"] for e in snap["events"][-25:]]
-        lines.append("Key moments: " + " | ".join(recent))
-    summary = "\n".join(lines)
 
     if report_type == "social":
         prompt = (
@@ -3294,68 +3583,188 @@ def _pc_recent_matches(api_key, site_id, season, cfg, limit=12):
     rows.sort(key=lambda r: r["sort"], reverse=True)
     return rows[:limit]
 
+def _card_name(name):
+    """'Bridestowe and Belstone CC' -> 'Bridestowe & Belstone CC' — shorter on the card."""
+    return re.sub(r"\s+and\s+", " & ", (name or "").strip(), flags=re.I)
+
+
+def _card_side(club, team, runs, wkts, overs, club_id, ours, pairs=False):
+    # Pairs (softball) cricket: a wicket costs runs and the batters carry on, so 10+
+    # wickets is normal and never "all out".
+    all_out = not pairs and wkts is not None and wkts >= 10
+    ov = f"{overs} overs" if overs not in ("", None) else ""
+    return {"club": _card_name(club), "team": team or "", "club_id": str(club_id or ""),
+            "ours": bool(ours), "won": False, "runs": runs, "wkts": wkts, "overs_raw": overs or "",
+            "score": f"{runs}" if all_out else f"{runs}-{wkts or 0}",
+            "overs": (f"All out · {ov}" if ov else "All out") if all_out else ov}
+
+
+def _margin_from_scores(first, second):
+    """(winner index, margin) from the two innings, or (None, '') for a tie."""
+    if second["runs"] > first["runs"]:
+        left = max(0, 10 - (second["wkts"] or 0))
+        return 1, f"by {left} wicket" + ("s" if left != 1 else "")
+    if first["runs"] > second["runs"]:
+        diff = first["runs"] - second["runs"]
+        return 0, f"by {diff} run" + ("s" if diff != 1 else "")
+    return None, ""
+
+
+def _finish_card_facts(sides, outcome, margin, stars, cfg, extra):
+    """Shared tail: the structured card fields plus the flat legacy fields the caption
+    writer (ai_caption_for_facts) reads."""
+    abbr = (cfg.get("abbreviation", "") or _club_fragment(cfg)[:5]).upper()
+    word = {"win": "WIN", "loss": "LOSE", "abandoned": "ABANDONED",
+            "cancelled": "CANCELLED"}.get(outcome, "")
+    if outcome in ("win", "loss"):
+        result = f"{abbr} {word} {margin.upper()}".strip()
+    elif outcome in ("tie", "draw"):
+        result = "MATCH TIED" if outcome == "tie" else "MATCH DRAWN"
+    else:
+        result = word or "MATCH UPDATE"
+    legacy = {"result": result}
+    for i, s in enumerate(sides[:2], start=1):
+        legacy[f"team{i}_name"] = f"{s['club']} {s['team']}".strip().upper()
+        legacy[f"team{i}_score"] = f"{s['score']} ({s['overs']})" if s["overs"] else s["score"]
+    for i, st in enumerate(stars[:2], start=1):
+        legacy[f"performer{i}"] = f"{st['name']} {st['big']} {st['small']}".strip()
+    facts = {"ok": True, "outcome": outcome, "margin": margin, "sides": sides,
+             "stars": stars, "kicker": "Match update" if outcome == "live" else "Match result",
+             "caption": ""}
+    facts.update(legacy)
+    facts.update(extra)
+    return facts
+
+
 def build_match_facts_from_pc(match_id, team_key=""):
-    """Pull one match's scorecard from PlayCricket and distil it into graphic facts —
-    result line, both innings scores, and our top batter + bowler. Works for ANY match,
-    streamed or not (away games included). Deterministic; no AI needed.
+    """Pull one match's scorecard from PlayCricket and distil it into result-card facts —
+    outcome, margin, both sides (with club ids for badges), and our top batter + bowler.
+    Works for ANY match, streamed or not (away games included). Deterministic; no AI.
+    The outcome is PlayCricket's own result, not worked out from the scores: a DLS win
+    can come from the lower score, and a tie/draw/abandonment can't be read off totals.
     team_key='youth' switches performer names to the discreet junior form."""
     youth = (team_key == "youth")
     cfg = load_state()
     api_key = (cfg.get("playcricket_api_key") or cfg.get("api_token") or "").strip()
     if not api_key:
         return {"ok": False, "error": "No PlayCricket API key set"}
-    det = _pc_get_json(f"https://play-cricket.com/api/v2/match_detail.json"
-                       f"?api_token={api_key}&match_id={match_id}")
-    md  = (det.get("match_details") or [{}])[0]
+    try:
+        det = _pc_get_json(f"https://play-cricket.com/api/v2/match_detail.json"
+                           f"?api_token={api_key}&match_id={match_id}")
+    except Exception as e:
+        return {"ok": False, "error": f"PlayCricket fetch failed: {e}"}
+    md = (det.get("match_details") or [{}])[0]
     innings = md.get("innings", []) or []
-    if len(innings) < 2:
+    res = str(md.get("result", "") or "").strip().upper()
+    desc = str(md.get("result_description", "") or "")
+    if len(innings) < 2 and res not in ("A", "C", "CON"):
         return {"ok": False, "error": "That match has no completed scorecard yet"}
 
-    def _score_str(r, w, ov):
-        return f"{r} all out ({ov})" if (w is not None and w >= 10) else f"{r}-{w} ({ov})"
+    our_id = str(cfg.get("home_club_id", "") or "").strip()
+    clubs = {}       # team id -> (club name, team name, club id)
+    for k in ("home", "away"):
+        clubs[str(md.get(f"{k}_team_id", ""))] = (md.get(f"{k}_club_name", ""),
+                                                  md.get(f"{k}_team_name", ""),
+                                                  str(md.get(f"{k}_club_id", "") or ""))
 
-    rows = []
+    def is_ours(club_name, club_id):
+        return bool(our_id and club_id == our_id) or _is_our_team(club_name, cfg)
+
+    pairs = "pairs" in str(md.get("game_type", "")).lower()
+    sides, inns = [], []
     for inn in innings[:2]:
-        team = inn.get("team_batting_name", "")
-        r = _pc_parse_int(inn.get("runs")) or 0
-        w = _pc_parse_int(inn.get("wickets"))
-        ov = str(inn.get("overs", "") or "").strip()
-        rows.append({"team": team, "r": r, "w": (w if w is not None else 0), "ov": ov, "inn": inn})
+        tid = str(inn.get("team_batting_id", ""))
+        club, team, cid = clubs.get(tid, (inn.get("team_batting_name", ""), "", ""))
+        side = _card_side(club, team, _pc_parse_int(inn.get("runs")) or 0,
+                          _pc_parse_int(inn.get("wickets")) or 0,
+                          str(inn.get("overs", "") or "").strip(), cid, is_ours(club, cid),
+                          pairs)
+        if _pc_parse_int(inn.get("runs")) is None:      # conceded / abandoned: never batted
+            side["score"], side["overs"] = "", ""
+        side["team_id"] = tid
+        sides.append(side)
+        inns.append(inn)
+    if len(sides) < 2 and res in ("A", "C", "CON"):
+        # Conceded / abandoned before (or without) a full scorecard: both clubs, no scores.
+        sides, inns = [], []
+        for tid, (club, team, cid) in clubs.items():
+            side = _card_side(club, team, 0, 0, "", cid, is_ours(club, cid))
+            side.update(score="", overs="", team_id=tid)
+            sides.append(side)
+            inns.append({})
+    # Can't tell which side is ours (no home_club_id and a name that matches neither, or
+    # both): show the result without claiming a WIN or DEFEAT for the wrong club.
+    unsure = len(sides) == 2 and sum(s["ours"] for s in sides) != 1
+    if unsure:
+        for s in sides:
+            s["ours"] = False
 
-    (t1, t2) = rows[0], rows[1]
-    # Result (relative to us). Winner by runs (defending) or wickets (chasing).
-    if t2["r"] > t1["r"]:
-        win_team, margin = t2["team"], f"{max(0, 10 - t2['w'])} WICKET" + ("S" if (10 - t2['w']) != 1 else "")
-    elif t1["r"] > t2["r"]:
-        diff = t1["r"] - t2["r"]
-        win_team, margin = t1["team"], f"{diff} RUN" + ("S" if diff != 1 else "")
-    else:
-        win_team, margin = None, ""
-    abbr = (cfg.get("abbreviation", "") or _club_fragment(cfg)[:5]).upper()
-    if win_team is None:
-        result = "MATCH TIED"
-    elif _is_our_team(win_team, cfg):
-        result = f"{abbr} WIN BY {margin}"
-    else:
-        result = f"{abbr} LOSE BY {margin}"
+    # Outcome from PlayCricket's result; margin from the scores where it applies.
+    applied = str(md.get("result_applied_to", "") or "")
+    winner, outcome, margin = None, "", ""
+    if res == "T":
+        outcome = "tie"
+    elif res == "D":
+        outcome = "draw"
+    elif res in ("A", "C"):
+        outcome = "abandoned" if res == "A" else "cancelled"
+    elif res == "CON":
+        # "<Team> - Conceded": that team gave the match away, so the other side won.
+        named = _card_name(desc.split(" - ")[0]).lower()
+        loser = next((s["team_id"] for s in sides if s["club"].lower() == named), "")
+        win_tid = next((s["team_id"] for s in sides if loser and s["team_id"] != loser), "")
+        winner = next((i for i, s in enumerate(sides) if s["team_id"] == win_tid), None)
+        desc = desc + " conceded"
+    elif res in ("W", "L") and applied:
+        win_tid = applied if res == "W" else next(
+            (s["team_id"] for s in sides if s["team_id"] != applied), "")
+        winner = next((i for i, s in enumerate(sides) if s["team_id"] == win_tid), None)
+    elif len(sides) == 2:
+        # No result recorded yet: scorers upload live, so this may be mid-chase. Only a
+        # finished chase has a winner; otherwise it's a match update.
+        limit = (_pc_parse_int(md.get("no_of_overs")) or 0) * 6 or None
+        if _chase_finished(sides[0], sides[1], {"overs": sides[1]["overs_raw"], "limit_balls": limit},
+                           {"overs": sides[0]["overs_raw"]}, cfg):
+            winner, _ = _margin_from_scores(*sides)
+            if winner is None:
+                outcome = "tie"
+        else:
+            outcome = "live"
+    if winner is not None and len(sides) == 2:
+        sides[winner]["won"] = True
+        outcome = "" if unsure else ("win" if sides[winner]["ours"] else "loss")
+        low = desc.lower()
+        if "conced" in low:
+            margin = "by concession"
+        elif "dls" in low or "run rate" in low:
+            margin = "on DLS"
+        elif "pairs" in str(md.get("game_type", "")).lower():
+            # Pairs cricket: both sides bat all their overs (a wicket costs runs), so
+            # the side batting second can win by plenty — the margin is always runs.
+            diff = abs(sides[0]["runs"] - sides[1]["runs"])
+            margin = f"by {diff} run" + ("s" if diff != 1 else "") if diff else ""
+        else:
+            by_score, m = _margin_from_scores(*sides)
+            margin = m if by_score == winner else ""
+        if unsure:
+            margin = ""
 
-    # Our top batter (in our batting innings) and top bowler (in our bowling innings).
+    # Our top batter (our batting innings) and top bowler (theirs).
     top_bat, top_bowl = None, None
-    for row in rows:
-        inn = row["inn"]
-        our_batting = _is_our_team(row["team"], cfg)
-        if our_batting:
+    for side, inn in zip(sides, inns):
+        if side["ours"]:
             for b in inn.get("bat", []) or []:
                 runs = _pc_parse_int(b.get("runs"))
-                how  = (b.get("how_out") or "").strip().lower()
-                if runs is None or how in ("", "did not bat", "dnb", "tdnb", "did_not_bat"):
+                how = (b.get("how_out") or "").strip().lower()
+                # Blank how_out is a batter who batted (pairs cricket never fills it);
+                # did-not-bat entries have no runs.
+                if runs is None or how in ("did not bat", "dnb", "tdnb", "did_not_bat"):
                     continue
                 no = ("not out" in how) or how == "no" or "retired not" in how
                 if not top_bat or runs > top_bat["runs"]:
                     top_bat = {"name": b.get("batsman_name", ""), "runs": runs,
                                "balls": _pc_parse_int(b.get("balls")), "no": no}
         else:
-            # opponent batting → our bowlers are this innings' bowl[]
             for bw in inn.get("bowl", []) or []:
                 wk = _pc_parse_int(bw.get("wickets")) or 0
                 rn = _pc_parse_int(bw.get("runs"))
@@ -3363,22 +3772,28 @@ def build_match_facts_from_pc(match_id, team_key=""):
                 if not top_bowl or wk > top_bowl["w"] or (wk == top_bowl["w"] and rn < top_bowl["r"]):
                     top_bowl = {"name": bw.get("bowler_name", ""), "w": wk, "r": rn,
                                 "o": str(bw.get("overs", "") or "").strip()}
-
-    perf1 = perf2 = ""
+    stars = []
     if top_bat:
-        b = f"{_short_name(top_bat['name'], youth)} {top_bat['runs']}{'*' if top_bat['no'] else ''}"
-        if top_bat.get("balls"):
-            b += f" ({top_bat['balls']})"
-        perf1 = b
+        stars.append({"label": "Top score", "name": _short_name(top_bat["name"], youth),
+                      "big": f"{top_bat['runs']}{'*' if top_bat['no'] else ''}",
+                      "small": f"({top_bat['balls']})" if top_bat.get("balls") else ""})
     if top_bowl and top_bowl["w"] > 0:
-        perf2 = f"{_short_name(top_bowl['name'], youth)} {top_bowl['w']}-{top_bowl['r']}"
+        stars.append({"label": "Best bowling", "name": _short_name(top_bowl["name"], youth),
+                      "big": f"{top_bowl['w']}-{top_bowl['r']}",
+                      "small": f"{top_bowl['o']} ov" if top_bowl["o"] else ""})
 
-    return {"ok": True, "result": result,
-            "team1_name": t1["team"].upper(), "team1_score": _score_str(t1["r"], t1["w"], t1["ov"]),
-            "team2_name": t2["team"].upper(), "team2_score": _score_str(t2["r"], t2["w"], t2["ov"]),
-            "performer1": perf1, "performer2": perf2,
-            "competition": md.get("competition_name", "") or cfg.get("competition", ""),
-            "caption": ""}
+    league = (md.get("league_name", "") or "").replace(" Cricket League", " League").strip()
+    comp = (md.get("competition_name", "") or "").strip()
+    if league and league.lower() in comp.lower():
+        league = ""                      # "Devon Women Softball League · DEVON WOMEN SOFTBALL…"
+    try:
+        date = datetime.datetime.strptime(md.get("match_date", ""), "%d/%m/%Y").strftime("%d %b %Y")
+    except ValueError:
+        date = ""
+    return _finish_card_facts(sides, outcome, margin, stars, cfg, {
+        "competition": " · ".join(x for x in (league, comp) if x) or cfg.get("competition", ""),
+        "date": date, "ground": md.get("ground_name", "") or ""})
+
 
 def ai_caption_for_facts(facts):
     """Optional: turn computed facts into an upbeat IG caption with Claude. Falls back to a
@@ -3407,385 +3822,114 @@ def ai_caption_for_facts(facts):
 
 
 def generate_social_graphic_facts():
-    """Use Claude to distil the match log into structured facts for the Instagram graphic.
-    Returns a dict with result/score/performer lines, or an error dict."""
+    """Result-card facts for the streamed match. Deterministic — no AI: the model used to
+    distil the match log into the card's numbers, which is exactly where a made-up score
+    does the most damage. The published PlayCricket scorecard wins when the match is
+    linked and it has a result; otherwise the scorer's own live figures (merged_match_facts)."""
     cfg = load_state()
-    api_key = cfg.get("anthropic_api_key","").strip()
-    if not api_key:
-        return {"ok": False, "error": "No Anthropic API key set"}
-    try:
-        import anthropic
-    except ImportError:
-        return {"ok": False, "error": "anthropic package not installed"}
+    mid = current_match_id()
+    if mid.isdigit():
+        pc = build_match_facts_from_pc(mid)
+        if pc.get("ok") and pc.get("outcome") != "live":
+            return pc
+    db, innings = merged_match_facts()
+    if not innings:
+        return {"ok": False, "error": NO_MATCH_DATA_ERROR}
 
-    # Reuse the same factual summary the report generator builds — from the same defensive
-    # snapshot (reading _match_log directly here could raise if a ball event lands mid-read).
-    snap = match_log_snapshot_copy()
-    st = _pcs_last_state or {}
-    home = cfg.get("home_team","") or cfg.get("name","Home")
-    away = cfg.get("away_team","Opposition")
-    comp = cfg.get("competition","")
-    lines = [f"Match: {home} v {away}" + (f" ({comp})" if comp else "")]
-    for inn_no in sorted(snap["innings"].keys()):
-        r = snap["innings"][inn_no]
-        lines.append(f"Innings {inn_no}: {r.get('batting_team','?')} "
-                     f"{r.get('score',0)}-{r.get('wickets',0)} ({r.get('overs',0)} overs)")
-    if snap["fall_of_wickets"]:
-        lines.append("Wickets: " + "; ".join(
-            f"{w.get('batter','?')} {w.get('howout','')} at {w.get('score','?')}"
-            for w in snap["fall_of_wickets"][:12]))
-    if snap["milestones"]:
-        lines.append("Milestones: " + "; ".join(
-            f"{m.get('batter','?')} {m.get('milestone','')}" for m in snap["milestones"][:8]))
-    if snap["events"]:
-        lines.append("Key moments: " + " | ".join(e["detail"] for e in snap["events"][-25:]))
-    summary = "\n".join(lines)
+    sides = []
+    for k in sorted(innings)[:2]:
+        r = innings[k]
+        team = r.get("batting_team", "")
+        ours = _is_our_team(team, cfg)
+        club = (cfg.get("home_team") if ours else cfg.get("away_team")) or team
+        cid = cfg.get("home_club_id" if ours else "away_club_id", "")
+        side = _card_side(club, "", int(r.get("score") or 0), int(r.get("wickets") or 0),
+                          str(r.get("overs") or ""), cid, ours)
+        side.update(key=k, raw=team)
+        sides.append(side)
+    # Can't tell which side is ours (the scorer's team name doesn't contain the club
+    # name, or both do): use the scorer's names and never claim a WIN or DEFEAT.
+    unsure = len(sides) == 2 and sum(s["ours"] for s in sides) != 1
+    if unsure:
+        for s in sides:
+            name = re.sub(r"\b(Cc|Xi|Ii|Iii)\b", lambda m: m.group(1).upper(),
+                          " ".join(w.capitalize() for w in _card_name(s["raw"]).split()))
+            s["club"], s["club_id"], s["ours"] = name, "", False
 
-    prompt = (
-        "From the cricket match facts below, produce a JSON object for a result graphic. "
-        "Use ONLY facts present; if something is unknown use an empty string. "
-        "Return ONLY the JSON, no preamble, no markdown fences. Keys:\n"
-        '  "result": short result line, UPPERCASE, max 40 chars (e.g. "HOME WIN BY 5 WICKETS")\n'
-        '  "team1_name": first innings batting team, UPPERCASE\n'
-        '  "team1_score": e.g. "230 (32.1)"\n'
-        '  "team2_name": second innings batting team, UPPERCASE\n'
-        '  "team2_score": e.g. "232-6 (38.4)"\n'
-        '  "performer1": top performer line, e.g. "J SMITH 64* (42)"\n'
-        '  "performer2": second performer, e.g. "A JONES 3-21" (a bowler if possible)\n'
-        '  "caption": a short upbeat Instagram caption, max 50 words, up to 3 hashtags, at most 1 emoji\n\n'
-        f"{summary}\n\nJSON:"
-    )
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(model="claude-haiku-4-5", max_tokens=400,
-                                     messages=[{"role":"user","content":prompt}])
-        raw = msg.content[0].text.strip()
-        raw = raw.replace("```json","").replace("```","").strip()
-        facts = json.loads(raw)
-        facts["ok"] = True
-        return facts
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    outcome, margin = "live", ""
+    if len(sides) == 2:
+        first, second = sides
+        if _chase_finished(first, second, innings[second["key"]], innings[first["key"]], cfg):
+            winner, margin = _margin_from_scores(first, second)
+            if winner is None:
+                outcome = "tie"
+            else:
+                sides[winner]["won"] = True
+                outcome = "" if unsure else ("win" if sides[winner]["ours"] else "loss")
+                margin = "" if unsure else margin
+
+    stars = []
+    bat_key = next((s["key"] for s in sides if s["ours"]), None)
+    bowl_key = next((s["key"] for s in sides if not s["ours"]), None) if bat_key else None
+    youth = _team_key(innings.get(bat_key or "", {}).get("batting_team", "")) == "youth"
+    batters = sorted(db["batters"].get(bat_key, []), key=lambda b: -b["runs"])
+    if batters and batters[0]["runs"] > 0:
+        b = batters[0]
+        stars.append({"label": "Top score", "name": _short_name(b["name"], youth),
+                      "big": f"{b['runs']}{'' if b['out'] else '*'}", "small": f"({b['balls']})"})
+    bowlers = sorted(db["bowlers"].get(bowl_key, []), key=lambda b: (-b["w"], b["r"]))
+    if bowlers and bowlers[0]["w"] > 0:
+        b = bowlers[0]
+        stars.append({"label": "Best bowling", "name": _short_name(b["name"], youth),
+                      "big": f"{b['w']}-{b['r']}", "small": f"{b['o']} ov"})
+
+    return _finish_card_facts(sides, outcome, margin, stars, cfg, {
+        "competition": cfg.get("competition_name", "") or cfg.get("competition", ""),
+        "date": datetime.date.today().strftime("%d %b %Y"), "ground": ""})
 
 
-def _ig_font(size, bold=True):
-    """Load a font at the given size. Falls back through common families so it works
-    on any machine; DejaVu ships with Pillow so it is always available."""
-    from PIL import ImageFont
-    candidates = ([
-        "/System/Library/Fonts/Helvetica.ttc",                      # macOS
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold
-            else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
-            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ])
-    for path in candidates:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    # Pillow-bundled DejaVu — guaranteed to exist
-    try:
-        from PIL import ImageFont as _IF
-        import PIL, os as _os
-        base = _os.path.join(_os.path.dirname(PIL.__file__), "fonts")
-        return _IF.truetype(_os.path.join(base, "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"), size)
-    except Exception:
-        from PIL import ImageFont as _IF
-        return _IF.load_default()
+def _chase_finished(first, second, second_rec, first_rec, cfg):
+    """Is the second innings over? Passed the target, all out, or out of balls. The overs
+    limit is the scorer's own (overs bowled + ballsRemaining, kept in live_innings), not the
+    panel's max_overs, which defaults to 50 and is often never changed for a 40-over game.
+    Without that: the first innings' overs if it wasn't all out (it batted the full quota),
+    else the panel setting."""
+    if second["runs"] > first["runs"] or (second["wkts"] or 0) >= 10:
+        return True
+    bowled = _overs_to_balls(second_rec.get("overs") or 0)
+    limit = second_rec.get("limit_balls")
+    if not limit:
+        if (first["wkts"] or 0) < 10:
+            limit = _overs_to_balls(first_rec.get("overs") or 0)
+        else:
+            limit = int(cfg.get("max_overs") or 0) * 6
+    return bool(limit) and bowled >= limit
 
 
 def build_instagram_image(facts, photo_path=None, out_path=None):
-    """Composite an England-Cricket-style result graphic:
-    photo backdrop + cinematic gradient + left accent stripe + crest + competition label
-    + RESULT pill + hero result line + head-to-head scoreboard + player of the match
-    + full-width accent footer bar. Returns the output file path."""
-    from PIL import Image, ImageDraw, ImageFilter
-    W, H = 1080, 1350                      # Instagram 4:5 portrait
+    """Render the post-match result card (result_card.py) for these facts, in the club's
+    colour with its crest, the clubs' badges from logos/, and every logo in sponsors/.
+    Returns the output file path."""
+    import result_card
     cfg = load_state()
-
-    # ── Colours ──
-    def _hex(h, fallback):
-        try:
-            h = h.lstrip("#")
-            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-        except Exception:
-            return fallback
-    ACCENT = _hex(cfg.get("home_colour", "#1a3a5c"), (26, 58, 92))
-    # a brighter tint of the accent for small labels/rules
-    ACCENT_LT = tuple(min(255, int(c + (255 - c) * 0.45)) for c in ACCENT)
-    ACCENT_DK = tuple(int(c * 0.55) for c in ACCENT)
-    WHITE, MUTED, INK = (255, 255, 255), (210, 222, 236), (8, 18, 34)
-
-    # ── Backdrop (cover-scale to fill) ──
-    img = Image.new("RGB", (W, H), INK)
-    has_photo = False
-    if photo_path and os.path.exists(photo_path):
-        try:
-            photo = Image.open(photo_path).convert("RGB")
-            pr, cr = photo.width / photo.height, W / H
-            if pr > cr:
-                nh = H; nw = int(H * pr)
-            else:
-                nw = W; nh = int(W / pr)
-            photo = photo.resize((nw, nh), Image.LANCZOS)
-            img.paste(photo, ((W - nw)//2, (H - nh)//2))
-            has_photo = True
-        except Exception:
-            pass
-
-    if has_photo:
-        # ── Duotone the photo into club colours (county-template style): the photo
-        # stays readable as texture, but the card reads as a club-colour graphic.
-        tint = Image.new("RGB", (W, H), ACCENT_DK)
-        img = Image.blend(img, tint, 0.58)
-
-    # ── County-template texture: pinstripes + skewed slashes (photo or flat) ──
-    if not has_photo:
-        # Vertical accent gradient base (deep club colour fading darker toward the foot)
-        for yy in range(H):
-            t = yy / H
-            col = tuple(int(ACCENT_DK[i] + (ACCENT[i] - ACCENT_DK[i]) * (1 - t) * 0.9) for i in range(3))
-            img.paste(Image.new("RGB", (W, 1), col), (0, yy))
-    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    do = ImageDraw.Draw(ov)
-    # Diagonal pinstripe texture (very faint)
-    for x in range(-H, W + H, 56):
-        do.line([(x, H), (x + H, 0)], fill=(255, 255, 255, 10), width=3)
-    # Two big skewed slashes — the signature county-template shapes
-    do.polygon([(W*0.55, 0), (W*1.3, 0), (W*0.95, H*0.62)],
-               fill=ACCENT_LT + (38,))
-    do.polygon([(W*0.70, 0), (W*1.45, 0), (W*1.05, H*0.70)],
-               fill=(255, 255, 255, 16))
-    img = Image.alpha_composite(img.convert("RGBA"), ov).convert("RGB")
-    if not has_photo:
-        # Huge translucent watermark crest on the right (skipped over photos — too busy)
-        try:
-            cid_w = str(cfg.get("home_club_id", "")).strip()
-            logos_w = cfg.get("logos_folder", "").strip()
-            logos_w = os.path.expanduser(logos_w) if logos_w else os.path.join(
-                      os.path.dirname(os.path.abspath(__file__)), "logos")
-            for ext in (".png", ".webp", ".jpg", ".jpeg"):
-                lp = os.path.join(logos_w, cid_w + ext)
-                if os.path.exists(lp):
-                    wm = Image.open(lp).convert("RGBA")
-                    wm.thumbnail((860, 860), Image.LANCZOS)
-                    a = wm.getchannel("A").point(lambda v: int(v * 0.08))
-                    wm.putalpha(a)
-                    img_rgba = img.convert("RGBA")
-                    img_rgba.paste(wm, (W - wm.width + 150, H//2 - wm.height//2 - 60), wm)
-                    img = img_rgba.convert("RGB")
-                    break
-        except Exception:
-            pass
-
-    # ── Cinematic bottom gradient (transparent up top → deep ink over the lower half) ──
-    grad = Image.new("L", (1, H), 0)
-    for y in range(H):
-        t = y / H
-        if t < 0.40:
-            a = int(38 * (t / 0.40))                       # faint top wash
-        else:
-            a = int(38 + 217 * ((t - 0.40) / 0.60) ** 1.25)  # ramp to near-solid at the base
-        grad.putpixel((0, y), min(255, a))
-    grad = grad.resize((W, H))
-    ink_layer = Image.new("RGB", (W, H), INK)
-    img = Image.composite(ink_layer, img, grad)
-
-    # ── Soft vignette so any photo holds together (skip on the flat-colour backdrop) ──
-    if has_photo:
-        vig = Image.new("L", (W, H), 0)
-        dv = ImageDraw.Draw(vig)
-        dv.ellipse([-W*0.25, -H*0.20, W*1.25, H*1.20], fill=255)
-        vig = vig.filter(ImageFilter.GaussianBlur(180))
-        vig = vig.point(lambda v: 255 - int(v * 0.55))          # darken edges ~55%
-        img = Image.composite(Image.new("RGB", (W, H), INK), img, vig)
-
-    d = ImageDraw.Draw(img)
-
-    def shadow_text(x, y, text, font, fill=WHITE, anchor=None, sh=(0,0,0,160)):
-        """Text with a soft drop shadow for legibility on any backdrop."""
-        d.text((x+2, y+2), text, font=font, fill=(0,0,0), anchor=anchor)
-        d.text((x, y), text, font=font, fill=fill, anchor=anchor)
-
-    # ── Left accent stripe (signature element) ──
-    d.rectangle([0, 0, 14, H], fill=ACCENT)
-
-    PAD = 80
-    # ── Crest top-left (falls back gracefully if missing) ──
-    top_y = 70
-    crest_h = 0
+    here = os.path.dirname(os.path.abspath(__file__))
+    logos = cfg.get("logos_folder", "").strip()
+    logos = os.path.expanduser(logos) if logos else os.path.join(here, "logos")
+    cid = str(cfg.get("home_club_id", "") or "").strip()
+    crest = next((p for p in (os.path.join(logos, cid + e)
+                              for e in (".png", ".webp", ".jpg", ".jpeg")) if cid and os.path.exists(p)), None)
+    sp_dir = os.path.expanduser(cfg.get("sponsors_folder", "").strip() or os.path.join(here, "sponsors"))
     try:
-        cid = str(cfg.get("home_club_id", "")).strip()
-        logos = cfg.get("logos_folder", "").strip()
-        logos = os.path.expanduser(logos) if logos else os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "logos")
-        for ext in (".png", ".webp", ".jpg", ".jpeg"):
-            lp = os.path.join(logos, cid + ext)
-            if os.path.exists(lp):
-                crest = Image.open(lp).convert("RGBA")
-                crest.thumbnail((132, 132), Image.LANCZOS)
-                img.paste(crest, (PAD, top_y), crest)
-                crest_h = crest.height
-                break
-    except Exception:
-        crest_h = 0
-
-    # ── Competition / match label (top, beside or under the crest) ──
-    comp = (cfg.get("competition", "") or "MATCH RESULT").upper()
-    f_comp = _ig_font(30, bold=True)
-    if crest_h:
-        d.text((PAD + 150, top_y + crest_h//2), comp[:34], font=f_comp,
-               fill=MUTED, anchor="lm")
-    else:
-        shadow_text(PAD, top_y + 6, comp[:34], f_comp, fill=MUTED)
-
-    # ===================== LOWER CONTENT BLOCK (left-aligned) =====================
-    FOOT_H = 96                      # footer bar height
-    # We lay the block out from a start Y and flow downward. Started high enough that
-    # the performers section clears the sponsor strip (86px) above the footer.
-    y = 620
-
-    # RESULT ribbon — skewed parallelogram with an offset echo stripe (county-template style)
-    f_pilllbl = _ig_font(32, bold=True)
-    pill_txt = (facts.get("label", "") or "RESULT").upper()[:16]
-    pw = d.textlength(pill_txt, font=f_pilllbl)
-    rib_w, rib_h, slant = int(pw + 76), 58, 22
-    d.polygon([(PAD + slant, y), (PAD + rib_w + slant, y),
-               (PAD + rib_w, y + rib_h), (PAD, y + rib_h)], fill=ACCENT)
-    # echo stripe just behind it
-    d.polygon([(PAD + rib_w + slant + 14, y), (PAD + rib_w + slant + 30, y),
-               (PAD + rib_w + 30, y + rib_h), (PAD + rib_w + 14, y + rib_h)], fill=ACCENT_LT)
-    d.text((PAD + slant//2 + 30, y + rib_h/2), pill_txt, font=f_pilllbl, fill=WHITE, anchor="lm")
-    y += rib_h + 30
-
-    # Hero result line — bigger, tighter, with an accent slash underline
-    result = (facts.get("result", "") or "RESULT").upper()
-    f_res = _ig_font(92, bold=True)
-    if d.textlength(result, font=f_res) > (W - 2*PAD):
-        f_res = _ig_font(70, bold=True)
-    words, lineA, lineB = result.split(), "", ""
-    for wd in words:
-        trial = (lineA + " " + wd).strip()
-        if d.textlength(trial, font=f_res) <= (W - 2*PAD) and not lineB:
-            lineA = trial
-        else:
-            lineB = (lineB + " " + wd).strip()
-    shadow_text(PAD, y, lineA, f_res); y += f_res.size + 2
-    if lineB:
-        shadow_text(PAD, y, lineB, f_res); y += f_res.size + 2
-    # slash underline
-    d.polygon([(PAD + 8, y + 16), (PAD + 148, y + 16), (PAD + 132, y + 26), (PAD - 8, y + 26)],
-              fill=ACCENT_LT)
-    y += 52
-
-    # Head-to-head scoreboard — angled white panel, ink names, accent scores
-    rows = []
-    if facts.get("team1_name"):
-        rows.append((facts["team1_name"].upper(), facts.get("team1_score", "")))
-    if facts.get("team2_name"):
-        rows.append((facts["team2_name"].upper(), facts.get("team2_score", "")))
-    f_score = _ig_font(46, bold=True)
-    GAP = 28                                          # min space between name and score
-    if rows:
-        panel_h = 30 + 74 * len(rows)
-        pslant  = 26
-        d.polygon([(PAD - 26 + pslant, y), (W, y), (W, y + panel_h),
-                   (PAD - 26, y + panel_h)], fill=WHITE)
-        # accent edge on the panel's slanted left side
-        d.polygon([(PAD - 26 + pslant, y), (PAD - 26 + pslant + 12, y),
-                   (PAD - 26 + 12, y + panel_h), (PAD - 26, y + panel_h)], fill=ACCENT)
-        y += 22
-    for i, (name, score) in enumerate(rows):
-        if i > 0:
-            d.line([(PAD + 10, y - 8), (W - PAD, y - 8)], fill=(8, 18, 34, 30), width=2)
-        cy = y + 24                                   # vertical centre of the row
-        sw = d.textlength(score, font=f_score)
-        avail = (W - PAD - 40) - PAD - 30 - sw - GAP  # width left for the name
-        # Shrink the name font until the full name fits — no ugly mid-word truncation.
-        nsize = 46
-        f_team = _ig_font(nsize, bold=True)
-        while d.textlength(name, font=f_team) > avail and nsize > 26:
-            nsize -= 2
-            f_team = _ig_font(nsize, bold=True)
-        disp = name
-        # Ellipsis only as a last resort if still too long at the minimum size.
-        if d.textlength(disp, font=f_team) > avail:
-            while disp and d.textlength(disp + "…", font=f_team) > avail:
-                disp = disp[:-1]
-            disp = disp.rstrip() + "…"
-        d.text((PAD + 30, cy), disp, font=f_team, fill=INK, anchor="lm")
-        d.text((W - PAD - 40 - sw, cy), score, font=f_score, fill=ACCENT, anchor="lm")
-        y += 74
-    y += 30
-
-    # Player of the match / key performers
-    perfs = [p for p in (facts.get("performer1", ""), facts.get("performer2", "")) if p]
-    if perfs:
-        d.rectangle([PAD, y, PAD + 60, y + 6], fill=ACCENT)
-        y += 22
-        f_ph = _ig_font(27, bold=True)
-        label = "PLAYER OF THE MATCH" if len(perfs) == 1 else "KEY PERFORMERS"
-        d.text((PAD, y), label, font=f_ph, fill=ACCENT_LT); y += 40
-        f_perf = _ig_font(40, bold=True)
-        line = "   •   ".join(perfs)
-        if d.textlength(line, font=f_perf) > (W - 2*PAD):
-            # stack onto separate lines if too wide
-            for p in perfs:
-                shadow_text(PAD, y, p, f_perf); y += 52
-        else:
-            shadow_text(PAD, y, line, f_perf); y += 52
-
-    # ── Sponsor strip (white panel above the footer; shows ALL logos in sponsors/) ──
-    # Logos share the available width equally and scale to fit, so 2 sponsors or 8 both
-    # lay out tidily in one row. Match-day sponsors: just drop more files into sponsors/.
-    try:
-        sp_dir = (cfg.get("sponsors_folder", "").strip()
-                  or os.path.join(os.path.dirname(os.path.abspath(__file__)), "sponsors"))
-        sp_dir = os.path.expanduser(sp_dir)
-        sps = sorted([f for f in os.listdir(sp_dir)
-                      if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))])
-        if sps:
-            STRIP_H = 88
-            sy = H - FOOT_H - STRIP_H
-            d.rectangle([0, sy, W, sy + STRIP_H], fill=(244, 246, 249))
-            n   = len(sps)
-            gap = 30 if n > 1 else 0
-            cell = (W - 2*PAD - gap * (n - 1)) / n          # equal share of the row width
-            logos_imgs = []
-            for f in sps:
-                try:
-                    s = Image.open(os.path.join(sp_dir, f)).convert("RGBA")
-                    s.thumbnail((max(40, int(cell)), STRIP_H - 26), Image.LANCZOS)
-                    logos_imgs.append(s)
-                except Exception:
-                    pass
-            if logos_imgs:
-                total = sum(s.width for s in logos_imgs) + gap * (len(logos_imgs) - 1)
-                x = (W - total) // 2
-                for s in logos_imgs:
-                    img.paste(s, (x, sy + (STRIP_H - s.height)//2), s)
-                    x += s.width + gap
-    except Exception:
-        pass
-
-    # ── Footer accent bar (club name + date, white on accent) ──
-    d.rectangle([0, H - FOOT_H, W, H], fill=ACCENT)
-    f_foot = _ig_font(30, bold=True)
-    club = (cfg.get("name", "") or "Home CC")
-    d.text((PAD, H - FOOT_H/2), club, font=f_foot, fill=WHITE, anchor="lm")
-    datestr = datetime.date.today().strftime("%d %b %Y").upper()
-    dw = d.textlength(datestr, font=f_foot)
-    d.text((W - PAD - dw, H - FOOT_H/2), datestr, font=f_foot, fill=WHITE, anchor="lm")
-
-    # ── Save ──
+        sponsors = [os.path.join(sp_dir, f) for f in sorted(os.listdir(sp_dir))
+                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
+    except OSError:
+        sponsors = []
     if not out_path:
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                f"instagram_result_{datetime.date.today().isoformat()}.png")
-    img.save(out_path, "PNG")
-    return out_path
+        out_path = os.path.join(here, f"instagram_result_{datetime.date.today().isoformat()}.png")
+    return result_card.render(facts, {
+        "club_colour": cfg.get("home_colour", "#1a3a5c"), "crest": crest, "logos_dir": logos,
+        "club_name": cfg.get("home_team", "") or cfg.get("name", "") or "Home CC",
+        "sponsors": sponsors, "photo": photo_path}, out_path)
 
 
 def parse_pcs_json(data):
@@ -6180,10 +6324,15 @@ def _measure_upload_mbps():
     elapsed = max(time.time() - start, 0.001)
     return (len(payload) * 8 / elapsed) / 1_000_000
 
+def upload_test_needed(state, force=False):
+    """Would get_upload_mbps() run a real test (i.e. use upload data) rather than reuse
+    the cached result?"""
+    cached_at = state.get("network_test_at", 0)
+    return force or not cached_at or (time.time() - cached_at) >= NETWORK_TEST_MAX_AGE_SEC
+
 def get_upload_mbps(state, force=False):
     """Cached upload-speed test — only re-measures if forced or the cached result is stale."""
-    cached_at = state.get("network_test_at", 0)
-    if not force and cached_at and (time.time() - cached_at) < NETWORK_TEST_MAX_AGE_SEC:
+    if not upload_test_needed(state, force):
         return state.get("network_test_mbps"), False
     mbps = _measure_upload_mbps()
     current = load_state()
@@ -6550,20 +6699,23 @@ class Handler(BaseHTTPRequestHandler):
             _auth_log_add("login_fail", ip)
             self._json({"ok": False, "error": "Wrong password"}, status=401)
 
-    def _check_rate_limit(self, path):
-        """Returns True if the call is allowed; sends 429 and returns False if in cooldown."""
+    def _check_rate_limit(self, path, key=None):
+        """Returns True if the call is allowed; sends 429 and returns False if in cooldown.
+        key splits one path's cooldown (e.g. report vs social post: separate buttons, so
+        making one shouldn't lock the other out); the length still comes from the path."""
         cooldown = _RATE_LIMITS.get(path)
         if not cooldown:
             return True
+        key = key or path
         with _rate_limit_lock:
-            last = _rate_limit_ts.get(path, 0)
+            last = _rate_limit_ts.get(key, 0)
             wait = cooldown - (time.time() - last)
             if wait > 0:
                 self._json({"ok": False,
                             "error": f"Please wait {int(wait)+1}s before trying again"},
                            status=429)
                 return False
-            _rate_limit_ts[path] = time.time()
+            _rate_limit_ts[key] = time.time()
         return True
 
     def do_OPTIONS(self):
@@ -6828,10 +6980,10 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/report/generate":
             if not self._check_token(): return
-            if not self._check_rate_limit(path): return
             rtype = "report"
             if "?" in self.path and "type=social" in self.path:
                 rtype = "social"
+            if not self._check_rate_limit(path, key=f"{path}:{rtype}"): return
             result = generate_match_report(rtype)
             self._json(result)
 
@@ -6906,10 +7058,10 @@ class Handler(BaseHTTPRequestHandler):
             # match. The match path is deterministic from PlayCricket + an optional AI caption.
             if match_id:
                 facts = build_match_facts_from_pc(match_id, team_key)
-                if facts.get("ok"):
-                    facts["caption"] = ai_caption_for_facts(facts)
             else:
                 facts = generate_social_graphic_facts()
+            if facts.get("ok"):
+                facts["caption"] = ai_caption_for_facts(facts)
             if not facts.get("ok"):
                 self._json({"ok": False, "error": facts.get("error","Could not generate facts")})
             else:
@@ -7191,7 +7343,10 @@ class Handler(BaseHTTPRequestHandler):
             if "error" not in result:
                 # Auto-fill state with fetched data
                 updates = {}
-                if result.get("away_team"):     updates["away_team"]        = result["away_team"]
+                # The CLUB name ("Rivals CC"), not PlayCricket's team label ("1st XI",
+                # "Under 15") — the label alone reached the overlay, report and card.
+                opp = result.get("away_club") or result.get("away_team")
+                if opp:                         updates["away_team"]        = opp
                 if result.get("home_club_id"): updates["home_club_id"]     = result["home_club_id"]
                 if result.get("away_club_id"): updates["away_club_id"]     = result["away_club_id"]
                 if result.get("away_abbrev"):   updates["away_abbrev"]      = result["away_abbrev"]
@@ -7204,8 +7359,7 @@ class Handler(BaseHTTPRequestHandler):
                     updates["weather_lat"] = result["ground_lat"]
                     updates["weather_lon"] = result["ground_lon"]
                 if updates:
-                    s.update(updates)
-                    save_state(s)
+                    update_state(lambda st: st.update(updates))
                     print(f"  API: auto-filled {list(updates.keys())}")
             self._json({"ok": "error" not in result, "result": result})
 
@@ -7354,11 +7508,14 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/obs/stream_check":
             if not self._check_token(): return
-            if not self._check_rate_limit(path): return
             from urllib.parse import parse_qs
             q     = parse_qs(urlparse(self.path).query)
             force = q.get("force", ["0"])[0].lower() in ("1", "true", "yes")
             s     = load_state()
+            # Only a real upload test is rate-limited. The panel reads the cached result
+            # on every load, and that read used to start the 5-minute cooldown — so
+            # "Check now" refused for the first 5 minutes after opening the panel.
+            if upload_test_needed(s, force) and not self._check_rate_limit(path): return
             out   = {"ok": True}
             try:
                 mbps, fresh = get_upload_mbps(s, force=force)
@@ -7488,7 +7645,9 @@ class Handler(BaseHTTPRequestHandler):
                         # Buffer boundary/wicket events (this advances _prev_state)
                         buffer_pcs_events(pcs_state)
                         match_log_snapshot(pcs_state)
+                        follow_match_id(pcs_state)  # an id change mid-match keeps its data
                         log_ball_data(pcs_state)   # append to our own ball-by-ball database
+                        log_live_figures(pcs_state)  # the scorer's totals, for the report/card
                         # Hand buffered events to the overlay and clear — under the lock,
                         # so an event landing mid-pop can't be silently dropped
                         with _event_buffer_lock:

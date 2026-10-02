@@ -1601,9 +1601,9 @@ async function pollCommands() {
       delete _playerCardShown[bId(prev.batter1)];
       if (prev.batter2) delete _playerCardShown[bId(prev.batter2)];
       if (prev.batter2 && prev.batter2.name && prev.batter2.name !== '\u2014') {
-        showPlayerCardSplit(prev.batter1, prev.batter2);
+        showPlayerCardSplit(prev.batter1, prev.batter2, true);
       } else {
-        showPlayerCard(prev.batter1);
+        showPlayerCard(prev.batter1, true);
       }
     }
 
@@ -2687,8 +2687,11 @@ function updateBadges(homeId, awayId, battingTeam, homeTeamName) {
   loadBadge("away-badge", homeBatting ? awayId : homeId);  // bowling side (right)
 }
 
-function showPlayerCardSplit(b1, b2) {
-  if (!cfg.graphics_player_card) return;
+// manual = the panel's "Show player cards" button: an explicit request, so it ignores the
+// graphics_player_card toggle (which governs the AUTOMATIC new-batter cards only).
+// Honouring the toggle here made the button report "showing" while nothing appeared.
+function showPlayerCardSplit(b1, b2, manual) {
+  if (!cfg.graphics_player_card && !manual) return;
   var n1 = (b1 && b1.name) || (typeof b1 === 'string' ? b1 : '');
   var n2 = (b2 && b2.name) || (typeof b2 === 'string' ? b2 : '');
   _playerCardShown[bId(b1)] = true;
@@ -2793,8 +2796,8 @@ function isRealBatter(b) {
   return !!(b && b.name && b.name.trim() && b.name !== '—');
 }
 
-function showPlayerCard(b) {
-  if (!cfg.graphics_player_card) return;
+function showPlayerCard(b, manual) {
+  if (!cfg.graphics_player_card && !manual) return;
   var name = (b && b.name) || (typeof b === 'string' ? b : '');
   var number = (b && b.number) || '';
   var id = bId(b);

@@ -56,7 +56,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-AGENT_VERSION = "2.8"
+AGENT_VERSION = "2.9"
 SERVICE_NAME  = "cricketstream-scorer-agent"
 
 # ── Never close without being read ────────────────────────────────────────────

@@ -17,8 +17,14 @@ do that automatically) and the overlay/graphics/replay pipeline runs as if it we
     python3 simulate_match.py --seed 42            # reproducible match
 
 Faithful to the real feed in the ways that have caused bugs before (see CLAUDE.md):
-  • the ball ticker (last_ball) clears to "" on the SAME write that completes an over —
-    it never lingers for an extra poll, so the final ball only appears in the score delta
+  • the ball ticker (last_ball) does NOT update when an over completes: it keeps showing
+    the over as it was before its final ball — on the over-completing write and every
+    write after — until the next ball replaces it. The final delivery never appears in
+    any ticker; it's only in the score delta. Measured on a real match's feed (801 of 857 such polls), and
+    the cause of two shipped bugs this simulator used to hide because it cleared the
+    ticker instead (the overlay's over-transition, and the ball DB losing every over's
+    final ball). --clearing-ticker restores the old behaviour, which NV Play does
+    occasionally show, so both paths can still be rehearsed.
   • batter names are blank pre-match (not {{placeholders}}), exactly as NV Play renders
     the template before the scorer picks the openers
   • innings 2 is signalled by runs_required > 0, and it drops to 0 on the winning runs
@@ -132,10 +138,11 @@ class MatchSimulator:
         "collapse": "Wickets tumbling — FOW cards, new-batter player cards, bowler figures",
     }
 
-    def __init__(self, scenario="full", max_overs=20, seed=None):
+    def __init__(self, scenario="full", max_overs=20, seed=None, stale_ticker=True):
         if scenario not in self.SCENARIOS:
             raise ValueError(f"unknown scenario {scenario!r} — one of {sorted(self.SCENARIOS)}")
         self.scenario = scenario
+        self.stale_ticker = stale_ticker
         self.max_overs = max_overs
         self.rng = random.Random(seed)
         self.innings = []
@@ -184,21 +191,32 @@ class MatchSimulator:
         # full match: pre-match blanks → innings 1 → break → innings 2 → result
         inn1 = self._new_innings()
         for _ in range(3):
-            yield ("prematch", inn1.frame(1))
+            yield ("prematch", self._frame(inn1, 1))
         yield from self._play(inn1, innings_no=1)
         for _ in range(3):                                     # innings break holds
-            yield ("break", inn1.frame(1))
+            yield ("break", self._frame(inn1, 1))
         inn2 = self._new_innings(second=True, target=inn1.total + 1)
         for _ in range(2):
-            yield ("prematch2", inn2.frame(2))                 # openers not yet picked
+            yield ("prematch2", self._frame(inn2, 2))          # openers not yet picked
         yield from self._play(inn2, innings_no=2)
 
     def _play(self, inn, innings_no):
         while not inn.complete:
             inn.ball()
-            yield ("ball", inn.frame(innings_no))
+            yield ("ball", self._frame(inn, innings_no))
         for _ in range(3):                                     # hold the final state
-            yield ("end", inn.frame(innings_no))
+            yield ("end", self._frame(inn, innings_no))
+
+    def _frame(self, inn, innings_no):
+        """The engine's frame, with NV Play's ticker behaviour layered on: the engine
+        clears its ticker when an over completes (that's right for the manual /scoring
+        page, which shares it), but NV Play keeps showing the finished over until the
+        next ball."""
+        f = inn.frame(innings_no)
+        if (self.stale_ticker and not f["last_ball"] and inn.token_history
+                and inn.legal_balls and inn.legal_balls % 6 == 0):
+            f["last_ball"] = " ".join(inn.token_history[-1][0][:-1])   # all but the final ball
+        return f
 
 
 # ── CLI ───────────────────────────────────────────────────────
@@ -258,6 +276,9 @@ def main():
     ap.add_argument("--chaos", action="store_true",
                     help="inject realistic failures: mid-write empty files, feed stalls")
     ap.add_argument("--list", action="store_true", help="describe scenarios and exit")
+    ap.add_argument("--clearing-ticker", action="store_true",
+                    help="clear the ball ticker when an over completes (NV Play usually "
+                         "doesn't — the default keeps the finished over showing)")
     args = ap.parse_args()
 
     if args.list:
@@ -267,7 +288,8 @@ def main():
 
     os.makedirs(args.folder, exist_ok=True)
     path = os.path.join(args.folder, OUTPUT_FILENAME)
-    sim = MatchSimulator(args.scenario, max_overs=args.overs, seed=args.seed)
+    sim = MatchSimulator(args.scenario, max_overs=args.overs, seed=args.seed,
+                         stale_ticker=not args.clearing_ticker)
 
     print(f"\n  Match simulator — scenario: {args.scenario}, {args.overs} overs, "
           f"{args.ball_seconds:g}s/ball" + (f", seed {args.seed}" if args.seed is not None else ""))
