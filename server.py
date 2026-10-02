@@ -603,10 +603,10 @@ def current_match_id():
     return f"{datetime.date.today().isoformat()}_{home}_v_{away}"
 
 # Tracks the last over whose ticker we saw, so the over-completing delivery can be
-# recovered. NV Play clears the ticker on the SAME write that completes an over (see
-# CLAUDE.md), so the final ball of every over never appears in any ticker — the overlay
-# recovers it from the score delta for the over-summary graphic, and this logger must do
-# the same or the ball DB (and every CSV export) silently loses ball 6 of every over.
+# recovered. On the write that completes an over NV Play usually keeps showing the over as
+# it was BEFORE its final ball (see CLAUDE.md), so that ball rarely appears in any ticker —
+# the overlay recovers it from the score delta for the over-summary graphic, and this logger
+# must do the same or the ball DB (and every CSV export) silently loses it.
 _ball_log_prev = {"mid": None, "innings": None, "over": None,
                   "score": 0, "wickets": 0, "count": 0,
                   # Personnel as of the last write we saw: on the over-completing write
@@ -843,9 +843,9 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
             try:    season_av = float(rec.get('avg', 0) or 0)
             except ValueError: season_av = 0.0
             if season_hs and rn > season_hs:
-                notable.append(f"{nm} is now past his season-best of {rec.get('hs')} — new highest score of the season.")
+                notable.append(f"{nm} has passed a season-best of {rec.get('hs')} — a new highest score of the season.")
             elif season_av and rn > season_av * 1.5 and rn >= 25:
-                notable.append(f"{nm} ({rn}) is well past his season average of {season_av:.0f}.")
+                notable.append(f"{nm} ({rn}) is well past a season average of {season_av:.0f}.")
     except Exception:
         pass
     # "Coming up" milestones — the anticipation angle, not just reacting after the fact.
@@ -2252,9 +2252,7 @@ def resolve_agent_address(s, force=False):
     # Remember it so a restart mid-match reconnects without another broadcast.
     try:
         if s.get("agent_last_seen") != address:
-            fresh = load_state()
-            fresh["agent_last_seen"] = address
-            save_state(fresh)
+            update_state(lambda st: st.__setitem__("agent_last_seen", address))
     except Exception:
         pass
 
@@ -3577,7 +3575,14 @@ def _margin_from_scores(first, second):
 def _finish_card_facts(sides, outcome, margin, stars, cfg, extra):
     """Shared tail: the structured card fields plus the flat legacy fields the caption
     writer (ai_caption_for_facts) reads."""
-    abbr = (cfg.get("abbreviation", "") or _club_fragment(cfg)[:5]).upper()
+    # The panel's own abbreviation, unless it's still the "HOME" placeholder for a club
+    # that has a real name: "abbreviation" (what this read before) is config.ini's key,
+    # never a state key, so every result line said e.g. "BRIDE WIN" whatever was set.
+    abbr = (cfg.get("home_abbrev") or "").strip()
+    if not abbr or (abbr == DEFAULT_STATE["home_abbrev"]
+                    and cfg.get("home_team") != DEFAULT_STATE["home_team"]):
+        abbr = _club_fragment(cfg)[:5]
+    abbr = abbr.upper()
     word = {"win": "WIN", "loss": "LOSE", "abandoned": "ABANDONED",
             "cancelled": "CANCELLED"}.get(outcome, "")
     if outcome in ("win", "loss"):
@@ -4494,7 +4499,10 @@ def obs_trigger_replay(state, reason=""):
     # batter walked in, and the caption would describe the wrong moment. Same source
     # precedence as /live: a live manual-scoring session outranks the PCS file state
     # (which manual mode never updates — using it here captioned clips with stale data).
-    clip_caption = make_clip_caption(reason, manual_live_state() or _pcs_last_state)
+    # Agent (two-laptop) mode never sets _pcs_last_state: its last frame is the agent's.
+    feed_state = (_agent_last_state if state.get("pcs_source", "local") == "agent"
+                  else _pcs_last_state)
+    clip_caption = make_clip_caption(reason, manual_live_state() or feed_state)
 
     host     = state.get("obs_host", "localhost")
     port     = state.get("obs_port", 4455)
@@ -5511,9 +5519,10 @@ def _stream_monitor_tick():
         s0 = results[0]
         live = bool(s0.get("outputActive"))
         if _stream_mon["streaming"] and not live:
-            # The stream just ended: build the match page a minute later (in case it's
-            # only a reconnect, a later end simply rebuilds it).
-            threading.Timer(60, start_match_page_build).start()
+            # The stream just ended: build the match page a minute later — if it's still
+            # off then. The quality ladder's own stop/start, or an operator restarting the
+            # stream mid-match, also reads as an end here for one tick.
+            threading.Timer(60, _match_page_after_stream_end).start()
         _stream_mon["streaming"] = live
         if not live:
             _stream_mon["samples"] = []
@@ -6049,7 +6058,8 @@ def build_match_page():
     here = os.path.dirname(os.path.abspath(__file__))
     logos = os.path.expanduser((cfg.get("logos_folder") or "").strip()) or os.path.join(here, "logos")
     cid = str(cfg.get("home_club_id") or "").strip()
-    crest = next((p for p in (os.path.join(logos, cid + ".png"),) if cid and os.path.exists(p)), None)
+    crest = next((p for p in (os.path.join(logos, cid + e) for e in (".png", ".webp", ".jpg", ".jpeg"))
+                  if cid and os.path.exists(p)), None)
     sp_dir = os.path.expanduser(cfg.get("sponsors_folder", "").strip() or os.path.join(here, "sponsors"))
     sponsors = []
     for p in sponsor_logos_for_card(sp_dir, cfg.get("sponsor_id", "")):
@@ -6079,11 +6089,16 @@ def build_match_page():
     return True, f"Match page saved: {path}", path
 
 
+_match_page_lock = threading.Lock()
+
+
 def start_match_page_build():
-    """Build in the background unless a build is already running. Returns False if busy."""
-    if _match_page_status["running"]:
-        return False
-    _match_page_status.update(running=True, ok=None, message="")
+    """Build in the background unless a build is already running. Returns False if busy.
+    Locked: the stream-end timer and the panel's button can arrive together."""
+    with _match_page_lock:
+        if _match_page_status["running"]:
+            return False
+        _match_page_status.update(running=True, ok=None, message="")
 
     def run():
         try:
@@ -6094,6 +6109,13 @@ def start_match_page_build():
         print(f"  {'✓' if ok else '✗'}  Match page: {msg}")
     threading.Thread(target=run, daemon=True).start()
     return True
+
+
+def _match_page_after_stream_end():
+    with _stream_mon_lock:
+        back_on = _stream_mon["streaming"]
+    if not back_on:
+        start_match_page_build()
 
 
 def latest_match_page():
@@ -7971,8 +7993,7 @@ class Handler(BaseHTTPRequestHandler):
             chosen = ""
             if agents and not _agent_normalise(st.get("agent_host", "")):
                 chosen = agents[0]["address"]
-                st["agent_last_seen"] = chosen
-                save_state(st)
+                update_state(lambda cur: cur.__setitem__("agent_last_seen", chosen))
                 globals()["_agent_resolved"] = chosen
             self._json({
                 "ok": bool(agents),
@@ -8982,10 +9003,13 @@ class Handler(BaseHTTPRequestHandler):
                        status=200 if started else 409)
 
         elif path == "/social/clips":
-            if _social_clips_status["running"]:
+            with _match_page_lock:        # the same check-then-set race as the match page
+                busy = _social_clips_status["running"]
+                if not busy:
+                    _social_clips_status.update(running=True, ok=None, message="", done=0, total=0)
+            if busy:
                 self._json({"ok": False, "error": "Already making clips"}, status=409)
                 return
-            _social_clips_status.update(running=True, ok=None, message="", done=0, total=0)
             def run_clips():
                 try:
                     ok, msg, _ = make_social_clips()
@@ -9147,11 +9171,10 @@ class Handler(BaseHTTPRequestHandler):
                     cfg_teams = _manual["session"].config
                 # Manual scoring implies: no demo data, no widget fallback, and the
                 # overlay's team names/colour mapping should match what's being scored.
-                st = load_state()
-                st.update({"demo_mode": False, "use_widget": False,
-                           "home_team": cfg_teams["home"], "away_team": cfg_teams["away"],
-                           "max_overs": cfg_teams["max_overs"]})
-                save_state(st)
+                update_state(lambda st: st.update({
+                    "demo_mode": False, "use_widget": False,
+                    "home_team": cfg_teams["home"], "away_team": cfg_teams["away"],
+                    "max_overs": cfg_teams["max_overs"]}))
                 print(f"  \u2713  Manual scoring: {cfg_teams['home']} v {cfg_teams['away']}, "
                       f"{cfg_teams['max_overs']} overs")
                 self._json({"ok": True, "state": manual_ui_state()})

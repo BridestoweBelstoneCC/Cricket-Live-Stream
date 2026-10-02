@@ -1406,7 +1406,7 @@ var _lastReplayTime = 0;
 
 async function triggerReplay(reason) {
   if (!cfg.replay_enabled) { console.log('[replay] skipped (' + reason + '): replay_enabled is off'); return; }
-  // Debounce: ignore if replay triggered within last 20 seconds
+  // Debounce: ignore if replay triggered within the last 3 seconds
   var now = Date.now();
   if (now - _lastReplayTime < 3000) { console.log('[replay] skipped (' + reason + '): debounced'); return; }
   _lastReplayTime = now;
@@ -1584,8 +1584,12 @@ async function refreshWeather() {
     }
   } catch(e) {}
 }
-refreshWeather();
-setInterval(refreshWeather, 300000);
+// Not in preview mode: that renders one static frame and makes no other requests (see
+// startPreview) -- each open panel would otherwise call the weather service every 5 min.
+if (new URLSearchParams(location.search).get('preview') !== '1') {
+  refreshWeather();
+  setInterval(refreshWeather, 300000);
+}
 
 // ── Command polling ───────────────────────────────────────
 
@@ -1671,6 +1675,21 @@ function classifyBall(token) {
 function parseOverString(overStr) {
   if (!overStr || overStr.startsWith('{{')) return [];
   return overStr.trim().split(/[\s\u00b7]+/).filter(t=>t.length>0).map(classifyBall);
+}
+
+// The over a ticker string belongs to. On a write where `overs` sits on a whole number the
+// over has just completed, so whatever ticker NV Play shows there is the FINISHED over's
+// (it usually keeps showing it, without its final ball, until the next ball -- CLAUDE.md).
+function tickerOverOf(overs) {
+  var whole = Math.floor(overs), ball = Math.round((overs - whole) * 10);
+  return (ball === 0 && whole > 0) ? whole - 1 : whole;
+}
+
+// Balls in this ticker that weren't in the last one seen: the tail when it's the same over,
+// all of it when it's a new one.
+function newTickerBalls(parsed, tickerOver, lastOver, lastCount) {
+  if (!parsed.length) return [];
+  return tickerOver === lastOver ? parsed.slice(lastCount) : parsed;
 }
 
 function updateTicker(balls) {
@@ -2100,8 +2119,9 @@ function showSponsorStripFor(panelId) {
 // own consecutive overs); a legal non-wicket ball from the SAME bowler does. Wides and
 // no-balls are chain-neutral, and run outs break the chain without extending it (the
 // wicket isn't the bowler's). Fed from the same "newly appeared ticker tokens" stream
-// the boundary detector uses, plus a wickets-delta fallback for the one case the ticker
-// can never show: a wicket on the over-completing ball (the ticker clears on that write).
+// the boundary detector uses, plus a wickets-delta fallback for the case the ticker
+// usually never shows: a wicket on the over-completing ball (NV Play mostly keeps showing
+// the over as it was before that ball -- see CLAUDE.md).
 function _chainWicket(bowlerName, isRunOut) {
   if (isRunOut) { _hatTrick = { bowler: bowlerName, count: 0 }; return; }
   if (_hatTrick.bowler === bowlerName) _hatTrick.count++;
@@ -2114,8 +2134,13 @@ function _chainWicket(bowlerName, isRunOut) {
 function _chainBreak(bowlerName) {
   if (_hatTrick.bowler === bowlerName) _hatTrick.count = 0;
 }
-function updateHatTrickChain(newBalls, state, prevOverBowler) {
-  var bowlerName = fmtSurname((state.bowler && state.bowler.name) || '');
+function updateHatTrickChain(newBalls, state, prevOverBowler, tickerIsFinishedOver) {
+  // tickerIsFinishedOver: this write sits between overs, so any balls new in its ticker
+  // are the finished over's final delivery -- bowled by prevOverBowler, not by the
+  // already-rotated state.bowler.
+  var fromPrev = tickerIsFinishedOver && prevOverBowler && prevOverBowler.name;
+  var bowlerName = fmtSurname((fromPrev ? prevOverBowler.name
+                                        : (state.bowler && state.bowler.name)) || '');
   var wickets = parseInt(state.wickets || 0);
   var sawW = 0;
   var runOut = /run/i.test(state.lastWicketType || '');
@@ -2134,9 +2159,11 @@ function updateHatTrickChain(newBalls, state, prevOverBowler) {
   // outgoing bowler's last state.bowler snapshot predates the final delivery, and by
   // the next poll state.bowler is someone else. Synthesize the completed figures.
   // (No overs field: the snapshot's overs predate the final ball, better omitted than wrong.)
-  if (dw > 0 && !runOut && prevOverBowler && prevOverBowler.name) {
+  // A final-ball wicket that DID make the ticker is just as invisible to the live figures.
+  var unseen = dw + (fromPrev ? sawW : 0);
+  if (unseen > 0 && !runOut && prevOverBowler && prevOverBowler.name) {
     checkBowlerFiveFor({ bowler: { name: prevOverBowler.name,
-                                   wickets: (parseInt(prevOverBowler.wickets) || 0) + dw,
+                                   wickets: (parseInt(prevOverBowler.wickets) || 0) + unseen,
                                    runs: prevOverBowler.runs } });
   }
   _htPrevWickets = wickets;
@@ -2204,7 +2231,7 @@ async function overExtras(state, overNum, overRuns) {
       if (st && st.ready && st.hs && st.hs !== '—') {
         const hs = parseInt(String(st.hs).replace('*', '')) || 0;
         if (hs && b.runs > hs) {
-          msgs.unshift(`${esc(fmtSurname(b.name))} ${b.runs}* — his best score of the season!`);
+          msgs.unshift(`${esc(fmtSurname(b.name))} ${b.runs}* — best score of the season!`);
           break;
         }
       }
@@ -2423,38 +2450,40 @@ function processPCSData(state) {
   // Reads the actual ball code ('4'/'6') from the ticker, so it correctly ignores 4 byes,
   // leg-byes and wide+4 (all of which also move the score by 4).
   //
-  // We fire only when the ticker STRING content changes. NV Play actually clears the ticker
-  // straight back to "" the instant the over completes (confirmed via [over-trace] logging --
-  // it does NOT keep showing the finished over's ticker for an extra poll). That transition to
-  // "" does count as a string change, but parsed.length is 0 there, so the inner check below
-  // is naturally skipped -- no spurious replay fires on the over-rollover poll itself. A
-  // genuine new ball always changes the ticker string with real content (a ball is appended,
-  // or the first ball of the new over appears). The newest ball is the last token of the ticker.
-  if (overStr !== _lastBallSig) {
-    if (_lastBallOver >= 0) {        // _lastBallOver<0 = first poll (seed): don't fire
-      // Inspect every ball added since the last poll, not just the newest one. If NV Play's
-      // file advances by more than one ball between polls (a quick sequence, or a slow/missed
-      // poll), checking only the last token silently buries an earlier four/six under whatever
-      // dot balls followed it — the replay would just never fire.
-      var newBalls = [];
-      if (parsed.length > 0) {       // empty on the over-rollover write — nothing new to show
-        newBalls = (currentOver === _lastBallOver) ? parsed.slice(_lastBallCount) : parsed;
-        newBalls.forEach(function(newBall) {
-          if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
-          else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
-        });
-      }
-      // v2.2: hat-trick chain feeds off the same new-token stream (with a wickets-delta
-      // fallback inside for the over-completing wicket the cleared ticker can't show --
-      // attributed to the pre-rotation bowler, since state.bowler has already moved on)
-      try { updateHatTrickChain(newBalls, state, _oversIncreased ? _preRotationBowler : null); }
-      catch(e){ console.warn('hat-trick error:', e); }
-    } else {
-      _htPrevWickets = parseInt(state.wickets || 0);   // first poll: seed, never fire
-    }
+  // We fire only when the ticker STRING content changes. On the over-completing write NV Play
+  // usually leaves the ticker exactly as it was (no change, nothing fires), occasionally
+  // clears it, and occasionally shows the finished over WITH its final ball. That last case
+  // is why the ticker is matched to the over it belongs to (tickerOverOf), not to `overs`:
+  // keyed on `overs`, that write read as a whole new over -- every four and six in it fired
+  // a second time -- and the next over's first ball was then sliced away as already seen.
+  var tickerOver = tickerOverOf(overs);
+  var tickerChanged = (overStr !== _lastBallSig);
+  if (_lastBallOver < 0) {
+    if (tickerChanged) _htPrevWickets = parseInt(state.wickets || 0);   // first poll: seed, never fire
+  } else if (tickerChanged || _oversIncreased) {
+    // Inspect every ball added since the last poll, not just the newest one. If NV Play's
+    // file advances by more than one ball between polls (a quick sequence, or a slow/missed
+    // poll), checking only the last token silently buries an earlier four/six under whatever
+    // dot balls followed it — the replay would just never fire.
+    var newBalls = tickerChanged
+      ? newTickerBalls(parsed, tickerOver, _lastBallOver, _lastBallCount) : [];
+    newBalls.forEach(function(newBall) {
+      if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
+      else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
+    });
+    // v2.2: hat-trick chain feeds off the same new-token stream, plus a wickets-delta
+    // fallback inside for the over-completing wicket the ticker didn't show. Run on the
+    // over-completing write even when the ticker DIDN'T change (NV Play's usual stale
+    // ticker): only that write still has the pre-rotation bowler to credit. Left to the
+    // next ball, the wicket went to the incoming bowler.
+    try { updateHatTrickChain(newBalls, state, _oversIncreased ? _preRotationBowler : null,
+                              _betweenOvers); }
+    catch(e){ console.warn('hat-trick error:', e); }
+  }
+  if (tickerChanged) {
     _lastBallSig   = overStr;
     _lastBallCount = parsed.length;
-    _lastBallOver  = currentOver;   // any value >= 0 marks the tracker as seeded
+    _lastBallOver  = tickerOver;    // any value >= 0 marks the tracker as seeded
   }
 
   updateTicker(_currentOverBalls);

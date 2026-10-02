@@ -1749,7 +1749,21 @@ async function loadSocialClips() {
       copy.className = 'btn btn-test';
       copy.style.cssText = 'width:auto;margin:0;padding:6px 10px;';
       copy.textContent = 'Copy caption';
-      copy.onclick = function () { navigator.clipboard.writeText(c.caption); copy.textContent = 'Copied'; };
+      // navigator.clipboard only exists on https/localhost — a phone on the club wifi or
+      // Tailscale has plain http, where calling it threw (and lit the red error banner).
+      copy.onclick = function () {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(c.caption).catch(function () {});
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = c.caption;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (e) {}
+          ta.remove();
+        }
+        copy.textContent = 'Copied';
+      };
       row.appendChild(name); row.appendChild(dl); row.appendChild(copy);
       list.appendChild(row);
     });

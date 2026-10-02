@@ -141,7 +141,18 @@ class WiringTests(unittest.TestCase):
     def test_built_automatically_when_the_stream_ends(self):
         with open(os.path.join(ROOT, "server.py"), encoding="utf-8") as f:
             src = f.read()
-        self.assertIn("threading.Timer(60, start_match_page_build)", src)
+        self.assertIn("threading.Timer(60, _match_page_after_stream_end)", src)
+
+    def test_not_built_if_the_stream_came_back(self):
+        # The quality ladder's stop/start (or an operator restart) reads as an end for one
+        # monitor tick; building then would spend an AI report mid-match.
+        with mock.patch.object(server, "start_match_page_build") as build:
+            with mock.patch.dict(server._stream_mon, {"streaming": True}):
+                server._match_page_after_stream_end()
+            build.assert_not_called()
+            with mock.patch.dict(server._stream_mon, {"streaming": False}):
+                server._match_page_after_stream_end()
+            build.assert_called_once()
 
     def test_panel_has_the_card(self):
         with open(os.path.join(ROOT, "control.html"), encoding="utf-8") as f:

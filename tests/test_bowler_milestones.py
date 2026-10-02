@@ -144,6 +144,18 @@ poll(['wicket'], 'A Nother', 5);
         self.assertEqual(fired[0]["name"], "Nother")
         self.assertEqual(fired[0]["sub"], "HAT-TRICK!")
 
+    def test_final_ball_wicket_in_the_ticker_goes_to_the_finished_overs_bowler(self):
+        # NV Play occasionally DOES show the final ball on the over-completing write. That
+        # write's state.bowler is already the next bowler; the wicket is A's third in a row.
+        fired = self.run_scenario("""
+poll(['wicket'], 'A Nother', 1);
+poll(['wicket'], 'A Nother', 2);
+updateHatTrickChain([{cls: 'wicket'}], {bowler: {name: 'B Side'}, wickets: 3},
+                    {name: 'A Nother'}, true);
+""")
+        self.assertEqual(len(fired), 1)
+        self.assertEqual(fired[0]["name"], "Nother")
+
     def test_two_bowlers_wickets_never_mix(self):
         fired = self.run_scenario("""
 poll(['wicket'], 'A Nother', 1);
@@ -211,6 +223,48 @@ checkBowlerFiveFor({bowler: {name: '\\u2014', wickets: 5, runs: 21}});
 checkBowlerFiveFor({});
 """)
         self.assertEqual(fired, [])
+
+
+class TestTickerDiff(unittest.TestCase):
+    """Which balls are new on each poll, across the three things NV Play does on the
+    over-completing write: keep the stale ticker (usual), clear it, or show the final
+    ball. Mirrors processPCSData's bookkeeping around tickerOverOf/newTickerBalls."""
+
+    def new_balls(self, polls):
+        js = (overlay_functions("tickerOverOf", "newTickerBalls") + """
+var lastSig = null, lastOver = -1, lastCount = 0, out = [];
+function poll(overs, ticker) {
+  var parsed = ticker ? ticker.split(' ') : [];
+  var tOver = tickerOverOf(overs);
+  if (ticker !== lastSig) {
+    if (lastOver >= 0) out.push(newTickerBalls(parsed, tOver, lastOver, lastCount));
+    lastSig = ticker; lastCount = parsed.length; lastOver = tOver;
+  } else { out.push([]); }
+}
+""" + "\n".join(f"poll({o}, {json.dumps(t)});" for o, t in polls)
+              + "\nconsole.log(JSON.stringify(out));")
+        result = run_js(js)
+        if result is None:
+            self.skipTest("no JS engine available")
+        return result
+
+    def test_stale_ticker_then_next_over(self):
+        self.assertEqual(self.new_balls([(4.4, "1 . 4 2"), (4.5, "1 . 4 2 6"),
+                                         (5.0, "1 . 4 2 6"), (5.1, "4")]),
+                         [["6"], [], ["4"]])
+
+    def test_final_ball_shown_on_the_completing_write(self):
+        # Used to re-fire the whole over (the 4 again) and then swallow the next over's 4.
+        self.assertEqual(self.new_balls([(4.5, "1 . 4 2 ."), (5.0, "1 . 4 2 . 6"),
+                                         (5.1, "4")]),
+                         [["6"], ["4"]])
+
+    def test_cleared_ticker_on_the_completing_write(self):
+        self.assertEqual(self.new_balls([(4.5, "1 . 4 2 ."), (5.0, ""), (5.1, "6")]),
+                         [[], ["6"]])
+
+    def test_innings_start_is_not_a_finished_over(self):
+        self.assertEqual(self.new_balls([(0.0, ""), (0.1, "4")]), [["4"]])
 
 
 if __name__ == "__main__":
