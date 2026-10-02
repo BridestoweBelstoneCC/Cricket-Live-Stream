@@ -6,6 +6,53 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New: a much better post-match Instagram graphic.** Rebuilt from scratch in the style
+  of county and league result cards: the photo in full colour fading into a club-colour
+  panel, a huge WIN / DEFEAT with the margin beside it, both clubs' badges with big scores
+  (the winner bright, the other dimmed), and the top batter and bowler as big stat numbers.
+  Set in Barlow Condensed (free SIL Open Font License, bundled in `fonts/`), so it looks the
+  same on every laptop. Without a photo it uses the club colour and a large crest watermark.
+  - Fixed on the old card: the key performers were hidden under the sponsor strip, long
+    results ran off the edge, and the footer said "Home CC".
+  - The result is PlayCricket's own, so DLS wins ("WIN ON DLS"), conceded matches, ties,
+    draws and abandonments are right, and pairs (softball) matches are won by runs.
+  - The streamed-match card no longer asks the AI for its numbers — they come from the
+    PlayCricket scorecard if it's up, else the ball-by-ball log. Only the caption uses AI.
+    If the scorer's team names don't identify which side is ours, the card shows the
+    scores without claiming a win or defeat.
+
+- **Fixed (found in a code review):**
+  - The ball-by-ball database was missing the last ball of most overs, and at the end of
+    each innings kept a copy of the final over under an over that was never bowled. NV
+    Play keeps showing a finished over until the next ball, and the logger expected it
+    to clear. Ball counts, CSV exports and per-over figures are now complete.
+  - The match report and result card now use the scorer's own running figures (saved as
+    the match goes, so they survive a restart) for scores, top scorers, bowling figures
+    and who was out. The ball-by-ball log put every ball of an over against one batter.
+  - The result card no longer declares a result mid-chase when PlayCricket's live
+    scorecard has no result yet, never claims a WIN or DEFEAT when it can't tell which
+    side is the club's, and ends a chase on the match's real overs limit rather than the
+    panel's default of 50.
+  - Conceded matches with no innings on PlayCricket, and pairs (softball) innings with 10+
+    wickets, show correctly.
+  - "Fetch today's match" set the opposition to PlayCricket's team label ("1st XI")
+    instead of the club name, which then showed on the overlay and in the report.
+- **Fixed (found in a full match-day rehearsal):**
+  - The match report, social post and Instagram graphic no longer make up a result after
+    the server restarts. They were written from a match log held only in memory, so after
+    a restart (including quickstart's automatic one after a crash) the AI was handed just
+    the two team names and wrote a confident "victory" anyway. The facts are now rebuilt
+    from the ball-by-ball database (innings totals, wickets, top scorers, fifties), and with
+    no match data at all the panel says so instead of generating anything.
+  - "Show player cards" now shows them even with the automatic "Player card on new batter"
+    toggle off. It used to report "showing" while nothing appeared.
+  - The Stream Health "Check now" button works straight after opening the panel. The panel's
+    own read of the cached result was starting the 5-minute cooldown.
+  - The match report and the social post have separate cooldowns, so making one no longer
+    blocks the other for 2 minutes.
+  - "Reconcile latest" explains a match that isn't linked to a PlayCricket fixture instead of
+    showing "HTTP Error 404".
+
 - **New: nothing to switch on in OBS.** Quickstart now gets OBS ready itself, before
   anything else: it switches on OBS's WebSocket server with a random password (and writes
   that into `config.ini`), turns on the replay buffer and points it at the replay folder,

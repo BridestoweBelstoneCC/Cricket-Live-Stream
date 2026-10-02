@@ -407,6 +407,42 @@ class TestLivePcsPipeline(HttpTestBase):
         self.assertEqual(len(rows), 6)
         self.assertEqual(rows[5], (6, "W", 1))
 
+    def test_stale_ticker_through_the_over_boundary(self):
+        # What NV Play usually does (801 of 857 such polls in a real match's feed): the
+        # finished over stays in the ticker on the over-completing write AND every write
+        # after it until the next ball. The final ball must still be recovered, and the
+        # stale balls must not be logged again under the next over.
+        self.write_pcs(time.time() - 10, runs="12", wickets="0", overs="2.5",
+                       last_ball="1 4 . . 2")
+        self.get_json("/live")
+        for age in (8, 6):
+            self.write_pcs(time.time() - age, runs="16", wickets="0", overs="3.0",
+                           last_ball="1 4 . . 2")
+            self.get_json("/live")
+        self.write_pcs(time.time() - 4, runs="17", wickets="0", overs="3.1", last_ball="1")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            over2 = c.execute("SELECT ball, outcome, runs FROM balls WHERE over=2 "
+                              "ORDER BY ball").fetchall()
+            over3 = c.execute("SELECT ball, outcome, runs FROM balls WHERE over=3 "
+                              "ORDER BY ball").fetchall()
+        self.assertEqual(len(over2), 6)
+        self.assertEqual(over2[5], (6, "4", 4))
+        self.assertEqual(over3, [(1, "1", 1)])
+
+    def test_stale_ticker_is_not_relogged_at_the_end_of_an_innings(self):
+        # No "next ball" ever replaces the last over's stale copy, so it used to stay in
+        # the DB under an over that was never bowled.
+        self.write_pcs(time.time() - 10, runs="40", wickets="2", overs="4.5",
+                       last_ball=". 1 . 4 .")
+        self.get_json("/live")
+        self.write_pcs(time.time() - 8, runs="46", wickets="2", overs="5.0",
+                       last_ball=". 1 . 4 .")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM balls WHERE over=5").fetchone()[0], 0)
+            self.assertEqual(c.execute("SELECT runs FROM balls WHERE over=4 AND ball=6").fetchone(), (6,))
+
     def test_recovered_ball_keeps_the_old_overs_personnel(self):
         # On the over-completing write the feed has ALREADY rotated the bowler and
         # swapped the batters for the next over — the recovered final delivery must

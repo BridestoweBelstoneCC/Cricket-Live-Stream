@@ -51,6 +51,7 @@ scorer_agent.json*
 sponsor_airtime.json*
 sponsor_airtime_*.txt
 match_report_*.txt
+instagram_result_*.png
 
 # Scorer's live output. If the scoreboard output folder is ever pointed at the repo
 # directory — easily done, and it was during setup here — these land in the working

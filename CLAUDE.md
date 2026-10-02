@@ -63,6 +63,13 @@ shipped without it and misreported a manual match day until fixed.
 - **`scripts/render_scorebar.py`** — renders every scorebar style to `examples/` in headless
   Chrome/Edge with fixed mock data; no server, no npm, no node. The only check that catches
   visual regressions (see the build/test section above).
+- **`result_card.py`** — the post-match Instagram result card (Pillow only, pure rendering:
+  facts + look in, PNG out; `server.build_instagram_image()` gathers both). Fonts are bundled
+  in `fonts/` (Barlow Condensed, OFL) — never fall back to system fonts by design. Facts come
+  from `build_match_facts_from_pc()` (PlayCricket's own result — never re-derive a DLS/
+  conceded/pairs result from totals) or, for the streamed match, `generate_social_graphic_facts()`
+  (deterministic from the ball log; the AI only writes the caption). Visual changes: render it
+  and look — `tests/test_result_card.py` checks contrast and layout robustness, not looks.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is
@@ -330,6 +337,18 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   reset connections outright — the server itself never errored, the client just got refused
   at the OS level before Python's handler ever ran. Don't let this silently regress back to
   the default while refactoring the `_Server` class.
+- **Post-match facts come from the scorer's own figures, never the `balls` table.** The AI
+  report/social post (`build_match_summary()`) and the result card
+  (`generate_social_graphic_facts()`) both read `merged_match_facts()`: the `live_*` tables
+  that `log_live_figures()` keeps from each /live frame (innings total + overs limit from
+  `ballsRemaining`, each batter's runs/balls, each bowler's figures, who fell at what
+  score), with the in-memory `_match_log` only filling gaps. Why: `_match_log` dies with
+  any restart (handed only "Match: X v Y", Haiku wrote a confident made-up result), and the
+  `balls` table's `batter` column is whoever was batter1 at the over's last write — not who
+  faced each ball. Empty 0-0 innings don't count as data; callers refuse with
+  `NO_MATCH_DATA_ERROR`. Never let the card or report claim WIN/DEFEAT when it can't tell
+  which side is ours, or before the chase is finished (PlayCricket's live scorecard has no
+  result mid-match). Found in the 2026-10-02 rehearsal and review.
 - **Logging must never raise.** `log_ball_data()` and anything in the match-day loop is wrapped
   in try/except and must stay that way — a logging error must never interrupt the stream.
 - **State writes must stay atomic.** `save_state()` writes to a temp file then `os.replace()`s,
@@ -425,6 +444,11 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
     populated — gating on it delays the whole end-of-over sequence to the first ball of the
     NEXT over, since `_lastPCSovers` never gets the chance to update on the poll where
     `overs` actually ticks over.
+  - **The ball logger** (`log_ball_data`) treats a ticker identical to the over it just
+    logged as cleared, on the over-completing write and every write after it until the
+    next ball. Before that, the final ball of most overs was never recovered (it read as
+    negative runs) and the stale balls were logged again under the next over — which,
+    at the end of an innings, stayed in the DB as an over that was never bowled.
   - **The visible ticker itself** used to only clear once the new over's ticker string
     replaced it — which, given the above, usually never happened until the next ball, so
     the scorebar showed the finished over's balls through the whole gap until then,
