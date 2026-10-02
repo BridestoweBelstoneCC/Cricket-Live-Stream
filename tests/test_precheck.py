@@ -242,6 +242,11 @@ class NewCheckTests(unittest.TestCase):
             self.assertEqual(server._pc_fixture(st), ("ok", "Today: v Rivals CC (A Division).", ""))
 
     def test_upload(self):
+        # The target comes from config.ini — pin it, or this test passes or fails depending
+        # on the machine's real config.ini (it did: green here, red in CI).
+        p = mock.patch.object(server, "_target_bitrate", return_value=(2500, "config"))
+        p.start()
+        self.addCleanup(p.stop)
         self.assertEqual(server._pc_upload({})[0], "skip")
         now = time.time()
         ok = {"network_test_mbps": 10, "network_test_at": now, "bitrate_kbps": 2500}
