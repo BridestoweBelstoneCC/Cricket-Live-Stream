@@ -106,8 +106,13 @@ jobs:
       - name: Build universal2 binary
         run: pyinstaller --onefile --target-arch universal2 --name CricketStream cricketstream.py
 
+      # -info alone only prints, so a build that lost one architecture would still publish —
+      # and the smoke test below runs on the runner's own architecture, so it wouldn't
+      # notice either. -verify_arch exits non-zero unless both are there.
       - name: Verify both architectures are present
-        run: lipo -info dist/CricketStream
+        run: |
+          lipo -info dist/CricketStream
+          lipo dist/CricketStream -verify_arch x86_64 arm64
 
       - name: Smoke-test the binary
         env:
