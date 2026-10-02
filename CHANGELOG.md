@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.9 — 2026-10-02
 
 - **New: a much better post-match Instagram graphic.** Rebuilt from scratch in the style
   of county and league result cards: the photo in full colour fading into a club-colour
