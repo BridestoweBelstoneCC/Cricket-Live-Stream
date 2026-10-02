@@ -349,13 +349,15 @@ still works; the AI features simply stay off.
 ### After the match
 
 11. Click **Stop Streaming** in OBS
-12. *(New in v2)* In the control panel → **Match Report & Social Posts** card:
-    - Click **Generate Match Report** for a full written report (edit it, then copy)
-    - Click **Generate Social Post** for a ready-to-paste social media summary
-    - **Important:** generate these **before** stopping the server — the match log lives
-      in memory while the server is running
-13. Click **Compile Highlights Reel** to create the post-match video
-14. Close the command prompt window to stop the server (you'll also be prompted to save
+12. In the control panel's **After the match** tab → **Match Report & Social Posts**:
+    - Click **Generate match report** for a full written report (edit it, then copy)
+    - Click **Generate social post** for a ready-to-paste social media summary
+    - The match figures are saved as the match goes, so this still works if the server
+      was restarted during the match
+13. Same tab → **Instagram Result Graphic** → **Generate Instagram graphic** for the
+    result card (pick a backdrop photo first if you like), then copy the caption
+14. Click **Compile highlights reel** to create the post-match video
+15. Close the command prompt window to stop the server (you'll also be prompted to save
     the match report automatically)
 
 ---

@@ -25,7 +25,7 @@ flowchart LR
     subgraph srv["server.py — one process, port 5000"]
         PARSE["parse_pcs_json()<br/>one parser for every source"]
         ENG["scoring_engine.py<br/>the scorer's book<br/>(shared by manual + simulator)"]
-        DB[("match_data.db<br/>ball-by-ball SQLite<br/>+ replay clip tags")]
+        DB[("match_data.db<br/>ball-by-ball SQLite<br/>+ scorer's running figures<br/>+ replay clip tags")]
         AI["Claude AI (optional)<br/>commentary · reports · socials"]
         WATCH["watchdog + stream sentinel<br/>self-healing · congestion ladder"]
     end
@@ -89,7 +89,7 @@ sequenceDiagram
     S->>F: writes frame (ball 4 of over 18: a SIX)
     OV->>SV: GET /live (every ~2.5s)
     SV->>F: read + parse_pcs_json()
-    SV->>DB: rewrite current over<br/>(delete + reinsert — captures scorer edits)
+    SV->>DB: rewrite current over<br/>(delete + reinsert — captures scorer edits)<br/>+ upsert the scorer's running figures
     SV-->>OV: state + buffered events
     OV->>OV: ticker shows the 6 · SIX! flash fires
     OV->>SV: POST /replay (reason: "Six")
@@ -98,14 +98,23 @@ sequenceDiagram
     Note over SV,DB: post-match, the highlights compiler turns<br/>tagged clips into a captioned, chaptered reel
 ```
 
-Two subtleties worth knowing (they've caused real bugs):
+Three subtleties worth knowing (they've caused real bugs):
 
-- **The ticker clears on the over-completing write.** NV Play never shows the finished
-  over's ticker for an extra poll, so the final ball of every over is invisible in the
-  ticker. The overlay recovers it from the score delta for graphics, and the ball logger
-  recovers it the same way for the database.
+- **The ticker does NOT update on the over-completing write.** NV Play keeps showing the
+  over as it was before its final ball — on that write and every one after — until the
+  next ball, so the final ball of every over never appears in any ticker. The overlay
+  keys the over transition off the overs counter and recovers the final ball from the
+  score delta; the ball logger reads a ticker identical to the over it just logged as
+  cleared, and recovers the final ball the same way. (This was long documented as "the
+  ticker clears" — the simulator copied that, and the logger shipped dropping every
+  over's final ball until a real feed was measured.)
 - **Innings 2 is detected by `runs_required > 0`, latched** — because it drops back to 0
   the instant the winning runs are hit, which would otherwise "end" the innings early.
+- **Post-match facts come from the scorer's own running figures, not the ball log.** Each
+  frame's innings total, batters, bowler and fall of wickets are upserted into `live_*`
+  tables (exact, and they survive a restart); the AI match report and the Instagram result
+  card both read those. The `balls` table is a reconstruction — its batter column is
+  whoever was batter1 at the over's last write, not who faced each ball.
 
 ---
 
@@ -118,7 +127,9 @@ Two subtleties worth knowing (they've caused real bugs):
 | `control.html` | Operator panel served at `/control` (kit colours, toggles, roster, health, highlights, stream quality) |
 | `scoring.html` | Manual ball-by-ball scoring page at `/scoring` — event-sourced, undo-exact, restart-safe |
 | `scoring_engine.py` | Deterministic innings engine shared by manual scoring and the simulator |
-| `simulate_match.py` | Rehearsal harness: complete simulated matches written as real feed frames (`--chaos` for failure drills) |
+| `simulate_match.py` | Rehearsal harness: complete simulated matches written as real feed frames, including NV Play's stale ticker at the over boundary (`--chaos` for failure drills) |
+| `result_card.py` | Post-match Instagram result card (Pillow, pure rendering: facts in, PNG out). Fonts bundled in `fonts/` |
+| `logo_bg.py` | Makes a sponsor logo's plain background transparent (Pillow) |
 | `scoreboard.template` | What NV Play fills in — the contract every source imitates |
 | `nvplay_bridge.py` | Standalone stdlib script: serves NV Play's file over HTTP when it's on separate hardware from the server, not on the same network (Tailscale, token-gated) |
 | `scorer_agent.py` | Standalone stdlib script: same idea, for two laptops already on the same club wifi (UDP auto-discovery, no token) |
@@ -126,7 +137,7 @@ Two subtleties worth knowing (they've caused real bugs):
 | `cricketstream.py` | The one launcher for the streaming laptop (`CricketStream.exe`): checks folder/Python/packages/config, then hands over to `quickstart.py`. Freezes neither it nor `server.py` |
 | `stream_quality_test.py` | Standalone: automates the quality-ladder test against a live broadcast |
 | `scripts/` | Verification tooling: `compile_check_all.py` (syntax), `check_panel_js.py` (embedded JS), `render_scorebar.py` (headless screenshots of every scorebar style — the only check that catches visual regressions) |
-| `tests/` | ~250 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
+| `tests/` | ~550 stdlib-unittest tests, including a full-match soak that reconciles the ball DB against the engine's book |
 
 ### Security model, briefly
 

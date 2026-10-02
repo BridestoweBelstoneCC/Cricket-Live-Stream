@@ -268,7 +268,7 @@ python3 scripts/compile_check_all.py
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~250, a few seconds; stdlib unittest, no pytest). Covers ball/PCS/widget
+# 3. Automated tests (~550, under a minute; stdlib unittest, no pytest). Covers ball/PCS/widget
 #    parsing, season-stats aggregation, league-table resolution, session tokens, quickstart's
 #    state merge and its crash-restart loop, the match simulator's engine invariants, highlight
 #    tagging/planning, manual scoring (engine, exact-replay undo, /scoring end-to-end),
