@@ -1,5 +1,5 @@
 # Setup Guide — Windows
-## CricketStream Overlay — Version 2.10
+## CricketStream Overlay — Version 2.11
 
 ---
 
@@ -323,6 +323,14 @@ still works; the AI features simply stay off.
 ---
 
 ## Match day procedure
+
+### A few days before
+
+Start the server (`quickstart.bat`), open the control panel → **Setup** → **Run pre-match
+check**. It tries every login and connection for real — YouTube, PlayCricket, the AI key,
+OBS, the scorer feed, disk space — and says what to fix. ⚠ on OBS and the scorer feed is
+normal days before; anything marked ✗ needs fixing before the match. A YouTube login that
+has expired shows up here, not on the day.
 
 ### Before the match (30 minutes before)
 

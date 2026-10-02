@@ -196,6 +196,12 @@
           background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(10px)}
   #topbar #live-status{flex:1;min-width:0}
   #save-btn{width:auto;flex:0 0 auto;padding:0 22px;white-space:nowrap}
+  /* Camera cuts live in the pinned bar: the most frequent action during play, so never
+     behind a tab or below the fold. Shown only when a bowler-end camera is set up. */
+  #topbar-cams{display:flex;gap:6px;flex:0 0 auto}
+  #topbar-cams .btn{width:auto;margin:0;padding:0 16px;white-space:nowrap}
+  #precheck-alert{width:auto;flex:0 0 auto;margin:0;padding:0 14px;white-space:nowrap;
+          background:var(--bad);color:var(--text);font-weight:700}
   #status{margin:0 0 10px}
 
   /* ── Tabs ── */
@@ -214,6 +220,7 @@
   @media(max-width:768px){
     #topbar{gap:8px}
     #save-btn{padding:0 14px;font-size:13px;min-height:0}
+    #topbar-cams .btn,#precheck-alert{padding:0 10px;font-size:13px;min-height:0}
     #tabbar button{padding:10px 12px;font-size:13px}
   }
   /* Phones: the pinned bar must stay one slim line, or it eats the screen. */
@@ -347,6 +354,14 @@
       background:var(--line); color:var(--accent); flex-shrink:0;
     "></div>
   </div>
+  <button class="btn" id="precheck-alert" style="display:none" onclick="openPrecheck()"
+          title="The pre-match check found a problem — click for details"></button>
+  <div id="topbar-cams" style="display:none">
+    <button class="btn btn-test cam-btn" data-cam="main" onclick="cutToCameraScene('main')"
+            title="Cut to the wide camera (or press C)">&#127909;<span class="long"> Wide</span></button>
+    <button class="btn btn-test cam-btn" data-cam="bowler" onclick="cutToCameraScene('bowler')"
+            title="Cut to the bowler-end camera (or press C)">&#127909;<span class="long"> Bowler-end</span></button>
+  </div>
   <button class="btn" id="save-btn" onclick="saveState()">Save<span class="long"> &amp; Update Overlay</span></button>
 </div>
 <div class="status" id="status"></div>
@@ -451,8 +466,8 @@
   <div class="card">
     <h2>Cameras</h2>
     <div class="half-grid" style="margin-top:8px;">
-      <button class="btn btn-test cam-btn" id="cam-btn-main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
-      <button class="btn btn-test cam-btn" id="cam-btn-bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-main" data-cam="main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-bowler" data-cam="bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
     </div>
     <p class="hint" style="margin-top:6px;">
       Press <kbd>C</kbd> to flick between the two without aiming at a button — the quickest
@@ -977,6 +992,16 @@
 <section class="tab-panel" id="tab-setup" role="tabpanel">
 <div class="grid">
   <div class="card">
+    <h2>Pre-match check</h2>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      Run this a few days before a match. It tries every login and connection for real &mdash;
+      YouTube, PlayCricket, the AI key, OBS, the scorer feed and disk space &mdash; so an expired
+      login turns up now, not on the day. Nothing is changed.
+    </p>
+    <button class="btn btn-test" id="precheck-btn" onclick="runPrecheck()" style="width:100%;">&#9989; Run pre-match check</button>
+    <div id="precheck-results" style="margin-top:10px;font-size:13px;"></div>
+  </div>
+  <div class="card">
     <h2>OBS</h2>
     <div class="field">
       <label>OBS WebSocket password</label>
@@ -1261,6 +1286,7 @@ async function doLogin() {
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
+      loadPrecheckLast();        // same: /precheck/last is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
@@ -1283,6 +1309,7 @@ async function doSkip() {
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
+      loadPrecheckLast();        // same: /precheck/last is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
@@ -1534,6 +1561,103 @@ async function pickBg(mode) {
     msg.appendChild(undo);
   } catch (e) { msg.textContent = 'Could not reach the server.'; }
 }
+
+// ── Pre-match check ──
+// Every row is built with textContent: the details include error text from outside services.
+const PRECHECK_MARK = {ok: ['\u2713', 'var(--ok)'], warn: ['\u26A0', 'var(--warn)'],
+                       bad: ['\u2717', 'var(--bad)'], skip: ['\u2013', 'var(--muted)']};
+async function runPrecheck() {
+  const box = document.getElementById('precheck-results');
+  const btn = document.getElementById('precheck-btn');
+  box.textContent = 'Checking — this takes up to 20 seconds…';
+  box.style.color = 'var(--muted)';
+  btn.disabled = true;
+  try {
+    const res = await apiFetch('/precheck', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await res.json();
+    if (!res.ok) { box.textContent = d.error || ('Check failed (' + res.status + ')'); box.style.color = ''; return; }
+    renderPrecheck(d);
+  } catch (e) {
+    box.textContent = 'Could not reach the server';
+    box.style.color = 'var(--bad)';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// The server also runs the check by itself (at start, then every 6 hours): show its last
+// result, and put a red badge in the pinned bar when anything is ✗.
+async function loadPrecheckLast() {
+  try {
+    const res = await apiFetch('/precheck/last');
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.checks && d.checks.length) renderPrecheck(d);
+  } catch (e) {}
+}
+
+function updatePrecheckAlert(d) {
+  const a = document.getElementById('precheck-alert');
+  if (!a) return;
+  const bad = (d.checks || []).filter(function (c) { return c.status === 'bad'; }).length;
+  a.textContent = '\u2717 ' + bad + ' problem' + (bad === 1 ? '' : 's');
+  a.style.display = bad ? '' : 'none';
+}
+
+function openPrecheck() {
+  showTab('setup');
+  const card = document.getElementById('precheck-results');
+  if (card) card.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+function renderPrecheck(d) {
+  const box = document.getElementById('precheck-results');
+  if (!box) return;
+  box.textContent = '';
+  box.style.color = '';
+  updatePrecheckAlert(d);
+  {
+    (d.checks || []).forEach(function (c) {
+      const mark = PRECHECK_MARK[c.status] || ['?', 'var(--muted)'];
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);';
+      const icon = document.createElement('span');
+      icon.textContent = mark[0];
+      icon.style.cssText = 'color:' + mark[1] + ';font-weight:700;width:1.2em;flex-shrink:0;';
+      const body = document.createElement('div');
+      const head = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = c.name + ': ';
+      head.appendChild(name);
+      head.appendChild(document.createTextNode(c.detail));
+      body.appendChild(head);
+      if (c.fix) {
+        const fix = document.createElement('div');
+        fix.textContent = c.fix;
+        fix.style.color = 'var(--muted)';
+        fix.style.fontSize = '12px';
+        body.appendChild(fix);
+      }
+      row.appendChild(icon);
+      row.appendChild(body);
+      box.appendChild(row);
+    });
+    const summary = document.createElement('div');
+    summary.style.cssText = 'margin-top:8px;font-weight:600;color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';';
+    summary.textContent = d.ok ? 'Nothing broken. ' + (d.checks.some(function (c) { return c.status === 'warn'; }) ? 'Have a look at the ⚠ items.' : 'All set.')
+                               : 'Something needs fixing before the match — see ✗ above.';
+    box.appendChild(summary);
+    if (d.ran_at) {
+      const when = document.createElement('div');
+      when.style.cssText = 'margin-top:2px;font-size:11px;color:var(--muted);';
+      when.textContent = 'Checked ' + d.ran_at.replace('T', ' at ');
+      box.appendChild(when);
+    }
+  }
+}
+loadPrecheckLast();
+setInterval(loadPrecheckLast, 600000);
 
 // ── Sponsor airtime (read-only; the overlay reports, the server times it) ──
 async function pollSponsorAirtime() {
@@ -1978,6 +2102,8 @@ async function loadState() {
   document.getElementById('pcs_source_agent').checked = (s.pcs_source === 'agent');
   onAgentToggle();
   showSponsorPreview();
+  const cams = document.getElementById('topbar-cams');
+  if (cams) cams.style.display = s.camera2_configured ? 'flex' : 'none';
   const clubName = s.home_team || 'Your Club';
   const clubBadgeEl = document.getElementById('panel-club-badge');
   const clubNameEl  = document.getElementById('panel-club-name');
@@ -2199,11 +2325,15 @@ let _camLive = 'main';        // what we believe is on air
 let _camInFlight = false;
 let _camPending = null;       // most recent request made while one was in flight
 
+// The same angle has a button in the pinned bar and one in the Cameras card.
+function camButtons(which) {
+  return document.querySelectorAll('.cam-btn[data-cam="' + which + '"]');
+}
+
 function markCameraLive(which) {
   _camLive = which;
   ['main', 'bowler'].forEach(function (k) {
-    const b = document.getElementById('cam-btn-' + k);
-    if (b) { b.classList.toggle('live', k === which); b.classList.remove('failed'); }
+    camButtons(k).forEach(function (b) { b.classList.toggle('live', k === which); b.classList.remove('failed'); });
   });
 }
 
@@ -2223,15 +2353,13 @@ async function cutToCameraScene(which) {
       body:JSON.stringify({scene: sceneNameFor(which)})})).json();
     if (!d.ok) {
       // Put the truth back on screen — the optimistic highlight was a guess and it was wrong.
-      const b = document.getElementById('cam-btn-' + which);
-      if (b) b.classList.add('failed');
+      camButtons(which).forEach(function (b) { b.classList.add('failed'); });
       if (msg) { msg.textContent = '✗ ' + (d.message || 'Switch failed'); msg.style.color = 'var(--bad)'; }
     } else if (msg) {
       msg.textContent = '';                    // success is shown by the highlight itself
     }
   } catch (e) {
-    const b = document.getElementById('cam-btn-' + which);
-    if (b) b.classList.add('failed');
+    camButtons(which).forEach(function (b) { b.classList.add('failed'); });
     if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; }
   } finally {
     _camInFlight = false;
