@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v2.12 — 2026-10-02
 
 - **New: automatic match page.** About a minute after the stream ends, CricketStream builds
   a one-page match report to share: the result, the result card, the AI match report, a

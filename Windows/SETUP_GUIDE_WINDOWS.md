@@ -1,5 +1,5 @@
 # Setup Guide — Windows
-## CricketStream Overlay — Version 2.11
+## CricketStream Overlay — Version 2.12
 
 ---
 
