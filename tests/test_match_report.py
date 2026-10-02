@@ -105,6 +105,19 @@ class MatchSummaryTests(HttpTestBase):
             self.assertEqual(m.call_count, 1)
             self.assertEqual(self.get_json("/obs/stream_check?force=1")[0], 429)
 
+    def test_test_commentary_returns_the_line_not_generating(self):
+        # It used to return whatever had arrived after a fixed 3 seconds.
+        with mock.patch.object(server, "generate_commentary", return_value="Richards on the charge."):
+            status, _, data = self.request("POST", "/commentary/test", body={})
+        self.assertEqual(status, 200)
+        self.assertEqual(server.json.loads(data)["text"], "Richards on the charge.")
+        with mock.patch.object(server, "generate_commentary", return_value=None):
+            server._rate_limit_ts.clear()
+            _, _, data = self.request("POST", "/commentary/test", body={})
+        d = server.json.loads(data)
+        self.assertFalse(d["ok"])
+        self.assertIn("API key", d["error"])
+
     def test_reconcile_explains_an_unlinked_match(self):
         server.update_state(lambda s: s.update(playcricket_api_key="k"))
         with mock.patch.object(server, "_pc_get_json") as fetch:

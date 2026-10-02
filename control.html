@@ -1815,7 +1815,7 @@ const FIELDS = ['home_team','away_team','home_abbrev','away_abbrev','home_colour
 const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','graphics_camera_auto_cut','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','graphics_camera_auto_cut','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -2542,15 +2542,18 @@ async function testCommentary() {
   } catch(e) { if(prev) { prev.textContent='Could not reach server'; prev.style.color='var(--bad)'; } }
 }
 
+// Shows the latest end-of-over commentary — the one that goes on air — as it arrives.
+let _lastPreviewedOver = null;
 async function pollCommentary() {
   try {
-    const data = await (await apiFetch('/commentary/latest')).json();
+    const data = await (await apiFetch('/commentary/over')).json();
     const prev = document.getElementById('commentary-preview');
     const meta = document.getElementById('commentary-meta');
-    if (data.text && prev) {
+    if (data.text && prev && data.over !== _lastPreviewedOver) {
+      _lastPreviewedOver = data.over;
       prev.textContent = data.text;
       prev.style.color = '#e8e0f0';
-      if (meta) meta.textContent = `Last generated: ${new Date().toLocaleTimeString()} · Claude Haiku`;
+      if (meta) meta.textContent = `Over ${data.over} · ${new Date().toLocaleTimeString()} · Claude Haiku`;
     }
   } catch(e) {}
 }

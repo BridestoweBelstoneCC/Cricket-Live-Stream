@@ -179,6 +179,16 @@ class TestRoutes(unittest.TestCase):
             self.assertEqual(f.read(), self.original)          # untouched: Undo works
         self.assertEqual(Image.open(os.path.join(self.dir, "2.png")).mode, "RGBA")
 
+    def test_the_result_card_shows_a_sponsor_once_not_original_and_copy(self):
+        status, d = self.post("/sponsor/remove_background", {"id": "1", "mode": "outside"})
+        self.assertEqual(status, 200)
+        copy = d["sponsor_id"]
+        logos = [os.path.basename(p) for p in server.sponsor_logos_for_card(self.dir, copy)]
+        self.assertEqual(logos, [f"{copy}.png"])
+        # Undo (back to the original) shows the original instead
+        logos = [os.path.basename(p) for p in server.sponsor_logos_for_card(self.dir, "1")]
+        self.assertEqual(logos, ["1.png"])
+
     def test_refusal_is_explained(self):
         Image.new("RGBA", (50, 50), (0, 0, 0, 0)).save(os.path.join(self.dir, "5.png"))
         status, d = self.post("/sponsor/remove_background", {"id": "5", "mode": "outside"})

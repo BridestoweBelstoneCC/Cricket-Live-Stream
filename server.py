@@ -341,51 +341,27 @@ _RATE_LIMITS = {
 _rate_limit_ts   = {}
 _rate_limit_lock = threading.Lock()
 
-# ── Commentary state ──────────────────────────────────────────
-# Stores the latest AI-generated commentary line and triggers
-# the overlay to display it.
-_commentary = {
-    "text":      "",
-    "pending":   False,   # True when a new line is ready to display
-    "last_over": -1,      # Last over we generated commentary for
-}
-
-def get_commentary():
-    return dict(_commentary)
-
-def set_commentary(text):
-    _commentary["text"]    = text
-    _commentary["pending"] = True
-    print(f"  💬  Commentary: {text}")
-
-def pop_commentary():
-    """Called by overlay poll — returns text and clears pending flag."""
-    text    = _commentary["text"]
-    pending = _commentary["pending"]
-    _commentary["pending"] = False
-    return {"text": text, "pending": pending}
-
-# ── AI commentary generator ───────────────────────────────────
+# ── AI commentary: the panel's test button ────────────────────
+# The live AI commentary is the end-of-over panel (/commentary/over/generate, fired by the
+# overlay). This one-line generator only backs "Generate test commentary". It used to
+# drive a per-ball lower third too, with a toggle the panel never had; that was removed.
 
 def generate_commentary(state, innings_history):
-    """
-    Calls Claude Haiku to generate a single broadcast-style commentary
-    line based on the current match state.
-    Runs in a background thread — never blocks the overlay.
-    """
+    """One broadcast-style commentary line for a match situation, from Claude Haiku.
+    Returns the text, or None (the reason is printed)."""
     cfg = load_state()
     api_key = cfg.get("anthropic_api_key","").strip() \
               or os.environ.get("ANTHROPIC_API_KEY","").strip()
 
     if not api_key:
         print("  ✗  Commentary: no Anthropic API key set")
-        return
+        return None
 
     try:
         import anthropic
     except ImportError:
         print("  ✗  Commentary: run 'pip install anthropic'")
-        return
+        return None
 
     # Build context for Claude
     batting_team = state.get("battingTeamName","Batting team")
@@ -434,12 +410,12 @@ def generate_commentary(state, innings_history):
         # Trim to sentence if model returns more than asked
         if "." in text:
             text = text.split(".")[0].strip() + "."
-        set_commentary(text)
+        return text
     except Exception as e:
         print(f"  ✗  Commentary API error: {e}")
+        return None
 
-# ── Innings event history (for commentary context) ────────────
-_innings_events = []
+# ── Latest end-of-over commentary (the overlay's 4th panel; the panel previews it) ──
 _over_commentary  = {'text': '', 'over': -1}
 
 # ── Match log: accumulates key events for the end-of-match report ──
@@ -920,14 +896,6 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
             print(f'  ✗  Over commentary: {exc}')
     threading.Thread(target=_go, daemon=True).start()
 
-
-def record_event(text):
-    _innings_events.append(text)
-    if len(_innings_events) > 20:
-        _innings_events.pop(0)
-
-def clear_events():
-    _innings_events.clear()
 
 
 # ── Pending commands for overlay ─────────────────────────────
@@ -1585,10 +1553,10 @@ def buffer_pcs_events(state):
     prev_s  = _prev_state["score"]
     prev_w  = _prev_state["wickets"]
     if prev_s is None:
-        # First poll: seed the baseline HERE, unconditionally. Seeding used to happen only
-        # inside check_commentary_trigger, which is gated on the graphics_commentary toggle
-        # (off by default) — so with it off, _prev_state stayed None all match and no wicket
-        # ever reached the event buffer or the match log's fall-of-wickets list.
+        # First poll: seed the baseline HERE, unconditionally. Seeding once happened only
+        # inside the (since removed) per-ball commentary trigger, which was off by default —
+        # so _prev_state stayed None all match and no wicket ever reached the event buffer
+        # or the match log's fall-of-wickets list.
         _prev_state.update({"score": score, "wickets": wickets,
                             "overs": state.get("overs", 0.0)})
         return
@@ -1617,48 +1585,6 @@ def buffer_pcs_events(state):
     # Cap buffer size (trim in place — everyone must keep seeing the same list object)
     with _event_buffer_lock:
         del _event_buffer[:-20]
-
-def check_commentary_trigger(state):
-    """
-    Triggers AI commentary generation after each completed over and on wickets.
-    Runs commentary generation in a background thread.
-    """
-    score   = state.get("score", 0)
-    wickets = state.get("wickets", 0)
-    overs   = state.get("overs", 0.0)
-
-    prev_score   = _prev_state["score"]
-    prev_wickets = _prev_state["wickets"]
-    prev_overs   = _prev_state["overs"]
-
-    if prev_score is None:
-        _prev_state.update({"score": score, "wickets": wickets, "overs": overs})
-        return
-
-    current_over  = int(overs)
-    previous_over = int(prev_overs) if prev_overs else 0
-    d_score   = score   - prev_score
-    d_wickets = wickets - prev_wickets
-
-    if d_wickets > 0:
-        record_event(f"Wicket — score {score}-{wickets}")
-    if d_score == 4:
-        record_event(f"FOUR — {score}-{wickets}")
-    if d_score == 6:
-        record_event(f"SIX — {score}-{wickets}")
-
-    should_trigger = (d_wickets > 0 or (current_over > previous_over and current_over > 0))
-    if should_trigger and _commentary["last_over"] != current_over:
-        _commentary["last_over"] = current_over
-        cfg = load_state()
-        if cfg.get("graphics_commentary") and cfg.get("anthropic_api_key","").strip():
-            threading.Thread(
-                target=generate_commentary,
-                args=(dict(state), list(_innings_events)),
-                daemon=True).start()
-
-    # NOTE: _prev_state is now owned/updated by buffer_pcs_events (runs every poll)
-
 
 # ── State file ────────────────────────────────────────────────
 PORT       = 5000
@@ -1692,7 +1618,6 @@ DEFAULT_STATE = {
     "graphics_boundary_flash": True,
     "graphics_milestones":     True,
     "graphics_innings_summary":True,
-    "graphics_commentary":     False,
     "graphics_commentary_over":False,
     "graphics_over_summary":   True,
     "graphics_partnership_display":True,
@@ -3919,11 +3844,7 @@ def build_instagram_image(facts, photo_path=None, out_path=None):
     crest = next((p for p in (os.path.join(logos, cid + e)
                               for e in (".png", ".webp", ".jpg", ".jpeg")) if cid and os.path.exists(p)), None)
     sp_dir = os.path.expanduser(cfg.get("sponsors_folder", "").strip() or os.path.join(here, "sponsors"))
-    try:
-        sponsors = [os.path.join(sp_dir, f) for f in sorted(os.listdir(sp_dir))
-                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
-    except OSError:
-        sponsors = []
+    sponsors = sponsor_logos_for_card(sp_dir, cfg.get("sponsor_id", ""))
     if not out_path:
         out_path = os.path.join(here, f"instagram_result_{datetime.date.today().isoformat()}.png")
     return result_card.render(facts, {
@@ -5974,7 +5895,65 @@ def save_transparent_sponsor(sponsor_id, mode):
     previous = str(sponsor_id)
     with _sponsor_upload_lock:
         new_id = _save_sponsor_logo_locked(buf.getvalue(), "png")
+        _record_sponsor_variant(new_id, previous)
     return True, {"ok": True, "sponsor_id": new_id, "previous_id": previous}
+
+
+# Which sponsor images are transparent copies of which: {copy id: original id}. The copy is
+# a new image and the original is kept (Undo is just its ID), so without this the result
+# card — which shows every logo in the folder — showed one sponsor twice.
+def _sponsor_variants_file():
+    return os.path.join(SPONSOR_DIR, ".variants.json")    # follows SPONSOR_DIR (tests move it)
+
+
+def _sponsor_variants():
+    try:
+        with open(_sponsor_variants_file(), encoding="utf-8") as f:
+            v = json.load(f)
+        return {str(k): str(x) for k, x in v.items()} if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _record_sponsor_variant(new_id, source_id):
+    """Call under _sponsor_upload_lock. A copy of a copy points at the first original."""
+    v = _sponsor_variants()
+    v[str(new_id)] = v.get(str(source_id), str(source_id))
+    path = _sponsor_variants_file()
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(v, f, indent=1)
+        os.replace(tmp, path)
+    except OSError:
+        pass       # worst case the card shows a sponsor twice, as it used to
+
+
+def sponsor_logos_for_card(sp_dir, current_id=""):
+    """The sponsor logo paths for the result card: one per sponsor. An original and its
+    transparent copies count as one sponsor, shown as whichever is the sponsor image in
+    use, else the newest copy (the operator's latest choice). Ordered by original ID."""
+    try:
+        names = [f for f in os.listdir(sp_dir)
+                 if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
+    except OSError:
+        return []
+    same_dir = os.path.normcase(os.path.abspath(sp_dir)) == os.path.normcase(os.path.abspath(SPONSOR_DIR))
+    variants = _sponsor_variants() if same_dir else {}
+    families = {}
+    for f in names:
+        stem = os.path.splitext(f)[0]
+        families.setdefault(variants.get(stem, stem), []).append((stem, f))
+
+    def num(x):
+        return (0, int(x), "") if x.isdigit() else (1, 0, x)
+    out = []
+    for root in sorted(families, key=num):
+        members = families[root]
+        pick = next((m for m in members if m[0] == str(current_id)), None) \
+            or max(members, key=lambda m: num(m[0]))
+        out.append(os.path.join(sp_dir, pick[1]))
+    return out
 
 
 def save_sponsor_logo(data):
@@ -6786,18 +6765,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(data)
 
         elif path == "/commands":
-            cmds = pop_commands()
-            # Also include commentary if pending
-            c = pop_commentary()
-            cmds["commentary_text"]    = c["text"]
-            cmds["commentary_pending"] = c["pending"]
-            self._json(cmds)
+            self._json(pop_commands())
 
         elif path == "/commentary/over":
             self._json(_over_commentary)
-
-        elif path == "/commentary/latest":
-            self._json({"text": _commentary["text"], "pending": _commentary["pending"]})
 
         elif path == "/logos/debug":
             s2      = load_state()
@@ -7636,12 +7607,6 @@ class Handler(BaseHTTPRequestHandler):
                     pcs_state["away_abbrev"] = s.get("away_abbrev","").strip().upper()
                     events = []
                     if mutate:
-                        # Commentary trigger MUST run before buffer_pcs_events: both diff
-                        # the state against _prev_state, but buffer_pcs_events advances
-                        # _prev_state when it's done. Running the trigger after it meant
-                        # every delta it saw was zero — commentary could never fire.
-                        if s.get("graphics_commentary", True):
-                            check_commentary_trigger(pcs_state)
                         # Buffer boundary/wicket events (this advances _prev_state)
                         buffer_pcs_events(pcs_state)
                         match_log_snapshot(pcs_state)
@@ -7989,13 +7954,13 @@ class Handler(BaseHTTPRequestHandler):
                     "batter2":{"name":"T. Blake","runs":12,"balls":21},
                     "bowler":{"name":"J. Harrison","wickets":2,"runs":28,"overs":"7"},
                 }
-                threading.Thread(
-                    target=generate_commentary,
-                    args=(demo_state, ["FOUR — 87-3","Wicket — 75-3"]),
-                    daemon=True).start()
-                time.sleep(3)
-                c = get_commentary()
-                self._json({"ok": bool(c["text"]), "text": c["text"] or "Generating..."})
+                # Waits for the answer: it used to return whatever had arrived after a
+                # fixed 3 seconds, so a slow reply showed "Generating..." for good.
+                text = generate_commentary(demo_state, ["FOUR — 87-3", "Wicket — 75-3"])
+                self._json({"ok": bool(text), "text": text or "",
+                            "error": None if text else
+                            "No commentary came back — check the Anthropic API key "
+                            "(the server window says why)"})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
 

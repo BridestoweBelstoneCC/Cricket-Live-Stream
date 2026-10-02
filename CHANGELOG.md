@@ -4,6 +4,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Fixed: a sponsor no longer appears twice on the Instagram result card.** Making a
+  logo's background transparent keeps the original (so Undo works), and the card showed
+  every logo in the folder — original and copy. Copies are now recorded against their
+  original, and the card shows one per sponsor: the one in use, else the newest copy.
+- **Removed: the per-ball AI commentary lower third.** It had no switch in the control
+  panel (the end-of-over AI commentary panel replaced it), but its trigger still ran on
+  every update. The panel's commentary preview now shows the latest end-of-over line as it
+  goes on air, and "Generate test commentary" waits for the real answer instead of
+  sometimes showing "Generating..." for good.
+
 ## v2.9 — 2026-10-02
 
 - **New: a much better post-match Instagram graphic.** Rebuilt from scratch in the style
