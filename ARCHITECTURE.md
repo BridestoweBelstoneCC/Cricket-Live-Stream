@@ -142,64 +142,78 @@ A live manual-scoring session (`/scoring`) outranks all three.
 
 ### 4.1 Inside `server.py`
 
+Data flows left to right: sources, one ingest door, the per-poll pipeline, storage, and
+the products built from it. The control plane (HTTP routes, background services, OBS
+adapters) sits underneath and drives the rest.
+
 ```mermaid
-flowchart TB
-    subgraph IN["Ingest: one door per concern"]
-        rss["read_score_source()<br/>local · bridge · agent"]
-        man["ManualScoringSession<br/>event-sourced, replayable"]
-        eng["scoring_engine.InningsEngine<br/>(shared with simulate_match.py)"]
-        parse["parse_pcs_json()<br/>the one parser for every source"]
-        man --> eng --> parse
-        rss --> parse
+flowchart LR
+    subgraph SRC["Sources"]
+        f1["Scoreboard file<br/>(local or bridge mirror)"]
+        f2["scorer_agent.py<br/>over the LAN"]
+        f3["/scoring events"]
     end
 
-    subgraph PIPE["/live pipeline (overlay's poll ONLY)"]
-        ev["buffer_pcs_events()<br/>wicket buffer"]
-        fm["follow_match_id()<br/>keep data under one id"]
-        lb["log_ball_data()<br/>current over: delete + reinsert"]
-        lf["log_live_figures()<br/>scorer's own totals"]
-        wp["win_prediction()<br/>(also on /live/view)"]
+    subgraph ING["Ingest"]
+        rss["read_score_source()"]
+        man["ManualScoringSession<br/>+ InningsEngine"]
+        parse["parse_pcs_json()<br/>one parser, one frame shape"]
     end
 
-    subgraph STORE["State"]
-        st[("match_state.json<br/>update_state(): locked RMW<br/>save_state(): atomic replace")]
+    subgraph PIPE["Per-poll pipeline: /live only"]
+        ev["buffer_pcs_events()"]
+        fm["follow_match_id()"]
+        lb["log_ball_data()"]
+        lf["log_live_figures()"]
+        wp["win_prediction()"]
+    end
+
+    subgraph STORE["Storage"]
         db[("match_data.db")]
+        st[("match_state.json")]
     end
 
-    subgraph POST["Post-match products"]
-        facts["merged_match_facts()<br/>generate_social_graphic_facts()"]
-        rep["generate_match_report()"]
+    subgraph PROD["Products"]
+        facts["merged_match_facts()"]
+        rep["AI match report"]
         card["result_card.py"]
         page["match_page.py"]
         clips["social_clips.py"]
-        hl["compile_highlights()"]
+        hl["highlights reel"]
     end
 
-    subgraph OBSI["OBS integration"]
-        call["_obs_call()<br/>connect per call"]
-        fast["_obs_fast_call()<br/>held socket, cuts only"]
-        prep["obs_prep.py<br/>files, OBS closed"]
-        setup["obs_setup.py<br/>WebSocket, OBS open"]
+    subgraph CTRL["Control plane"]
+        routes["HTTP routes<br/>auth · origin · rate limits"]
+        svc["Background services<br/>watchdog · stream monitor · OBS guard<br/>viewers · pre-match · spotter · bridge"]
+        obsio["OBS adapters<br/>_obs_call · _obs_fast_call<br/>obs_prep · obs_setup"]
     end
 
-    subgraph EXT["External clients"]
-        pcapi["PlayCricket"]
-        ytapi["YouTube Data API"]
-        claude["Claude Haiku"]
-        voice["voice.py<br/>offline TTS"]
-    end
-
-    parse --> PIPE
+    f1 --> rss
+    f2 --> rss
+    f3 --> man
+    rss --> parse
+    man --> parse
+    parse --> ev
+    parse --> fm
+    parse --> lb
+    parse --> lf
+    parse --> wp
+    fm --> db
     lb --> db
     lf --> db
-    fm --> db
-    db --> facts --> rep & card & page
-    pcapi --> facts
-    claude --> rep & clips
-    db --> clips & hl
-    wp --- pcapi
-    st --- PIPE
-    call & fast --> OBSI
+    db --> facts
+    facts --> rep
+    facts --> card
+    facts --> page
+    rep --> page
+    card --> page
+    db --> clips
+    db --> hl
+    routes --> parse
+    routes --> st
+    svc --> obsio
+    routes --> obsio
+    svc --> page
 ```
 
 | Module | Responsibility | Pure? |
