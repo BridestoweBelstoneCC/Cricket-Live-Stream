@@ -108,6 +108,20 @@ class PlayCricketFactsTests(unittest.TestCase):
         self.assertEqual(f["team2_score"], "185 (All out · 36.2 overs)")
         self.assertEqual(f["performer1"], "P SMITH 78 (96)")
 
+    def test_result_line_uses_the_panels_abbreviation(self):
+        # It read cfg["abbreviation"] (config.ini's key, never a state key), so every
+        # result line said the first five letters of the club name instead.
+        md = _match([_inn("1", "x", "231", "7", "40", bat=US_BAT),
+                     _inn("2", "y", "185", "10", "36.2", bowl=US_BOWL)], "W", "1")
+        self.cfg["home_abbrev"] = "HDCC"
+        self.assertEqual(self.facts(md)["result"], "HDCC WIN BY 46 RUNS")
+
+    def test_placeholder_abbreviation_falls_back_to_the_club_name(self):
+        md = _match([_inn("1", "x", "231", "7", "40", bat=US_BAT),
+                     _inn("2", "y", "185", "10", "36.2", bowl=US_BOWL)], "W", "1")
+        self.cfg.update(home_team="Hometown and District CC", home_abbrev="HOME")
+        self.assertEqual(self.facts(md)["result"], "HOMET WIN BY 46 RUNS")
+
 
 class LiveFactsTests(HttpTestBase):
     """The streamed match without a published scorecard: built from the scorer's own

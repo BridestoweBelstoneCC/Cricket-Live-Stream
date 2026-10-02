@@ -4,6 +4,58 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **New: automatic match page.** About a minute after the stream ends, CricketStream builds
+  a one-page match report to share: the result, the result card, the AI match report, a
+  runs-by-over chart, both scorecards and fall of wickets (from the scorer's own figures),
+  a "Watch the full stream" link to today's YouTube video, and the sponsors. It's a single
+  self-contained HTML file in `match_pages/` (no outside links needed), ready for the club
+  website or a WhatsApp group; After the match → **Match page** rebuilds or opens it.
+
+- **New (optional): spoken commentary.** Graphics → AI commentary → **Speak the end-of-over
+  commentary** reads each end-of-over line aloud on the stream, in the computer's own voice
+  (British English where available — Microsoft Hazel on Windows, Daniel on a Mac). Free and
+  offline. Off by default: the voices are serviceable, not broadcast quality. OBS setup now
+  routes the overlay's audio into the stream ("Control audio via OBS").
+- **New: live win predictor.** After each over, a Win Predictor panel shows both teams'
+  chances (and "Need 26 off 24 balls" in a chase, or the projected score in the first
+  innings). It's built from how *this season's* matches have actually gone — the PlayCricket
+  scorecards the season stats already download, using the match's own format (40-over,
+  50-over…) when there are enough games of it — and a DLS-style model of how much batting
+  is left (balls and wickets). Backtested on this season's 64 completed matches: the start-
+  of-chase favourite won 66% of the time; it's weakest in 50-over games. Graphics → Win
+  predictor turns it off.
+- **New: AI camera spotter.** Match day → Cameras → **AI camera spotter**. While the stream
+  is live, Claude Haiku looks at each camera every few minutes (5 by default) and warns —
+  in the Cameras card and with a red camera badge in the panel's top bar — about a fogged,
+  wet or dirty lens, a knocked camera, glare, a picture that's too dark or blocked, or a
+  black/test picture. A frozen picture is caught without AI. Off by default because it uses
+  the club's AI credit: about 10–15p for a 5-hour match. "Check cameras now" tries it any
+  time. Tested on fogged and tilted match photos (both caught) and a normal one (no alarm).
+- **New: social clips.** After the match, After the match → **Make social clips** turns
+  every wicket, six, four and milestone replay into a vertical video for YouTube Shorts,
+  Instagram Reels and TikTok: the replay (with the scorebar) in the middle, a big headline
+  ("SIX!"), a line about the moment, the club badge and your handle — plus a caption ready
+  to paste, written by Claude Haiku (under 1p a match; without an AI key the replay's own
+  tag is used). Download each from the panel, phone included. Made after the match on
+  purpose: encoding video while streaming would compete with OBS. Needs FFmpeg.
+- **Fixed (found in a full code review):**
+  - A boundary on the last ball of an over could be replayed twice, and the next over's
+    first-ball boundary then missed. When NV Play does show an over's final ball on the
+    write that completes it (it usually doesn't), the overlay read the whole over as new.
+  - A wicket on the last ball of an over was counted towards the NEXT bowler's hat-trick
+    (and could miss the real one) when NV Play kept showing the over without it — its
+    usual behaviour. It's now credited on that write, to the bowler who bowled it.
+  - The result line in captions said the first five letters of the club name ("BRIDE
+    WIN…") instead of the abbreviation set in the panel.
+  - Two-laptop mode: replay clips were captioned without the batter or score, so the
+    highlights reel and social clips lost them.
+  - The match page no longer builds (and spends an AI report) when the stream drops for a
+    moment mid-match, such as a quality step-down's restart.
+  - "Copy caption" on social clips no longer shows the red error banner on a phone
+    using the panel over the club wifi.
+
 ## v2.11 — 2026-10-02
 
 - **New: pre-match check.** Control panel → Setup → **Run pre-match check**, meant for a

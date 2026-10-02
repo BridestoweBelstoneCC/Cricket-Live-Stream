@@ -336,6 +336,7 @@ _RATE_LIMITS = {
     "/social/image/generate": 120,   # AI social graphic — 2 min
     "/obs/stream_check":      300,   # a real upload-speed test uses data — 5 min cooldown
     "/precheck":               20,   # calls YouTube, PlayCricket and Anthropic
+    "/camera/spotter":         20,   # one AI call per camera
     "/agent/discover":          3,   # broadcasts on the LAN — short cooldown, not a heavy op,
                                       # just enough to stop a script (not a human clicking
                                       # "Find scorer laptop") from flooding the network
@@ -602,10 +603,10 @@ def current_match_id():
     return f"{datetime.date.today().isoformat()}_{home}_v_{away}"
 
 # Tracks the last over whose ticker we saw, so the over-completing delivery can be
-# recovered. NV Play clears the ticker on the SAME write that completes an over (see
-# CLAUDE.md), so the final ball of every over never appears in any ticker — the overlay
-# recovers it from the score delta for the over-summary graphic, and this logger must do
-# the same or the ball DB (and every CSV export) silently loses ball 6 of every over.
+# recovered. On the write that completes an over NV Play usually keeps showing the over as
+# it was BEFORE its final ball (see CLAUDE.md), so that ball rarely appears in any ticker —
+# the overlay recovers it from the score delta for the over-summary graphic, and this logger
+# must do the same or the ball DB (and every CSV export) silently loses it.
 _ball_log_prev = {"mid": None, "innings": None, "over": None,
                   "score": 0, "wickets": 0, "count": 0,
                   # Personnel as of the last write we saw: on the over-completing write
@@ -842,9 +843,9 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
             try:    season_av = float(rec.get('avg', 0) or 0)
             except ValueError: season_av = 0.0
             if season_hs and rn > season_hs:
-                notable.append(f"{nm} is now past his season-best of {rec.get('hs')} — new highest score of the season.")
+                notable.append(f"{nm} has passed a season-best of {rec.get('hs')} — a new highest score of the season.")
             elif season_av and rn > season_av * 1.5 and rn >= 25:
-                notable.append(f"{nm} ({rn}) is well past his season average of {season_av:.0f}.")
+                notable.append(f"{nm} ({rn}) is well past a season average of {season_av:.0f}.")
     except Exception:
         pass
     # "Coming up" milestones — the anticipation angle, not just reacting after the fact.
@@ -894,6 +895,8 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
             if '.' in t: t = t.split('.')[0].strip() + '.'
             _over_commentary = {'text': t, 'over': over_num}
             print(f'  ✓  Over {over_num} commentary: {t[:55]}')
+            if load_state().get('graphics_voice_commentary'):
+                speak_over_commentary(t, over_num)
         except Exception as exc:
             print(f'  ✗  Over commentary: {exc}')
     threading.Thread(target=_go, daemon=True).start()
@@ -1678,6 +1681,10 @@ DEFAULT_STATE = {
     # against real two-camera hardware (see obs_add_camera()). A no-op regardless unless
     # camera2_rtsp_url is also configured. See TODO.md.
     "graphics_camera_auto_cut":False,
+    "graphics_win_predictor":  True,
+    "graphics_voice_commentary": False,   # read the end-of-over line aloud (computer voice)
+    "camera_spotter":          False,   # AI camera checks while live — spends AI credit
+    "camera_spotter_minutes":  5,
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
@@ -1694,6 +1701,7 @@ DEFAULT_STATE = {
     "roster":                 {},
     "socials_folder":         "",
     "sponsor_name":           "",
+    "social_handle":          "",      # shown on vertical social clips, e.g. @YourClubCC
     "sponsor_id":             "",
     "home_club_id":           "",
     "ground_filter":          "",
@@ -2244,9 +2252,7 @@ def resolve_agent_address(s, force=False):
     # Remember it so a restart mid-match reconnects without another broadcast.
     try:
         if s.get("agent_last_seen") != address:
-            fresh = load_state()
-            fresh["agent_last_seen"] = address
-            save_state(fresh)
+            update_state(lambda st: st.__setitem__("agent_last_seen", address))
     except Exception:
         pass
 
@@ -2570,10 +2576,11 @@ def match_facts_from_db(match_id):
             inns = c.execute("SELECT innings,batting_team,score,wickets,overs,limit_balls "
                              "FROM live_innings WHERE match_id=? ORDER BY innings",
                              (match_id,)).fetchall()
+            # rowid order = the order they first appeared: the batting order, near enough
             bats = c.execute("SELECT innings,name,runs,balls,out FROM live_batting "
-                             "WHERE match_id=?", (match_id,)).fetchall()
+                             "WHERE match_id=? ORDER BY rowid", (match_id,)).fetchall()
             bowls = c.execute("SELECT innings,name,overs,runs,wickets FROM live_bowling "
-                              "WHERE match_id=?", (match_id,)).fetchall()
+                              "WHERE match_id=? ORDER BY rowid", (match_id,)).fetchall()
             fow = c.execute("SELECT innings,wicket,batter,score FROM live_fow WHERE match_id=? "
                             "ORDER BY innings,wicket", (match_id,)).fetchall()
     except sqlite3.Error:
@@ -2590,9 +2597,9 @@ def match_facts_from_db(match_id):
             {"name": name, "o": overs or "0", "r": runs or 0, "w": wkts or 0})
     for inn, wicket, batter, score in fow:
         out["fall_of_wickets"].append({"batter": batter or "?", "score": f"{score}-{wicket}",
-                                       "howout": ""})
+                                       "howout": "", "innings": str(inn)})
     for inn, rows in out["batters"].items():
-        rows.sort(key=lambda b: -b["runs"])
+        rows = sorted(rows, key=lambda b: -b["runs"])     # a copy: keep batting order intact
         out["top_scorers"][inn] = [f"{b['name']} {b['runs']}{'' if b['out'] else '*'} "
                                    f"({b['balls']} balls)" for b in rows[:3] if b["runs"] > 0]
         out["milestones"] += [{"batter": b["name"], "milestone": f"{b['runs'] // 50 * 50}"}
@@ -3120,7 +3127,11 @@ def build_season_stats(force=False):
             "away": _season_top_bowler(details, away_frag) if away_frag else None,
         }
 
+        # The win predictor's league data: one compact summary per completed scorecard.
+        import win_predictor
+        innings_history = [h for h in (win_predictor.innings_summary(d) for d in details) if h]
         result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
+                  "innings_history": innings_history,
                   "top_scorers": top_scorers, "top_bowlers": top_bowlers, "build_started": None,
                   "built": True, "building": False, "matches_used": used, "calls": calls, "error": err}
         with _season_stats_lock:
@@ -3564,7 +3575,14 @@ def _margin_from_scores(first, second):
 def _finish_card_facts(sides, outcome, margin, stars, cfg, extra):
     """Shared tail: the structured card fields plus the flat legacy fields the caption
     writer (ai_caption_for_facts) reads."""
-    abbr = (cfg.get("abbreviation", "") or _club_fragment(cfg)[:5]).upper()
+    # The panel's own abbreviation, unless it's still the "HOME" placeholder for a club
+    # that has a real name: "abbreviation" (what this read before) is config.ini's key,
+    # never a state key, so every result line said e.g. "BRIDE WIN" whatever was set.
+    abbr = (cfg.get("home_abbrev") or "").strip()
+    if not abbr or (abbr == DEFAULT_STATE["home_abbrev"]
+                    and cfg.get("home_team") != DEFAULT_STATE["home_team"]):
+        abbr = _club_fragment(cfg)[:5]
+    abbr = abbr.upper()
     word = {"win": "WIN", "loss": "LOSE", "abandoned": "ABANDONED",
             "cancelled": "CANCELLED"}.get(outcome, "")
     if outcome in ("win", "loss"):
@@ -4481,7 +4499,10 @@ def obs_trigger_replay(state, reason=""):
     # batter walked in, and the caption would describe the wrong moment. Same source
     # precedence as /live: a live manual-scoring session outranks the PCS file state
     # (which manual mode never updates — using it here captioned clips with stale data).
-    clip_caption = make_clip_caption(reason, manual_live_state() or _pcs_last_state)
+    # Agent (two-laptop) mode never sets _pcs_last_state: its last frame is the agent's.
+    feed_state = (_agent_last_state if state.get("pcs_source", "local") == "agent"
+                  else _pcs_last_state)
+    clip_caption = make_clip_caption(reason, manual_live_state() or feed_state)
 
     host     = state.get("obs_host", "localhost")
     port     = state.get("obs_port", 4455)
@@ -5497,6 +5518,11 @@ def _stream_monitor_tick():
             _stream_mon["configured_kbps"] = vbitrate
         s0 = results[0]
         live = bool(s0.get("outputActive"))
+        if _stream_mon["streaming"] and not live:
+            # The stream just ended: build the match page a minute later — if it's still
+            # off then. The quality ladder's own stop/start, or an operator restarting the
+            # stream mid-match, also reads as an end here for one tick.
+            threading.Timer(60, _match_page_after_stream_end).start()
         _stream_mon["streaming"] = live
         if not live:
             _stream_mon["samples"] = []
@@ -5772,6 +5798,383 @@ def score_feed_status(s, now=None):
     if age < 120:
         return True, f"Scoreboard updated {int(age)}s ago."
     return False, f"Last scoreboard update {_fmt_duration(age)} ago — has the scorer started?"
+
+
+# ── AI camera spotter ──────────────────────────────────────────
+# While the stream is live, every few minutes Claude Haiku looks at a frame from each
+# camera and flags what a viewer would notice — fogged or wet lens, camera knocked off the
+# pitch, glare, too dark, something blocking it, a black or test picture. A frozen picture
+# is caught without AI: two identical frames in a row. Off by default (it spends the
+# club's AI credit: ~1p per 10 checks — about 10-15p for a 5-hour match at 5 minutes).
+SPOTTER_TICK_SEC = 60
+SPOTTER_PROMPT = (
+    "This is a frame from a live-streamed grassroots cricket match camera. Would a "
+    "viewer notice a problem with the picture? Look only for: a fogged, wet, dirty or "
+    "rain-spotted lens; the camera knocked or tilted so the pitch isn't properly in "
+    "shot; heavy glare or the picture washed out; far too dark; something close to "
+    "the lens blocking the view; a black, frozen-looking or test-pattern picture. "
+    "Normal things are fine: players, empty field between balls, clouds, shadows, "
+    "spectators in the distance. Reply with ONLY a JSON object: "
+    '{"ok": true or false, "problem": "<at most 8 words, empty if ok>"}')
+_spotter      = {"cameras": {}, "last_run": 0.0, "running": False}
+_spotter_lock = threading.Lock()
+
+
+def _spotter_cameras(st):
+    """(label, OBS source name) for each camera set up in the panel."""
+    cams = [("Wide camera", (st.get("obs_camera_name") or "").strip())]
+    if (st.get("camera2_rtsp_url") or "").strip():
+        cams.append(("Bowler-end camera", (st.get("obs_camera2_name") or "").strip()))
+    return [(label, name) for label, name in cams if name]
+
+
+def _obs_frame(st, source):
+    """JPEG bytes of a camera source as OBS sees it, or None."""
+    r = _obs_call(st, [("GetSourceScreenshot", {"sourceName": source, "imageFormat": "jpg",
+                                                "imageWidth": 768,
+                                                "imageCompressionQuality": 70})], timeout=8)
+    data = ((r or [None])[0] or {}).get("imageData", "")
+    if "," not in data:
+        return None
+    return base64.b64decode(data.split(",", 1)[1])
+
+
+def _ai_look(st, jpeg):
+    """(ok, problem) from Claude Haiku for one frame. Raises on API trouble."""
+    import anthropic
+    key = (st.get("anthropic_api_key") or "").strip() or os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    msg = anthropic.Anthropic(api_key=key).messages.create(
+        model="claude-haiku-4-5", max_tokens=150,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                         "data": base64.b64encode(jpeg).decode()}},
+            {"type": "text", "text": SPOTTER_PROMPT}]}])
+    raw = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    d = json.loads(raw)
+    return bool(d.get("ok", True)), str(d.get("problem") or "").strip()[:80]
+
+
+def spot_cameras(st=None, use_ai=True):
+    """Check every camera once. Updates _spotter and returns its camera dict."""
+    st = st or load_state()
+    with _spotter_lock:
+        if _spotter["running"]:
+            return dict(_spotter["cameras"])
+        _spotter["running"] = True
+    try:
+        for label, source in _spotter_cameras(st):
+            now = time.time()
+            prev = _spotter["cameras"].get(source, {})
+            rec = {"label": label, "checked_at": now, "ok": True, "problem": "", "how": "ai"}
+            jpeg = _obs_frame(st, source)
+            if jpeg is None:
+                rec.update(ok=False, problem="No picture from OBS", how="obs")
+            else:
+                digest = hashlib.sha1(jpeg).hexdigest()
+                rec["digest"] = digest
+                if prev.get("digest") == digest:
+                    rec.update(ok=False, problem="Picture frozen — same frame twice", how="frozen")
+                elif use_ai:
+                    try:
+                        ok, problem = _ai_look(st, jpeg)
+                        rec.update(ok=ok, problem=problem if not ok else "")
+                    except Exception as e:
+                        rec.update(how="error", problem=f"Couldn't check: {str(e)[:80]}")
+            with _spotter_lock:
+                _spotter["cameras"][source] = rec
+        with _spotter_lock:
+            _spotter["last_run"] = time.time()
+            return dict(_spotter["cameras"])
+    finally:
+        with _spotter_lock:
+            _spotter["running"] = False
+
+
+def spotter_due(st, live, now=None):
+    """Is a check due? Only when switched on, live (off-air checks would spend credit for
+    nothing), with an AI key, and the interval has passed."""
+    now = now or time.time()
+    every = max(1, int(st.get("camera_spotter_minutes") or 5)) * 60
+    return bool(st.get("camera_spotter") and live
+                and (st.get("anthropic_api_key") or "").strip()
+                and now - _spotter["last_run"] >= every)
+
+
+def _spotter_loop():
+    while True:
+        try:
+            st = load_state()
+            with _stream_mon_lock:
+                live = bool(_stream_mon["streaming"])
+            if spotter_due(st, live):
+                spot_cameras(st)
+        except Exception as e:
+            print(f"  ✗  Camera spotter: {e}")
+        time.sleep(SPOTTER_TICK_SEC)
+
+
+def start_camera_spotter():
+    threading.Thread(target=_spotter_loop, daemon=True).start()
+
+
+def spotter_status():
+    with _spotter_lock:
+        cams = [{k: v for k, v in rec.items() if k != "digest"}
+                for rec in _spotter["cameras"].values()]
+        return {"cameras": cams, "last_run": _spotter["last_run"] or None,
+                "problems": sum(1 for c in cams if not c["ok"])}
+
+
+# ── Spoken commentary (optional) ──────────────────────────────
+# The end-of-over line read aloud by the computer's own voice (voice.py: free, offline).
+# The overlay plays it as the commentary panel appears; OBS sends the overlay's audio into
+# the stream ("Control audio via OBS", which obs_setup switches on for the Overlay).
+VOICE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".voice")
+VOICE_KEEP = 20
+
+
+def speak_over_commentary(text, over_num):
+    """Synthesize the line and point _over_commentary at it. Never raises."""
+    global _over_commentary
+    try:
+        import voice
+        name = f"over_{int(over_num)}.wav"
+        ok, msg = voice.synthesize(text, os.path.join(VOICE_DIR, name))
+        if not ok:
+            print(f"  ✗  Spoken commentary: {msg}")
+            return
+        if _over_commentary.get("over") == over_num:
+            _over_commentary = {**_over_commentary, "voice": f"/voice/{name}?t={int(time.time())}"}
+        old = sorted(glob.glob(os.path.join(VOICE_DIR, "*.wav")), key=os.path.getmtime)
+        for f in old[:-VOICE_KEEP]:
+            os.remove(f)
+    except Exception as e:
+        print(f"  ✗  Spoken commentary: {e}")
+
+
+# ── Match page ─────────────────────────────────────────────────
+# One self-contained HTML page per match (match_page.py renders it): result, result card,
+# AI report, scorecard from the scorer's own figures, runs-by-over chart, a link to the
+# stream, sponsors. Built about a minute after the stream ends, or from the panel.
+MATCH_PAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_pages")
+_match_page_status = {"running": False, "ok": None, "message": "", "file": None}
+
+
+def _b64_file(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def _todays_stream_url(cfg):
+    """The club's YouTube video for today's stream, best-effort (None if YouTube isn't set
+    up, the login has lapsed, or nothing streamed today)."""
+    try:
+        if not (os.path.exists(YT_CREDS_FILE) and os.path.exists(YT_TOKEN_FILE)):
+            return None
+        yt, _ = _youtube_service(allow_interactive=False)
+        if yt is None:
+            return None
+        today = datetime.date.today().isoformat()
+        for status in ("active", "completed"):
+            items = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus=status,
+                                             broadcastType="all", maxResults=10).execute().get("items", [])
+            for b in items:
+                started = (b.get("snippet") or {}).get("actualStartTime") or ""
+                if started.startswith(today):
+                    return f"https://youtu.be/{b['id']}"
+    except Exception:
+        return None
+    return None
+
+
+def _result_sentence(facts):
+    sides = facts.get("sides") or []
+    won = next((s for s in sides if s.get("won")), None)
+    if facts.get("outcome") == "tie":
+        return "Match tied"
+    if facts.get("outcome") == "draw":
+        return "Match drawn"
+    if facts.get("outcome") in ("abandoned", "cancelled"):
+        return "Match " + facts["outcome"]
+    if won:
+        return f"{won['club']} won {facts.get('margin') or ''}".strip()
+    return "Match in progress"
+
+
+def build_match_page():
+    """Gather everything and write the page. Returns (ok, message, path)."""
+    import math
+    import match_page
+    import tempfile
+    cfg = load_state()
+    facts = generate_social_graphic_facts()
+    if not facts.get("ok"):
+        return False, facts.get("error") or "No match data yet", None
+    db = match_facts_from_db(current_match_id())
+    sides = facts.get("sides") or []
+    innings = []
+    for i, key in enumerate(sorted(db["innings"])):
+        rec = db["innings"][key]
+        side = sides[i] if i < len(sides) else {}
+        innings.append({
+            "team": side.get("club") or rec.get("batting_team", ""),
+            "total": f"{rec.get('score', 0)}-{rec.get('wickets', 0)} ({rec.get('overs')} ov)",
+            "batters": db["batters"].get(key, []),
+            "bowlers": db["bowlers"].get(key, []),
+            "fow": [f for f in db["fall_of_wickets"] if f.get("innings") == key]})
+    worm = {}
+    try:
+        with _db_lock, _db() as c:
+            for inn, over, runs in c.execute(
+                    "SELECT innings, over, MAX(cum_runs) FROM balls WHERE match_id=? "
+                    "GROUP BY innings, over ORDER BY innings, over", (current_match_id(),)):
+                # Never past the innings' own overs: a re-scored or replayed innings can
+                # leave balls logged beyond where it finished.
+                rec = db["innings"].get(str(inn)) or {}
+                try:
+                    last = math.ceil(float(rec.get("overs")))
+                except (TypeError, ValueError):
+                    last = None
+                if last is None or over + 1 <= last:
+                    worm.setdefault(str(inn), []).append((over + 1, runs or 0))
+    except sqlite3.Error:
+        pass
+    report = ""
+    try:
+        r = generate_match_report("report")
+        report = r.get("text", "") if r.get("ok") else ""
+    except Exception:
+        pass
+    card_b64 = None
+    try:
+        photos = list_social_photos("")
+        photo = max((os.path.join(_socials_dir(""), p) for p in photos),
+                    key=os.path.getmtime) if photos else None
+        tmp_card = os.path.join(tempfile.gettempdir(), "match_page_card.png")
+        build_instagram_image(facts, photo, tmp_card)
+        card_b64 = _b64_file(tmp_card)
+    except Exception:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    logos = os.path.expanduser((cfg.get("logos_folder") or "").strip()) or os.path.join(here, "logos")
+    cid = str(cfg.get("home_club_id") or "").strip()
+    crest = next((p for p in (os.path.join(logos, cid + e) for e in (".png", ".webp", ".jpg", ".jpeg"))
+                  if cid and os.path.exists(p)), None)
+    sp_dir = os.path.expanduser(cfg.get("sponsors_folder", "").strip() or os.path.join(here, "sponsors"))
+    sponsors = []
+    for p in sponsor_logos_for_card(sp_dir, cfg.get("sponsor_id", "")):
+        try:
+            sponsors.append(_b64_file(p))
+        except OSError:
+            pass
+    try:
+        import result_card
+        accent = "#%02x%02x%02x" % result_card.palette(cfg.get("home_colour", "#1a3a5c"))["hi"]
+    except Exception:
+        accent = "#2f6db3"
+    title = " v ".join(s.get("club", "") for s in sides[:2]) or (cfg.get("home_team") or "Match")
+    html_text = match_page.render({
+        "club": cfg.get("home_team", ""), "title": title,
+        "date": facts.get("date") or datetime.date.today().strftime("%d %b %Y"),
+        "competition": facts.get("competition", ""), "result": _result_sentence(facts),
+        "report": report, "innings": innings, "worm": worm,
+        "colours": [accent, "#d9534f"], "card_png_b64": card_b64,
+        "crest_b64": _b64_file(crest) if crest else None, "sponsors_b64": sponsors,
+        "video_url": _todays_stream_url(cfg), "accent": accent})
+    os.makedirs(MATCH_PAGES_DIR, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "match"
+    path = os.path.join(MATCH_PAGES_DIR, f"{datetime.date.today().isoformat()}_{slug}.html")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html_text)
+    return True, f"Match page saved: {path}", path
+
+
+_match_page_lock = threading.Lock()
+
+
+def start_match_page_build():
+    """Build in the background unless a build is already running. Returns False if busy.
+    Locked: the stream-end timer and the panel's button can arrive together."""
+    with _match_page_lock:
+        if _match_page_status["running"]:
+            return False
+        _match_page_status.update(running=True, ok=None, message="")
+
+    def run():
+        try:
+            ok, msg, path = build_match_page()
+        except Exception as e:
+            ok, msg, path = False, str(e)[:200], None
+        _match_page_status.update(running=False, ok=ok, message=msg, file=path)
+        print(f"  {'✓' if ok else '✗'}  Match page: {msg}")
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
+def _match_page_after_stream_end():
+    with _stream_mon_lock:
+        back_on = _stream_mon["streaming"]
+    if not back_on:
+        start_match_page_build()
+
+
+def latest_match_page():
+    pages = sorted(glob.glob(os.path.join(MATCH_PAGES_DIR, "*.html")), key=os.path.getmtime)
+    return pages[-1] if pages else None
+
+
+# ── Win predictor ──────────────────────────────────────────────
+# Live win chance from this season's scorecards (see win_predictor.py). The league model is
+# built from the match's own format (40-over, 50-over…) when there are at least
+# WIN_MODEL_FORMAT_MIN games of it, else from all formats pooled.
+WIN_MODEL_FORMAT_MIN = 10
+
+
+_win_history_cache = {"mtime": None, "rows": []}
+
+
+def _season_innings_history():
+    """This season's innings summaries: from the in-memory season stats, else straight from
+    their cache file — which survives a restart, so the predictor doesn't go quiet until
+    someone presses "Refresh season stats" again. The file is re-read only when it changes."""
+    with _season_stats_lock:
+        rows = list(_season_stats.get("innings_history") or [])
+    if rows:
+        return rows
+    try:
+        mtime = os.path.getmtime(SEASON_STATS_CACHE_FILE)
+        if _win_history_cache["mtime"] != mtime:
+            with open(SEASON_STATS_CACHE_FILE, encoding="utf-8") as f:
+                _win_history_cache.update(mtime=mtime,
+                                          rows=json.load(f).get("innings_history") or [])
+        return list(_win_history_cache["rows"])
+    except (OSError, ValueError):
+        return []
+
+
+def win_prediction(state, cfg=None):
+    """The win_predictor result for a /live state, or None."""
+    import win_predictor
+    cfg = cfg or load_state()
+    if not cfg.get("graphics_win_predictor", True):
+        return None
+    innings = int(state.get("innings") or 1)
+    score, wkts = int(state.get("score") or 0), int(state.get("wickets") or 0)
+    overs = state.get("overs") or 0
+    if not (score or wkts or win_predictor._balls(overs)):
+        return None                                  # pre-match frame
+    remaining = int(state.get("ballsRemaining") or 0)
+    limit = None
+    if remaining > 0:
+        limit = (win_predictor._balls(overs) + remaining) / 6
+    limit = limit or int(cfg.get("max_overs") or 0) or None
+    history = _season_innings_history()
+    same = [h for h in history if limit and h["overs_limit"] == round(limit)]
+    model = win_predictor.league_model(same if len(same) >= WIN_MODEL_FORMAT_MIN else history)
+    target = int(state.get("targetRuns") or 0)
+    if innings >= 2 and not target and int(state.get("runsRequired") or 0) > 0:
+        target = score + int(state["runsRequired"])
+    return win_predictor.predict(innings, score, wkts, overs, limit, model, target=target)
 
 
 # ── Pre-match check ────────────────────────────────────────────
@@ -6919,6 +7322,129 @@ def _ff_filter_path(path):
     return path.replace("\\", "/").replace(":", "\\:")
 
 
+# ── Social clips (vertical 9:16, for Shorts / Reels / TikTok) ──
+# After the match, every tagged replay (wicket, six, fifty…) becomes a vertical clip with a
+# headline, a short line about the moment and the club badge, plus a ready-to-paste post
+# caption. Post-match by design: re-encoding video on the streaming laptop mid-match would
+# compete with OBS's encoder. Rendering lives in social_clips.py.
+_social_clips_status = {"running": False, "ok": None, "message": "", "done": 0, "total": 0}
+
+
+def social_clips_dir(folder=None):
+    folder = folder or (load_state().get("replay_folder", "") or _default_replay_folder())
+    return os.path.join(folder, "social_clips", datetime.date.today().isoformat())
+
+
+def ai_clip_texts(caption, reason, cfg):
+    """(on-screen line, post caption) for one clip. Claude Haiku writes both from the clip's
+    tag (who, what, the score); without a key — or if the call fails — the tag itself and a
+    plain caption are used, so clips are still made offline."""
+    club = cfg.get("home_team", "") or "the club"
+    fallback = (caption, f"{caption} 🏏 #cricket #villagecricket")
+    key = (cfg.get("anthropic_api_key") or "").strip()
+    if not key or not caption:
+        return fallback
+    try:
+        import anthropic
+        prompt = (
+            f"A cricket club ({club}) is posting a short vertical video clip of this moment "
+            f"from their live stream:\n{caption}\n\n"
+            "That text doesn't say which team the player is on — it could be the club's "
+            "player or the opposition's — so never write \"we\", \"us\" or \"our\" about "
+            "the moment. Name the player and what happened.\n"
+            "Return ONLY a JSON object with two keys:\n"
+            '  "line": one punchy line shown on the video, max 70 characters, no hashtags, '
+            "no emojis — use only facts given above\n"
+            '  "post": a caption for Instagram/TikTok, max 40 words, at most 1 emoji and 3 '
+            "hashtags, facts from above only")
+        msg = anthropic.Anthropic(api_key=key).messages.create(
+            model="claude-haiku-4-5", max_tokens=300,
+            messages=[{"role": "user", "content": prompt}])
+        raw = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+        d = json.loads(raw)
+        line = str(d.get("line") or "").strip()[:90] or caption
+        post = str(d.get("post") or "").strip() or fallback[1]
+        return line, post
+    except Exception:
+        return fallback
+
+
+def make_social_clips(folder=None):
+    """Render a vertical clip for every tagged replay in the replay folder (replay-test and
+    untagged clips are skipped). Already-made clips are kept, so re-running only adds new
+    ones. Returns (ok, message, made)."""
+    import social_clips
+    import tempfile
+    if not shutil.which("ffmpeg"):
+        return False, "FFmpeg not found — download from https://ffmpeg.org/download.html and add to PATH", []
+    cfg = load_state()
+    folder = folder or (cfg.get("replay_folder", "") or _default_replay_folder())
+    clips = [c for p in ("*.mkv", "*.mp4", "*.flv", "*.mov")
+             for c in glob.glob(os.path.join(folder, p))
+             if "highlights" not in os.path.basename(c).lower()]
+    tags = clip_tags(clips)
+    for name, caption in guess_clip_tags(
+            [c for c in clips if os.path.basename(c) not in tags]).items():
+        tags[name] = {"reason": "auto", "caption": caption}
+    plan = [e for e in plan_highlights(clips, tags) if e["caption"]]
+    if not plan:
+        return False, "No tagged replays to make clips from yet", []
+    out_dir = social_clips_dir(folder)
+    os.makedirs(out_dir, exist_ok=True)
+    logos = os.path.expanduser((cfg.get("logos_folder") or "").strip()) or \
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos")
+    cid = str(cfg.get("home_club_id") or "").strip()
+    badge = next((p for p in (os.path.join(logos, cid + e) for e in (".png", ".webp", ".jpg"))
+                  if cid and os.path.exists(p)), None)
+    try:
+        import result_card
+        accent = "0x%02X%02X%02X" % result_card.palette(cfg.get("home_colour", "#1a3a5c"))["hi"]
+    except Exception:
+        accent = "0xFFFFFF"
+    handle = (cfg.get("social_handle") or "").strip()
+    work = tempfile.mkdtemp(prefix="social_clips_")
+    made, failed = [], 0
+    _social_clips_status.update(total=len(plan), done=0)
+    try:
+        for i, e in enumerate(plan, start=1):
+            reason = tags.get(os.path.basename(e["file"]), {}).get("reason", "")
+            headline = social_clips.headline_for(reason if reason != "auto" else e["caption"])
+            slug = re.sub(r"[^a-z0-9]+", "-", headline.lower()).strip("-") or "clip"
+            out = os.path.join(out_dir, f"{i:02d}_{slug}.mp4")
+            if not (os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(e["file"])):
+                line, post = ai_clip_texts(e["caption"], reason, cfg)
+                ok, msg = social_clips.render(e["file"], out, headline, line, work,
+                                              badge=badge, handle=handle, accent=accent)
+                if not ok:
+                    failed += 1
+                    print(f"  ✗  Social clip {i}: {msg}")
+                    continue
+                with open(os.path.splitext(out)[0] + ".txt", "w", encoding="utf-8") as fh:
+                    fh.write(post + "\n")
+            made.append(os.path.basename(out))
+            _social_clips_status.update(done=i)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    msg = f"{len(made)} clip{'s' if len(made) != 1 else ''} ready in {out_dir}"
+    if failed:
+        msg += f" ({failed} failed — see the server window)"
+    return bool(made), msg, made
+
+
+def list_social_clips():
+    out_dir = social_clips_dir()
+    clips = []
+    for f in sorted(glob.glob(os.path.join(out_dir, "*.mp4"))):
+        txt = os.path.splitext(f)[0] + ".txt"
+        try:
+            with open(txt, encoding="utf-8") as fh:
+                caption = fh.read().strip()
+        except OSError:
+            caption = ""
+        clips.append({"name": os.path.basename(f), "caption": caption})
+    return clips
+
+
 def compile_highlights(folder, output_path, max_clips=100):
     """
     Stitch replay clips into a captioned highlights reel using FFmpeg.
@@ -7283,6 +7809,20 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/commentary/over":
             self._json(_over_commentary)
 
+        elif path.startswith("/voice/"):
+            # The overlay's spoken commentary (loopback OBS source; same exposure as the
+            # commentary text it reads aloud).
+            name = os.path.basename(path[len("/voice/"):].replace("\\", "/"))
+            full = os.path.join(VOICE_DIR, name)
+            if name.endswith(".wav") and os.path.isfile(full):
+                self._file(full, "audio/wav", no_cache=True)
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
+
+        elif path == "/camera/spotter":
+            if not self._check_token(): return
+            self._json(spotter_status())
+
         elif path == "/precheck/last":
             if not self._check_token(): return
             self._json(_precheck_last["result"] or {"ok": None, "checks": [], "ran_at": None})
@@ -7453,8 +7993,7 @@ class Handler(BaseHTTPRequestHandler):
             chosen = ""
             if agents and not _agent_normalise(st.get("agent_host", "")):
                 chosen = agents[0]["address"]
-                st["agent_last_seen"] = chosen
-                save_state(st)
+                update_state(lambda cur: cur.__setitem__("agent_last_seen", chosen))
                 globals()["_agent_resolved"] = chosen
             self._json({
                 "ok": bool(agents),
@@ -7562,6 +8101,32 @@ class Handler(BaseHTTPRequestHandler):
                     hint = (" — Pillow isn't installed on this machine. Run the installer "
                             "again, or: pip3 install Pillow") if "PIL" in str(e) else ""
                     self._json({"ok": False, "error": f"Image build failed: {e}{hint}"})
+
+        elif path == "/social/clips":
+            if not self._check_token(): return
+            self._json({**_social_clips_status, "clips": list_social_clips()})
+
+        elif path.startswith("/social/clips/file/"):
+            # Same exposure as /social/image/latest: content made to be posted publicly.
+            name = os.path.basename(path[len("/social/clips/file/"):].replace("\\", "/"))
+            full = os.path.join(social_clips_dir(), name)
+            if name.endswith(".mp4") and os.path.isfile(full):
+                self._file(full, "video/mp4")
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
+
+        elif path == "/match/page":
+            if not self._check_token(): return
+            p = latest_match_page()
+            self._json({**_match_page_status, "latest": os.path.basename(p) if p else None})
+
+        elif path == "/match/page/latest":
+            # Same exposure as the result card: a page made to be shared.
+            p = latest_match_page()
+            if p:
+                self._file(p, "text/html; charset=utf-8", no_cache=True)
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
 
         elif path == "/social/image/latest":
             # Serve the most recently generated Instagram graphic for preview/download.
@@ -8122,6 +8687,10 @@ class Handler(BaseHTTPRequestHandler):
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
                     pcs_state["away_abbrev"] = s.get("away_abbrev","").strip().upper()
+                    try:
+                        pcs_state["winPredictor"] = win_prediction(pcs_state, s)
+                    except Exception:
+                        pcs_state["winPredictor"] = None
                     events = []
                     if mutate:
                         # Buffer boundary/wicket events (this advances _prev_state)
@@ -8337,6 +8906,14 @@ class Handler(BaseHTTPRequestHandler):
                                             d.get("url"), d.get("name"), d.get("scene"))
             self._json({"ok": ok, "message": msg})
 
+        elif path == "/camera/spotter":
+            # "Check cameras now": works off-air too, for trying it out before a match.
+            if not self._check_rate_limit(path): return
+            st = load_state()
+            has_key = bool((st.get("anthropic_api_key") or "").strip())
+            spot_cameras(st, use_ai=has_key)
+            self._json({**spotter_status(), "used_ai": has_key})
+
         elif path == "/precheck":
             if not self._check_rate_limit(path): return
             self._json(run_precheck())
@@ -8419,6 +8996,29 @@ class Handler(BaseHTTPRequestHandler):
                             "message": msg if ok else "", "error": msg if not ok else ""})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
+
+        elif path == "/match/page":
+            started = start_match_page_build()
+            self._json({"ok": started, "error": None if started else "Already building"},
+                       status=200 if started else 409)
+
+        elif path == "/social/clips":
+            with _match_page_lock:        # the same check-then-set race as the match page
+                busy = _social_clips_status["running"]
+                if not busy:
+                    _social_clips_status.update(running=True, ok=None, message="", done=0, total=0)
+            if busy:
+                self._json({"ok": False, "error": "Already making clips"}, status=409)
+                return
+            def run_clips():
+                try:
+                    ok, msg, _ = make_social_clips()
+                except Exception as exc:
+                    ok, msg = False, str(exc)
+                _social_clips_status.update(running=False, ok=ok, message=msg)
+                print(f"  {'✓' if ok else '✗'}  Social clips: {msg}")
+            threading.Thread(target=run_clips, daemon=True).start()
+            self._json({"ok": True, "started": True})
 
         elif path == "/highlights":
             try:
@@ -8571,11 +9171,10 @@ class Handler(BaseHTTPRequestHandler):
                     cfg_teams = _manual["session"].config
                 # Manual scoring implies: no demo data, no widget fallback, and the
                 # overlay's team names/colour mapping should match what's being scored.
-                st = load_state()
-                st.update({"demo_mode": False, "use_widget": False,
-                           "home_team": cfg_teams["home"], "away_team": cfg_teams["away"],
-                           "max_overs": cfg_teams["max_overs"]})
-                save_state(st)
+                update_state(lambda st: st.update({
+                    "demo_mode": False, "use_widget": False,
+                    "home_team": cfg_teams["home"], "away_team": cfg_teams["away"],
+                    "max_overs": cfg_teams["max_overs"]}))
                 print(f"  \u2713  Manual scoring: {cfg_teams['home']} v {cfg_teams['away']}, "
                       f"{cfg_teams['max_overs']} overs")
                 self._json({"ok": True, "state": manual_ui_state()})
@@ -8663,6 +9262,7 @@ if __name__ == "__main__":
     start_stream_monitor()
     start_viewer_sampler()
     start_precheck_loop()
+    start_camera_spotter()
     start_obs_guard()
     start_pcs_bridge_sync()
 

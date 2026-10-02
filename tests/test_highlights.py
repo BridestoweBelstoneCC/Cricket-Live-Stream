@@ -50,6 +50,24 @@ class TestMakeClipCaption(unittest.TestCase):
         cap = server.make_clip_caption("Wicket", {})
         self.assertIn("WICKET", cap)
 
+    def test_two_laptop_mode_captions_from_the_agents_frame(self):
+        # Agent mode never sets _pcs_last_state, so every clip used to be captioned
+        # "SIX" with no batter or score.
+        from unittest import mock
+        try:
+            import websocket  # noqa: F401
+        except ImportError:
+            self.skipTest("websocket-client not installed")
+        seen = []
+        with mock.patch.object(server, "_agent_last_state", MATCH_STATE), \
+                mock.patch.object(server, "_pcs_last_state", None), \
+                mock.patch.object(server, "manual_live_state", return_value=None), \
+                mock.patch.object(server, "make_clip_caption",
+                                  side_effect=lambda r, st: seen.append(st) or ""), \
+                mock.patch("websocket.create_connection", side_effect=OSError("no OBS")):
+            server.obs_trigger_replay({"pcs_source": "agent"}, "Six")
+        self.assertIs(seen[0], MATCH_STATE)
+
 
 class ClipDbBase(unittest.TestCase):
     def setUp(self):

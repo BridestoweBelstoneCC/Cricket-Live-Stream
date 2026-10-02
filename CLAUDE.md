@@ -70,6 +70,43 @@ shipped without it and misreported a manual match day until fixed.
   conceded/pairs result from totals) or, for the streamed match, `generate_social_graphic_facts()`
   (deterministic from the ball log; the AI only writes the caption). Visual changes: render it
   and look — `tests/test_result_card.py` checks contrast and layout robustness, not looks.
+- **`social_clips.py`** — vertical 9:16 clips for Shorts/Reels/TikTok from tagged replays
+  (`server.make_social_clips()` picks the clips, gets Claude Haiku's line + post caption
+  via `ai_clip_texts()`, falls back to the replay tag offline). Text reaches ffmpeg only via
+  `textfile=` (no caption can break the filter graph) and rendering runs at below-normal
+  priority. Post-match on purpose — don't trigger it from a replay mid-stream; x264 on the
+  streaming laptop competes with OBS. The caption prompt must keep saying the tag doesn't
+  know which side a player is on: without it, Haiku wrote "takes us to 60-1" about an
+  opposition batter.
+- **AI camera spotter** (`spot_cameras()` / `spotter_due()` in server.py, `/camera/spotter`):
+  OBS `GetSourceScreenshot` of each camera source -> Claude Haiku with `SPOTTER_PROMPT` ->
+  `{ok, problem}`. Live-only and off by default (`camera_spotter`) — it spends the club's AI
+  credit; never make it run off-air on a timer. Frozen = two byte-identical JPEGs in a row
+  (real cameras have sensor noise), no AI needed. An API failure is reported as "couldn't
+  check", never as a camera problem.
+- **`win_predictor.py`** — live win probability (pure stdlib): DLS-shaped resources curve
+  (matches DLS reference points to within ~2%) x this season's first-innings scoring (from
+  the season-stats download's `innings_history`, per format when >= `WIN_MODEL_FORMAT_MIN`
+  games, else pooled), normal-distribution totals. `server.win_prediction()` adds
+  `winPredictor` to every /live state; the overlay's `fillWinPredictor()` reads the copy
+  `processPCSData` stores — **there is no global `state` in overlay.html**: reading one
+  from a function called by showOverSummary threw and silently skipped the rest of the
+  over sequence (AI commentary, league table, sponsor strap). The history also comes from
+  the cache file, so a restart doesn't silence it. `backtest()` is the honest number: 66%
+  favourite-correct at the start of a chase on 2026's 64 matches.
+- **`voice.py`** — spoken commentary (stdlib): Windows System.Speech via a temp .ps1,
+  macOS `say`, espeak on Linux. Text always via a file, never argv. `speak_over_commentary()`
+  attaches the WAV to `_over_commentary` only if that's still the same over (a slow synth
+  must not land on the next one); the overlay's `speakCommentary()` plays it once per over.
+  It only reaches viewers because obs_setup sets `reroute_audio` on the Overlay source.
+- **`match_page.py`** — the shareable match page: pure `render(d)`, every string
+  HTML-escaped, images inlined as base64 so the one file works anywhere. `server.py`'s
+  `build_match_page()` gathers the parts, each one optional (a failed AI report or card
+  just leaves that section out), and the stream monitor schedules it 60s after a
+  live→off transition. Scorecards come from `match_facts_from_db` (rowid order = batting
+  order; its top-scorer sort works on a COPY so it can't reorder them). The chart is
+  clipped to each innings' own overs, because a re-scored innings can leave stray balls
+  logged past the end. `/match/page/latest` is open, like the result card.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is
@@ -275,7 +312,7 @@ python3 scripts/compile_check_all.py
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~550, under a minute; stdlib unittest, no pytest). Covers ball/PCS/widget
+# 3. Automated tests (~670, under a minute; stdlib unittest, no pytest). Covers ball/PCS/widget
 #    parsing, season-stats aggregation, league-table resolution, session tokens, quickstart's
 #    state merge and its crash-restart loop, the match simulator's engine invariants, highlight
 #    tagging/planning, manual scoring (engine, exact-replay undo, /scoring end-to-end),
@@ -460,6 +497,15 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
     populated — gating on it delays the whole end-of-over sequence to the first ball of the
     NEXT over, since `_lastPCSovers` never gets the chance to update on the poll where
     `overs` actually ticks over.
+  - **Boundary and hat-trick detection** match each ticker to the over it BELONGS to
+    (`tickerOverOf()`: a write sitting on a whole number of overs belongs to the finished
+    over), never to `overs` itself. Keyed on `overs`, the occasional write that DOES show
+    the final ball read as a brand-new over — every four/six in it replayed again — and
+    the next over's first ball was then sliced off as already seen. The hat-trick chain
+    also runs on the over-completing write even when the ticker didn't change (the usual
+    case): only that write still has the pre-rotation bowler to credit a final-ball wicket
+    to; left to the next ball, it went to the incoming bowler. `tests/test_bowler_milestones.py`
+    covers all three NV Play behaviours (stale / cleared / final ball shown).
   - **The ball logger** (`log_ball_data`) treats a ticker identical to the over it just
     logged as cleared, on the over-completing write and every write after it until the
     next ball. Before that, the final ball of most overs was never recovered (it read as
