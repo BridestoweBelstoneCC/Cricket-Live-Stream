@@ -84,3 +84,6 @@ TODO.md
 # release editor by hand — same reasoning as the video rule above: GitHub's own CDN is
 # where these belong once published, not a committed file in the repo.
 examples/
+
+# Spoken-commentary recordings (generated each over, kept to the last 20)
+.voice/

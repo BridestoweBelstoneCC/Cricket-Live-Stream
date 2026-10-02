@@ -94,6 +94,11 @@ shipped without it and misreported a manual match day until fixed.
   over sequence (AI commentary, league table, sponsor strap). The history also comes from
   the cache file, so a restart doesn't silence it. `backtest()` is the honest number: 66%
   favourite-correct at the start of a chase on 2026's 64 matches.
+- **`voice.py`** — spoken commentary (stdlib): Windows System.Speech via a temp .ps1,
+  macOS `say`, espeak on Linux. Text always via a file, never argv. `speak_over_commentary()`
+  attaches the WAV to `_over_commentary` only if that's still the same over (a slow synth
+  must not land on the next one); the overlay's `speakCommentary()` plays it once per over.
+  It only reaches viewers because obs_setup sets `reroute_audio` on the Overlay source.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is

@@ -154,6 +154,9 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
                 "fps_custom":  True,
                 "shutdown":    False,
                 "restart_when_active": False,
+                # Overlay audio (spoken commentary) goes through OBS's mixer and into the
+                # stream, not just out of the laptop's speakers.
+                "reroute_audio": True,
             }
         })
         log_msg("Overlay browser source settings updated", "ok")
@@ -170,6 +173,7 @@ def obs_setup(host="localhost", port=4455, password="", replay_folder="",
                 "fps_custom":  True,
                 "shutdown":    False,
                 "restart_when_active": False,
+                "reroute_audio": True,
                 "css":         "",
             }
         })

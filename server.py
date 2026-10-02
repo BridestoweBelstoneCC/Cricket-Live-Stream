@@ -895,6 +895,8 @@ def generate_over_commentary(over_num, over_runs, bowler, figs, balls_str, state
             if '.' in t: t = t.split('.')[0].strip() + '.'
             _over_commentary = {'text': t, 'over': over_num}
             print(f'  ✓  Over {over_num} commentary: {t[:55]}')
+            if load_state().get('graphics_voice_commentary'):
+                speak_over_commentary(t, over_num)
         except Exception as exc:
             print(f'  ✗  Over commentary: {exc}')
     threading.Thread(target=_go, daemon=True).start()
@@ -1680,6 +1682,7 @@ DEFAULT_STATE = {
     # camera2_rtsp_url is also configured. See TODO.md.
     "graphics_camera_auto_cut":False,
     "graphics_win_predictor":  True,
+    "graphics_voice_commentary": False,   # read the end-of-over line aloud (computer voice)
     "camera_spotter":          False,   # AI camera checks while live — spends AI credit
     "camera_spotter_minutes":  5,
     "replay_folder":           "",
@@ -5908,6 +5911,33 @@ def spotter_status():
                 "problems": sum(1 for c in cams if not c["ok"])}
 
 
+# ── Spoken commentary (optional) ──────────────────────────────
+# The end-of-over line read aloud by the computer's own voice (voice.py: free, offline).
+# The overlay plays it as the commentary panel appears; OBS sends the overlay's audio into
+# the stream ("Control audio via OBS", which obs_setup switches on for the Overlay).
+VOICE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".voice")
+VOICE_KEEP = 20
+
+
+def speak_over_commentary(text, over_num):
+    """Synthesize the line and point _over_commentary at it. Never raises."""
+    global _over_commentary
+    try:
+        import voice
+        name = f"over_{int(over_num)}.wav"
+        ok, msg = voice.synthesize(text, os.path.join(VOICE_DIR, name))
+        if not ok:
+            print(f"  ✗  Spoken commentary: {msg}")
+            return
+        if _over_commentary.get("over") == over_num:
+            _over_commentary = {**_over_commentary, "voice": f"/voice/{name}?t={int(time.time())}"}
+        old = sorted(glob.glob(os.path.join(VOICE_DIR, "*.wav")), key=os.path.getmtime)
+        for f in old[:-VOICE_KEEP]:
+            os.remove(f)
+    except Exception as e:
+        print(f"  ✗  Spoken commentary: {e}")
+
+
 # ── Win predictor ──────────────────────────────────────────────
 # Live win chance from this season's scorecards (see win_predictor.py). The league model is
 # built from the match's own format (40-over, 50-over…) when there are at least
@@ -7593,6 +7623,16 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/commentary/over":
             self._json(_over_commentary)
+
+        elif path.startswith("/voice/"):
+            # The overlay's spoken commentary (loopback OBS source; same exposure as the
+            # commentary text it reads aloud).
+            name = os.path.basename(path[len("/voice/"):].replace("\\", "/"))
+            full = os.path.join(VOICE_DIR, name)
+            if name.endswith(".wav") and os.path.isfile(full):
+                self._file(full, "audio/wav", no_cache=True)
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
 
         elif path == "/camera/spotter":
             if not self._check_token(): return

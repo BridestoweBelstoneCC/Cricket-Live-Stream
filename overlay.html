@@ -1244,7 +1244,10 @@ function nextGraphic() {
     try { showSponsorStripFor(id); } catch(e) { console.warn('sponsor strap error:', e); }
     if (id === 'over-commentary-display') {
       fetch('/commentary/over').then(function(r){return r.json();})
-        .then(function(d){ if (d && d.text) el('oc-text').textContent = d.text; })
+        .then(function(d){
+          if (d && d.text) el('oc-text').textContent = d.text;
+          speakCommentary(d);
+        })
         .catch(function(){});
     }
     setTimeout(() => {
@@ -1929,6 +1932,19 @@ function showOverSummary(overNum, overRuns, bowlerName, bowlerFigs, balls) {
   // happens per-panel in nextGraphic(), overlaid on over-summary/partnership/AI commentary
   // only (never the run rate worm).
   updateSponsorStrap();
+}
+
+// ── Spoken commentary (optional) ───────────────────────────
+// Plays the server's recording of the end-of-over line, once per over. OBS routes the
+// overlay's audio into the stream ("Control audio via OBS" on the Overlay source).
+var _lastSpokenOver = -1;
+function speakCommentary(d) {
+  try {
+    if (!cfg.graphics_voice_commentary || !d || !d.voice || d.over === _lastSpokenOver) return;
+    _lastSpokenOver = d.over;
+    var a = new Audio(SERVER + d.voice);
+    a.play().catch(function (e) { console.warn('voice play failed:', e); });
+  } catch (e) { console.warn('voice error:', e); }
 }
 
 // ── Win predictor panel ────────────────────────────────────

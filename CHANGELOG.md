@@ -6,6 +6,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New (optional): spoken commentary.** Graphics → AI commentary → **Speak the end-of-over
+  commentary** reads each end-of-over line aloud on the stream, in the computer's own voice
+  (British English where available — Microsoft Hazel on Windows, Daniel on a Mac). Free and
+  offline. Off by default: the voices are serviceable, not broadcast quality. OBS setup now
+  routes the overlay's audio into the stream ("Control audio via OBS").
 - **New: live win predictor.** After each over, a Win Predictor panel shows both teams'
   chances (and "Need 26 off 24 balls" in a chase, or the projected score in the first
   innings). It's built from how *this season's* matches have actually gone — the PlayCricket
