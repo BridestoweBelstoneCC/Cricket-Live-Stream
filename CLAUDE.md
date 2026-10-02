@@ -99,6 +99,14 @@ shipped without it and misreported a manual match day until fixed.
   attaches the WAV to `_over_commentary` only if that's still the same over (a slow synth
   must not land on the next one); the overlay's `speakCommentary()` plays it once per over.
   It only reaches viewers because obs_setup sets `reroute_audio` on the Overlay source.
+- **`match_page.py`** — the shareable match page: pure `render(d)`, every string
+  HTML-escaped, images inlined as base64 so the one file works anywhere. `server.py`'s
+  `build_match_page()` gathers the parts, each one optional (a failed AI report or card
+  just leaves that section out), and the stream monitor schedules it 60s after a
+  live→off transition. Scorecards come from `match_facts_from_db` (rowid order = batting
+  order; its top-scorer sort works on a COPY so it can't reorder them). The chart is
+  clipped to each innings' own overs, because a re-scored innings can leave stray balls
+  logged past the end. `/match/page/latest` is open, like the result card.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is

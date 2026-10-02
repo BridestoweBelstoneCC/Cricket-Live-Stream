@@ -87,3 +87,6 @@ examples/
 
 # Spoken-commentary recordings (generated each over, kept to the last 20)
 .voice/
+
+# Built match pages (per match, published by the club where they choose)
+match_pages/

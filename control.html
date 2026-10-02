@@ -981,6 +981,19 @@
     </div>
   </div>
   <div class="card">
+      <h2>Match page</h2>
+      <p class="section-note">
+        One web page for the whole match &mdash; result, result card, match report, scorecard,
+        runs-by-over chart, a link to the stream and your sponsors &mdash; as a single file you
+        can put on the club website or send straight to the club WhatsApp. Built automatically
+        a minute after the stream ends; build it here any time.
+      </p>
+      <button class="btn btn-test" onclick="buildMatchPage()" style="width:100%;">&#128196; Build match page</button>
+      <div id="match-page-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+      <a id="match-page-open" class="btn btn-test" href="/match/page/latest" target="_blank" rel="noopener"
+         style="display:none;width:100%;margin-top:6px;text-align:center;">Open the match page</a>
+  </div>
+  <div class="card">
       <h2>Social clips</h2>
       <p class="section-note">
         Every wicket, six, four and milestone replay as a vertical video for Shorts, Reels
@@ -1332,6 +1345,7 @@ async function doLogin() {
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
       loadSocialClips();         // same: /social/clips is token-gated
+      loadMatchPage();           // same: /match/page is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = d.error || 'Wrong password'; e.style.display = 'block'; }
@@ -1356,6 +1370,7 @@ async function doSkip() {
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
       loadSocialClips();         // same: /social/clips is token-gated
+      loadMatchPage();           // same: /match/page is token-gated
     } else {
       const e = document.getElementById('auth-error');
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
@@ -1650,6 +1665,36 @@ async function checkCamerasNow() {
 }
 loadSpotter();
 setInterval(loadSpotter, 60000);
+
+// ── Match page ──
+let _matchPagePoll = null;
+async function buildMatchPage() {
+  const st = document.getElementById('match-page-status');
+  try {
+    const res = await apiFetch('/match/page', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await res.json();
+    if (!res.ok) { st.textContent = d.error || 'Could not start'; return; }
+    st.textContent = 'Building the match page… (the report takes a few seconds)';
+    if (!_matchPagePoll) _matchPagePoll = setInterval(loadMatchPage, 2500);
+  } catch (e) { st.textContent = 'Could not reach the server'; }
+}
+async function loadMatchPage() {
+  const st = document.getElementById('match-page-status');
+  const open = document.getElementById('match-page-open');
+  if (!st) return;
+  try {
+    const res = await apiFetch('/match/page');
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.running && _matchPagePoll) { clearInterval(_matchPagePoll); _matchPagePoll = null; }
+    if (d.running) st.textContent = 'Building the match page…';
+    else if (d.message) { st.textContent = d.message; st.style.color = d.ok === false ? 'var(--bad)' : 'var(--muted)'; }
+    else if (d.latest) st.textContent = 'Latest: ' + d.latest;
+    if (open) open.style.display = d.latest ? '' : 'none';
+  } catch (e) {}
+}
+loadMatchPage();
 
 // ── Social clips ──
 let _socialPoll = null;

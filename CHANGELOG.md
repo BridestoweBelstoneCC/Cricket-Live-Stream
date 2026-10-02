@@ -6,6 +6,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New: automatic match page.** About a minute after the stream ends, CricketStream builds
+  a one-page match report to share: the result, the result card, the AI match report, a
+  runs-by-over chart, both scorecards and fall of wickets (from the scorer's own figures),
+  a "Watch the full stream" link to today's YouTube video, and the sponsors. It's a single
+  self-contained HTML file in `match_pages/` (no outside links needed), ready for the club
+  website or a WhatsApp group; After the match → **Match page** rebuilds or opens it.
+
 - **New (optional): spoken commentary.** Graphics → AI commentary → **Speak the end-of-over
   commentary** reads each end-of-over line aloud on the stream, in the computer's own voice
   (British English where available — Microsoft Hazel on Windows, Daniel on a Mac). Free and

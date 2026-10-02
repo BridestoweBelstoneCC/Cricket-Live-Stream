@@ -2578,10 +2578,11 @@ def match_facts_from_db(match_id):
             inns = c.execute("SELECT innings,batting_team,score,wickets,overs,limit_balls "
                              "FROM live_innings WHERE match_id=? ORDER BY innings",
                              (match_id,)).fetchall()
+            # rowid order = the order they first appeared: the batting order, near enough
             bats = c.execute("SELECT innings,name,runs,balls,out FROM live_batting "
-                             "WHERE match_id=?", (match_id,)).fetchall()
+                             "WHERE match_id=? ORDER BY rowid", (match_id,)).fetchall()
             bowls = c.execute("SELECT innings,name,overs,runs,wickets FROM live_bowling "
-                              "WHERE match_id=?", (match_id,)).fetchall()
+                              "WHERE match_id=? ORDER BY rowid", (match_id,)).fetchall()
             fow = c.execute("SELECT innings,wicket,batter,score FROM live_fow WHERE match_id=? "
                             "ORDER BY innings,wicket", (match_id,)).fetchall()
     except sqlite3.Error:
@@ -2598,9 +2599,9 @@ def match_facts_from_db(match_id):
             {"name": name, "o": overs or "0", "r": runs or 0, "w": wkts or 0})
     for inn, wicket, batter, score in fow:
         out["fall_of_wickets"].append({"batter": batter or "?", "score": f"{score}-{wicket}",
-                                       "howout": ""})
+                                       "howout": "", "innings": str(inn)})
     for inn, rows in out["batters"].items():
-        rows.sort(key=lambda b: -b["runs"])
+        rows = sorted(rows, key=lambda b: -b["runs"])     # a copy: keep batting order intact
         out["top_scorers"][inn] = [f"{b['name']} {b['runs']}{'' if b['out'] else '*'} "
                                    f"({b['balls']} balls)" for b in rows[:3] if b["runs"] > 0]
         out["milestones"] += [{"batter": b["name"], "milestone": f"{b['runs'] // 50 * 50}"}
@@ -5509,6 +5510,10 @@ def _stream_monitor_tick():
             _stream_mon["configured_kbps"] = vbitrate
         s0 = results[0]
         live = bool(s0.get("outputActive"))
+        if _stream_mon["streaming"] and not live:
+            # The stream just ended: build the match page a minute later (in case it's
+            # only a reconnect, a later end simply rebuilds it).
+            threading.Timer(60, start_match_page_build).start()
         _stream_mon["streaming"] = live
         if not live:
             _stream_mon["samples"] = []
@@ -5936,6 +5941,164 @@ def speak_over_commentary(text, over_num):
             os.remove(f)
     except Exception as e:
         print(f"  ✗  Spoken commentary: {e}")
+
+
+# ── Match page ─────────────────────────────────────────────────
+# One self-contained HTML page per match (match_page.py renders it): result, result card,
+# AI report, scorecard from the scorer's own figures, runs-by-over chart, a link to the
+# stream, sponsors. Built about a minute after the stream ends, or from the panel.
+MATCH_PAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "match_pages")
+_match_page_status = {"running": False, "ok": None, "message": "", "file": None}
+
+
+def _b64_file(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def _todays_stream_url(cfg):
+    """The club's YouTube video for today's stream, best-effort (None if YouTube isn't set
+    up, the login has lapsed, or nothing streamed today)."""
+    try:
+        if not (os.path.exists(YT_CREDS_FILE) and os.path.exists(YT_TOKEN_FILE)):
+            return None
+        yt, _ = _youtube_service(allow_interactive=False)
+        if yt is None:
+            return None
+        today = datetime.date.today().isoformat()
+        for status in ("active", "completed"):
+            items = yt.liveBroadcasts().list(part="id,snippet", broadcastStatus=status,
+                                             broadcastType="all", maxResults=10).execute().get("items", [])
+            for b in items:
+                started = (b.get("snippet") or {}).get("actualStartTime") or ""
+                if started.startswith(today):
+                    return f"https://youtu.be/{b['id']}"
+    except Exception:
+        return None
+    return None
+
+
+def _result_sentence(facts):
+    sides = facts.get("sides") or []
+    won = next((s for s in sides if s.get("won")), None)
+    if facts.get("outcome") == "tie":
+        return "Match tied"
+    if facts.get("outcome") == "draw":
+        return "Match drawn"
+    if facts.get("outcome") in ("abandoned", "cancelled"):
+        return "Match " + facts["outcome"]
+    if won:
+        return f"{won['club']} won {facts.get('margin') or ''}".strip()
+    return "Match in progress"
+
+
+def build_match_page():
+    """Gather everything and write the page. Returns (ok, message, path)."""
+    import math
+    import match_page
+    import tempfile
+    cfg = load_state()
+    facts = generate_social_graphic_facts()
+    if not facts.get("ok"):
+        return False, facts.get("error") or "No match data yet", None
+    db = match_facts_from_db(current_match_id())
+    sides = facts.get("sides") or []
+    innings = []
+    for i, key in enumerate(sorted(db["innings"])):
+        rec = db["innings"][key]
+        side = sides[i] if i < len(sides) else {}
+        innings.append({
+            "team": side.get("club") or rec.get("batting_team", ""),
+            "total": f"{rec.get('score', 0)}-{rec.get('wickets', 0)} ({rec.get('overs')} ov)",
+            "batters": db["batters"].get(key, []),
+            "bowlers": db["bowlers"].get(key, []),
+            "fow": [f for f in db["fall_of_wickets"] if f.get("innings") == key]})
+    worm = {}
+    try:
+        with _db_lock, _db() as c:
+            for inn, over, runs in c.execute(
+                    "SELECT innings, over, MAX(cum_runs) FROM balls WHERE match_id=? "
+                    "GROUP BY innings, over ORDER BY innings, over", (current_match_id(),)):
+                # Never past the innings' own overs: a re-scored or replayed innings can
+                # leave balls logged beyond where it finished.
+                rec = db["innings"].get(str(inn)) or {}
+                try:
+                    last = math.ceil(float(rec.get("overs")))
+                except (TypeError, ValueError):
+                    last = None
+                if last is None or over + 1 <= last:
+                    worm.setdefault(str(inn), []).append((over + 1, runs or 0))
+    except sqlite3.Error:
+        pass
+    report = ""
+    try:
+        r = generate_match_report("report")
+        report = r.get("text", "") if r.get("ok") else ""
+    except Exception:
+        pass
+    card_b64 = None
+    try:
+        photos = list_social_photos("")
+        photo = max((os.path.join(_socials_dir(""), p) for p in photos),
+                    key=os.path.getmtime) if photos else None
+        tmp_card = os.path.join(tempfile.gettempdir(), "match_page_card.png")
+        build_instagram_image(facts, photo, tmp_card)
+        card_b64 = _b64_file(tmp_card)
+    except Exception:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    logos = os.path.expanduser((cfg.get("logos_folder") or "").strip()) or os.path.join(here, "logos")
+    cid = str(cfg.get("home_club_id") or "").strip()
+    crest = next((p for p in (os.path.join(logos, cid + ".png"),) if cid and os.path.exists(p)), None)
+    sp_dir = os.path.expanduser(cfg.get("sponsors_folder", "").strip() or os.path.join(here, "sponsors"))
+    sponsors = []
+    for p in sponsor_logos_for_card(sp_dir, cfg.get("sponsor_id", "")):
+        try:
+            sponsors.append(_b64_file(p))
+        except OSError:
+            pass
+    try:
+        import result_card
+        accent = "#%02x%02x%02x" % result_card.palette(cfg.get("home_colour", "#1a3a5c"))["hi"]
+    except Exception:
+        accent = "#2f6db3"
+    title = " v ".join(s.get("club", "") for s in sides[:2]) or (cfg.get("home_team") or "Match")
+    html_text = match_page.render({
+        "club": cfg.get("home_team", ""), "title": title,
+        "date": facts.get("date") or datetime.date.today().strftime("%d %b %Y"),
+        "competition": facts.get("competition", ""), "result": _result_sentence(facts),
+        "report": report, "innings": innings, "worm": worm,
+        "colours": [accent, "#d9534f"], "card_png_b64": card_b64,
+        "crest_b64": _b64_file(crest) if crest else None, "sponsors_b64": sponsors,
+        "video_url": _todays_stream_url(cfg), "accent": accent})
+    os.makedirs(MATCH_PAGES_DIR, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "match"
+    path = os.path.join(MATCH_PAGES_DIR, f"{datetime.date.today().isoformat()}_{slug}.html")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html_text)
+    return True, f"Match page saved: {path}", path
+
+
+def start_match_page_build():
+    """Build in the background unless a build is already running. Returns False if busy."""
+    if _match_page_status["running"]:
+        return False
+    _match_page_status.update(running=True, ok=None, message="")
+
+    def run():
+        try:
+            ok, msg, path = build_match_page()
+        except Exception as e:
+            ok, msg, path = False, str(e)[:200], None
+        _match_page_status.update(running=False, ok=ok, message=msg, file=path)
+        print(f"  {'✓' if ok else '✗'}  Match page: {msg}")
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
+def latest_match_page():
+    pages = sorted(glob.glob(os.path.join(MATCH_PAGES_DIR, "*.html")), key=os.path.getmtime)
+    return pages[-1] if pages else None
 
 
 # ── Win predictor ──────────────────────────────────────────────
@@ -7931,6 +8094,19 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
 
+        elif path == "/match/page":
+            if not self._check_token(): return
+            p = latest_match_page()
+            self._json({**_match_page_status, "latest": os.path.basename(p) if p else None})
+
+        elif path == "/match/page/latest":
+            # Same exposure as the result card: a page made to be shared.
+            p = latest_match_page()
+            if p:
+                self._file(p, "text/html; charset=utf-8", no_cache=True)
+            else:
+                self.send_response(404); self.send_header("Content-Length","0"); self.end_headers()
+
         elif path == "/social/image/latest":
             # Serve the most recently generated Instagram graphic for preview/download.
             here = os.path.dirname(os.path.abspath(__file__))
@@ -8799,6 +8975,11 @@ class Handler(BaseHTTPRequestHandler):
                             "message": msg if ok else "", "error": msg if not ok else ""})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, status=500)
+
+        elif path == "/match/page":
+            started = start_match_page_build()
+            self._json({"ok": started, "error": None if started else "Already building"},
+                       status=200 if started else 409)
 
         elif path == "/social/clips":
             if _social_clips_status["running"]:
