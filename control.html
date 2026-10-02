@@ -200,7 +200,7 @@
      behind a tab or below the fold. Shown only when a bowler-end camera is set up. */
   #topbar-cams{display:flex;gap:6px;flex:0 0 auto}
   #topbar-cams .btn{width:auto;margin:0;padding:0 16px;white-space:nowrap}
-  #precheck-alert{width:auto;flex:0 0 auto;margin:0;padding:0 14px;white-space:nowrap;
+  #precheck-alert,#spotter-alert{width:auto;flex:0 0 auto;margin:0;padding:0 14px;white-space:nowrap;
           background:var(--bad);color:var(--text);font-weight:700}
   #status{margin:0 0 10px}
 
@@ -356,6 +356,8 @@
   </div>
   <button class="btn" id="precheck-alert" style="display:none" onclick="openPrecheck()"
           title="The pre-match check found a problem — click for details"></button>
+  <button class="btn" id="spotter-alert" style="display:none" onclick="showTab('match')"
+          title="The AI camera spotter found a problem — see the Cameras card"></button>
   <div id="topbar-cams" style="display:none">
     <button class="btn btn-test cam-btn" data-cam="main" onclick="cutToCameraScene('main')"
             title="Cut to the wide camera (or press C)">&#127909;<span class="long"> Wide</span></button>
@@ -479,6 +481,17 @@
            <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera is set up (Setup → Cameras). <strong>New, unverified against real hardware</strong> — watch the first live over closely.</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
     </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">AI camera spotter</div>
+           <div class="toggle-desc">While live, Claude looks at each camera every few minutes and warns here about a fogged or wet lens, a knocked camera, glare, a blocked or frozen picture. Uses your AI key: about 10&ndash;15p for a 5-hour match.</div></div>
+      <label class="toggle"><input type="checkbox" id="camera_spotter"><span class="track"></span></label>
+    </div>
+    <div class="field" style="margin-top:6px">
+      <label>Check every (minutes)</label>
+      <input type="number" id="camera_spotter_minutes" min="1" max="30" style="width:80px">
+    </div>
+    <div id="spotter-status" style="font-size:12px;"></div>
+    <button class="btn btn-test" onclick="checkCamerasNow()" style="margin-top:6px;">&#128247; Check cameras now</button>
   </div>
   <div class="card">
     <h2>Replays</h2>
@@ -1580,6 +1593,49 @@ async function pickBg(mode) {
   } catch (e) { msg.textContent = 'Could not reach the server.'; }
 }
 
+// ── AI camera spotter ──
+function renderSpotter(d) {
+  const box = document.getElementById('spotter-status');
+  const alertBtn = document.getElementById('spotter-alert');
+  const cams = d.cameras || [];
+  if (box) {
+    box.textContent = '';
+    cams.forEach(function (c) {
+      const row = document.createElement('div');
+      row.style.color = c.ok ? 'var(--ok)' : 'var(--bad)';
+      row.textContent = (c.ok ? '\u2713 ' : '\u2717 ') + c.label + (c.ok ? ': looks fine' : ': ' + c.problem)
+        + ' (' + new Date(c.checked_at * 1000).toLocaleTimeString() + ')';
+      box.appendChild(row);
+    });
+  }
+  if (alertBtn) {
+    const bad = cams.filter(function (c) { return !c.ok; });
+    alertBtn.textContent = '\uD83D\uDCF7 ' + (bad.length ? bad[0].label + ': ' + bad[0].problem : '');
+    alertBtn.style.display = bad.length ? '' : 'none';
+  }
+}
+async function loadSpotter() {
+  try {
+    const res = await apiFetch('/camera/spotter');
+    if (res.ok) renderSpotter(await res.json());
+  } catch (e) {}
+}
+async function checkCamerasNow() {
+  const box = document.getElementById('spotter-status');
+  if (box) box.textContent = 'Looking at the cameras…';
+  try {
+    const res = await apiFetch('/camera/spotter', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await res.json();
+    if (!res.ok) { if (box) box.textContent = d.error || 'Check failed'; return; }
+    renderSpotter(d);
+    if (!d.cameras.length && box) box.textContent = 'No cameras set up yet (Setup → Cameras).';
+    else if (!d.used_ai && box) box.appendChild(document.createTextNode(' (no AI key: frozen-picture check only)'));
+  } catch (e) { if (box) box.textContent = 'Could not reach the server'; }
+}
+loadSpotter();
+setInterval(loadSpotter, 60000);
+
 // ── Social clips ──
 let _socialPoll = null;
 async function makeSocialClips() {
@@ -2015,10 +2071,10 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
   'camera2_rtsp_url','obs_camera2_name','obs_bowler_scene',
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id','scorebar_style'];
-const NUM_FIELDS = ['max_overs','poll_interval','obs_port','replay_duration','max_clips'];
+const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','graphics_camera_auto_cut','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_player_card','graphics_camera_auto_cut','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';

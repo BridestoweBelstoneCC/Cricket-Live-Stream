@@ -336,6 +336,7 @@ _RATE_LIMITS = {
     "/social/image/generate": 120,   # AI social graphic — 2 min
     "/obs/stream_check":      300,   # a real upload-speed test uses data — 5 min cooldown
     "/precheck":               20,   # calls YouTube, PlayCricket and Anthropic
+    "/camera/spotter":         20,   # one AI call per camera
     "/agent/discover":          3,   # broadcasts on the LAN — short cooldown, not a heavy op,
                                       # just enough to stop a script (not a human clicking
                                       # "Find scorer laptop") from flooding the network
@@ -1678,6 +1679,8 @@ DEFAULT_STATE = {
     # against real two-camera hardware (see obs_add_camera()). A no-op regardless unless
     # camera2_rtsp_url is also configured. See TODO.md.
     "graphics_camera_auto_cut":False,
+    "camera_spotter":          False,   # AI camera checks while live — spends AI credit
+    "camera_spotter_minutes":  5,
     "replay_folder":           "",
     "replay_duration":         18,
     "max_clips":               500,
@@ -5775,6 +5778,131 @@ def score_feed_status(s, now=None):
     return False, f"Last scoreboard update {_fmt_duration(age)} ago — has the scorer started?"
 
 
+# ── AI camera spotter ──────────────────────────────────────────
+# While the stream is live, every few minutes Claude Haiku looks at a frame from each
+# camera and flags what a viewer would notice — fogged or wet lens, camera knocked off the
+# pitch, glare, too dark, something blocking it, a black or test picture. A frozen picture
+# is caught without AI: two identical frames in a row. Off by default (it spends the
+# club's AI credit: ~1p per 10 checks — about 10-15p for a 5-hour match at 5 minutes).
+SPOTTER_TICK_SEC = 60
+SPOTTER_PROMPT = (
+    "This is a frame from a live-streamed grassroots cricket match camera. Would a "
+    "viewer notice a problem with the picture? Look only for: a fogged, wet, dirty or "
+    "rain-spotted lens; the camera knocked or tilted so the pitch isn't properly in "
+    "shot; heavy glare or the picture washed out; far too dark; something close to "
+    "the lens blocking the view; a black, frozen-looking or test-pattern picture. "
+    "Normal things are fine: players, empty field between balls, clouds, shadows, "
+    "spectators in the distance. Reply with ONLY a JSON object: "
+    '{"ok": true or false, "problem": "<at most 8 words, empty if ok>"}')
+_spotter      = {"cameras": {}, "last_run": 0.0, "running": False}
+_spotter_lock = threading.Lock()
+
+
+def _spotter_cameras(st):
+    """(label, OBS source name) for each camera set up in the panel."""
+    cams = [("Wide camera", (st.get("obs_camera_name") or "").strip())]
+    if (st.get("camera2_rtsp_url") or "").strip():
+        cams.append(("Bowler-end camera", (st.get("obs_camera2_name") or "").strip()))
+    return [(label, name) for label, name in cams if name]
+
+
+def _obs_frame(st, source):
+    """JPEG bytes of a camera source as OBS sees it, or None."""
+    r = _obs_call(st, [("GetSourceScreenshot", {"sourceName": source, "imageFormat": "jpg",
+                                                "imageWidth": 768,
+                                                "imageCompressionQuality": 70})], timeout=8)
+    data = ((r or [None])[0] or {}).get("imageData", "")
+    if "," not in data:
+        return None
+    return base64.b64decode(data.split(",", 1)[1])
+
+
+def _ai_look(st, jpeg):
+    """(ok, problem) from Claude Haiku for one frame. Raises on API trouble."""
+    import anthropic
+    key = (st.get("anthropic_api_key") or "").strip() or os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    msg = anthropic.Anthropic(api_key=key).messages.create(
+        model="claude-haiku-4-5", max_tokens=150,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                         "data": base64.b64encode(jpeg).decode()}},
+            {"type": "text", "text": SPOTTER_PROMPT}]}])
+    raw = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    d = json.loads(raw)
+    return bool(d.get("ok", True)), str(d.get("problem") or "").strip()[:80]
+
+
+def spot_cameras(st=None, use_ai=True):
+    """Check every camera once. Updates _spotter and returns its camera dict."""
+    st = st or load_state()
+    with _spotter_lock:
+        if _spotter["running"]:
+            return dict(_spotter["cameras"])
+        _spotter["running"] = True
+    try:
+        for label, source in _spotter_cameras(st):
+            now = time.time()
+            prev = _spotter["cameras"].get(source, {})
+            rec = {"label": label, "checked_at": now, "ok": True, "problem": "", "how": "ai"}
+            jpeg = _obs_frame(st, source)
+            if jpeg is None:
+                rec.update(ok=False, problem="No picture from OBS", how="obs")
+            else:
+                digest = hashlib.sha1(jpeg).hexdigest()
+                rec["digest"] = digest
+                if prev.get("digest") == digest:
+                    rec.update(ok=False, problem="Picture frozen — same frame twice", how="frozen")
+                elif use_ai:
+                    try:
+                        ok, problem = _ai_look(st, jpeg)
+                        rec.update(ok=ok, problem=problem if not ok else "")
+                    except Exception as e:
+                        rec.update(how="error", problem=f"Couldn't check: {str(e)[:80]}")
+            with _spotter_lock:
+                _spotter["cameras"][source] = rec
+        with _spotter_lock:
+            _spotter["last_run"] = time.time()
+            return dict(_spotter["cameras"])
+    finally:
+        with _spotter_lock:
+            _spotter["running"] = False
+
+
+def spotter_due(st, live, now=None):
+    """Is a check due? Only when switched on, live (off-air checks would spend credit for
+    nothing), with an AI key, and the interval has passed."""
+    now = now or time.time()
+    every = max(1, int(st.get("camera_spotter_minutes") or 5)) * 60
+    return bool(st.get("camera_spotter") and live
+                and (st.get("anthropic_api_key") or "").strip()
+                and now - _spotter["last_run"] >= every)
+
+
+def _spotter_loop():
+    while True:
+        try:
+            st = load_state()
+            with _stream_mon_lock:
+                live = bool(_stream_mon["streaming"])
+            if spotter_due(st, live):
+                spot_cameras(st)
+        except Exception as e:
+            print(f"  ✗  Camera spotter: {e}")
+        time.sleep(SPOTTER_TICK_SEC)
+
+
+def start_camera_spotter():
+    threading.Thread(target=_spotter_loop, daemon=True).start()
+
+
+def spotter_status():
+    with _spotter_lock:
+        cams = [{k: v for k, v in rec.items() if k != "digest"}
+                for rec in _spotter["cameras"].values()]
+        return {"cameras": cams, "last_run": _spotter["last_run"] or None,
+                "problems": sum(1 for c in cams if not c["ok"])}
+
+
 # ── Pre-match check ────────────────────────────────────────────
 # One button, run days before a match: does every credential and connection actually work?
 # Each check makes the real call (a configured key isn't a working key — the YouTube login
@@ -7407,6 +7535,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/commentary/over":
             self._json(_over_commentary)
 
+        elif path == "/camera/spotter":
+            if not self._check_token(): return
+            self._json(spotter_status())
+
         elif path == "/precheck/last":
             if not self._check_token(): return
             self._json(_precheck_last["result"] or {"ok": None, "checks": [], "ran_at": None})
@@ -8474,6 +8606,14 @@ class Handler(BaseHTTPRequestHandler):
                                             d.get("url"), d.get("name"), d.get("scene"))
             self._json({"ok": ok, "message": msg})
 
+        elif path == "/camera/spotter":
+            # "Check cameras now": works off-air too, for trying it out before a match.
+            if not self._check_rate_limit(path): return
+            st = load_state()
+            has_key = bool((st.get("anthropic_api_key") or "").strip())
+            spot_cameras(st, use_ai=has_key)
+            self._json({**spotter_status(), "used_ai": has_key})
+
         elif path == "/precheck":
             if not self._check_rate_limit(path): return
             self._json(run_precheck())
@@ -8815,6 +8955,7 @@ if __name__ == "__main__":
     start_stream_monitor()
     start_viewer_sampler()
     start_precheck_loop()
+    start_camera_spotter()
     start_obs_guard()
     start_pcs_bridge_sync()
 

@@ -78,6 +78,12 @@ shipped without it and misreported a manual match day until fixed.
   streaming laptop competes with OBS. The caption prompt must keep saying the tag doesn't
   know which side a player is on: without it, Haiku wrote "takes us to 60-1" about an
   opposition batter.
+- **AI camera spotter** (`spot_cameras()` / `spotter_due()` in server.py, `/camera/spotter`):
+  OBS `GetSourceScreenshot` of each camera source -> Claude Haiku with `SPOTTER_PROMPT` ->
+  `{ok, problem}`. Live-only and off by default (`camera_spotter`) — it spends the club's AI
+  credit; never make it run off-air on a timer. Frozen = two byte-identical JPEGs in a row
+  (real cameras have sensor noise), no AI needed. An API failure is reported as "couldn't
+  check", never as a camera problem.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is

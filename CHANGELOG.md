@@ -6,6 +6,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New: AI camera spotter.** Match day → Cameras → **AI camera spotter**. While the stream
+  is live, Claude Haiku looks at each camera every few minutes (5 by default) and warns —
+  in the Cameras card and with a red camera badge in the panel's top bar — about a fogged,
+  wet or dirty lens, a knocked camera, glare, a picture that's too dark or blocked, or a
+  black/test picture. A frozen picture is caught without AI. Off by default because it uses
+  the club's AI credit: about 10–15p for a 5-hour match. "Check cameras now" tries it any
+  time. Tested on fogged and tilted match photos (both caught) and a normal one (no alarm).
 - **New: social clips.** After the match, After the match → **Make social clips** turns
   every wicket, six, four and milestone replay into a vertical video for YouTube Shorts,
   Instagram Reels and TikTok: the replay (with the scorebar) in the middle, a big headline
