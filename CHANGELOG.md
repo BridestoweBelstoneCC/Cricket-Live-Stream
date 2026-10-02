@@ -6,6 +6,14 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New: sponsor viewer-minutes.** While the stream is live and YouTube is connected, the
+  server reads YouTube's live viewer count once a minute, and the sponsor airtime line adds
+  an estimate: "…on screen for 4 min 30 s of the live stream, across 31 appearances — an
+  estimated 1,240 viewer-minutes". Seconds on screen × people watching at the time. Only
+  the live broadcast is ever counted, a count more than 3 minutes old is never used, and if
+  only part of the airtime had a count the line says so rather than scaling it up. Shows in
+  the control panel and in the file quickstart saves after the match. Uses about 300 of
+  YouTube's 10,000 free daily API units for a long match.
 - **Fixed: a sponsor no longer appears twice on the Instagram result card.** Making a
   logo's background transparent keeps the original (so Undo works), and the card showed
   every logo in the folder — original and copy. Copies are now recorded against their
