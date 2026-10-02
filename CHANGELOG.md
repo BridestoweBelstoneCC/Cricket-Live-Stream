@@ -40,6 +40,21 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   to paste, written by Claude Haiku (under 1p a match; without an AI key the replay's own
   tag is used). Download each from the panel, phone included. Made after the match on
   purpose: encoding video while streaming would compete with OBS. Needs FFmpeg.
+- **Fixed (found in a full code review):**
+  - A boundary on the last ball of an over could be replayed twice, and the next over's
+    first-ball boundary then missed. When NV Play does show an over's final ball on the
+    write that completes it (it usually doesn't), the overlay read the whole over as new.
+  - A wicket on the last ball of an over was counted towards the NEXT bowler's hat-trick
+    (and could miss the real one) when NV Play kept showing the over without it — its
+    usual behaviour. It's now credited on that write, to the bowler who bowled it.
+  - The result line in captions said the first five letters of the club name ("BRIDE
+    WIN…") instead of the abbreviation set in the panel.
+  - Two-laptop mode: replay clips were captioned without the batter or score, so the
+    highlights reel and social clips lost them.
+  - The match page no longer builds (and spends an AI report) when the stream drops for a
+    moment mid-match, such as a quality step-down's restart.
+  - "Copy caption" on social clips no longer shows the red error banner on a phone
+    using the panel over the club wifi.
 
 ## v2.11 — 2026-10-02
 

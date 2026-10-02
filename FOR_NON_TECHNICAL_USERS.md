@@ -193,7 +193,13 @@ when something needs changing, and OBS can only have its settings changed while 
 9. In the control panel, click **Compile highlights reel** — this automatically stitches all the replay clips into one video
 10. Click **Stop Streaming** in OBS
 11. In the control panel's **After the match** tab you can make a written match report, a social post, and an Instagram result picture — all from the scorer's figures, ready to copy
-12. Close the black command window to stop the server
+12. Still in **After the match**: **Make social clips** turns each wicket, four, six and
+    milestone into a short upright video for Instagram, TikTok or YouTube Shorts, with a
+    caption to copy. Each one has a Download button, which works from your phone too.
+13. A **match page** (one web page with the result, the report, both scorecards and a link
+    to the stream) is made by itself about a minute after the stream stops. Open it from
+    **After the match → Match page** and send it to the club website or WhatsApp group.
+14. Close the black command window to stop the server
 
 > **If OBS crashes during the match**, leave it — it reopens by itself within a few
 > seconds and the stream carries on. Closing OBS yourself after the match is fine; it
@@ -210,7 +216,12 @@ When the software is running, open **http://127.0.0.1:5000/control** in your bro
 - Show or hide the weather widget
 - Update the YouTube stream title
 - Manually change the opposition name or kit colour
-- After the match: compile highlights, and make a match report, social post and Instagram result picture
+- After the match: compile highlights, make social clips, open the match page, and make a match report, social post and Instagram result picture
+- A few days before a match: **Setup → Run pre-match check** tries every login and
+  connection and tells you in plain words what (if anything) needs fixing
+- Optional extras, all off until you switch them on: the **AI camera spotter** (warns you
+  if a camera lens fogs up or gets knocked — costs a few pence a match), and **spoken
+  commentary** (a computer voice reads out the end-of-over line)
 
 You don't need to use this every match — once config.ini is set up, quickstart.bat/sh handles everything automatically.
 

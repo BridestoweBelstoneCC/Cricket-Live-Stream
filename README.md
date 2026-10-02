@@ -58,7 +58,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Boundary flash** — FOUR! or SIX! graphic fires on every boundary.
 - **Ball-by-ball colour coding** — wides (amber +), no balls (teal nb), byes (green b), leg byes (olive lb), wickets (red W), fours (blue 4), sixes (purple 6).
 - **Over summary** — end-of-over card with runs scored and the bowler's figures. Automatically suppressed when a wicket falls on the last ball, so it never collides with the wicket sequence.
-- **Auto-detected moments** *(new in v2.1)* — the over summary spots the storylines by itself: a gold strap fires for season-best scores (*"Smith 67\* — his best score of the season!"*) and team milestones (*"100 up in 14 overs"*), and the same facts are fed to the AI commentator so the spoken line builds around them.
+- **Auto-detected moments** *(new in v2.1)* — the over summary spots the storylines by itself: a gold strap fires for season-best scores (*"Smith 67\* — best score of the season!"*) and team milestones (*"100 up in 14 overs"*), and the same facts are fed to the AI commentator so the spoken line builds around them.
 - **"At this stage"** *(new in v2.1)* — in the second innings, each over summary compares the chase with the first innings at the same point (*"Heathcoat were 67-2 at this stage"*).
 - **Bowler spell tracker** *(new in v2.1)* — once a bowler has bowled consecutive overs from the same end, the over card adds *"This spell: 5-1-18-2"*.
 - **Full innings scorecard** *(new in v2.1)* — a broadcast-style card at the innings break: all eleven batters with dismissals spelled out, not-out batters highlighted, and bowling figures alongside. Also available on demand from the control panel. Requires the v2.1 scoreboard template.
@@ -71,13 +71,31 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   including across the bowler's consecutive overs, with run outs correctly not counting.
 - **Innings summary** — top scorers and bowler figures at the end of each innings.
 - **Batting lineup** — starting XI graphic at the beginning of an innings.
-- **AI over commentary** *(new in v2)* — an optional Sky Sports-style line of analysis appears as a fourth end-of-over panel (after the over summary, partnership, and run rate), generated live by Claude AI from the actual match situation.
+- **Win predictor** *(new)* — after each over, both teams' chances of winning ("Need 26
+  off 24 balls" in a chase, the projected total in the first innings). Built from how this
+  season's matches in your league have actually gone (the PlayCricket scorecards the season
+  stats already download) and a DLS-style model of the batting left. Backtested on a real
+  season of 64 matches: the favourite at the start of the chase won 66% of the time.
+- **AI over commentary** *(new in v2)* — an optional Sky Sports-style line of analysis appears as an end-of-over panel (after the over summary, partnership, run rate and win predictor), generated live by Claude AI from the actual match situation.
+- **Spoken commentary** *(new, optional)* — the end-of-over line read aloud on the stream in
+  the computer's own voice (British English where available). Free and offline; off by
+  default, because these voices are serviceable rather than broadcast quality.
 - **Drinks-break weather** *(new in v2)* — at a configurable over (default 25), the weather widget automatically appears during the drinks interval, then clears on the next ball.
 
 ### After the match *(new in v2)*
 
 - **AI match report** — generates a full written match report in seconds from the scorer's own figures (innings totals, top scorers, who fell when), powered by Claude. The figures are saved as the match goes, so a server restart loses nothing; with no match data it says so rather than writing anything. Editable in the control panel and saved to a dated text file.
 - **AI social posts** — generates ready-to-paste social media posts (result, top performers, key moments). Optionally bundles them with match photos from a folder you choose.
+- **Social clips** *(new)* — every wicket, six, four and milestone replay becomes a vertical
+  video for YouTube Shorts, Instagram Reels and TikTok: the replay in the middle, a big
+  headline ("SIX!"), a line about the moment, the club badge and your handle, plus a
+  caption ready to paste. Download them from the panel on your phone.
+- **Match page** *(new)* — about a minute after the stream ends, a one-page match report is
+  built automatically: result, result card, AI report, runs-by-over chart, both scorecards,
+  a link to the full stream on YouTube, and your sponsors. One self-contained file, ready
+  for the club website or the WhatsApp group.
+- **Sponsor airtime** — how long the weekend sponsor was on screen while live, and an
+  estimate of viewer-minutes from YouTube's live viewer count, ready to send to the sponsor.
 
 ### Replay system
 
@@ -102,7 +120,22 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **NV Play / PCS Pro integration** — reads the scorer's output file directly, giving ball-by-ball data with batter names, bowler figures, run rate, and dismissal details.
 - **OBS auto-setup** — configures scenes, sources, and the replay buffer automatically on first run.
 - **One-click camera** *(new in v2.1)* — enter your camera's RTSP URL in the control panel and the overlay adds it to OBS as a media source for you, with auto-reconnect if the feed drops.
-- **YouTube title updater** — updates the stream title automatically when the match starts.
+- **YouTube broadcast manager** — sets the stream's title, description, privacy and
+  category through YouTube's API (needed with stream-key streaming, where OBS's own panel
+  disappears).
+- **Match-day checklist** — the panel shows what's ready and what isn't (OBS, camera, replay
+  buffer, today's match, scorer feed, live) and has a button for each step: Start OBS, Add
+  camera, Start replay buffer, Go live. Nothing is ticked by hand; every item is detected.
+- **Pre-match check** — one button, days before a match, tries every login and connection
+  for real (YouTube and which channel, PlayCricket, the AI key, OBS, the scorer, cameras,
+  disk space, a leftover quality downshift, upload speed, today's fixture, a newer version)
+  and says ✓ / ⚠ / ✗ with what to do. It also runs by itself every 6 hours.
+- **OBS crash recovery** — if OBS crashes or freezes mid-match, the server reopens it past
+  the "Safe Mode?" prompt, puts the main scene back, and restarts the stream if it was
+  live. Closing OBS normally after the match leaves it closed.
+- **AI camera spotter** *(new, optional)* — while live, Claude looks at each camera every
+  few minutes and warns about a fogged or wet lens, a knocked camera, glare or a blocked
+  view; a frozen picture is caught without AI. About 10–15p for a long match.
 - **Weather widget** — current conditions at the ground on demand or at the drinks break.
 - **Adaptive stream quality** *(new)* — built for grounds where the internet is the weak
   link. OBS's dynamic bitrate is enabled automatically (the connection is managed
@@ -286,10 +319,14 @@ It lets you:
 - Update the YouTube stream title
 - Monitor live data from NV Play in real time
 - Generate the AI match report and social posts
-- Compile a post-match highlights reel
-- Get a recommended bitrate/resolution from a real upload-speed test, and find out whether
-  your hardware video encoder is actually outperforming plain CPU encoding — measured with a
-  short OBS test recording, not guessed from your computer's specs
+- Compile a post-match highlights reel, make social clips and build the match page
+- Get a recommended bitrate/resolution from a real upload-speed test
+- Cut between camera angles from the pinned bar (or press `C`)
+- Upload a sponsor logo from your phone and make its background transparent
+
+The panel has four tabs, one per moment of the day — **Match day**, **Graphics & sponsor**,
+**After the match** and **Setup** — under a pinned bar with the live status, Save, the
+camera buttons and the match-day checklist.
 
 ---
 
@@ -322,7 +359,13 @@ It lets you:
 | Adaptive stream quality / congestion monitor | OBS WebSocket |
 | Match simulator for rehearsals | Nothing — runs offline |
 | Auto match detection | PlayCricket API key |
-| YouTube title update | Google OAuth |
+| YouTube broadcast manager + sponsor viewer-minutes | Google OAuth |
+| Win predictor | PlayCricket API key (this season's scorecards) |
+| Spoken commentary | Anthropic API key (for the line) — the voice itself is free and offline |
+| AI camera spotter | Anthropic API key + OBS WebSocket |
+| Social clips | FFmpeg + tagged replays (Anthropic key optional, for captions) |
+| Match page | Nothing extra (richer with Anthropic, PlayCricket and YouTube) |
+| Pre-match check, checklist, OBS crash recovery | Nothing extra |
 | Club badges in scorebar | PNG/SVG files in `logos/` folder |
 
 ---
@@ -439,6 +482,10 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
 ├── stream_quality_test.py     Standalone: automated quality-ladder test against a live stream
 ├── result_card.py             Post-match Instagram result card renderer
+├── social_clips.py            Vertical social clips from tagged replays (FFmpeg)
+├── win_predictor.py           Live win probability from this season's scorecards
+├── voice.py                   Spoken commentary with the computer's own voice
+├── match_page.py              The shareable post-match page
 ├── logo_bg.py                 Makes a sponsor logo's background transparent
 ├── fonts/                     Bundled fonts for the result card (Barlow Condensed, OFL)
 ├── graphics/                  OBS-loaded graphic assets (e.g. instant_replay.png)
@@ -502,6 +549,26 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**Coming next** — social clips, an AI camera spotter, a live win predictor, optional spoken
+commentary and an automatic match page, plus fixes from a full code review (a final-ball
+boundary could replay twice, and a last-ball wicket could be credited to the next bowler).
+See [`CHANGELOG.md`](CHANGELOG.md).
+
+**v2.11** — A pre-match check that tries every login and connection for real days before a
+match, and re-runs itself every 6 hours; camera buttons in the panel's pinned bar.
+
+**v2.10** — An expired YouTube login now says so; sponsor viewer-minutes from YouTube's live
+viewer count; one logo per sponsor on the result card; the old per-ball AI lower third
+removed.
+
+**v2.9** — A rebuilt Instagram result card in the style of county result graphics; the
+simulator now behaves like real NV Play at the end of an over; the ball database no longer
+misses the last ball of most overs; a match keeps its data when its id changes mid-innings.
+
+**v2.8** — Camera cuts about 3.6x quicker over a held-open OBS socket (press `C` to flick),
+one launcher (`CricketStream.exe`) for the streaming laptop, and OBS set up end to end
+before it opens: WebSocket, replay buffer, video, encoder, Safe Mode prompt cleared.
 
 **v2.7.3** — Fixed the one-click "add camera" OBS setup, found while wiring up a real new
 camera: re-running it could silently drop the camera from the Replay scene, or fail outright,

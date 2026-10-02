@@ -312,7 +312,7 @@ python3 scripts/compile_check_all.py
 #    Uses node if present, else falls back to macOS JavaScriptCore, else esprima.
 python3 scripts/check_panel_js.py
 
-# 3. Automated tests (~550, under a minute; stdlib unittest, no pytest). Covers ball/PCS/widget
+# 3. Automated tests (~670, under a minute; stdlib unittest, no pytest). Covers ball/PCS/widget
 #    parsing, season-stats aggregation, league-table resolution, session tokens, quickstart's
 #    state merge and its crash-restart loop, the match simulator's engine invariants, highlight
 #    tagging/planning, manual scoring (engine, exact-replay undo, /scoring end-to-end),
@@ -497,6 +497,15 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
     populated — gating on it delays the whole end-of-over sequence to the first ball of the
     NEXT over, since `_lastPCSovers` never gets the chance to update on the poll where
     `overs` actually ticks over.
+  - **Boundary and hat-trick detection** match each ticker to the over it BELONGS to
+    (`tickerOverOf()`: a write sitting on a whole number of overs belongs to the finished
+    over), never to `overs` itself. Keyed on `overs`, the occasional write that DOES show
+    the final ball read as a brand-new over — every four/six in it replayed again — and
+    the next over's first ball was then sliced off as already seen. The hat-trick chain
+    also runs on the over-completing write even when the ticker didn't change (the usual
+    case): only that write still has the pre-rotation bowler to credit a final-ball wicket
+    to; left to the next ball, it went to the incoming bowler. `tests/test_bowler_milestones.py`
+    covers all three NV Play behaviours (stale / cleared / final ball shown).
   - **The ball logger** (`log_ball_data`) treats a ticker identical to the over it just
     logged as cleared, on the over-completing write and every write after it until the
     next ball. Before that, the final ball of most overs was never recovered (it read as
