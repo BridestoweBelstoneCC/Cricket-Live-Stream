@@ -11,8 +11,8 @@ import server
 import simulate_match as sim
 
 
-def run_scenario(name, seed=7, overs=10):
-    s = sim.MatchSimulator(name, max_overs=overs, seed=seed)
+def run_scenario(name, seed=7, overs=10, **kw):
+    s = sim.MatchSimulator(name, max_overs=overs, seed=seed, **kw)
     frames = list(s.frames())
     return s, frames
 
@@ -61,22 +61,33 @@ class TestNvPlaySemantics(unittest.TestCase):
     def setUpClass(cls):
         cls.sim, cls.frames = run_scenario("full", seed=11, overs=8)
 
-    def test_ticker_clears_on_the_over_completing_write(self):
-        # The write that TRANSITIONS overs from X.5 to (X+1).0 must carry an empty
-        # ticker. (A later N.0 frame may legitimately show "w" — a wide bowled before
-        # the new over's first legal ball doesn't advance the over counter.)
-        saw_rollover = False
-        prev_overs = None
-        for label, f in self.frames:
+    def _rollovers(self, frames):
+        """(previous ball's frame, over-completing frame) for every X.5 -> (X+1).0."""
+        prev = None
+        for label, f in frames:
             if label == "ball":
-                if prev_overs is not None and f["overs"] != prev_overs \
+                if prev is not None and f["overs"] != prev["overs"] \
                         and f["overs"].endswith(".0") and float(f["overs"]) > 0:
-                    saw_rollover = True
-                    self.assertEqual(f["last_ball"], "",
-                                     "NV Play clears the ticker on the same write that "
-                                     "completes the over — the simulator must too")
-                prev_overs = f["overs"]
-        self.assertTrue(saw_rollover)
+                    yield prev, f
+                prev = f
+
+    def test_ticker_is_unchanged_on_the_over_completing_write(self):
+        # What NV Play really does (801 of 857 such polls in a real match's feed): the
+        # over-completing write still shows the ticker from before the final ball — the
+        # final delivery never appears in any ticker. The simulator used to clear it
+        # instead, which hid two shipped bugs.
+        pairs = list(self._rollovers(self.frames))
+        self.assertTrue(pairs)
+        for before, at in pairs:
+            self.assertEqual(at["last_ball"], before["last_ball"])
+            self.assertTrue(at["last_ball"])
+
+    def test_clearing_ticker_mode_still_available(self):
+        _, frames = run_scenario("full", seed=11, overs=8, stale_ticker=False)
+        pairs = list(self._rollovers(frames))
+        self.assertTrue(pairs)
+        for _, at in pairs:
+            self.assertEqual(at["last_ball"], "")
 
     def test_prematch_frames_have_blank_names_not_placeholders(self):
         pre = [f for label, f in self.frames if label == "prematch"]
