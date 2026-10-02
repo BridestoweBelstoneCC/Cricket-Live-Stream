@@ -8,7 +8,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.11-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.12-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
@@ -550,7 +550,7 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
-**Coming next** — social clips, an AI camera spotter, a live win predictor, optional spoken
+**v2.12** — Social clips, an AI camera spotter, a live win predictor, optional spoken
 commentary and an automatic match page, plus fixes from a full code review (a final-ball
 boundary could replay twice, and a last-ball wicket could be credited to the next bowler).
 See [`CHANGELOG.md`](CHANGELOG.md).
