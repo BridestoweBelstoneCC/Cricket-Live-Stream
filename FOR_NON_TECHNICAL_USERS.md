@@ -190,9 +190,10 @@ when something needs changing, and OBS can only have its settings changed while 
 
 **After the match:**
 
-9. In the control panel, click **Compile Highlights Reel** — this automatically stitches all the replay clips into one video
+9. In the control panel, click **Compile highlights reel** — this automatically stitches all the replay clips into one video
 10. Click **Stop Streaming** in OBS
-11. Close the black command window to stop the server
+11. In the control panel's **After the match** tab you can make a written match report, a social post, and an Instagram result picture — all from the scorer's figures, ready to copy
+12. Close the black command window to stop the server
 
 > **If OBS crashes during the match**, leave it — it reopens by itself within a few
 > seconds and the stream carries on. Closing OBS yourself after the match is fine; it
@@ -209,7 +210,7 @@ When the software is running, open **http://127.0.0.1:5000/control** in your bro
 - Show or hide the weather widget
 - Update the YouTube stream title
 - Manually change the opposition name or kit colour
-- Compile highlights after the match
+- After the match: compile highlights, and make a match report, social post and Instagram result picture
 
 You don't need to use this every match — once config.ini is set up, quickstart.bat/sh handles everything automatically.
 

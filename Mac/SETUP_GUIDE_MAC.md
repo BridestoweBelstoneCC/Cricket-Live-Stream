@@ -381,13 +381,15 @@ Costs are a few pence per match. Without a key, everything else still works.
 ### After the match
 
 10. Click **Stop Streaming**
-11. *(New in v2)* Control panel → **Match Report & Social Posts**:
-    - **Generate Match Report** for a full written report (edit, then copy)
-    - **Generate Social Post** for a social media summary
-    - Generate these **before** stopping the server — the match log is held in memory
-      while the server runs
-12. Control panel → **Compile Highlights Reel** for the post-match video
-13. Close the Terminal window to stop the server (you'll be prompted to save the report)
+11. Control panel → **After the match** tab → **Match Report & Social Posts**:
+    - **Generate match report** for a full written report (edit, then copy)
+    - **Generate social post** for a social media summary
+    - The match figures are saved as the match goes, so this still works if the server
+      was restarted during the match
+12. Same tab → **Instagram Result Graphic** → **Generate Instagram graphic** for the
+    result card (pick a backdrop photo first if you like), then copy the caption
+13. Control panel → **Compile highlights reel** for the post-match video
+14. Close the Terminal window to stop the server (you'll be prompted to save the report)
 
 ---
 

@@ -23,11 +23,14 @@ how it gets better. You don't need to be a professional developer to help.
 
 1. **Fork** the repository and create a branch for your change.
 2. Keep changes focused — one feature or fix per pull request makes review easier.
-3. **Test before you push.** At minimum:
-   - `python -c "import py_compile; py_compile.compile('server.py', doraise=True)"` should pass.
-   - If you touch the control panel (the HTML/JS inside `server.py`), make sure the page
-     still loads and the buttons you changed work.
-   - If you touch the overlay, load `overlay.html` in a browser and confirm it renders.
+3. **Test before you push.** All three run in CI too, and need nothing installed:
+   - `python scripts/compile_check_all.py` — every top-level script compiles.
+   - `python scripts/check_panel_js.py` — the JavaScript in `control.html`, `overlay.html`
+     and `scoring.html` parses (a single syntax error kills a whole page).
+   - `python -m unittest discover -s tests` — the test suite, under a minute.
+   - If you touch the control panel (`control.html`) or the overlay, load it in a browser
+     and check the parts you changed. For the scorebar, `python scripts/render_scorebar.py`
+     screenshots every style — nothing else catches a visual regression.
 4. **Don't commit secrets.** Never commit a populated `match_state.json`, real API keys, or
    the `match_data.db` database — these are git-ignored for a reason. The repo ships
    `match_state.example.json` as a safe template.

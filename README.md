@@ -76,7 +76,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 
 ### After the match *(new in v2)*
 
-- **AI match report** — generates a full written match report in seconds from the ball-by-ball log of the game, powered by Claude. Editable in the control panel and saved to a dated text file.
+- **AI match report** — generates a full written match report in seconds from the scorer's own figures (innings totals, top scorers, who fell when), powered by Claude. The figures are saved as the match goes, so a server restart loses nothing; with no match data it says so rather than writing anything. Editable in the control panel and saved to a dated text file.
 - **AI social posts** — generates ready-to-paste social media posts (result, top performers, key moments). Optionally bundles them with match photos from a folder you choose.
 
 ### Replay system
@@ -92,7 +92,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 ### Match data & social posts *(expanded in v2.1)*
 
 - **Ball-by-ball database** *(new in v2.1)* — every delivery is logged to a local SQLite file (`match_data.db`) as you stream: over, ball, batter, bowler, outcome, extras, and running score. The current over is rewritten live so a scorer's edits and deletions are captured, and completed overs freeze. A **Reconcile** button then pulls PlayCricket's published scorecard as the authoritative record, and any match can be **exported to CSV** for analysis. Your own season-long dataset, ready for spreadsheets or a notebook.
-- **Result posts for any match** *(new in v2.1)* — a "Load results" picker pulls your recent PlayCricket results (home or away, streamed or not). Pick one and it builds a polished 1080×1350 Instagram graphic, working out the result and your top batter and bowler directly from the scorecard. Optional AI caption (template fallback when offline).
+- **Instagram result card** *(rebuilt in v2.9)* — a 1080×1350 card in the style of county result graphics: your photo in full colour, a big WIN / DEFEAT with the margin, both clubs' badges and scores, and your top batter and bowler. Built for the match you've just streamed, or for any recent PlayCricket result via the "Load results" picker (home or away, streamed or not). The result is PlayCricket's own, so DLS, conceded, tied, drawn, abandoned and softball matches come out right, and the numbers are never AI-generated. Optional AI caption (template fallback when offline).
 - **Per-team and youth photo folders** *(new in v2.1)* — backdrops are pulled from `socials/1st`, `socials/2nd`, `socials/3rd` per team, falling back to the main folder. All age-group sides route to `socials/youth`, which uses club stock photos and a discreet first-name + initial for player names — a safeguarding-conscious default for juniors.
 - **Match-day sponsors** *(new in v2.1)* — every logo in `sponsors/` appears on result posts, scaled to share the width, so adding a one-off match-day sponsor is just dropping in a file.
 
@@ -428,8 +428,8 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── scoring_engine.py          The scorer's-book engine behind /scoring and the simulator
 ├── simulate_match.py          Match simulator — rehearse the whole broadcast, no scorer needed
 ├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
+├── cricketstream.py           The one launcher (shipped as CricketStream.exe): checks, then runs quickstart.py
 ├── quickstart.py              Match-day launcher script
-├── quickstart_launcher.py     Thin exe wrapper for quickstart.py (finds Python, runs it)
 ├── obs_prep.py                Switches on OBS's WebSocket + replay buffer, opens OBS
 ├── obs_setup.py               OBS auto-configuration
 ├── nvplay_bridge.py           Standalone: serve NV Play's output when it's on separate hardware
@@ -438,7 +438,11 @@ inside a free Windows virtual machine while streaming natively from macOS.
 ├── camera_encoder.py          Standalone: read a Reolink camera's own encoder settings
 ├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
 ├── stream_quality_test.py     Standalone: automated quality-ladder test against a live stream
+├── result_card.py             Post-match Instagram result card renderer
+├── logo_bg.py                 Makes a sponsor logo's background transparent
+├── fonts/                     Bundled fonts for the result card (Barlow Condensed, OFL)
 ├── graphics/                  OBS-loaded graphic assets (e.g. instant_replay.png)
+├── scripts/                   Checks: compile, panel JS syntax, scorebar screenshots
 ├── tests/                     Automated test suite (python3 -m unittest discover -s tests)
 ├── requirements.txt           Python package list
 ├── config.example.ini         Club configuration template — copy to config.ini and fill in
