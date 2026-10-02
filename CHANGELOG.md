@@ -11,7 +11,23 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   that it's signed in to the club's channel), the PlayCricket key, the AI key, OBS, the
   scorer feed and the disk space for replays — all at once, and answers ✓ / ⚠ / ✗ with
   what to do. Nothing is changed. Built after a YouTube login on a club laptop turned out
-  to have expired with no sign until it was needed.
+  to have expired with no sign until it was needed. It also checks:
+  - **a quality downshift left in OBS** from a previous match (it bit twice last season),
+    read from OBS's settings file so it works days before with OBS closed;
+  - **the YouTube login's age** — a warning before a Testing-mode login's 7 days run out;
+  - **the cameras** answer on the network (⚠, not ✗, away from the ground);
+  - **players sharing a surname** whose season stats won't show until the Squad Roster
+    has their shirt numbers;
+  - **today's fixture** on PlayCricket and **the opposition's badge**;
+  - **upload speed** against the stream bitrate, and how old that test is;
+  - **a newer version** on GitHub;
+  - **the scorer's laptop or NV Play bridge**, for two-laptop setups.
+  The server also runs it by itself shortly after starting and every 6 hours; a red
+  "✗ N problems" badge appears in the panel's pinned bar when anything needs fixing.
+- **The camera buttons are in the panel's pinned bar.** Wide and Bowler-end now sit next to
+  Save on every tab (when a bowler-end camera is set up), instead of only in a card below
+  the fold on the Match day tab. Cutting cameras is the most frequent thing an operator
+  does during play.
 
 ## v2.10 — 2026-10-02
 

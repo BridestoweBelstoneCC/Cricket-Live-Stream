@@ -1046,6 +1046,9 @@ def _youtube_service(allow_interactive=True):
                 flow = InstalledAppFlow.from_client_secrets_file(YT_CREDS_FILE, YT_SCOPES)
                 creds = flow.run_local_server(port=8091, open_browser=True)
                 _write_token_private(creds)
+                # When it was signed in: an app in Google's "Testing" mode gets logins that
+                # last 7 days, and the pre-match check warns before that runs out.
+                update_state(lambda st: st.__setitem__("youtube_signed_in_at", time.time()))
             elif creds:
                 return None, ("YouTube's login has expired — reconnect it ON THE STREAMING "
                               "LAPTOP: Match day tab → \"Update YouTube broadcast now\" "
@@ -5778,6 +5781,8 @@ def score_feed_status(s, now=None):
 # with its own time limit, and answers ok / warn / bad with what to do about it. Nothing is
 # changed anywhere: every call is a read.
 PRECHECK_TIMEOUT_SEC = 20
+YT_TESTING_WARN_DAYS = 5         # Testing-mode Google apps' logins last 7 days
+PRECHECK_AUTO_EVERY_SEC = 6 * 3600
 PRECHECK_DISK_WARN_GB = 10
 PRECHECK_DISK_BAD_GB = 2
 
@@ -5799,6 +5804,16 @@ def _pc_youtube(st):
     if _club_fragment(st) not in title.lower():
         return ("warn", f"Signed in as the channel “{title}”.",
                 "Is that the club's channel? If not, sign in again with the club's account.")
+    signed = st.get("youtube_signed_in_at")
+    if signed:
+        days = (time.time() - float(signed)) / 86400
+        if days >= YT_TESTING_WARN_DAYS:
+            renew_by = datetime.date.fromtimestamp(float(signed) + 7 * 86400).strftime("%a %d %b")
+            return ("warn", f"Signed in as “{title}”, {int(days)} days ago.",
+                    f"If the club's Google app is in Testing mode this login stops working "
+                    f"about {renew_by} — sign in again before a match after that. Publishing "
+                    f"the app (Google Cloud → OAuth consent screen) stops the weekly expiry.")
+        return ("ok", f"Signed in as “{title}” ({int(days)} day{'s' if int(days) != 1 else ''} ago).", "")
     return ("ok", f"Signed in as “{title}”.", "")
 
 
@@ -5887,12 +5902,225 @@ def _pc_disk(st):
     return ("ok", f"{free_gb:.0f} GB free for replays in {where}.", "")
 
 
+def _target_bitrate(st):
+    """The bitrate quickstart will put OBS on, by obs_setup.setup_from_config's rule:
+    config.ini [Stream] bitrate_kbps if it's a number, nothing if it's "manual", else the
+    last upload test's recommendation. (kbps or None, why)."""
+    import configparser
+    cfg = configparser.ConfigParser()
+    try:
+        cfg.read(_config_ini_path(), encoding="utf-8")
+    except Exception:
+        pass
+    raw = cfg.get("Stream", "bitrate_kbps", fallback="").strip()
+    if raw.lower() in ("manual", "off", "no"):
+        return None, "manual"
+    if raw.isdigit() and int(raw):
+        return int(raw), "config"
+    if st.get("network_test_mbps"):
+        return _recommend_bitrate_and_resolution(st["network_test_mbps"])[0], "test"
+    return None, "none"
+
+
+def _pc_obs_bitrate(st):
+    """A leftover quality-ladder downshift: the ladder writes the lower bitrate into OBS's
+    profile, where it survives the match (it bit on 15 Aug and 19 Sep). Read from OBS's own
+    settings file, so it works days before with OBS closed; the live stream monitor's view
+    is used instead when OBS is open (OBS rewrites the file on exit)."""
+    import obs_prep
+    want, why = _target_bitrate(st)
+    if why == "manual":
+        return ("skip", "Bitrate is set by hand (config.ini: bitrate_kbps = manual).", "")
+    with _stream_mon_lock:
+        live = _stream_mon["configured_kbps"] if _stream_mon["reachable"] else None
+    configured = live
+    if configured is None:
+        ini = obs_prep.active_profile_ini(obs_prep.obs_config_dir())
+        if not ini:
+            return ("skip", "OBS hasn't been set up on this laptop yet.", "")
+        mode = obs_prep._read_ini_value(ini, "Output", "Mode") or "Simple"
+        if mode != "Simple":
+            return ("skip", "OBS is in Advanced output mode — bitrate is managed there.", "")
+        raw = obs_prep._read_ini_value(ini, "SimpleOutput", "VBitrate")
+        configured = int(raw) if raw and raw.isdigit() else None
+    if configured is None or not want:
+        return ("skip", "No bitrate to compare against yet.", "")
+    if configured < want * 0.8:
+        return ("bad", f"OBS is set to {configured} kbps, not the usual {want}.",
+                "Looks like a quality downshift left over from a match. Quickstart resets it "
+                "when it starts OBS; or set it in OBS → Settings → Output.")
+    mbps = st.get("network_test_mbps")
+    if mbps and configured > mbps * 1000 * 0.8:
+        return ("warn", f"OBS is set to {configured} kbps — more than your last upload test "
+                        f"({mbps:.1f} Mbps) can carry.",
+                f"Quickstart sets it to {want} kbps when it starts OBS for a match; if you "
+                f"start OBS yourself, set it in OBS → Settings → Output.")
+    return ("ok", f"OBS is set to {configured} kbps.", "")
+
+
+def _pc_cameras(st):
+    """Can this laptop reach each camera? A TCP connect to its RTSP port — the camera's
+    address and password stay out of the report (they're in the URL)."""
+    from urllib.parse import urlsplit
+    cams = [("Camera", st.get("camera_rtsp_url", "")),
+            ("Bowler-end camera", st.get("camera2_rtsp_url", ""))]
+    cams = [(n, u.strip()) for n, u in cams if (u or "").strip()]
+    if not cams:
+        return ("skip", "No camera addresses set.",
+                "Fine if the cameras were added in OBS directly.")
+    down = []
+    for name, url in cams:
+        try:
+            parts = urlsplit(url)
+            host, port = parts.hostname, parts.port or 554
+            if not host:
+                raise ValueError
+            socket.create_connection((host, port), timeout=3).close()
+        except (OSError, ValueError):
+            down.append(name)
+    if down:
+        # ⚠, not ✗: days before a match the cameras are at the ground and this laptop
+        # usually isn't — a ✗ here would keep the panel's badge red all week.
+        return ("warn", f"{' and '.join(down)} not answering.",
+                "Expected away from the ground. On match day: is it powered on and on the "
+                "same network as this laptop?")
+    return ("ok", f"{len(cams)} camera{'s' if len(cams) > 1 else ''} answering.", "")
+
+
+def _pc_surnames(st):
+    """Two players sharing a surname: PlayCricket's scorer feed only gives surnames, so
+    season stats are withheld for both unless the squad roster's shirt numbers tell them
+    apart. Checked against the loaded season stats."""
+    with _season_stats_lock:
+        lookup = dict(_season_stats.get("lookup") or {})
+    if not lookup:
+        return ("skip", "Season stats aren't loaded yet.",
+                "Match day → Refresh season stats from PlayCricket, then run this again.")
+    names = {r.get("name", "") for r in lookup.values() if isinstance(r, dict)}
+    by_surname = {}
+    for n in names:
+        toks = re.sub(r"[^A-Za-z ]", " ", n).split()
+        if len(toks) >= 2:
+            by_surname.setdefault(toks[-1].lower(), set()).add(n)
+    rostered = {str(v).strip().lower() for v in (st.get("roster") or {}).values()}
+    clashes = [sorted(v) for k, v in sorted(by_surname.items())
+               if len(v) > 1 and not all(x.lower() in rostered for x in v)]
+    if not clashes:
+        return ("ok", "No unresolved surname clashes.", "")
+    shown = "; ".join(", ".join(c) for c in clashes[:3]) + (" …" if len(clashes) > 3 else "")
+    return ("warn", f"Players sharing a surname: {shown}.",
+            "Their season stats won't show on player cards until each is in the Squad "
+            "Roster (Setup) with a shirt number. Only matters for your own players.")
+
+
+def _pc_fixture(st):
+    """Today's fixture on PlayCricket, and a badge for the opposition."""
+    key = (st.get("playcricket_api_key") or "").strip()
+    site = str(st.get("home_club_id") or "").strip()
+    if not key or not site.isdigit():
+        return ("skip", "Needs the PlayCricket key and club ID.", "")
+    r = fetch_todays_match(key, site)
+    if r.get("error"):
+        return ("skip", r["error"] + ".", "On match morning this checks today's fixture is found.")
+    opp = r.get("away_club") or r.get("away_team") or "the opposition"
+    return ("ok", f"Today: v {opp}" + (f" ({r['competition']})" if r.get("competition") else "") + ".", "")
+
+
+def _pc_badge(st):
+    cid = str(st.get("away_club_id") or "").strip()
+    opp = st.get("away_team") or "the opposition"
+    if not cid.isdigit():
+        return ("skip", "No opposition club ID yet.",
+                "Fetch today's match fills it in on match morning.")
+    logos = os.path.expanduser((st.get("logos_folder") or "").strip()) or \
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos")
+    if any(os.path.exists(os.path.join(logos, cid + e)) for e in (".png", ".webp", ".jpg", ".jpeg")):
+        return ("ok", f"Badge found for {opp}.", "")
+    return ("warn", f"No badge for {opp} (logos/{cid}.png).",
+            "The scorebar and result card will show initials instead. See CLUB_LOGOS.md.")
+
+
+def _pc_upload(st):
+    mbps, at = st.get("network_test_mbps"), st.get("network_test_at") or 0
+    if not mbps:
+        return ("skip", "No upload-speed test yet.",
+                "Run one at the ground: Setup → Stream health → Check now.")
+    days = (time.time() - at) / 86400
+    want = _target_bitrate(st)[0] or _recommend_bitrate_and_resolution(mbps)[0]
+    if want > mbps * 1000 * 0.8:
+        return ("bad", f"Last upload test: {mbps:.1f} Mbps — too slow for {want} kbps.",
+                "Lower the bitrate, or re-test at the ground.")
+    note = f"{mbps:.1f} Mbps upload, {int(days)} day{'s' if int(days) != 1 else ''} ago — enough for {want} kbps."
+    if days > 7:
+        return ("warn", note, "That test is old — run a fresh one at the ground on the day.")
+    return ("ok", note, "")
+
+
+def _installed_version():
+    """This copy's version: the newest released heading in CHANGELOG.md (works for a zip
+    download with no git, unlike quickstart's git describe)."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "CHANGELOG.md"),
+                  encoding="utf-8") as f:
+            m = re.search(r"(?m)^## v(\d+(?:\.\d+)*)", f.read())
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def _pc_update(st):
+    have = _installed_version()
+    if not have:
+        return ("skip", "Couldn't tell which version this is.", "")
+    req = urllib.request.Request(
+        "https://api.github.com/repos/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest",
+        headers={"User-Agent": "CricketStream-precheck"})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        latest = json.loads(r.read().decode()).get("tag_name", "").lstrip("v")
+    as_tuple = lambda v: tuple(int(x) for x in re.findall(r"\d+", v))
+    if latest and as_tuple(latest) > as_tuple(have):
+        return ("warn", f"Version {latest} is out — this laptop has {have}.",
+                "Download it from the GitHub Releases page (or git pull).")
+    return ("ok", f"Up to date (v{have}).", "")
+
+
+def _pc_scorer_link(st):
+    """Two-laptop setups: is the scorer's machine reachable?"""
+    if st.get("pcs_source", "local") == "agent":
+        state = read_agent_file(st)
+        a = agent_status(st)
+        if state is not None or a["connected"]:
+            return ("ok", f"Scorer's laptop answering at {a['address'] or 'its address'}.", "")
+        return ("bad", "Can't reach the scorer's laptop.",
+                "Is scorer_agent running on it, on the same wifi? "
+                "Setup → Find scorer laptop, or type its address.")
+    url = (st.get("pcs_bridge_url") or "").strip().rstrip("/")
+    if url:
+        try:
+            with urllib.request.urlopen(url + "/pcs/ping", timeout=5):
+                pass
+            return ("ok", "NV Play bridge answering.", "")
+        except Exception:
+            return ("bad", "The NV Play bridge isn't answering.",
+                    "Is nvplay_bridge.py running on the scorer's machine, and Tailscale "
+                    "connected on both? See BRIDGE.md.")
+    return ("skip", "Scoring on this laptop (no second laptop to check).", "")
+
+
 PRECHECKS = (("youtube", "YouTube", _pc_youtube),
              ("playcricket", "PlayCricket", _pc_playcricket),
              ("anthropic", "AI (Anthropic)", _pc_anthropic),
              ("obs", "OBS", _pc_obs),
              ("scorer", "Scorer feed", _pc_scorer),
-             ("disk", "Disk space", _pc_disk))
+             ("scorer_link", "Scorer's laptop", _pc_scorer_link),
+             ("disk", "Disk space", _pc_disk),
+             ("obs_bitrate", "Stream bitrate", _pc_obs_bitrate),
+             ("upload", "Upload speed", _pc_upload),
+             ("cameras", "Cameras", _pc_cameras),
+             ("fixture", "Today's fixture", _pc_fixture),
+             ("badge", "Opposition badge", _pc_badge),
+             ("surnames", "Player names", _pc_surnames),
+             ("update", "Software version", _pc_update))
 
 
 def run_precheck():
@@ -5914,8 +6142,29 @@ def run_precheck():
             status, detail, fix = ("bad", f"Check failed: {str(e)[:200]}", "")
         out.append({"id": cid, "name": name, "status": status, "detail": detail, "fix": fix})
     pool.shutdown(wait=False)       # a hung call can finish in the background
-    return {"ok": not any(c["status"] == "bad" for c in out), "checks": out,
-            "ran_at": datetime.datetime.now().isoformat(timespec="seconds")}
+    result = {"ok": not any(c["status"] == "bad" for c in out), "checks": out,
+              "ran_at": datetime.datetime.now().isoformat(timespec="seconds")}
+    _precheck_last.update(result=result)
+    return result
+
+
+# The last result, so the panel can flag problems without anyone pressing the button: it
+# runs shortly after the server starts and every 6 hours.
+_precheck_last = {"result": None}
+
+
+def _precheck_loop():
+    time.sleep(30)                  # let the server and OBS settle first
+    while True:
+        try:
+            run_precheck()
+        except Exception as e:
+            print(f"  ✗  Pre-match check failed to run: {e}")
+        time.sleep(PRECHECK_AUTO_EVERY_SEC)
+
+
+def start_precheck_loop():
+    threading.Thread(target=_precheck_loop, daemon=True).start()
 
 
 def checklist_status():
@@ -7033,6 +7282,10 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/commentary/over":
             self._json(_over_commentary)
+
+        elif path == "/precheck/last":
+            if not self._check_token(): return
+            self._json(_precheck_last["result"] or {"ok": None, "checks": [], "ran_at": None})
 
         elif path == "/logos/debug":
             s2      = load_state()
@@ -8409,6 +8662,7 @@ if __name__ == "__main__":
     start_watchdog()
     start_stream_monitor()
     start_viewer_sampler()
+    start_precheck_loop()
     start_obs_guard()
     start_pcs_bridge_sync()
 
