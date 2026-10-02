@@ -1,5 +1,5 @@
 # Setup Guide — macOS
-## CricketStream Overlay — Version 2.10
+## CricketStream Overlay — Version 2.11
 
 ---
 
