@@ -84,6 +84,16 @@ shipped without it and misreported a manual match day until fixed.
   credit; never make it run off-air on a timer. Frozen = two byte-identical JPEGs in a row
   (real cameras have sensor noise), no AI needed. An API failure is reported as "couldn't
   check", never as a camera problem.
+- **`win_predictor.py`** — live win probability (pure stdlib): DLS-shaped resources curve
+  (matches DLS reference points to within ~2%) x this season's first-innings scoring (from
+  the season-stats download's `innings_history`, per format when >= `WIN_MODEL_FORMAT_MIN`
+  games, else pooled), normal-distribution totals. `server.win_prediction()` adds
+  `winPredictor` to every /live state; the overlay's `fillWinPredictor()` reads the copy
+  `processPCSData` stores — **there is no global `state` in overlay.html**: reading one
+  from a function called by showOverSummary threw and silently skipped the rest of the
+  over sequence (AI commentary, league table, sponsor strap). The history also comes from
+  the cache file, so a restart doesn't silence it. `backtest()` is the honest number: 66%
+  favourite-correct at the start of a chase on 2026's 64 matches.
 - **`scoring_engine.py`** — the deterministic scorer's-book core (`InningsEngine`): striker
   rotation, extras, dismissals, bowler figures, NV Play frame rendering. Two frontends drive
   it: `simulate_match.py` (random sampling) and the manual scoring page. Determinism is

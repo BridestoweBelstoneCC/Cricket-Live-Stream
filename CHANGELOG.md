@@ -6,6 +6,14 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **New: live win predictor.** After each over, a Win Predictor panel shows both teams'
+  chances (and "Need 26 off 24 balls" in a chase, or the projected score in the first
+  innings). It's built from how *this season's* matches have actually gone — the PlayCricket
+  scorecards the season stats already download, using the match's own format (40-over,
+  50-over…) when there are enough games of it — and a DLS-style model of how much batting
+  is left (balls and wickets). Backtested on this season's 64 completed matches: the start-
+  of-chase favourite won 66% of the time; it's weakest in 50-over games. Graphics → Win
+  predictor turns it off.
 - **New: AI camera spotter.** Match day → Cameras → **AI camera spotter**. While the stream
   is live, Claude Haiku looks at each camera every few minutes (5 by default) and warns —
   in the Cameras card and with a red camera badge in the panel's top bar — about a fogged,

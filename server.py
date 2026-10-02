@@ -1679,6 +1679,7 @@ DEFAULT_STATE = {
     # against real two-camera hardware (see obs_add_camera()). A no-op regardless unless
     # camera2_rtsp_url is also configured. See TODO.md.
     "graphics_camera_auto_cut":False,
+    "graphics_win_predictor":  True,
     "camera_spotter":          False,   # AI camera checks while live — spends AI credit
     "camera_spotter_minutes":  5,
     "replay_folder":           "",
@@ -3124,7 +3125,11 @@ def build_season_stats(force=False):
             "away": _season_top_bowler(details, away_frag) if away_frag else None,
         }
 
+        # The win predictor's league data: one compact summary per completed scorecard.
+        import win_predictor
+        innings_history = [h for h in (win_predictor.innings_summary(d) for d in details) if h]
         result = {"date": today, "away_id": away_id, "away_ok": away_ok, "lookup": lookup,
+                  "innings_history": innings_history,
                   "top_scorers": top_scorers, "top_bowlers": top_bowlers, "build_started": None,
                   "built": True, "building": False, "matches_used": used, "calls": calls, "error": err}
         with _season_stats_lock:
@@ -5903,6 +5908,60 @@ def spotter_status():
                 "problems": sum(1 for c in cams if not c["ok"])}
 
 
+# ── Win predictor ──────────────────────────────────────────────
+# Live win chance from this season's scorecards (see win_predictor.py). The league model is
+# built from the match's own format (40-over, 50-over…) when there are at least
+# WIN_MODEL_FORMAT_MIN games of it, else from all formats pooled.
+WIN_MODEL_FORMAT_MIN = 10
+
+
+_win_history_cache = {"mtime": None, "rows": []}
+
+
+def _season_innings_history():
+    """This season's innings summaries: from the in-memory season stats, else straight from
+    their cache file — which survives a restart, so the predictor doesn't go quiet until
+    someone presses "Refresh season stats" again. The file is re-read only when it changes."""
+    with _season_stats_lock:
+        rows = list(_season_stats.get("innings_history") or [])
+    if rows:
+        return rows
+    try:
+        mtime = os.path.getmtime(SEASON_STATS_CACHE_FILE)
+        if _win_history_cache["mtime"] != mtime:
+            with open(SEASON_STATS_CACHE_FILE, encoding="utf-8") as f:
+                _win_history_cache.update(mtime=mtime,
+                                          rows=json.load(f).get("innings_history") or [])
+        return list(_win_history_cache["rows"])
+    except (OSError, ValueError):
+        return []
+
+
+def win_prediction(state, cfg=None):
+    """The win_predictor result for a /live state, or None."""
+    import win_predictor
+    cfg = cfg or load_state()
+    if not cfg.get("graphics_win_predictor", True):
+        return None
+    innings = int(state.get("innings") or 1)
+    score, wkts = int(state.get("score") or 0), int(state.get("wickets") or 0)
+    overs = state.get("overs") or 0
+    if not (score or wkts or win_predictor._balls(overs)):
+        return None                                  # pre-match frame
+    remaining = int(state.get("ballsRemaining") or 0)
+    limit = None
+    if remaining > 0:
+        limit = (win_predictor._balls(overs) + remaining) / 6
+    limit = limit or int(cfg.get("max_overs") or 0) or None
+    history = _season_innings_history()
+    same = [h for h in history if limit and h["overs_limit"] == round(limit)]
+    model = win_predictor.league_model(same if len(same) >= WIN_MODEL_FORMAT_MIN else history)
+    target = int(state.get("targetRuns") or 0)
+    if innings >= 2 and not target and int(state.get("runsRequired") or 0) > 0:
+        target = score + int(state["runsRequired"])
+    return win_predictor.predict(innings, score, wkts, overs, limit, model, target=target)
+
+
 # ── Pre-match check ────────────────────────────────────────────
 # One button, run days before a match: does every credential and connection actually work?
 # Each check makes the real call (a configured key isn't a working key — the YouTube login
@@ -8391,6 +8450,10 @@ class Handler(BaseHTTPRequestHandler):
                     # Inject abbreviations so overlay can use them
                     pcs_state["home_abbrev"] = s.get("home_abbrev","").strip().upper()
                     pcs_state["away_abbrev"] = s.get("away_abbrev","").strip().upper()
+                    try:
+                        pcs_state["winPredictor"] = win_prediction(pcs_state, s)
+                    except Exception:
+                        pcs_state["winPredictor"] = None
                     events = []
                     if mutate:
                         # Buffer boundary/wicket events (this advances _prev_state)
