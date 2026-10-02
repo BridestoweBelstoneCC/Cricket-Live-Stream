@@ -592,6 +592,12 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
 
 ## Useful diagnostics
 
+- **Control panel → Setup → Run pre-match check** (`POST /precheck`, token-gated, 20s
+  cooldown) — tries every credential and connection for real, in parallel with a time limit
+  each: YouTube login + which channel, PlayCricket key, Anthropic key (free `models.list`),
+  OBS WebSocket, scorer feed, replay disk space. Read-only. Add new external dependencies
+  to `PRECHECKS`; a check returns (ok|warn|bad, detail, fix) and may raise — that's
+  reported as `bad`, never a crash.
 - `http://localhost:5000/health` — feed freshness, photos, badges, AI key status, NV Play
   bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`), and a
   pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a

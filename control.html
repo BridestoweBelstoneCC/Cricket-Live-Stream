@@ -977,6 +977,16 @@
 <section class="tab-panel" id="tab-setup" role="tabpanel">
 <div class="grid">
   <div class="card">
+    <h2>Pre-match check</h2>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      Run this a few days before a match. It tries every login and connection for real &mdash;
+      YouTube, PlayCricket, the AI key, OBS, the scorer feed and disk space &mdash; so an expired
+      login turns up now, not on the day. Nothing is changed.
+    </p>
+    <button class="btn btn-test" id="precheck-btn" onclick="runPrecheck()" style="width:100%;">&#9989; Run pre-match check</button>
+    <div id="precheck-results" style="margin-top:10px;font-size:13px;"></div>
+  </div>
+  <div class="card">
     <h2>OBS</h2>
     <div class="field">
       <label>OBS WebSocket password</label>
@@ -1533,6 +1543,61 @@ async function pickBg(mode) {
     };
     msg.appendChild(undo);
   } catch (e) { msg.textContent = 'Could not reach the server.'; }
+}
+
+// ── Pre-match check ──
+// Every row is built with textContent: the details include error text from outside services.
+const PRECHECK_MARK = {ok: ['\u2713', 'var(--ok)'], warn: ['\u26A0', 'var(--warn)'],
+                       bad: ['\u2717', 'var(--bad)']};
+async function runPrecheck() {
+  const box = document.getElementById('precheck-results');
+  const btn = document.getElementById('precheck-btn');
+  box.textContent = 'Checking — this takes up to 20 seconds…';
+  box.style.color = 'var(--muted)';
+  btn.disabled = true;
+  try {
+    const res = await apiFetch('/precheck', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await res.json();
+    box.textContent = '';
+    box.style.color = '';
+    if (!res.ok) { box.textContent = d.error || ('Check failed (' + res.status + ')'); return; }
+    (d.checks || []).forEach(function (c) {
+      const mark = PRECHECK_MARK[c.status] || ['?', 'var(--muted)'];
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);';
+      const icon = document.createElement('span');
+      icon.textContent = mark[0];
+      icon.style.cssText = 'color:' + mark[1] + ';font-weight:700;width:1.2em;flex-shrink:0;';
+      const body = document.createElement('div');
+      const head = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = c.name + ': ';
+      head.appendChild(name);
+      head.appendChild(document.createTextNode(c.detail));
+      body.appendChild(head);
+      if (c.fix) {
+        const fix = document.createElement('div');
+        fix.textContent = c.fix;
+        fix.style.color = 'var(--muted)';
+        fix.style.fontSize = '12px';
+        body.appendChild(fix);
+      }
+      row.appendChild(icon);
+      row.appendChild(body);
+      box.appendChild(row);
+    });
+    const summary = document.createElement('div');
+    summary.style.cssText = 'margin-top:8px;font-weight:600;color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';';
+    summary.textContent = d.ok ? 'Nothing broken. ' + (d.checks.some(function (c) { return c.status === 'warn'; }) ? 'Have a look at the ⚠ items.' : 'All set.')
+                               : 'Something needs fixing before the match — see ✗ above.';
+    box.appendChild(summary);
+  } catch (e) {
+    box.textContent = 'Could not reach the server';
+    box.style.color = 'var(--bad)';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Sponsor airtime (read-only; the overlay reports, the server times it) ──

@@ -4,6 +4,15 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **New: pre-match check.** Control panel → Setup → **Run pre-match check**, meant for a
+  few days before a match. It tries every login and connection for real — YouTube (and
+  that it's signed in to the club's channel), the PlayCricket key, the AI key, OBS, the
+  scorer feed and the disk space for replays — all at once, and answers ✓ / ⚠ / ✗ with
+  what to do. Nothing is changed. Built after a YouTube login on a club laptop turned out
+  to have expired with no sign until it was needed.
+
 ## v2.10 — 2026-10-02
 
 - **Fixed: an expired YouTube login now says so.** Google rejects a stored YouTube login

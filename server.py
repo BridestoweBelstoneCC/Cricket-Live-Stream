@@ -55,6 +55,7 @@ except Exception:
 import urllib.request, urllib.error, html
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import sqlite3
+import shutil
 from urllib.parse import urlparse, urlencode
 
 # Console output throughout this file uses arrows/checkmarks (→, ✓, ✗, —). Windows consoles
@@ -334,6 +335,7 @@ _RATE_LIMITS = {
     "/report/generate":       120,   # AI match report — 2 min
     "/social/image/generate": 120,   # AI social graphic — 2 min
     "/obs/stream_check":      300,   # a real upload-speed test uses data — 5 min cooldown
+    "/precheck":               20,   # calls YouTube, PlayCricket and Anthropic
     "/agent/discover":          3,   # broadcasts on the LAN — short cooldown, not a heavy op,
                                       # just enough to stop a script (not a human clicking
                                       # "Find scorer laptop") from flooding the network
@@ -5078,7 +5080,6 @@ def _font_path():
 
 def _clip_duration(path):
     """Clip length in seconds via ffprobe, or None if unavailable."""
-    import shutil
     if not shutil.which("ffprobe"):
         return None
     try:
@@ -5768,6 +5769,153 @@ def score_feed_status(s, now=None):
     if age < 120:
         return True, f"Scoreboard updated {int(age)}s ago."
     return False, f"Last scoreboard update {_fmt_duration(age)} ago — has the scorer started?"
+
+
+# ── Pre-match check ────────────────────────────────────────────
+# One button, run days before a match: does every credential and connection actually work?
+# Each check makes the real call (a configured key isn't a working key — the YouTube login
+# that had silently expired on 2026-10-02 is what this exists to catch), runs in parallel
+# with its own time limit, and answers ok / warn / bad with what to do about it. Nothing is
+# changed anywhere: every call is a read.
+PRECHECK_TIMEOUT_SEC = 20
+PRECHECK_DISK_WARN_GB = 10
+PRECHECK_DISK_BAD_GB = 2
+
+
+def _pc_youtube(st):
+    if not os.path.exists(YT_CREDS_FILE):
+        return ("warn", "YouTube isn't set up.",
+                "Optional: without it the stream title won't update itself and there are "
+                "no sponsor viewer-minutes. See the YouTube section of the setup guide.")
+    yt, err = _youtube_service(allow_interactive=False)
+    if yt is None:
+        return ("bad", err, "Renew the login on the streaming laptop, with the club's "
+                            "Google account.")
+    items = yt.channels().list(part="snippet", mine=True).execute().get("items", [])
+    if not items:
+        return ("bad", "Signed in, but that Google account has no YouTube channel.",
+                "Sign in again with the club's Google account.")
+    title = items[0]["snippet"].get("title", "")
+    if _club_fragment(st) not in title.lower():
+        return ("warn", f"Signed in as the channel “{title}”.",
+                "Is that the club's channel? If not, sign in again with the club's account.")
+    return ("ok", f"Signed in as “{title}”.", "")
+
+
+def _pc_playcricket(st):
+    key = (st.get("playcricket_api_key") or "").strip()
+    site = str(st.get("home_club_id") or "").strip()
+    if not key:
+        return ("warn", "No PlayCricket API key.",
+                "Fetch today's match, season stats and result cards need one (Setup).")
+    if not site.isdigit():
+        return ("warn", "Key set, but no club ID.", "Enter the club's PlayCricket ID (Setup).")
+    try:
+        d = _pc_get_json("https://play-cricket.com/api/v2/matches.json"
+                         f"?api_token={key}&site_id={site}&season={datetime.date.today().year}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return ("bad", "PlayCricket rejected the API key.",
+                    "Check the key in Setup, or ask PlayCricket for a new one.")
+        return ("bad", f"PlayCricket answered HTTP {e.code}.", "Try again later.")
+    if "matches" not in d:
+        return ("bad", "PlayCricket's answer wasn't a fixture list.",
+                "Check the key and club ID in Setup.")
+    return ("ok", f"Key works — {len(d['matches'])} fixtures this season.", "")
+
+
+def _pc_anthropic(st):
+    key = (st.get("anthropic_api_key") or "").strip() or os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        return ("warn", "No Anthropic API key.",
+                "Optional: AI commentary, match reports and captions need one (Setup).")
+    try:
+        import anthropic
+    except ImportError:
+        return ("bad", "The anthropic package isn't installed.", "Run: pip install anthropic")
+    try:
+        anthropic.Anthropic(api_key=key).models.list(limit=1)   # free: no tokens used
+    except anthropic.AuthenticationError:
+        return ("bad", "Anthropic rejected the API key.", "Check the key in Setup.")
+    except anthropic.PermissionDeniedError:
+        return ("bad", "The Anthropic key isn't allowed to use the API.",
+                "Check the account's billing and key settings at console.anthropic.com.")
+    return ("ok", "Key works.", "")
+
+
+def _pc_obs(st):
+    import obs_prep
+    port = int(st.get("obs_port", 4455) or 4455)
+    local = str(st.get("obs_host", "localhost")).strip() in ("localhost", "127.0.0.1", "")
+    if local and not obs_prep.port_open(port):
+        return ("warn", "OBS isn't open.",
+                "Fine before match day — on the day, the checklist's Start OBS opens it.")
+    res = _obs_call(st, [("GetVersion", None)], timeout=6)
+    if not res or res[0] is None:
+        return ("bad", "OBS didn't accept the connection.",
+                "Check the WebSocket password and port in Setup match OBS "
+                "(Tools → WebSocket Server Settings).")
+    return ("ok", f"Connected to OBS {res[0].get('obsVersion', '')}.".replace(" .", "."), "")
+
+
+def _pc_scorer(st):
+    fresh, detail = score_feed_status(st)
+    if fresh:
+        return ("ok", detail, "")
+    if "No scoreboard folder set" in detail:
+        return ("bad", detail, "Set where the scorer's file comes from (Setup → Scoring source).")
+    return ("warn", detail, "Expected before the match — the scorer's software writes it "
+                            "once they start.")
+
+
+def _pc_disk(st):
+    folder = (st.get("replay_folder") or "").strip() or _default_replay_folder()
+    probe = folder
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    free_gb = shutil.disk_usage(probe).free / 1e9
+    where = folder if os.path.isdir(folder) else f"{folder} (doesn't exist yet — OBS creates it)"
+    if free_gb < PRECHECK_DISK_BAD_GB:
+        return ("bad", f"Only {free_gb:.1f} GB free for replays in {where}.",
+                "Free up space: replays and the highlights reel need several GB a match.")
+    if free_gb < PRECHECK_DISK_WARN_GB:
+        return ("warn", f"{free_gb:.1f} GB free for replays in {where}.",
+                "Probably enough for one match; worth clearing old clips.")
+    return ("ok", f"{free_gb:.0f} GB free for replays in {where}.", "")
+
+
+PRECHECKS = (("youtube", "YouTube", _pc_youtube),
+             ("playcricket", "PlayCricket", _pc_playcricket),
+             ("anthropic", "AI (Anthropic)", _pc_anthropic),
+             ("obs", "OBS", _pc_obs),
+             ("scorer", "Scorer feed", _pc_scorer),
+             ("disk", "Disk space", _pc_disk))
+
+
+def run_precheck():
+    """Every pre-match check, in parallel. A check that errors or runs past its time limit
+    becomes a "bad" result — one broken service never hides the others' answers."""
+    import concurrent.futures as cf
+    st = load_state()
+    pool = cf.ThreadPoolExecutor(max_workers=len(PRECHECKS))
+    futures = [(cid, name, pool.submit(fn, st)) for cid, name, fn in PRECHECKS]
+    deadline = time.time() + PRECHECK_TIMEOUT_SEC
+    out = []
+    for cid, name, fut in futures:
+        try:
+            status, detail, fix = fut.result(timeout=max(deadline - time.time(), 0.1))
+        except cf.TimeoutError:
+            status, detail, fix = ("bad", f"No answer within {PRECHECK_TIMEOUT_SEC}s.",
+                                   "Check the internet connection, then run it again.")
+        except Exception as e:
+            status, detail, fix = ("bad", f"Check failed: {str(e)[:200]}", "")
+        out.append({"id": cid, "name": name, "status": status, "detail": detail, "fix": fix})
+    pool.shutdown(wait=False)       # a hung call can finish in the background
+    return {"ok": not any(c["status"] == "bad" for c in out), "checks": out,
+            "ran_at": datetime.datetime.now().isoformat(timespec="seconds")}
 
 
 def checklist_status():
@@ -6532,7 +6680,6 @@ def compile_highlights(folder, output_path, max_clips=100):
     lower-third; replay-test clips are excluded. A YouTube-ready description with
     chapter timestamps is written next to the reel.
     """
-    import shutil
     import tempfile
     if not shutil.which("ffmpeg"):
         return False, "FFmpeg not found — download from https://ffmpeg.org/download.html and add to PATH"
@@ -7936,6 +8083,10 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = add_camera_from_state(str(d.get("which") or "1").strip(),
                                             d.get("url"), d.get("name"), d.get("scene"))
             self._json({"ok": ok, "message": msg})
+
+        elif path == "/precheck":
+            if not self._check_rate_limit(path): return
+            self._json(run_precheck())
 
         elif path == "/camera/scene":
             # Hard-cut between camera scenes (e.g. bowler-end <-> wide) — a thin wrapper
