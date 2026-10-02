@@ -237,7 +237,14 @@ shipped without it and misreported a manual match day until fixed.
   before going live — only live time is ever presented as airtime. Totals persist to
   `sponsor_airtime.json` (git-ignored); `GET /sponsor/airtime[?date=]` must stay above the
   `/sponsor/<id>` prefix route. Quickstart prints it after the match and saves
-  `sponsor_airtime_<date>.txt`. **Logo upload:** `POST /sponsor/upload` takes the raw image
+  `sponsor_airtime_<date>.txt`. **Viewer-minutes:** while live, and only if YouTube is
+  already authorised, `_viewer_tick()` samples the ACTIVE broadcast's concurrentViewers once
+  a minute (never the title-updater's newest-broadcast fallback — that could credit a past
+  stream's audience; never an interactive login). Each on-air appearance adds seconds ×
+  the count if it's ≤3 min old, tracked with the seconds it covered: the line says
+  "estimated" and, when coverage is partial, says over how much — never scale it up.
+  **Transparent copies** are recorded in `sponsors/.variants.json` ({copy: original}) so
+  the result card shows each sponsor once (`sponsor_logos_for_card()`). **Logo upload:** `POST /sponsor/upload` takes the raw image
   as the body (no multipart), handled at the TOP of `do_POST` — before the generic 1 MB
   body read, so it can allow 8 MB and check login/origin before reading a byte. The type
   comes from the file's magic bytes (`sniff_image`: PNG/JPEG/WebP/GIF; never SVG, which

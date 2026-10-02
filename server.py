@@ -5577,6 +5577,12 @@ def sponsor_airtime_event(event, now=None):
                 key = "on_air" if (op["on_air"] or live) else "off_air"
                 rec[key + "_sec"] = round(rec[key + "_sec"] + secs, 1)
                 rec[key + "_shows"] += 1
+                viewers = live_viewers(now) if key == "on_air" else None
+                if viewers is not None:
+                    # Seconds on screen x people watching at the time. Kept with the
+                    # seconds it covers, so the report never stretches a partial sample.
+                    rec["viewer_min"] = round(rec.get("viewer_min", 0.0) + secs * viewers / 60, 1)
+                    rec["viewer_covered_sec"] = round(rec.get("viewer_covered_sec", 0.0) + secs, 1)
                 rec["last"] = now
                 _sponsor_air["open"] = None
                 changed = True
@@ -5605,15 +5611,105 @@ def sponsor_airtime_summary(day=None):
     out = {"date": day, "days": sorted(data, reverse=True)[:30], "sponsors": []}
     for name, rec in sorted(data.get(day, {}).items()):
         on, shows = rec.get("on_air_sec", 0.0), rec.get("on_air_shows", 0)
+        vmin, covered = rec.get("viewer_min", 0.0), rec.get("viewer_covered_sec", 0.0)
+        line = (f"{name} was on screen for {_fmt_duration(on)} of the live stream, "
+                f"across {shows} appearance{'s' if shows != 1 else ''}."
+                if shows else f"{name} wasn't on screen while the stream was live.")
+        if shows and covered:
+            # An estimate, and worded as one: YouTube's live viewer count (sampled each
+            # minute) x the seconds on screen. Only the time a fresh count covered is
+            # used; if that's not all of it, say so rather than scale it up.
+            vm = f"{round(vmin):,}"
+            line = line[:-1] + (
+                f" — an estimated {vm} viewer-minutes (YouTube's live viewer count × time on screen)."
+                if covered >= on - 1 else
+                f" — an estimated {vm} viewer-minutes over the {_fmt_duration(covered)} of it "
+                f"that had a YouTube viewer count.")
         out["sponsors"].append({
             "sponsor": name, "on_air_sec": on, "on_air_shows": shows,
             "off_air_sec": rec.get("off_air_sec", 0.0),
             "off_air_shows": rec.get("off_air_shows", 0),
-            "line": (f"{name} was on screen for {_fmt_duration(on)} of the live stream, "
-                     f"across {shows} appearance{'s' if shows != 1 else ''}."
-                     if shows else f"{name} wasn't on screen while the stream was live."),
+            "viewer_minutes": round(vmin), "viewer_covered_sec": covered,
+            "line": line,
         })
+    out["live_viewers"] = live_viewers()
     return out
+
+
+# ── Live viewer count (for sponsor viewer-minutes) ─────────────
+# While the stream is live and YouTube is already authorised on this laptop, ask YouTube
+# how many people are watching, once a minute: videos.list liveStreamingDetails
+# .concurrentViewers for the ACTIVE broadcast. ~1 quota unit a call, ~300 for a long match
+# against the default 10,000 a day. Never authorises interactively (no browser popping up
+# mid-match), and does nothing at all if YouTube isn't set up.
+VIEWER_POLL_SEC  = 60
+VIEWER_FRESH_SEC = 180       # a count older than this isn't applied to an appearance
+_viewers      = {"count": None, "at": 0.0, "video": None, "yt": None, "error": None,
+                 "thread": False}
+_viewers_lock = threading.Lock()
+
+
+def live_viewers(now=None):
+    """The latest concurrent-viewer count if it's fresh, else None."""
+    now = now or time.time()
+    with _viewers_lock:
+        if _viewers["count"] is not None and now - _viewers["at"] <= VIEWER_FRESH_SEC:
+            return _viewers["count"]
+    return None
+
+
+def _viewer_tick(now=None):
+    now = now or time.time()
+    with _stream_mon_lock:
+        live = bool(_stream_mon["streaming"])
+    if not live:
+        with _viewers_lock:
+            _viewers["video"] = None      # the next stream may be a different broadcast
+        return
+    if not (os.path.exists(YT_CREDS_FILE) and os.path.exists(YT_TOKEN_FILE)):
+        return
+    with _viewers_lock:
+        yt, video = _viewers["yt"], _viewers["video"]
+    if yt is None:
+        yt, err = _youtube_service(allow_interactive=False)
+        if yt is None:
+            with _viewers_lock:
+                _viewers["error"] = err
+            return
+    if not video:
+        # Only an ACTIVE broadcast: unlike the title updater, never guess at the newest
+        # one, or a sponsor could be credited with a past stream's audience.
+        items = yt.liveBroadcasts().list(part="id", broadcastStatus="active",
+                                         broadcastType="all", maxResults=1).execute().get("items", [])
+        if not items:
+            return
+        video = items[0]["id"]
+    found = yt.videos().list(part="liveStreamingDetails", id=video).execute().get("items", [])
+    det = (found[0].get("liveStreamingDetails") or {}) if found else {}
+    count = det.get("concurrentViewers")
+    with _viewers_lock:
+        _viewers.update(yt=yt, error=None,
+                        video=None if (not found or det.get("actualEndTime")) else video)
+        if count is not None:
+            _viewers.update(count=int(count), at=now)
+
+
+def _viewer_loop():
+    while True:
+        try:
+            _viewer_tick()
+        except Exception as e:
+            with _viewers_lock:
+                _viewers["error"] = str(e)[:200]
+        time.sleep(VIEWER_POLL_SEC)
+
+
+def start_viewer_sampler():
+    with _viewers_lock:
+        if _viewers["thread"]:
+            return
+        _viewers["thread"] = True
+    threading.Thread(target=_viewer_loop, daemon=True).start()
 
 
 # ── Match-day checklist ────────────────────────────────────────
@@ -8140,6 +8236,7 @@ if __name__ == "__main__":
     _ensure_control_token()
     start_watchdog()
     start_stream_monitor()
+    start_viewer_sampler()
     start_obs_guard()
     start_pcs_bridge_sync()
 

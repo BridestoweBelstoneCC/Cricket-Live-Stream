@@ -47,6 +47,11 @@ class Base(unittest.TestCase):
     def live(self, on):
         server._stream_mon["streaming"] = on
 
+    def viewers(self, count, at):
+        saved = dict(server._viewers)
+        self.addCleanup(server._viewers.update, saved)
+        server._viewers.update(count=count, at=at)
+
     def show_for(self, start, secs):
         server.sponsor_airtime_event("show", now=T0 + start)
         server.sponsor_airtime_event("hide", now=T0 + start + secs)
@@ -105,6 +110,37 @@ class TestTiming(Base):
         self.state["sponsor_name"] = ""
         self.show_for(0, 7)
         self.assertIsNone(self.today())
+
+    def test_viewer_minutes_from_the_live_viewer_count(self):
+        self.viewers(40, at=T0)
+        self.show_for(0, 9)
+        self.show_for(60, 6)
+        rec = self.today()
+        self.assertEqual((rec["viewer_minutes"], rec["viewer_covered_sec"]), (10, 15.0))
+        self.assertIn("an estimated 10 viewer-minutes (YouTube's live viewer count × time "
+                      "on screen).", rec["line"])
+
+    def test_stale_viewer_count_is_not_used(self):
+        self.viewers(40, at=T0 - 1000)
+        self.show_for(0, 9)
+        rec = self.today()
+        self.assertEqual(rec["viewer_minutes"], 0)
+        self.assertTrue(rec["line"].endswith("across 1 appearance."))
+
+    def test_partial_coverage_is_said_not_scaled_up(self):
+        self.viewers(60, at=T0)
+        self.show_for(0, 9)             # count is fresh
+        self.show_for(1000, 6)          # count is 16 minutes old by now
+        rec = self.today()
+        self.assertEqual(rec["viewer_minutes"], 9)
+        self.assertIn("an estimated 9 viewer-minutes over the 9 s of it that had a YouTube "
+                      "viewer count.", rec["line"])
+
+    def test_viewers_never_counted_before_going_live(self):
+        self.live(False)
+        self.viewers(40, at=T0)
+        self.show_for(0, 9)
+        self.assertEqual(self.today()["viewer_minutes"], 0)
 
     def test_survives_a_server_restart(self):
         # Totals are on disk, not just in memory: quickstart restarts a crashed server.
@@ -172,3 +208,64 @@ class TestOverlayBeacon(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestViewerSampler(unittest.TestCase):
+    """The once-a-minute YouTube viewer count, against a fake YouTube client."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        creds, token = os.path.join(self.tmp, "c.json"), os.path.join(self.tmp, "t.json")
+        for f in (creds, token):
+            open(f, "w").close()
+        for p in (mock.patch.object(server, "YT_CREDS_FILE", creds),
+                  mock.patch.object(server, "YT_TOKEN_FILE", token)):
+            p.start()
+            self.addCleanup(p.stop)
+        saved, saved_live = dict(server._viewers), server._stream_mon["streaming"]
+        self.addCleanup(server._viewers.update, saved)
+        self.addCleanup(server._stream_mon.__setitem__, "streaming", saved_live)
+        self.yt = mock.MagicMock()
+        server._viewers.update(count=None, at=0.0, video=None, yt=self.yt, error=None)
+        server._stream_mon["streaming"] = True
+
+    def broadcasts(self, items):
+        self.yt.liveBroadcasts.return_value.list.return_value.execute.return_value = {"items": items}
+
+    def video(self, details):
+        self.yt.videos.return_value.list.return_value.execute.return_value =             {"items": [{"liveStreamingDetails": details}]}
+
+    def test_samples_the_active_broadcast(self):
+        self.broadcasts([{"id": "vid1"}])
+        self.video({"concurrentViewers": "57"})
+        server._viewer_tick(now=T0)
+        self.assertEqual(server.live_viewers(now=T0 + 30), 57)
+        kw = self.yt.liveBroadcasts.return_value.list.call_args.kwargs
+        self.assertEqual(kw["broadcastStatus"], "active")      # never a guessed past stream
+        self.yt.videos.return_value.list.assert_called_with(part="liveStreamingDetails", id="vid1")
+
+    def test_no_active_broadcast_no_count(self):
+        self.broadcasts([])
+        server._viewer_tick(now=T0)
+        self.assertIsNone(server.live_viewers(now=T0))
+        self.yt.videos.assert_not_called()
+
+    def test_not_live_makes_no_api_calls(self):
+        server._stream_mon["streaming"] = False
+        server._viewers["video"] = "old"
+        server._viewer_tick(now=T0)
+        self.yt.liveBroadcasts.assert_not_called()
+        self.assertIsNone(server._viewers["video"])
+
+    def test_ended_broadcast_is_forgotten(self):
+        server._viewers["video"] = "vid1"
+        self.video({"actualEndTime": "2026-10-02T17:00:00Z"})
+        server._viewer_tick(now=T0)
+        self.assertIsNone(server._viewers["video"])
+        self.assertIsNone(server.live_viewers(now=T0))
+
+    def test_youtube_not_set_up_does_nothing(self):
+        os.remove(server.YT_TOKEN_FILE)
+        server._viewer_tick(now=T0)
+        self.yt.liveBroadcasts.assert_not_called()
