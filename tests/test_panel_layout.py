@@ -41,7 +41,7 @@ class TestStructure(unittest.TestCase):
         # today's match" fills umpires/competition/match id) or retired, and POST /state
         # MERGES, so a key the panel doesn't send is kept, not wiped.
         server_managed = {"match_url", "umpire1_name", "umpire2_name", "competition_name",
-                          "pc_match_id", "replay_motto", "poll_interval", "graphics_commentary"}
+                          "pc_match_id", "replay_motto", "poll_interval"}
         missing = [f for f in fields if f not in HTML_IDS and f not in server_managed]
         self.assertEqual(missing, [])
 

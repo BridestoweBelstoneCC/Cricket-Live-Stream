@@ -227,6 +227,45 @@ class PlayCricketEdgeCaseTests(unittest.TestCase):
         self.assertEqual({s["club_id"] for s in f["sides"]}, {"111", "222"})
 
 
+class SponsorLogoFamilyTests(unittest.TestCase):
+    """One logo per sponsor on the card: an original and its transparent copies count once."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="sponsors_")
+        self.addCleanup(__import__("shutil").rmtree, self.dir, True)
+        p = mock.patch.object(server, "SPONSOR_DIR", self.dir)
+        p.start()
+        self.addCleanup(p.stop)
+        for n in ("1.png", "2.jpg", "3.png", "10.png"):
+            open(os.path.join(self.dir, n), "wb").close()
+
+    def names(self, current=""):
+        return [os.path.basename(p) for p in server.sponsor_logos_for_card(self.dir, current)]
+
+    def test_no_copies_shows_everything_in_id_order(self):
+        self.assertEqual(self.names(), ["1.png", "2.jpg", "3.png", "10.png"])
+
+    def test_copy_replaces_its_original(self):
+        server._record_sponsor_variant("3", "2")
+        self.assertEqual(self.names("3"), ["1.png", "3.png", "10.png"])
+        self.assertEqual(self.names("2"), ["1.png", "2.jpg", "10.png"])   # after Undo
+        self.assertEqual(self.names("1"), ["1.png", "3.png", "10.png"])   # newest copy
+
+    def test_copy_of_a_copy_still_counts_once(self):
+        server._record_sponsor_variant("3", "2")
+        server._record_sponsor_variant("10", "3")
+        self.assertEqual(self.names("10"), ["1.png", "10.png"])
+
+    def test_a_different_folder_ignores_the_record(self):
+        server._record_sponsor_variant("3", "2")
+        other = tempfile.mkdtemp(prefix="other_")
+        self.addCleanup(__import__("shutil").rmtree, other, True)
+        for n in ("2.jpg", "3.png"):
+            open(os.path.join(other, n), "wb").close()
+        self.assertEqual([os.path.basename(p) for p in server.sponsor_logos_for_card(other, "3")],
+                         ["2.jpg", "3.png"])
+
+
 @unittest.skipUnless(HAVE_PIL, "Pillow not installed")
 class RendererTests(unittest.TestCase):
     def setUp(self):

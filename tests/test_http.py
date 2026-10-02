@@ -643,7 +643,7 @@ class TestAuthEnabled(HttpTestBase):
     def test_open_endpoints_stay_open(self):
         # The overlay has no login flow: everything it GETs must work tokenless
         for path in ("/state", "/live", "/commands", "/health", "/player/stats?name=X",
-                     "/commentary/over", "/commentary/latest"):
+                     "/commentary/over"):
             status, _, _ = self.request("GET", path)
             self.assertEqual(status, 200, path)
 
