@@ -321,7 +321,15 @@ class TestLivePcsPipeline(HttpTestBase):
         server._event_buffer.clear()
         server._ball_log_prev.update({"mid": None, "innings": None, "over": None,
                                       "score": 0, "wickets": 0, "count": 0})
+        server._logged_mid["mid"] = None
+        server._live_prev.clear()
+        server._live_prev["key"] = None
         server.match_log_reset()
+        # Each test starts from an empty match DB: some change the team names, and so
+        # the match id, which would otherwise leave rows behind for the next test.
+        with sqlite3.connect(server._db_path()) as c:
+            for t in server._MATCH_TABLES:
+                c.execute(f"DELETE FROM {t}")
 
     def write_pcs(self, mtime, **fields):
         d = {"batting_team": "Home CC", "bowling_team": "Rival CC",
@@ -430,6 +438,38 @@ class TestLivePcsPipeline(HttpTestBase):
         self.assertEqual(over2[5], (6, "4", 4))
         self.assertEqual(over3, [(1, "1", 1)])
 
+    def test_ticker_that_does_carry_the_final_ball(self):
+        # Defensive: if NV Play ever DOES put the final ball in the ticker, it's logged
+        # once, as that over's sixth ball — not again under the next over.
+        self.write_pcs(time.time() - 10, runs="12", wickets="0", overs="2.5",
+                       last_ball="1 4 . . 2")
+        self.get_json("/live")
+        for age in (8, 6):
+            self.write_pcs(time.time() - age, runs="12", wickets="1", overs="3.0",
+                           last_ball="1 4 . . 2 W")
+            self.get_json("/live")
+        self.write_pcs(time.time() - 4, runs="12", wickets="1", overs="3.1", last_ball=".")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            over2 = c.execute("SELECT ball, outcome, is_wicket FROM balls WHERE over=2 "
+                              "ORDER BY ball").fetchall()
+            over3 = c.execute("SELECT COUNT(*) FROM balls WHERE over=3").fetchone()[0]
+        self.assertEqual(len(over2), 6)
+        self.assertEqual(over2[5], (6, "W", 1))
+        self.assertEqual(over3, 1)
+
+    def test_new_overs_opening_wide_is_not_mistaken_for_the_stale_ticker(self):
+        self.write_pcs(time.time() - 10, runs="12", wickets="0", overs="2.5",
+                       last_ball="w . . . . 1")
+        self.get_json("/live")
+        self.write_pcs(time.time() - 8, runs="13", wickets="0", overs="3.0", last_ball="")
+        self.get_json("/live")
+        self.write_pcs(time.time() - 6, runs="14", wickets="0", overs="3.0", last_ball="w")
+        self.get_json("/live")
+        with sqlite3.connect(server._db_path()) as c:
+            over3 = c.execute("SELECT outcome FROM balls WHERE over=3").fetchall()
+        self.assertEqual(over3, [("wide",)])
+
     def test_stale_ticker_is_not_relogged_at_the_end_of_an_innings(self):
         # No "next ball" ever replaces the last over's stale copy, so it used to stay in
         # the DB under an over that was never bowled.
@@ -442,6 +482,34 @@ class TestLivePcsPipeline(HttpTestBase):
         with sqlite3.connect(server._db_path()) as c:
             self.assertEqual(c.execute("SELECT COUNT(*) FROM balls WHERE over=5").fetchone()[0], 0)
             self.assertEqual(c.execute("SELECT runs FROM balls WHERE over=4 AND ball=6").fetchone(), (6,))
+
+    def _ids_with_balls(self):
+        with sqlite3.connect(server._db_path()) as c:
+            return {r[0] for r in c.execute("SELECT DISTINCT match_id FROM balls")}
+
+    def test_renaming_the_opposition_mid_innings_keeps_the_match_together(self):
+        self.write_pcs(time.time() - 10, runs="12", overs="2.3", last_ball="1 4 .")
+        self.get_json("/live")
+        server.update_state(lambda st: st.update(away_team="Corrected Name CC"))
+        self.write_pcs(time.time() - 8, runs="13", overs="2.4", last_ball="1 4 . 1")
+        self.get_json("/live")
+        self.assertEqual(self._ids_with_balls(), {server.current_match_id()})
+        with sqlite3.connect(server._db_path()) as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM balls WHERE over=2").fetchone()[0], 4)
+
+    def test_an_earlier_session_is_not_pulled_into_the_match(self):
+        # A morning rehearsal under one id, then the real match under another: the old
+        # rows are hours old, so they stay where they are.
+        self.write_pcs(time.time() - 10, runs="12", overs="2.3", last_ball="1 4 .")
+        self.get_json("/live")
+        rehearsal = server.current_match_id()
+        with sqlite3.connect(server._db_path()) as c:
+            c.execute("UPDATE balls SET ts='2000-01-01T09:00:00'")
+            c.execute("UPDATE live_innings SET ts='2000-01-01T09:00:00'")
+        server.update_state(lambda st: st.update(away_team="Real Opponents CC"))
+        self.write_pcs(time.time() - 8, runs="5", overs="0.4", last_ball="1 4 . .")
+        self.get_json("/live")
+        self.assertEqual(self._ids_with_balls(), {rehearsal, server.current_match_id()})
 
     def test_recovered_ball_keeps_the_old_overs_personnel(self):
         # On the over-completing write the feed has ALREADY rotated the bowler and

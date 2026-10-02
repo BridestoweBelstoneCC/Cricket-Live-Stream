@@ -21,6 +21,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
     If the scorer's team names don't identify which side is ours, the card shows the
     scores without claiming a win or defeat.
 
+- **Rehearsals now behave like the real NV Play feed at the end of an over.** The match
+  simulator used to clear the ball ticker when an over completed; real NV Play keeps
+  showing it until the next ball. That gap is why the ball logger's missing-final-ball bug
+  never showed up in a rehearsal. `--clearing-ticker` keeps the old behaviour available.
+- **Fixed: a match no longer splits in two when its id changes mid-innings** — pressing
+  "Fetch today's match" after the first ball, or correcting the opposition name during
+  play. The data logged so far moves with it (an earlier rehearsal never does), so the
+  report, result card and CSV export cover the whole match.
+- The ball logger also copes if NV Play ever does show an over's final ball in the ticker:
+  it's logged once, in its own over.
 - **Fixed (found in a code review):**
   - The ball-by-ball database was missing the last ball of most overs, and at the end of
     each innings kept a copy of the final over under an over that was never bowled. NV

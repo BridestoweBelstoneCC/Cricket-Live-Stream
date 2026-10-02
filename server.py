@@ -654,16 +654,26 @@ def log_ball_data(state):
         striker, nonstriker = b1.get("name", ""), b2.get("name", "")
         mid      = current_match_id()
         prev     = _ball_log_prev
-        # NV Play usually does NOT clear the ticker when an over completes (CLAUDE.md): it
-        # keeps showing the finished over, on every write, until the next ball. Those balls
-        # are already logged. Read them as a cleared ticker — otherwise the final delivery
-        # reads as negative runs and is never recovered, and the stale balls are logged
-        # again under the NEXT over against the next bowler.
+        # NV Play usually does NOT update the ticker when an over completes (CLAUDE.md):
+        # it keeps showing the finished over as it was before the final ball, on every
+        # write, until the next ball. Those balls are already logged, so read the write as
+        # a cleared ticker — otherwise the final delivery reads as negative runs and is
+        # never recovered, and the stale balls are logged again under the NEXT over
+        # against the next bowler. Matched as a prefix so a ticker that DOES carry the
+        # final ball still counts as stale: that extra ball (`tail`) goes into the
+        # finished over where it belongs. Only while no legal ball of the new over has
+        # been bowled, and only for a ticker at least as long as the logged one, so a new
+        # over's opening wide can't be mistaken for it.
         sig = tuple(b["outcome"] for b in balls)
-        if balls and (
-                (prev["mid"] == mid and prev["innings"] == innings and prev["over"] is not None
-                 and over_idx > prev["over"] and sig == prev.get("sig"))
-                or prev.get("done") == (mid, innings, over_idx - 1, sig)):
+        tail = []
+        rolled = (prev["mid"] == mid and prev["innings"] == innings
+                  and prev["over"] is not None and over_idx > prev["over"])
+        ref = prev.get("sig") if rolled else (
+            prev["done"][3] if prev.get("done") and prev["done"][:3] == (mid, innings, over_idx - 1)
+            else None)
+        if (balls and ref and _overs_to_balls(state.get("overs", 0) or 0) % 6 == 0
+                and len(sig) >= len(ref) and sig[:len(ref)] == ref):
+            tail = balls[len(ref):] if rolled else []
             balls = []
 
         # ── Recover the invisible over-completing delivery ──
@@ -671,11 +681,27 @@ def log_ball_data(state):
         # whatever score/wickets moved beyond the balls we HAVE seen is the final
         # delivery (or, across a missed poll, final deliveries — logged as one
         # aggregate ball; totals stay exact even when the per-ball split is unknowable).
-        if (prev["mid"] == mid and prev["innings"] == innings
-                and prev["over"] is not None and over_idx > prev["over"]):
+        if rolled:
+            if tail:
+                # The final ball(s) are in the ticker after all: log them as bowled.
+                now_s = datetime.datetime.now().isoformat(timespec="seconds")
+                run, wk = prev["score"], prev["wickets"]
+                with _db_lock, _db() as c:
+                    for i, b in enumerate(tail, start=prev["count"] + 1):
+                        run += b["runs"]
+                        wk += 1 if b["wicket"] else 0
+                        c.execute(
+                            "INSERT OR REPLACE INTO balls(match_id,innings,over,ball,batting_team,"
+                            "batter,non_striker,bowler,outcome,runs,extra,is_wicket,legal,"
+                            "cum_runs,cum_wkts,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (mid, innings, prev["over"], i, bteam,
+                             prev["striker"] or striker, prev["nonstriker"] or nonstriker,
+                             prev["bowler"] or bowler, b["outcome"], b["runs"], b["extra"],
+                             int(b["wicket"]), int(b["legal"]), run, wk, now_s))
+                prev.update({"count": prev["count"] + len(tail), "score": run, "wickets": wk})
             miss_runs = score - prev["score"] - sum(b["runs"] for b in balls)
             miss_wkts = wkts - prev["wickets"] - sum(1 for b in balls if b["wicket"])
-            if miss_runs >= 0 and (miss_runs > 0 or miss_wkts > 0 or prev["count"] > 0):
+            if miss_runs >= 0 and (miss_runs > 0 or miss_wkts > 0 or (prev["count"] > 0 and not tail)):
                 synth_outcome = "W" if miss_wkts > 0 else (str(miss_runs) if miss_runs else "dot")
                 now_s = datetime.datetime.now().isoformat(timespec="seconds")
                 with _db_lock, _db() as c:
@@ -2453,6 +2479,54 @@ def _balls_to_overs(balls):
 # What the previous poll looked like, so log_live_figures can tell who was dismissed (the
 # batter who left the pair) and finish the over of a bowler who has just been rotated off.
 _live_prev = {"key": None}
+
+
+# Every table keyed by match_id, for follow_match_id().
+_MATCH_TABLES = ("balls", "live_innings", "live_batting", "live_bowling", "live_fow",
+                 "innings_totals", "batting", "bowling", "clips")
+_logged_mid = {"mid": None}
+MATCH_ID_FOLLOW_SEC = 600
+
+
+def follow_match_id(state):
+    """Keep one match's logged data under one id when the id changes mid-innings.
+    current_match_id() is the PlayCricket id once "Fetch today's match" has run, else the
+    date plus both team names — so fetching after the first ball, or correcting the
+    opposition name mid-match, used to start a new id and split the match: the report
+    and result card then saw only the part logged since. Rows move to the new id only
+    when it's genuinely the same match: the innings is under way, the old id was logging
+    in the last 10 minutes, and the new id has nothing yet — so a morning rehearsal is
+    never pulled into the afternoon's match. Never raises."""
+    try:
+        mid = current_match_id()
+        old, _logged_mid["mid"] = _logged_mid["mid"], mid
+        if not old or old == mid or not _overs_to_balls(state.get("overs", 0) or 0):
+            return
+        with _db_lock, _db() as c:
+            if c.execute("SELECT 1 FROM balls WHERE match_id=? UNION ALL "
+                         "SELECT 1 FROM live_innings WHERE match_id=? LIMIT 1",
+                         (mid, mid)).fetchone():
+                return
+            last = c.execute("SELECT MAX(ts) FROM (SELECT ts FROM balls WHERE match_id=? "
+                             "UNION ALL SELECT ts FROM live_innings WHERE match_id=?)",
+                             (old, old)).fetchone()[0]
+            try:
+                age = (datetime.datetime.now()
+                       - datetime.datetime.fromisoformat(last)).total_seconds()
+            except (TypeError, ValueError):
+                return
+            if age > MATCH_ID_FOLLOW_SEC:
+                return
+            for t in _MATCH_TABLES:
+                c.execute(f"UPDATE OR IGNORE {t} SET match_id=? WHERE match_id=?", (mid, old))
+            c.execute("UPDATE OR IGNORE matches SET match_id=? WHERE match_id=?", (mid, old))
+        if _ball_log_prev.get("mid") == old:
+            _ball_log_prev["mid"] = mid
+        if _live_prev.get("key") and _live_prev["key"][0] == old:
+            _live_prev["key"] = (mid, _live_prev["key"][1])
+        print(f"  ✓  Match id changed mid-innings ({old} → {mid}) — logged data moved with it")
+    except Exception:
+        pass
 
 
 def log_live_figures(state):
@@ -7571,6 +7645,7 @@ class Handler(BaseHTTPRequestHandler):
                         # Buffer boundary/wicket events (this advances _prev_state)
                         buffer_pcs_events(pcs_state)
                         match_log_snapshot(pcs_state)
+                        follow_match_id(pcs_state)  # an id change mid-match keeps its data
                         log_ball_data(pcs_state)   # append to our own ball-by-ball database
                         log_live_figures(pcs_state)  # the scorer's totals, for the report/card
                         # Hand buffered events to the overlay and clear — under the lock,

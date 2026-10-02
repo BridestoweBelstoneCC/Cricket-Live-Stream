@@ -216,11 +216,13 @@ shipped without it and misreported a manual match day until fixed.
   collapse; `--configure` points the running server at it; `--chaos` injects mid-write/stall
   failures. Deterministic per `--seed`; the engine is imported by `tests/test_simulator.py`
   as a parser-consistency harness. Always rehearse graphics changes with it before match day.
-  **Known fidelity gap:** its own docstring still claims the ticker clears on the
-  over-completing write — the opposite of what real NV Play does (see the ticker gotcha
-  below), discovered by measuring a real match's feed, not by rehearsing against this
-  simulator. The simulator's frames haven't been updated to match; a bug that depends on the
-  stale-ticker behavior won't currently show up in a simulated rehearsal.
+  **Ticker fidelity (fixed 2026-10-02):** it used to clear the ticker on the
+  over-completing write — the opposite of real NV Play (see the ticker gotcha below) —
+  which is how the ball logger shipped dropping every over's final ball without a
+  rehearsal or `tests/test_soak.py` noticing. It now keeps showing the pre-final-ball
+  ticker until the next ball, like the real feed (`MatchSimulator._frame`; the shared
+  engine still clears, which is right for `/scoring`). `--clearing-ticker` keeps the old
+  path rehearsable. The soak test fails on the old logger with this; keep it that way.
 - **`ARCHITECTURE.md`** — contributor-facing design doc with Mermaid diagrams (data-flow,
   one ball's journey, module map). If you change the architecture, update its diagrams in
   the same commit.
@@ -337,6 +339,13 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   reset connections outright — the server itself never errored, the client just got refused
   at the OS level before Python's handler ever ran. Don't let this silently regress back to
   the default while refactoring the `_Server` class.
+- **A match keeps one id when it changes mid-innings.** `current_match_id()` is the
+  PlayCricket id once fetched, else date + both team names, so a late "Fetch today's match"
+  or an opposition rename mid-match used to split the match's data. `follow_match_id()`
+  (called before the loggers on every /live poll) moves the rows to the new id — but only
+  if the innings is under way, the old id logged in the last 10 minutes and the new id is
+  empty, so a morning rehearsal is never merged into the real match. A new table keyed by
+  `match_id` must be added to `_MATCH_TABLES` or it gets left behind.
 - **Post-match facts come from the scorer's own figures, never the `balls` table.** The AI
   report/social post (`build_match_summary()`) and the result card
   (`generate_social_graphic_facts()`) both read `merged_match_facts()`: the `live_*` tables
