@@ -31,8 +31,17 @@ import (
 	"cricketstream/internal/pyval"
 )
 
-const (
+// Swappable for tests: everything that reaches outside the process.
+var (
 	precheckTimeout    = 20 * time.Second
+	precheckYT         = ytService
+	precheckDiskFree   = diskFreeBytes
+	precheckPortOpen   = func(port int) bool { return obs.PortOpen(port, "", time.Second) }
+	precheckDial       = func(addr string) (net.Conn, error) { return net.DialTimeout("tcp", addr, 3*time.Second) }
+	precheckProfileINI = func() string { return obs.ActiveProfileINI(obs.ConfigDir()) }
+)
+
+const (
 	ytTestingWarnDays  = 5 // Testing-mode Google apps' logins last 7 days
 	precheckAutoEvery  = 6 * time.Hour
 	precheckDiskWarnGB = 10
@@ -52,7 +61,7 @@ func pcYouTube(st M) CheckResult {
 		return chk("warn", "YouTube isn't set up.", "Optional: without it the stream title won't update itself and there are "+
 			"no sponsor viewer-minutes. See the YouTube section of the setup guide.")
 	}
-	yt, msg := ytService(false)
+	yt, msg := precheckYT(false)
 	if yt == nil {
 		return chk("bad", msg, "Renew the login on the streaming laptop, with the club's Google account.")
 	}
@@ -141,7 +150,7 @@ func pcOBS(st M) CheckResult {
 	if port == 0 {
 		port = 4455
 	}
-	if obsIsLocal(st) && !obs.PortOpen(port, "", time.Second) {
+	if obsIsLocal(st) && !precheckPortOpen(port) {
 		return chk("warn", "OBS isn't open.", "Fine before match day — on the day, the checklist's Start OBS opens it.")
 	}
 	res := obsCall(st, []obsws.Req{{Type: "GetVersion"}}, 6*time.Second)
@@ -176,7 +185,7 @@ func pcDisk(st M) CheckResult {
 		}
 		probe = parent
 	}
-	free, err := diskFreeBytes(probe)
+	free, err := precheckDiskFree(probe)
 	if err != nil {
 		panic(err)
 	}
@@ -231,7 +240,7 @@ func pcOBSBitrate(st M) CheckResult {
 	}
 	streamMonMu.Unlock()
 	if configured == 0 {
-		p := obs.ActiveProfileINI(obs.ConfigDir())
+		p := precheckProfileINI()
 		if p == "" {
 			return chk("skip", "OBS hasn't been set up on this laptop yet.", "")
 		}
@@ -282,7 +291,7 @@ func pcCameras(st M) CheckResult {
 		if port == "" {
 			port = "554"
 		}
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(u.Hostname(), port), 3*time.Second)
+		conn, err := precheckDial(net.JoinHostPort(u.Hostname(), port))
 		if err != nil {
 			down = append(down, c.name)
 			continue
@@ -553,7 +562,7 @@ collect:
 	for i, c := range Prechecks {
 		r := results[i]
 		if r == nil {
-			r = &CheckResult{"bad", fmt.Sprintf("No answer within %ds.", int(precheckTimeout.Seconds())),
+			r = &CheckResult{"bad", fmt.Sprintf("No answer within %ss.", strconv.FormatFloat(precheckTimeout.Seconds(), 'f', -1, 64)),
 				"Check the internet connection, then run it again."}
 		}
 		if r.Status == "bad" {
