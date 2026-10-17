@@ -60,8 +60,8 @@ the machine, which is handy for differential tests against the original (`py -3 
 | social_clips.py | 118 | internal/socialclips | **done** |
 | logo_bg.py | 144 | internal/logobg | **done** |
 | result_card.py | 397 | internal/resultcard | **done** |
-| nvplay_bridge.py | 158 | internal/bridge | todo |
-| scorer_agent.py | 712 | internal/agent | todo |
+| nvplay_bridge.py | 158 | internal/bridge | **done** (`cricketstream bridge`) |
+| scorer_agent.py | 712 | internal/agent | **done** (`cricketstream agent`); folder finder shared in internal/scorerfile |
 | simulate_match.py | 332 | internal/simulate | todo |
 | obs_prep.py | 997 | internal/obs | todo |
 | obs_setup.py | 502 | internal/obs | todo |
@@ -71,6 +71,17 @@ the machine, which is handy for differential tests against the original (`py -3 
 | scripts/*.py | ~550 | scripts → Go tests / tools | todo |
 | tests/*.py (~670 tests) | 8575 | `_test.go` beside each package | ported per package |
 | CI + build-executables workflows | | .github/workflows | todo (go test, go build, one artifact) |
+
+## Shared helpers already built
+
+- `internal/pyval` — Python truthiness/str()/int() on decoded JSON
+- `internal/pyfmt` — Python round()/str(float)/f"{:.nf}"
+- `internal/htmlesc` — Python html.escape byte-for-byte
+- `internal/ini` — configparser-compatible INI (incl. `%%` escaping)
+- `internal/proc` — run external programs with timeout / below-normal priority / no window
+- `internal/console` — Die()/Pause()/Input(), CRICKETSTREAM_NO_PAUSE, UTF-8 console
+- `internal/assets` — embedded files with app-folder override; `assets.Dir()` is the app folder
+- `internal/scorerfile` — find the scorer's file, NV Play folder detection, Python-style text read
 
 ## Porting rules
 
