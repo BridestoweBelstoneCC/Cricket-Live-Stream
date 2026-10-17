@@ -330,3 +330,6 @@ For bugs or issues, raise them on GitHub:
 
 Even if you've never used GitHub before, raising an issue is as simple as clicking New Issue and describing what's happening.
 
+For quick questions — or if something's gone wrong on match day and you need a hand — join the Discord:
+**https://discord.gg/2nuBPj9rH7**
+

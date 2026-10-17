@@ -118,6 +118,13 @@ class TestRoutesOpen(HttpTestBase):
         self.assertIn(b'"Navy"', data)                 # ...with the real kit presets
         self.assertIn(b"apiFetch", data)               # the big script block made it intact
 
+    def test_favicon_served(self):
+        for path in ("/favicon.ico", "/favicon.png"):
+            status, headers, data = self.request("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(headers.get("Content-Type"), "image/png", path)
+            self.assertTrue(data.startswith(b"\x89PNG"), path)
+
     def test_html_pages_are_not_cacheable(self):
         # A cached panel/overlay runs OLD JS against a NEW server (e.g. a control it doesn't
         # know to save, so a toggle looks 'stuck'). All three HTML pages must say no-store.

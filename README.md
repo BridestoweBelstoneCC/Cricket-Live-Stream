@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo-dark-bg.png">
+    <img src="brand/logo-light-bg.png" alt="CricketStream" width="420">
+  </picture>
+</p>
+
 # CricketStream Overlay
 
 <img width="1889" height="1080" alt="Screenshot_20260622-154222~2" src="https://github.com/user-attachments/assets/9477ebc9-37aa-4f9f-ac28-f6baab3fd130" />
@@ -33,6 +40,7 @@
 - [Cost comparison](#cost-comparison)
 - [Version history](#version-history)
 - [Contributing](#contributing)
+- [Get help / chat](#get-help--chat)
 
 ---
 
@@ -649,6 +657,15 @@ replay via OBS, highlights compiler, PlayCricket fixture detection, and YouTube 
 ## Contributing
 
 Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to get started. If you add support for additional scoring software, fix bugs, or improve the overlay design, please open a pull request. If your club uses this and improves it for your own needs, please share the changes so other clubs can benefit.
+
+---
+
+## Get help / chat
+
+Questions, match-day problems, or just want to show off your club's stream? Join the
+**[CricketStream Discord](https://discord.gg/2nuBPj9rH7)** — the quickest way to reach the maintainer and other
+clubs using it. Bugs that need fixing are still best raised as a
+[GitHub issue](../../issues), so they don't get lost in the chat.
 
 ---
 

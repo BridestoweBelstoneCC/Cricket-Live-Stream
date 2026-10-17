@@ -657,7 +657,7 @@ The HTTP tests patch `server.STATE_FILE`/`server._db_path` to a temp dir — rea
   OBS crash recovery (`obs_recovery`: watching, recent reopens, last event).
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/league/table` — today's competition's table (home club's row +
-  the row above), backend for the not-yet-built "win today, move up to Nth" graphic;
+  the row above), backend for the overlay's `#league-table-panel` (`graphics_league_table`);
   `"usable": false` means `competition_id` is blank or doesn't resolve to a real league
   table (a cup/friendly fixture, most likely) — see `fetch_league_table()`.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
