@@ -13,16 +13,26 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/console"
+	"cricketstream/internal/ini"
+	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/server"
+	"cricketstream/internal/setup"
 	"cricketstream/internal/simulate"
 )
+
+// version is set at build time (-ldflags "-X main.version=2.11"); "" for a dev build.
+var version = ""
 
 const usage = `CricketStream — live-stream graphics for grassroots cricket.
 
 Usage:
-  cricketstream                 start (first run opens the setup page)
-  cricketstream server          the streaming laptop: overlay, control panel, scoring page
+  cricketstream                 what this machine is set up for (first run opens setup)
+  cricketstream setup           open the setup page (change the club's details or role)
+  cricketstream start           match day on the streaming laptop
+        --remote / --local    answer "how do you want to run today?" up front
+        --manual / --nvplay   answer "how is today's match being scored?" up front
+  cricketstream server          just the server: overlay, control panel, scoring page
   cricketstream agent [folder]  scorer's laptop on the same wifi: serve the scoreboard file
         --port N              HTTP port (default 8788)
         --discovery-port N    UDP discovery port (default 8787)
@@ -44,7 +54,24 @@ func main() {
 }
 
 func run(cmd string, args []string) int {
+	server.Version = version
 	switch cmd {
+	case "setup":
+		res, err := setup.Run(setup.Options{OpenBrowser: true})
+		if err != nil {
+			fmt.Println("\n  " + err.Error())
+			return 1
+		}
+		fmt.Printf("\n  Saved. This machine is set up as: %s\n", roleName(res.Values.Role))
+		console.Pause("")
+		return 0
+	case "start":
+		return startMatch(args)
+	case "server":
+		if err := server.Run(server.Options{}); err != nil {
+			console.Die("The stream server stopped", err.Error())
+		}
+		return 0
 	case "agent":
 		fs := flag.NewFlagSet("agent", flag.ExitOnError)
 		port := fs.Int("port", agent.DefaultHTTPPort, "HTTP port to serve on")
@@ -88,19 +115,11 @@ func run(cmd string, args []string) int {
 			return 1
 		}
 		return 0
-	case "server":
-		if err := server.Run(server.Options{}); err != nil {
-			console.Die("The stream server stopped", err.Error())
-		}
-		return 0
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
 	case "":
-		fmt.Print(usage)
-		console.Problem("Not built yet", "The streaming server and the in-app setup are still being ported.")
-		console.Pause("")
-		return 1
+		return byRole()
 	}
 	fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
 	return 2
@@ -123,4 +142,62 @@ func reorder(args []string) []string {
 		pos = append(pos, a)
 	}
 	return append(flags, pos...)
+}
+
+func roleName(r string) string {
+	switch r {
+	case setup.RoleScorer:
+		return "the scorer's laptop (same wifi as the streaming laptop)"
+	case setup.RoleBridge:
+		return "the scorer's machine (reached over Tailscale)"
+	}
+	return "the streaming laptop"
+}
+
+// byRole is the double-click: first run opens the setup page, then every run goes
+// straight into the job this machine was set up for.
+func byRole() int {
+	role := setup.Role()
+	if role == "" {
+		fmt.Println()
+		fmt.Println("  Welcome to CricketStream — no config.ini yet, so first a one-time setup.")
+		fmt.Println()
+		res, err := setup.Run(setup.Options{OpenBrowser: true})
+		if err != nil {
+			fmt.Println("\n  " + err.Error())
+			console.Pause("")
+			return 1
+		}
+		role = res.Values.Role
+		fmt.Printf("\n  Saved. This machine is %s.\n\n", roleName(role))
+	}
+	switch role {
+	case setup.RoleScorer:
+		folder := ""
+		if f, err := ini.Load(setup.ConfigFile()); err == nil {
+			folder = f.Get("Scoring", "pcs_output_folder", "")
+		}
+		return agent.Run(agent.Options{Folder: folder})
+	case setup.RoleBridge:
+		return bridge.Run()
+	}
+	return launcher.Run(launcher.Options{})
+}
+
+func startMatch(args []string) int {
+	fs := flag.NewFlagSet("start", flag.ExitOnError)
+	remote := fs.Bool("remote", false, "allow Tailscale / LAN access to the control panel")
+	local := fs.Bool("local", false, "control panel on this laptop only")
+	manual := fs.Bool("manual", false, "score manually at /scoring today")
+	nvplay := fs.Bool("nvplay", false, "the scorer's software writes the feed")
+	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	fs.Parse(args)
+	o := launcher.Options{}
+	if *remote || *local {
+		o.Remote = remote
+	}
+	if *manual || *nvplay {
+		o.Manual = manual
+	}
+	return launcher.Run(o)
 }

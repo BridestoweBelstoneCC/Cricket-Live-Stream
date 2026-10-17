@@ -585,3 +585,6 @@ func StartPrecheckLoop() {
 		loop("Pre-match check", precheckAutoEvery, func() { RunPrecheck() })
 	}()
 }
+
+// VersionNewer reports whether version a is newer than b (numeric parts compared).
+func VersionNewer(a, b string) bool { return versionNewer(a, b) }

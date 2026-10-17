@@ -358,3 +358,18 @@ func SeedStateFromConfig() {
 	}
 	say("  ✔  Seeded from config.ini: %s", strings.Join(visible, ", "))
 }
+
+// LoadExistingState is match_state.json exactly as it is on disk — no defaults filled in
+// — or an empty object if it's missing, unreadable or not an object. The launcher merges
+// over it, so keys the panel owns ride through untouched.
+func LoadExistingState() M {
+	b, err := os.ReadFile(StateFile)
+	if err != nil {
+		return M{}
+	}
+	var m M
+	if json.Unmarshal(b, &m) != nil || m == nil {
+		return M{}
+	}
+	return m
+}
