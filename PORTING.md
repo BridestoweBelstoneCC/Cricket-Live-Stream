@@ -83,6 +83,48 @@ the machine, which is handy for differential tests against the original (`py -3 
 - `internal/assets` — embedded files with app-folder override; `assets.Dir()` is the app folder
 - `internal/scorerfile` — find the scorer's file, NV Play folder detection, Python-style text read
 
+- `internal/obsws` (+ `obswstest` fake OBS) — OBS WebSocket v5, per-call and held-open
+- `internal/ai` — the one Claude client (official Go SDK, `claude-haiku-4-5` as upstream)
+
+## server.py → internal/server (plan; tick as each lands)
+
+Package-level state mirrors the Python module globals (tests patch them the same way).
+Upstream line ranges refer to the pinned commit.
+
+| Go file | Python lines | Concern | Status |
+|---|---|---|---|
+| auth.go | 78–228 | control token, HMAC sessions, login lockout, auth log | todo |
+| remote.go | 229–346 | LAN/Tailscale IPs, Cloudflare tunnel, QR, rate limits | todo |
+| commentary.go | 347–476, 811–905 | AI test commentary, match log, over commentary | todo |
+| db.go | 477–810 | SQLite schema, classify ball, ticker, ball logger, reconcile, CSV | todo |
+| weather.go, commands.go | 906–957 | overlay command queue, Open-Meteo | todo |
+| youtube.go | 958–1174 | YouTube Data API (OAuth token file compatible with google-auth) | todo |
+| resultsvault.go | 1175–1617 | ResultsVault/PlayCricket widget live feed, event buffer | todo |
+| state.go | 1618–1895 | DEFAULT_STATE, atomic save, redaction, seed from config | todo |
+| pcs.go | 1896–2070, 3900–4038 | scorer file read + parse_pcs_json (innings latch) | todo |
+| agentclient.go | 2071–2350 | discover/read scorer agent, read_score_source | todo |
+| bridgesync.go | 2351–2418 | NV Play bridge mirror loop | todo |
+| matchfacts.go | 2419–2712 | follow_match_id, live_* figures, match facts, AI report | todo |
+| roster.go | 2713–2822 | socials folders, roster, name keys | todo |
+| season.go | 2823–3156 | PlayCricket season aggregation + cache | todo |
+| league.go | 3158–3256 | league table | todo |
+| watchdog.go | 3257–3488 | error recorder, self metrics, thermal, watchdog | todo |
+| cards.go | 3489–3899 | result-card facts (PlayCricket + live) | todo |
+| manual.go | 4039–4369 | /scoring session glue (engine already in internal/scoring) | todo |
+| fixture.go | 4370–4477 | today's fixture, kit presets | todo |
+| obsops.go | 4478–5306 | replay trigger, add camera, clip tagging, highlights plan | todo |
+| streamquality.go | 5307–5571 | congestion sentinel + bitrate ladder | todo |
+| airtime.go | 5572–5765 | sponsor airtime + viewer-minutes | todo |
+| spotter.go, voice glue | 5766–5954 | feed status, camera spotter, spoken commentary | todo |
+| matchpage.go, winpred.go | 5955–6179 | match page build, win prediction | todo |
+| precheck.go, checklist.go | 6180–6743 | pre-match check, match-day checklist | todo |
+| sponsor.go | 6744–6903 | logo upload, transparent copies, variants | todo |
+| obsguard.go | 6904–7196 | OBS crash/freeze recovery | todo |
+| streamcheck.go | 7197–7294 | upload test, bitrate sanity | todo |
+| clips.go | 7295–7545 | control.html serving, social clips, highlights compile | todo |
+| handler.go | 7546–9243 | every HTTP route | todo |
+| run.go | 9244–end | entry point (becomes `cricketstream server` / default role) | todo |
+
 ## Porting rules
 
 - Behaviour is ported, including every gotcha in upstream `CLAUDE.md`; port the test that
