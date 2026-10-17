@@ -58,20 +58,20 @@ def draw_mark(size, transparent=False):
     off = r * 0.10
     d.ellipse((cx - r, cy - r, cx + r - off, cy + r - off), fill=BALL)
 
-    # Seam: two parallel arcs of a much larger circle, clipped to the ball,
-    # with stitch ticks between them. Tilted like a ball in flight.
+    # Seam: three parallel arcs of a much larger circle, clipped to the ball,
+    # with stitch ticks across them. Tilted like a ball in flight.
     seam = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     sd = ImageDraw.Draw(seam)
     tilt = math.radians(-35)
     big = r * 2.2
     scx, scy = cx - math.cos(tilt) * big * 0.93, cy - math.sin(tilt) * big * 0.93
-    for dr in (-r * 0.07, r * 0.07):
+    for dr in (-r * 0.10, 0, r * 0.10):
         rr = big + dr
         sd.ellipse((scx - rr, scy - rr, scx + rr, scy + rr), outline=SEAM, width=int(r * 0.045))
     for k in range(-6, 7):
         a = tilt + k * 0.055
-        x1, y1 = scx + math.cos(a) * (big - r * 0.11), scy + math.sin(a) * (big - r * 0.11)
-        x2, y2 = scx + math.cos(a) * (big + r * 0.11), scy + math.sin(a) * (big + r * 0.11)
+        x1, y1 = scx + math.cos(a) * (big - r * 0.15), scy + math.sin(a) * (big - r * 0.15)
+        x2, y2 = scx + math.cos(a) * (big + r * 0.15), scy + math.sin(a) * (big + r * 0.15)
         sd.line((x1, y1, x2, y2), fill=SEAM, width=int(r * 0.03))
     ball_mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(ball_mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
