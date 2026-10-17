@@ -1,0 +1,9 @@
+# Keep text files LF on every checkout: the embedded pages must stay byte-identical
+# to upstream, and Windows tools otherwise slip CRLF in.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff2 binary
