@@ -1,0 +1,9 @@
+iso_time,elapsed_s,inst_mbps,congestion,delta_skipped,skipped_total,frames_total,stream_active,reconnecting,obs_cpu_pct,obs_fps,obs_mem_mb,render_skipped,render_total,ladder_step,ladder_current_kbps,ladder_baseline_kbps,ladder_verdict,pcs_fresh,pcs_age_s,batting_team,score,wickets,overs,last_ball,srv_cpu_pct,srv_rss_mb,srv_errors,probe_mbps,probe_skipped_why
+2026-07-25 13:55:00,0,,0,,0,100,True,False,3.2,30.0,410.5,0,100,0,2500,2500,ok,True,1.2,Bridestowe,10,0,1.2,1,2.5,80.1,0,,
+2026-07-25 13:55:10,10,2.512,0,0,0,400,True,False,3.1,30.0,411.0,0,400,0,2500,2500,ok,True,2.0,Bridestowe,14,0,1.4,4,2.4,80.2,0,,
+2026-07-25 13:55:20,20,2.498,0.0123,5,5,700,True,False,3.4,29.9,411.2,0,700,1,2000,2500,congested,False,12.5,Bridestowe,14,1,1.5,W,2.6,80.2,0,,congested (0.0123)
+2026-07-25 13:55:30,30,1.987,0,12,17,1000,True,True,3.5,29.8,412.0,2,1000,1,2000,2500,ok,False,22.0,Bridestowe,15,1,2.0,1,2.7,80.3,1,,dropping frames (12)
+2026-07-25 13:55:40,40,,0,,0,50,True,False,3.0,30.0,412.1,0,1050,,,,,True,1.0,Bridestowe,19,1,2.1,4,2.5,80.3,1,6.42,
+2026-07-25 13:55:50,50,2.001,0,0,0,350,True,False,3.0,30.0,412.1,0,1350,0,2500,2500,ok,True,1.1,Bridestowe,25,1,2.2,6,2.5,80.3,1,,not streaming
+2026-07-25 13:56:00,60,2.003,0,0,0,650,True,False,3.0,30.0,412.1,0,1650,0,2500,2500,ok,True,1.1,Bridestowe,25,1,2.3,.,2.5,80.3,1,5.87,
+2026-07-25 13:56:10,70,250.0,0,0,0,950,True,False,3.0,30.0,412.1,0,1950,0,2500,2500,ok,True,1.1,Bridestowe,25,1,2.4,.,2.5,80.3,1,,congested (0.0123)

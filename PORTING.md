@@ -65,9 +65,9 @@ the machine, which is handy for differential tests against the original (`py -3 
 | simulate_match.py | 332 | internal/simulate | **done** (`cricketstream simulate`; parser-consistency tests move to the feed parser) |
 | obs_prep.py | 997 | internal/obs | **done** (+ `CRICKETSTREAM_OBS_PORTABLE` safe test mode) |
 | obs_setup.py | 502 | internal/obs | **done** (`cricketstream obs-setup`; tested against a fake OBS in internal/obsws/obswstest) |
-| server.py | 9347 | internal/server | **done** (`cricketstream server`); tests ported except result_card/match_page/social_clips/voice server parts |
-| setup_wizard.py / quickstart.py / cricketstream.py | 1767 | internal/setup | todo (becomes web setup) |
-| stream_telemetry / camera_encoder / refresh_cam / stream_quality_test | 1092 | internal/tools | todo |
+| server.py | 9347 | internal/server | **done** (`cricketstream server`); all server tests ported (JS tests run in node) |
+| setup_wizard.py / quickstart.py / cricketstream.py | 1767 | internal/setup + internal/launcher | **done** (web `/setup`, role dispatch, `start`) |
+| stream_telemetry / camera_encoder / refresh_cam / stream_quality_test | 1092 | internal/tools | **done** (`telemetry`, `camera-encoder`, `refresh-cam`, `quality-test`) |
 | scripts/*.py | ~550 | scripts → Go tests / tools | todo |
 | tests/*.py (~670 tests) | 8575 | `_test.go` beside each package | ported per package |
 | CI + build-executables workflows | | .github/workflows | todo (go test, go build, one artifact) |

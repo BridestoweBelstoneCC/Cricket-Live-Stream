@@ -294,7 +294,7 @@ func Run(o Options) (Result, error) {
 	u := "http://" + ln.Addr().String() + "/setup"
 	o.Say("  Setup is open in your browser:  %s", u)
 	o.Say("  (If it didn't open, copy that address into a browser on this laptop.)")
-	if o.OpenBrowser {
+	if o.OpenBrowser && os.Getenv("CRICKETSTREAM_NO_BROWSER") != "1" {
 		browser.Open(u)
 	}
 	sig := make(chan os.Signal, 1)

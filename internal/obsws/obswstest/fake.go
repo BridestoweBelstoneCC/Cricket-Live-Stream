@@ -144,3 +144,14 @@ func (s *Server) Close() {
 	s.srv.CloseClientConnections()
 	s.srv.Close()
 }
+
+// DropConnections closes every open connection but keeps accepting new ones, the way a
+// client sees OBS being restarted.
+func (s *Server) DropConnections() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ws := range s.open {
+		ws.Close()
+	}
+	s.open = nil
+}

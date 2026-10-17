@@ -19,6 +19,7 @@ import (
 	"cricketstream/internal/server"
 	"cricketstream/internal/setup"
 	"cricketstream/internal/simulate"
+	"cricketstream/internal/tools"
 )
 
 // version is set at build time (-ldflags "-X main.version=2.11"); "" for a dev build.
@@ -40,6 +41,18 @@ Usage:
   cricketstream bridge          scorer's machine elsewhere: token-gated scoreboard over HTTP
   cricketstream simulate        rehearse with a simulated match (--list for scenarios)
   cricketstream obs-setup       build OBS's scenes and sources (OBS must be open)
+
+Match-day diagnostics:
+  cricketstream telemetry       log bandwidth, drops and match context to diagnostics/
+        --interval S          seconds between samples (default 10)
+        --probe-every S       seconds between headroom probes, 0 = off (default 300)
+        --summary CSV         summarise a telemetry CSV and exit
+  cricketstream camera-encoder  read the Reolink camera's own encoder settings
+        --source Cam / --host IP --user NAME / --channel N
+  cricketstream refresh-cam     reload the OBS camera source on a timer (RTSP drift)
+        --source Cam / --interval 60 / --once / --host H / --port P
+  cricketstream quality-test    drive the quality ladder down and back while live
+
   cricketstream help            this text
 `
 
@@ -115,6 +128,35 @@ func run(cmd string, args []string) int {
 			return 1
 		}
 		return 0
+	case "telemetry":
+		fs := flag.NewFlagSet("telemetry", flag.ExitOnError)
+		o := tools.TelemetryOptions{}
+		fs.Float64Var(&o.Interval, "interval", 10, "seconds between samples")
+		fs.StringVar(&o.Summary, "summary", "", "summarise an existing CSV and exit")
+		fs.Float64Var(&o.ProbeEvery, "probe-every", 300, "seconds between headroom probes; 0 disables")
+		fs.Parse(args)
+		return tools.Telemetry(o)
+	case "camera-encoder":
+		fs := flag.NewFlagSet("camera-encoder", flag.ExitOnError)
+		o := tools.CameraOptions{}
+		fs.StringVar(&o.Source, "source", "Cam", "OBS source to read the RTSP URL from")
+		fs.StringVar(&o.Host, "host", "", "camera IP (skips OBS lookup)")
+		fs.StringVar(&o.User, "user", "", "camera username")
+		fs.IntVar(&o.Channel, "channel", 0, "camera channel")
+		fs.Parse(args)
+		return tools.CameraEncoder(o)
+	case "refresh-cam":
+		fs := flag.NewFlagSet("refresh-cam", flag.ExitOnError)
+		o := tools.RefreshOptions{}
+		fs.StringVar(&o.Source, "source", "Cam", "media source name")
+		fs.Float64Var(&o.Interval, "interval", 60, "seconds between reloads")
+		fs.BoolVar(&o.Once, "once", false, "reload once and exit")
+		fs.StringVar(&o.Host, "host", "localhost", "OBS host")
+		fs.IntVar(&o.Port, "port", 4455, "OBS WebSocket port")
+		fs.Parse(args)
+		return tools.RefreshCam(o)
+	case "quality-test":
+		return tools.QualityTest()
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
