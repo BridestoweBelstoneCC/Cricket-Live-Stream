@@ -56,6 +56,7 @@ var (
 	guardSleep      = time.Sleep
 	guardLaunch     = func(exe string, args []string) error { return obs.Launch(exe, args) }
 	guardWaitWS     = func(port int, t time.Duration) bool { return obs.WaitForWebsocket(port, t) }
+	guardStreaming  = obsIsStreaming
 )
 
 func obsGuardEnabled() bool {
@@ -198,7 +199,7 @@ func obsGuardTick(t float64) string {
 		// the "it WAS live" this needs to restore.
 		var live, known bool
 		if portUp {
-			live, known = obsIsStreaming(st)
+			live, known = guardStreaming(st)
 		}
 		if !known {
 			streamMonMu.Lock()
