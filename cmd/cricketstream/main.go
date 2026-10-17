@@ -12,6 +12,7 @@ import (
 	"cricketstream/internal/agent"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/console"
+	"cricketstream/internal/simulate"
 )
 
 const usage = `CricketStream — live-stream graphics for grassroots cricket.
@@ -23,6 +24,7 @@ Usage:
         --discovery-port N    UDP discovery port (default 8787)
         --check-template      report whether the NV Play scoreboard template is built in
   cricketstream bridge          scorer's machine elsewhere: token-gated scoreboard over HTTP
+  cricketstream simulate        rehearse with a simulated match (--list for scenarios)
   cricketstream help            this text
 `
 
@@ -48,6 +50,23 @@ func run(cmd string, args []string) int {
 		return agent.Run(agent.Options{Folder: fs.Arg(0), Port: *port, DiscoveryPort: *disc, CheckTemplate: *check})
 	case "bridge":
 		return bridge.Run()
+	case "simulate":
+		fs := flag.NewFlagSet("simulate", flag.ExitOnError)
+		o := simulate.Options{}
+		fs.StringVar(&o.Scenario, "scenario", "full", "full | chase | century | collapse")
+		fs.StringVar(&o.Folder, "folder", "", "where to write the scoreboard file (default: sim_pcs_output in the app folder)")
+		fs.Float64Var(&o.BallSeconds, "ball-seconds", 3.0, "pace: seconds between deliveries")
+		fs.IntVar(&o.Overs, "overs", 20, "overs per innings")
+		seed := fs.Int64("seed", -1, "reproducible match")
+		fs.BoolVar(&o.Configure, "configure", false, "point the RUNNING server's PCS folder at the sim folder")
+		fs.BoolVar(&o.Chaos, "chaos", false, "inject realistic failures: mid-write empty files, feed stalls")
+		fs.BoolVar(&o.List, "list", false, "describe scenarios and exit")
+		fs.BoolVar(&o.ClearingTicker, "clearing-ticker", false, "clear the ball ticker when an over completes")
+		fs.Parse(args)
+		if *seed >= 0 {
+			o.Seed = seed
+		}
+		return simulate.Run(o)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
