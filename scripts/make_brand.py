@@ -165,6 +165,10 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     draw_mark(1024).save(os.path.join(OUT, "icon-1024.png"))
     draw_mark(512).save(os.path.join(OUT, "icon-512.png"))
+    # The browser-tab icon server.py serves at /favicon.ico, and the Windows exe's icon.
+    draw_mark(64).save(os.path.join(OUT, "favicon-64.png"))
+    draw_mark(256).save(os.path.join(OUT, "icon.ico"), sizes=[(16, 16), (24, 24), (32, 32),
+                                                          (48, 48), (64, 64), (128, 128), (256, 256)])
     draw_mark(1024, transparent=True).save(os.path.join(OUT, "mark-transparent.png"))
     lockup(dark_bg=True).save(os.path.join(OUT, "logo-dark-bg.png"))
     lockup(dark_bg=False).save(os.path.join(OUT, "logo-light-bg.png"))

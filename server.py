@@ -7754,6 +7754,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False,
                             "error": f"control.html not found next to server.py ({e}) — "
                                      f"restore it from the repo"}, status=500)
+        elif path in ("/favicon.ico", "/favicon.png"):
+            # Browsers ask for /favicon.ico on their own; a PNG under that name is fine
+            # for every current one, so the panel and scoring page need no <link> tag.
+            self._file(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "brand", "favicon-64.png"), "image/png")
         elif path == "/scoring":
             # Manual ball-by-ball scoring page — phones/tablets, no NV Play needed
             try:

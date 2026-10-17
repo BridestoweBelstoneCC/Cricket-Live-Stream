@@ -44,7 +44,7 @@ jobs:
       # find_project_root, install_packages, configure, write_config and the die()/pause()
       # rules), so PyInstaller follows the import and bundles it automatically.
       - name: Build exe
-        run: pyinstaller --onefile --console --name CricketStream cricketstream.py
+        run: pyinstaller --onefile --console --icon brand/icon.ico --name CricketStream cricketstream.py
 
       - name: Smoke-test the exe
         # Run it somewhere that is NOT the project folder: it must exit non-zero with the
@@ -167,7 +167,7 @@ jobs:
         # NV Play's Templates folder on start (scorers used to copy it by hand, from a full
         # project download they otherwise didn't need). ":" works as the separator on every
         # platform from PyInstaller 6; checked by building it locally with 6.22.3.
-        run: pyinstaller --onefile --console --name CricketStreamScorerAgent --add-data "scoreboard.template:." scorer_agent.py
+        run: pyinstaller --onefile --console --icon brand/icon.ico --name CricketStreamScorerAgent --add-data "scoreboard.template:." scorer_agent.py
 
       - name: Smoke-test the exe
         # --help exercises the frozen binary's startup and argparse without binding a port
