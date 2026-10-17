@@ -22,7 +22,7 @@ import scoring_engine as se
 XI_A = [(str(i), f"Alan Alpha{i}") for i in range(1, 12)]
 XI_B = [(str(i), f"Bob Beta{i}") for i in range(1, 12)]
 out = []
-for script in json.load(sys.stdin):
+for script in json.loads(sys.stdin.buffer.read().decode("utf-8")):
     e = se.InningsEngine(XI_A, XI_B, "Alpha CC", "Beta CC", script["overs"],
                          target=script["target"], openers_selected=script["openers"])
     frames = [e.frame(1)]

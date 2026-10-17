@@ -16,11 +16,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"os"
-	"strconv"
 	"strings"
 	"time"
+
+	"cricketstream/internal/pyval"
 )
 
 // Event is one operator action exactly as the page sent it. Kept as a generic map so
@@ -28,64 +28,18 @@ import (
 type Event map[string]any
 
 func (ev Event) Str(key string) string {
-	switch v := ev[key].(type) {
-	case string:
-		return v
-	case nil:
-		return ""
-	case bool:
-		if v {
-			return "True"
-		}
-		return "False"
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	default:
-		return fmt.Sprint(v)
+	if v, ok := ev[key]; ok && v != nil {
+		return pyval.Str(v)
 	}
+	return ""
 }
 
-// Truthy is Python's bool() on a JSON value.
-func Truthy(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return false
-	case bool:
-		return x
-	case string:
-		return x != ""
-	case float64:
-		return x != 0
-	case int:
-		return x != 0
-	case []any:
-		return len(x) > 0
-	case map[string]any:
-		return len(x) > 0
-	}
-	return true
-}
-
-// IntOf is Python's int(v or 0) on a JSON value; strings are parsed, bad input errors.
+// IntOf is Python's int(v or 0) on a JSON value; bad input errors.
 func IntOf(v any) (int, error) {
-	if !Truthy(v) {
+	if !pyval.Truthy(v) {
 		return 0, nil
 	}
-	switch x := v.(type) {
-	case float64:
-		return int(math.Trunc(x)), nil
-	case int:
-		return x, nil
-	case bool:
-		return 1, nil
-	case string:
-		n, err := strconv.Atoi(strings.TrimSpace(x))
-		if err != nil {
-			return 0, fmt.Errorf("invalid literal for int() with base 10: %s", pyRepr(x))
-		}
-		return n, nil
-	}
-	return 0, fmt.Errorf("int() argument must be a string or a number")
+	return pyval.Int(v)
 }
 
 // Config is the match setup. Stored as a map for the same round-trip reason as Event.
@@ -228,7 +182,7 @@ func (s *Session) applyEvent(ev Event, lenient bool) error {
 			}
 		}
 		_, err = inn.ApplyOutcome(Outcome{Kind: ev.Str("kind"), Runs: runs, WicketType: wt,
-			Fielder: strings.TrimSpace(ev.Str("fielder")), OutNonStriker: Truthy(ev["out_non_striker"])})
+			Fielder: strings.TrimSpace(ev.Str("fielder")), OutNonStriker: pyval.Truthy(ev["out_non_striker"])})
 		return err
 	case "bowler":
 		name := strings.TrimSpace(ev.Str("name"))
