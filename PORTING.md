@@ -54,12 +54,12 @@ the machine, which is handy for differential tests against the original (`py -3 
 | Python module | Lines | Go package | Status |
 |---|---:|---|---|
 | scoring_engine.py | 375 | internal/scoring | **done** (engine + session; HTTP tests pending server) |
-| win_predictor.py | 149 | internal/winpredict | todo |
-| match_page.py | 133 | internal/matchpage | todo |
-| voice.py | 65 | internal/voice | todo |
-| social_clips.py | 118 | internal/socialclips | todo |
-| logo_bg.py | 144 | internal/logobg | todo |
-| result_card.py | 397 | internal/resultcard | todo |
+| win_predictor.py | 149 | internal/winpredict | **done** |
+| match_page.py | 133 | internal/matchpage | **done** |
+| voice.py | 65 | internal/voice | **done** |
+| social_clips.py | 118 | internal/socialclips | **done** |
+| logo_bg.py | 144 | internal/logobg | **done** |
+| result_card.py | 397 | internal/resultcard | **done** |
 | nvplay_bridge.py | 158 | internal/bridge | todo |
 | scorer_agent.py | 712 | internal/agent | todo |
 | simulate_match.py | 332 | internal/simulate | todo |
