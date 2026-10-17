@@ -39,7 +39,8 @@ var YTCategories = [][2]string{{"17", "Sports"}, {"24", "Entertainment"}, {"22",
 	{"19", "Travel & Events"}, {"28", "Science & Technology"},
 	{"25", "News & Politics"}, {"20", "Gaming"}}
 
-const ytAPI = "https://www.googleapis.com/youtube/v3/"
+// ytAPI is a var so tests can point the client at a fake YouTube.
+var ytAPI = "https://www.googleapis.com/youtube/v3/"
 
 // ytSnippetPayload merges the requested title/description onto the broadcast's CURRENT
 // snippet for liveBroadcasts.update part=snippet. An update replaces the whole part, so
