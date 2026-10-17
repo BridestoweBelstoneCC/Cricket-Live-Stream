@@ -23,7 +23,8 @@ GREEN_MID = (42, 110, 63)
 GREEN_BRIGHT = (126, 214, 150)
 BALL = (196, 22, 44)
 BALL_SHADE = (138, 10, 28)
-SEAM = (246, 236, 214)
+SEAM = (250, 244, 236)
+SEAM_LINE = (112, 6, 22)
 WHITE = (255, 255, 255)
 INK = (26, 26, 26)
 SS = 4  # supersampling factor
@@ -53,29 +54,35 @@ def draw_mark(size, transparent=False):
     d = ImageDraw.Draw(img)
 
     cx, cy, r = S * 0.40, S * 0.60, S * 0.235
-    # Ball with a darker lower-right half for some volume.
-    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=BALL_SHADE)
-    off = r * 0.10
-    d.ellipse((cx - r, cy - r, cx + r - off, cy + r - off), fill=BALL)
+    # Flat-style ball, drawn on its own layer and clipped to the circle: a
+    # lighter face offset up-left leaves a crescent of shade at the lower right.
+    ball = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(ball)
+    bd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=BALL_SHADE)
+    fr, fx, fy = r * 0.89, cx - r * 0.12, cy - r * 0.12
+    bd.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=BALL)
 
-    # Seam: three parallel arcs of a much larger circle, clipped to the ball,
-    # with stitch ticks across them. Tilted like a ball in flight.
-    seam = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(seam)
-    tilt = math.radians(-35)
-    big = r * 2.2
-    scx, scy = cx - math.cos(tilt) * big * 0.93, cy - math.sin(tilt) * big * 0.93
-    for dr in (-r * 0.10, 0, r * 0.10):
-        rr = big + dr
-        sd.ellipse((scx - rr, scy - rr, scx + rr, scy + rr), outline=SEAM, width=int(r * 0.045))
-    for k in range(-10, 11):  # runs off the ball's edge; the clip trims it
-        a = tilt + k * 0.055
-        x1, y1 = scx + math.cos(a) * (big - r * 0.12), scy + math.sin(a) * (big - r * 0.12)
-        x2, y2 = scx + math.cos(a) * (big + r * 0.12), scy + math.sin(a) * (big + r * 0.12)
-        sd.line((x1, y1, x2, y2), fill=SEAM, width=int(r * 0.03))
+    # Seam: one thin darker line, a gentle arc of a much larger circle, with
+    # two rows of slanted round-ended stitches either side of it.
+    big = r * 2.4
+    phi = math.radians(-12)  # direction to the arc's centre: leans with the flight
+    scx, scy = cx + math.cos(phi) * (big - r * 0.10), cy + math.sin(phi) * (big - r * 0.10)
+    bd.ellipse((scx - big, scy - big, scx + big, scy + big), outline=SEAM_LINE, width=int(r * 0.042))
+    dash, dash_w = r * 0.085, r * 0.032
+    step = r * 0.125 / big
+    for k in range(-12, 13):  # runs off the ball's edge; the clip trims it
+        a = phi + math.pi + k * step
+        slant = a + math.radians(60)
+        for off in (-0.17, -0.075, 0.075, 0.17):
+            px = scx + math.cos(a) * (big + r * off)
+            py = scy + math.sin(a) * (big + r * off)
+            hx, hy = math.cos(slant) * dash / 2, math.sin(slant) * dash / 2
+            bd.line((px - hx, py - hy, px + hx, py + hy), fill=SEAM, width=int(dash_w))
+            for ex, ey in ((px - hx, py - hy), (px + hx, py + hy)):
+                bd.ellipse((ex - dash_w / 2, ey - dash_w / 2, ex + dash_w / 2, ey + dash_w / 2), fill=SEAM)
     ball_mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(ball_mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
-    img.paste(seam, (0, 0), Image.composite(seam.split()[3], Image.new("L", (S, S), 0), ball_mask))
+    img.paste(ball, (0, 0), Image.composite(ball.split()[3], Image.new("L", (S, S), 0), ball_mask))
 
     # Broadcast arcs, round-capped, fanning up and right from the ball.
     width = int(S * 0.058)
