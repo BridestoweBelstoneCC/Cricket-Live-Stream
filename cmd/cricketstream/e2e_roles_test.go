@@ -315,4 +315,6 @@ func TestE2EFolderDroppedOnTheAppStartsTheAgent(t *testing.T) {
 	}
 }
 
-func regexpQuote(s string) string { return strings.NewReplacer(`\`, `\\`, `.`, `\.`, `(`, `\(`, `)`, `\)`).Replace(s) }
+func regexpQuote(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `.`, `\.`, `(`, `\(`, `)`, `\)`).Replace(s)
+}
