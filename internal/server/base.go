@@ -15,6 +15,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -79,11 +80,14 @@ func AppDir() string { return appDir }
 // say prints a console line, as the Python server's print() did. Never panics.
 func say(format string, args ...any) {
 	if len(args) == 0 {
-		fmt.Println(format)
+		fmt.Fprintln(sayOut, format)
 		return
 	}
-	fmt.Printf(format+"\n", args...)
+	fmt.Fprintf(sayOut, format+"\n", args...)
 }
+
+// sayOut is the console; tests quieten it.
+var sayOut io.Writer = os.Stdout
 
 func init() { log.SetFlags(0) }
 

@@ -156,7 +156,7 @@ func (c *ctx) handleLogin(body []byte) {
 		c.json(M{"ok": true, "session_token": tok})
 		return
 	}
-	time.Sleep(time.Second) // slow down brute-force attempts — never log the password itself
+	loginSleep(time.Second) // slow down brute-force attempts — never log the password itself
 	loginAttemptsMu.Lock()
 	rec = loginAttempts[ip]
 	if rec == nil {
@@ -561,6 +561,9 @@ func (c *ctx) doPOST() {
 }
 
 var errNotObject = errors.New("expected a JSON object")
+
+// loginSleep is swappable so tests needn't wait out the anti-brute-force delay.
+var loginSleep = time.Sleep
 
 func statusFor(ok bool) int {
 	if ok {
