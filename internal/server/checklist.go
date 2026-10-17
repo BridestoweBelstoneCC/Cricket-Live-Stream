@@ -25,8 +25,14 @@ var mediaState = map[string]string{"OBS_MEDIA_STATE_PLAYING": "playing", "OBS_ME
 	"OBS_MEDIA_STATE_STOPPED": "stopped", "OBS_MEDIA_STATE_ENDED": "ended",
 	"OBS_MEDIA_STATE_ERROR": "error", "OBS_MEDIA_STATE_NONE": "no picture"}
 
-// obsRunning is swappable for tests (it shells out to tasklist).
-var obsRunning = func() bool { return obs.Running() }
+// Swappable for tests: the process check shells out to tasklist, and the port check and
+// feed status touch the real machine.
+var (
+	obsRunning        = func() bool { return obs.Running() }
+	checklistPortOpen = func(port int) bool { return obs.PortOpen(port, "", time.Second) }
+	checklistFeed     = scoreFeedStatus
+	checklistStartJob = func() { go checklistRunStartOBS() }
+)
 
 // ChecklistStatus is the checklist as the panel shows it. One OBS connection per call,
 // and none at all if OBS's port is shut (so a closed OBS answers instantly).
@@ -47,7 +53,7 @@ func ChecklistStatus() M {
 	starting := gb(job, "running", false) && gs(job, "action", "") == "start_obs"
 
 	var res []map[string]any
-	if !local || obs.PortOpen(port, "", time.Second) {
+	if !local || checklistPortOpen(port) {
 		reqs := []obsws.Req{{Type: "GetReplayBufferStatus"}, {Type: "GetStreamStatus"}}
 		if camURL != "" {
 			reqs = append(reqs, obsws.Req{Type: "GetMediaInputStatus", Data: M{"inputName": camName}})
@@ -129,7 +135,7 @@ func ChecklistStatus() M {
 				fresh, detail = false, fmt.Sprintf("Couldn't check the score feed: %v", r)
 			}
 		}()
-		fresh, detail = scoreFeedStatus(st, t)
+		fresh, detail = checklistFeed(st, t)
 	}()
 	switch {
 	case fresh:
@@ -223,7 +229,7 @@ func ChecklistAction(action string) (int, M) {
 		}
 		checklistJob = M{"action": action, "running": true, "ok": nil, "messages": []any{"Starting OBS…"}, "finished": nil}
 		checklistJobMu.Unlock()
-		go checklistRunStartOBS()
+		checklistStartJob()
 		return 202, M{"ok": true, "started": true}
 	case "start_replay":
 		r := obsCall(st, []obsws.Req{{Type: "StartReplayBuffer"}}, 8*time.Second)

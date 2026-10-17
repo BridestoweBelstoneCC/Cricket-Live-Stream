@@ -74,10 +74,16 @@ func sandbox(t *testing.T, password string) string {
 
 func newTestServer(t *testing.T, password string) *testServer {
 	t.Helper()
-	dir := sandbox(t, password)
+	sandbox(t, password)
+	return serve(t)
+}
+
+// serve runs the Handler on the current sandbox.
+func serve(t *testing.T) *testServer {
+	t.Helper()
 	srv := httptest.NewServer(Handler{})
 	t.Cleanup(srv.Close)
-	return &testServer{t: t, srv: srv, dir: dir, addr: strings.TrimPrefix(srv.URL, "http://")}
+	return &testServer{t: t, srv: srv, dir: appDir, addr: strings.TrimPrefix(srv.URL, "http://")}
 }
 
 type resp struct {
