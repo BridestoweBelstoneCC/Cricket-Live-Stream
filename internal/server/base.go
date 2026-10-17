@@ -193,7 +193,7 @@ func normalise(v any) any {
 	return out
 }
 
-func sortedKeys(m M) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	k := make([]string, 0, len(m))
 	for key := range m {
 		k = append(k, key)

@@ -556,4 +556,3 @@ func teamKey(name string) string {
 	return ""
 }
 
-var _ = context.Background

@@ -105,4 +105,3 @@ var KitPresets = []M{
 	{"name": "Pink", "hex": "#b52d6e"},
 }
 
-var _ = pyval.Str
