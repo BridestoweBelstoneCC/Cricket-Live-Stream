@@ -44,24 +44,27 @@ var obsFastCall = func(state M, requestType string, data any, timeout time.Durat
 
 // ObsTriggerReplay is the instant replay: save the replay buffer, find the new clip, tag
 // it, cut to the Replay scene, hold, cut back. Runs on its own goroutine.
-func ObsTriggerReplay(state M, reason string) {
-	// The caption is built from the match state NOW, at trigger time — by the time OBS
-	// has saved the clip a few seconds from here, the strike may have rotated. Same
-	// source precedence as /live: a live manual session outranks the scorer's file.
-	var feed M
+// replayFeed is the frame a replay is captioned from. Same source precedence as /live:
+// a live manual session outranks the scorer's file. Agent mode never sets the local
+// file's frame, so every clip used to be captioned "SIX" with no batter or score.
+func replayFeed(state M) M {
+	if m := ManualLiveState(); m != nil {
+		return m
+	}
 	if gs(state, "pcs_source", "local") == "agent" {
 		agentMu.Lock()
-		feed = agentLastState
-		agentMu.Unlock()
-	} else {
-		pcsMu.Lock()
-		feed = pcsLastState
-		pcsMu.Unlock()
+		defer agentMu.Unlock()
+		return agentLastState
 	}
-	if m := ManualLiveState(); m != nil {
-		feed = m
-	}
-	caption := makeClipCaption(reason, feed)
+	pcsMu.Lock()
+	defer pcsMu.Unlock()
+	return pcsLastState
+}
+
+func ObsTriggerReplay(state M, reason string) {
+	// The caption is built from the match state NOW, at trigger time — by the time OBS
+	// has saved the clip a few seconds from here, the strike may have rotated.
+	caption := makeClipCaption(reason, replayFeed(state))
 	main := gs(state, "obs_main_scene", "Main")
 	replay := gs(state, "obs_replay_scene", "Replay")
 	duration := gi(state, "replay_duration", 18)
