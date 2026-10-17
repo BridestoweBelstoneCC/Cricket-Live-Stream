@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"cricketstream/internal/assets"
@@ -49,12 +48,10 @@ var (
 	YTTokenFile        string
 	YTCredsFile        string
 	ControlHTMLFile    string
-	pathsOnce          sync.Once
 )
 
 // SetAppDir points every app file at dir.
 func SetAppDir(dir string) {
-	pathsOnce.Do(func() {})
 	appDir = dir
 	j := func(n string) string { return filepath.Join(dir, n) }
 	StateFile = j("match_state.json")
@@ -72,11 +69,7 @@ func SetAppDir(dir string) {
 	ControlHTMLFile = j("control.html")
 }
 
-func ensurePaths() {
-	pathsOnce.Do(func() { SetAppDir(assets.Dir()) })
-}
-
-func init() { ensurePaths() }
+func init() { SetAppDir(assets.Dir()) }
 
 // AppDir is the folder the app's files live in.
 func AppDir() string { return appDir }

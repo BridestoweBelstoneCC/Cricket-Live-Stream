@@ -25,12 +25,13 @@ import (
 const rvAPIID = "1003"
 
 type rvCacheT struct {
-	rvID, pcID  int
-	clubID      string
-	lastRVPoll  float64
-	lastState   M
-	pinned      bool
-	initialised bool
+	rvID, pcID     int
+	clubID         string
+	lastRVPoll     float64
+	lastState      M
+	pinned         bool
+	lastMapAttempt float64
+	initialised    bool
 }
 
 var (

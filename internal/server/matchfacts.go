@@ -555,4 +555,3 @@ func teamKey(name string) string {
 	}
 	return ""
 }
-

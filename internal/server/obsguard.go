@@ -49,13 +49,13 @@ var (
 
 // Swappable for tests: everything that touches the real OBS process.
 var (
-	guardPortOpen     = func(port int) bool { return obs.PortOpen(port, "", time.Second) }
-	guardWindowHung   = func(pids []int) (bool, bool) { return obs.WindowHung(5*time.Second, pids) }
-	guardKill         = obs.Kill
-	guardPIDs         = obs.PIDs
-	guardSleep        = time.Sleep
-	guardLaunch       = func(exe string, args []string) error { return obs.Launch(exe, args) }
-	guardWaitWS       = func(port int, t time.Duration) bool { return obs.WaitForWebsocket(port, t) }
+	guardPortOpen   = func(port int) bool { return obs.PortOpen(port, "", time.Second) }
+	guardWindowHung = func(pids []int) (bool, bool) { return obs.WindowHung(5*time.Second, pids) }
+	guardKill       = obs.Kill
+	guardPIDs       = obs.PIDs
+	guardSleep      = time.Sleep
+	guardLaunch     = func(exe string, args []string) error { return obs.Launch(exe, args) }
+	guardWaitWS     = func(port int, t time.Duration) bool { return obs.WaitForWebsocket(port, t) }
 )
 
 func obsGuardEnabled() bool {

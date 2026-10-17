@@ -14,6 +14,7 @@ import (
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/console"
 	"cricketstream/internal/obs"
+	"cricketstream/internal/server"
 	"cricketstream/internal/simulate"
 )
 
@@ -21,6 +22,7 @@ const usage = `CricketStream — live-stream graphics for grassroots cricket.
 
 Usage:
   cricketstream                 start (first run opens the setup page)
+  cricketstream server          the streaming laptop: overlay, control panel, scoring page
   cricketstream agent [folder]  scorer's laptop on the same wifi: serve the scoreboard file
         --port N              HTTP port (default 8788)
         --discovery-port N    UDP discovery port (default 8787)
@@ -84,6 +86,11 @@ func run(cmd string, args []string) int {
 		fmt.Println()
 		if !ok {
 			return 1
+		}
+		return 0
+	case "server":
+		if err := server.Run(server.Options{}); err != nil {
+			console.Die("The stream server stopped", err.Error())
 		}
 		return 0
 	case "help", "-h", "--help":

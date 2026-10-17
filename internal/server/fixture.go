@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
 )
 
 // FetchTodaysMatch finds today's home fixture from the PlayCricket API: the match
@@ -103,4 +102,3 @@ var KitPresets = []M{
 	{"name": "White", "hex": "#e8e8e8"}, {"name": "Teal", "hex": "#1a6b6b"},
 	{"name": "Pink", "hex": "#b52d6e"},
 }
-
