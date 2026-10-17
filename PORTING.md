@@ -63,8 +63,8 @@ the machine, which is handy for differential tests against the original (`py -3 
 | nvplay_bridge.py | 158 | internal/bridge | **done** (`cricketstream bridge`) |
 | scorer_agent.py | 712 | internal/agent | **done** (`cricketstream agent`); folder finder shared in internal/scorerfile |
 | simulate_match.py | 332 | internal/simulate | **done** (`cricketstream simulate`; parser-consistency tests move to the feed parser) |
-| obs_prep.py | 997 | internal/obs | todo |
-| obs_setup.py | 502 | internal/obs | todo |
+| obs_prep.py | 997 | internal/obs | **done** (+ `CRICKETSTREAM_OBS_PORTABLE` safe test mode) |
+| obs_setup.py | 502 | internal/obs | **done** (`cricketstream obs-setup`; tested against a fake OBS in internal/obsws/obswstest) |
 | server.py | 9347 | internal/server | todo |
 | setup_wizard.py / quickstart.py / cricketstream.py | 1767 | internal/setup | todo (becomes web setup) |
 | stream_telemetry / camera_encoder / refresh_cam / stream_quality_test | 1092 | internal/tools | todo |

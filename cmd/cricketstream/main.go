@@ -10,8 +10,10 @@ import (
 	"strings"
 
 	"cricketstream/internal/agent"
+	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/console"
+	"cricketstream/internal/obs"
 	"cricketstream/internal/simulate"
 )
 
@@ -25,6 +27,7 @@ Usage:
         --check-template      report whether the NV Play scoreboard template is built in
   cricketstream bridge          scorer's machine elsewhere: token-gated scoreboard over HTTP
   cricketstream simulate        rehearse with a simulated match (--list for scenarios)
+  cricketstream obs-setup       build OBS's scenes and sources (OBS must be open)
   cricketstream help            this text
 `
 
@@ -67,6 +70,22 @@ func run(cmd string, args []string) int {
 			o.Seed = seed
 		}
 		return simulate.Run(o)
+	case "obs-setup":
+		fmt.Println()
+		fmt.Println("OBS Auto-Setup — CricketStream")
+		fmt.Println("──────────────────────────────")
+		ok, _ := obs.SetupFromConfig(assets.Join("config.ini"), assets.Join("match_state.json"), true, false)
+		fmt.Println()
+		if ok {
+			fmt.Println("  OBS is configured and ready.")
+		} else {
+			fmt.Println("  Setup incomplete — see messages above.")
+		}
+		fmt.Println()
+		if !ok {
+			return 1
+		}
+		return 0
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
