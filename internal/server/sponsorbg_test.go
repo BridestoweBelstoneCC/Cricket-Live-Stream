@@ -153,3 +153,10 @@ func TestBgChooserPreviewsUseDataURLs(t *testing.T) {
 		t.Errorf("panel CSP %q", csp)
 	}
 }
+
+func TestBgPreviewNeedsALogin(t *testing.T) {
+	s := newTestServer(t, "secret")
+	os.MkdirAll(SponsorDir, 0o755)
+	os.WriteFile(filepath.Join(SponsorDir, "1.png"), ringPNG(t), 0o644)
+	mustEq(t, s.get("/sponsor/bg_preview?id=1&mode=outside").status, 401)
+}

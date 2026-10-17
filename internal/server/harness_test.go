@@ -16,9 +16,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"cricketstream/internal/obs"
 )
 
 func TestMain(m *testing.M) {
@@ -43,6 +46,15 @@ func sandbox(t *testing.T, password string) string {
 	closeDB()
 	dir := t.TempDir()
 	SetAppDir(dir)
+	// Nothing a test does may reach this machine's own OBS settings or home folder: the
+	// OBS guard writes OBS's global.ini on a normal close, and defaults (the replay
+	// folder) come from the home folder.
+	savedCfg, savedFind := obs.ConfigDir, obs.FindOBS
+	obs.ConfigDir = func() string { return filepath.Join(dir, "obs-config") }
+	obs.FindOBS = func() string { return "" }
+	t.Cleanup(func() { obs.ConfigDir, obs.FindOBS = savedCfg, savedFind })
+	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
+	t.Setenv("HOME", filepath.Join(dir, "home"))
 	ClubPassword, ControlToken = password, strings.Repeat("cd", 32)
 	stateCacheMu.Lock()
 	stateCache, lastGoodState = nil, nil

@@ -3,6 +3,7 @@ package setup
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,19 @@ func appDir(t *testing.T) string {
 	saved := assets.Dir()
 	assets.SetDir(dir)
 	t.Cleanup(func() { assets.SetDir(saved) })
+	fakeHome(t)
 	return dir
+}
+
+// fakeHome gives the test its own home folder: saving looks for NV Play there (to find
+// its output folder and install the scoreboard template), and a test must never write
+// into the machine's real NV Play folder.
+func fakeHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	return home
 }
 
 func TestAbbrevFromName(t *testing.T) {
@@ -230,5 +243,47 @@ func TestPageOffersEveryScorebarStyleTheOverlayHas(t *testing.T) {
 	}
 	if len(ScorebarStyles) != 4 {
 		t.Fatal(len(ScorebarStyles))
+	}
+}
+
+// The page offers the NV Play folder it found, and says why.
+func TestInfoOffersTheNVPlayFolderItFound(t *testing.T) {
+	appDir(t)
+	home := fakeHome(t)
+	out := filepath.Join(home, "Documents", "Cricket Matches", "_Scoreboards", "Output")
+	os.MkdirAll(out, 0o755)
+	os.WriteFile(filepath.Join(out, "nvplay-scoreboard1.xml"), []byte("{}"), 0o644)
+	h, _ := Handler()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "http://127.0.0.1:5000/setup/info", nil))
+	var d map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &d)
+	det, _ := d["detected"].(map[string]any)
+	if det["folder"] != out || det["how"] != "live" || !strings.Contains(fmt.Sprint(det["why"]), "writing to it right now") {
+		t.Fatalf("detected %v", det)
+	}
+}
+
+// Setup installs NV Play's scoreboard template when NV Play is on this machine, from
+// the copy built into the app.
+func TestSaveInstallsTheTemplateWhenNVPlayIsHere(t *testing.T) {
+	appDir(t)
+	home := fakeHome(t)
+	sb := filepath.Join(home, "Documents", "Cricket Matches", "_Scoreboards")
+	os.MkdirAll(filepath.Join(sb, "Output"), 0o755)
+	os.MkdirAll(filepath.Join(sb, "Templates"), 0o755)
+	h, _ := Handler()
+	code, out := post(t, h, map[string]any{"role": "streaming", "name": "Test CC", "pc_id": "1",
+		"pcs_folder": filepath.Join(sb, "Output")}, "http://127.0.0.1:5000")
+	if code != 200 {
+		t.Fatal(code, out)
+	}
+	got, err := os.ReadFile(filepath.Join(sb, "Templates", "scoreboard.template"))
+	want, _ := assets.Embedded("scoreboard.template")
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("template not installed as the built-in copy: %v", err)
+	}
+	if tp, _ := out["template"].(map[string]any); tp["result"] != "installed" {
+		t.Errorf("reply doesn't say so: %v", out["template"])
 	}
 }
