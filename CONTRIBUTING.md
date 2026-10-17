@@ -6,6 +6,8 @@ how it gets better. You don't need to be a professional developer to help.
 
 ## Ways to help
 
+- **Chat first if you like.** Not sure whether something's a bug, or want to talk an idea
+  through before writing it up? Ask on the [Discord](https://discord.gg/2nuBPj9rH7).
 - **Report a bug or rough edge.** Open an [issue](../../issues) describing what happened,
   what you expected, your operating system, and the steps to reproduce it. Screenshots of
   the overlay or the control panel are hugely helpful.

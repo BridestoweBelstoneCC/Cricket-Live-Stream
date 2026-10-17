@@ -7,7 +7,14 @@
   <meta name="description" content="Professional live stream overlays for grassroots cricket clubs. Free, open source, and built for volunteers. Works with OBS, NV Play, and YouTube.">
   <meta property="og:title" content="CricketStream Overlay">
   <meta property="og:description" content="Professional live stream graphics for grassroots cricket. Free and open source.">
-  <meta property="og:image" content="https://repository-images.githubusercontent.com/BridestoweBelstoneCC/Cricket-Live-Stream">
+  <meta property="og:image" content="https://bridestowebelstonecc.github.io/Cricket-Live-Stream/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://bridestowebelstonecc.github.io/Cricket-Live-Stream/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://bridestowebelstonecc.github.io/Cricket-Live-Stream/social-card.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -50,7 +57,11 @@
       font-size: 1.05rem;
       letter-spacing: .3px;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
     }
+    nav .brand img { width: 30px; height: 30px; display: block; }
     nav .nav-links { display: flex; gap: 20px; align-items: center; }
     nav .nav-links a {
       color: rgba(255,255,255,.85);
@@ -346,7 +357,7 @@
 <body>
 
 <nav>
-  <span class="brand">&#127951; CricketStream Overlay</span>
+  <span class="brand"><img src="icon-96.png" alt="" width="30" height="30">CricketStream Overlay</span>
   <div class="nav-links">
     <a href="#see-it">See it</a>
     <a href="#features">Features</a>
@@ -600,6 +611,7 @@
   <p>
     Built by <a href="https://bridestoweandbelstone.play-cricket.com/home">Bridestowe &amp; Belstone CC</a> &middot; Devon Cricket League &middot;
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream">GitHub</a> &middot;
+    <a href="https://discord.gg/2nuBPj9rH7">Discord</a> &middot;
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/LICENSE">GPL-3.0 licence</a>
   </p>
   <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) &middot; AI features powered by Claude (Anthropic) &middot; Weather via Open-Meteo &middot; Streaming via OBS Studio</p>
