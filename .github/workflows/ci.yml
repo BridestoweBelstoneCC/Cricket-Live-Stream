@@ -77,7 +77,7 @@ jobs:
           pip install Pillow
 
       - name: Differential tests
-        run: go test -count=1 ./internal/scoring/ ./internal/ini/ ./internal/logobg/ ./internal/resultcard/ ./internal/matchpage/ ./internal/socialclips/ -v -run 'Python|Differential|Pillow' 2>&1 | tee test.log; test ${PIPESTATUS[0]} -eq 0
+        run: go test -count=1 ./internal/scoring/ ./internal/ini/ ./internal/logobg/ ./internal/resultcard/ ./internal/matchpage/ ./internal/socialclips/ ./internal/pyfmt/ ./internal/htmlesc/ ./internal/scorerfile/ ./internal/tools/ -v -run 'Python|Differential|Pillow' 2>&1 | tee test.log; test ${PIPESTATUS[0]} -eq 0
 
       - name: No differential test may have skipped
         run: |

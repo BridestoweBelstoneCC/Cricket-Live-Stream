@@ -14,22 +14,59 @@ import (
 	"unicode/utf8"
 )
 
-// DecodeText is Python's text-mode read with encoding="utf-8", errors="replace": each
-// invalid byte becomes U+FFFD and \r\n / \r become \n (universal newlines).
+// DecodeText is Python's text-mode read with encoding="utf-8", errors="replace": an
+// invalid sequence becomes U+FFFD and \r\n / \r become \n (universal newlines). Like
+// Python (and Unicode's "maximal subpart" practice), a truncated multi-byte sequence is
+// ONE replacement character, not one per byte.
 func DecodeText(b []byte) string {
 	var sb strings.Builder
 	sb.Grow(len(b))
 	for len(b) > 0 {
 		r, n := utf8.DecodeRune(b)
 		if r == utf8.RuneError && n == 1 {
-			sb.WriteRune('�')
-		} else {
-			sb.Write(b[:n])
+			sb.WriteRune(utf8.RuneError)
+			b = b[invalidPrefixLen(b):]
+			continue
 		}
+		sb.Write(b[:n])
 		b = b[n:]
 	}
 	s := strings.ReplaceAll(sb.String(), "\r\n", "\n")
 	return strings.ReplaceAll(s, "\r", "\n")
+}
+
+// invalidPrefixLen is how many bytes one replacement character stands for at the start
+// of b, which doesn't begin a valid sequence: the lead byte plus whatever continuation
+// bytes still fitted the sequence it started (Unicode Table 3-7).
+func invalidPrefixLen(b []byte) int {
+	lo, hi, need := byte(0x80), byte(0xBF), 0
+	switch c := b[0]; {
+	case c >= 0xC2 && c <= 0xDF:
+		need = 1
+	case c == 0xE0:
+		lo, need = 0xA0, 2
+	case c == 0xED:
+		hi, need = 0x9F, 2
+	case c >= 0xE1 && c <= 0xEF:
+		need = 2
+	case c == 0xF0:
+		lo, need = 0x90, 3
+	case c == 0xF4:
+		hi, need = 0x8F, 3
+	case c >= 0xF1 && c <= 0xF3:
+		need = 3
+	default:
+		return 1 // not a lead byte at all
+	}
+	n := 1
+	for k := 0; k < need && n < len(b); k++ {
+		if b[n] < lo || b[n] > hi {
+			break
+		}
+		lo, hi = 0x80, 0xBF // only the first continuation byte has a narrower range
+		n++
+	}
+	return n
 }
 
 // ReadText reads a file as DecodeText does.

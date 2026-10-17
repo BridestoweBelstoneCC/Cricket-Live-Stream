@@ -13,6 +13,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"cricketstream/internal/pyfmt"
 )
 
 // Truthy is Python's bool(v).
@@ -54,6 +56,14 @@ func Str(v any) string {
 		}
 		return "False"
 	case json.Number:
+		// Python's json module makes "40" an int and "1.50" a float, which str()
+		// writes back as "1.5" (and "0.00001" as "1e-05").
+		if !strings.ContainsAny(x.String(), ".eE") {
+			return x.String()
+		}
+		if f, err := x.Float64(); err == nil {
+			return pyfmt.Float(f)
+		}
 		return x.String()
 	case float64:
 		// A plain float64 has lost whether it was written as an int; treat integral
@@ -61,7 +71,7 @@ func Str(v any) string {
 		if x == math.Trunc(x) && math.Abs(x) < 1e15 {
 			return strconv.FormatInt(int64(x), 10)
 		}
-		return strconv.FormatFloat(x, 'f', -1, 64)
+		return pyfmt.Float(x)
 	case int:
 		return strconv.Itoa(x)
 	case int64:
