@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    strategy:
+      # Don't cancel the other platform when one fails — the whole point of this matrix
+      # is to see which OS broke, and a cancelled job tells you nothing.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      # The server and test suite print ✓/✗/emoji status characters. On Windows the
+      # default stdout codec is the ANSI code page (cp1252), which raises
+      # UnicodeEncodeError on them as soon as output is piped rather than attached to a
+      # console — which is always the case in CI. Without this the Windows job fails
+      # with ~30 spurious errors that have nothing to do with the code under test.
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+
+      # `python`, not `python3`: the Windows runners have no `python3` on PATH, while
+      # setup-python provides `python` on every platform.
+      - name: Python compile check (every top-level script, not just server.py)
+        run: python scripts/compile_check_all.py
+
+      - name: Check embedded JS (control panel + overlay)
+        run: python scripts/check_panel_js.py
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests -v
