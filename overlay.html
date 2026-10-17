@@ -3237,16 +3237,25 @@ function startPreview(styleOverride) {
       document.body.classList.toggle('style-' + s, styleOverride === s);
     });
   }
+  // The setup and settings pages pass the club's name and colours as they're being
+  // edited (before anything is saved), so the preview is THEIR stream, not a stand-in.
+  var homeName = (_params.get('name') || '').trim() || 'Home CC';
+  var homeAbbrev = ((_params.get('abbrev') || '').trim() || 'HOME').toUpperCase().slice(0, 6);
+  var hexOk = function(c) { return /^#[0-9a-f]{6}$/i.test(c || '') ? c : ''; };
   cfg = Object.assign({}, cfg, {
-    home_team: 'Home CC', away_team: 'Rival CC',
-    home_abbrev: 'HOME', away_abbrev: 'RIV',
-    home_colour: cfg.home_colour || '#1a3a5c',
-    away_colour: cfg.away_colour || '#7b2d2d',
+    home_team: homeName, away_team: 'Rival CC',
+    home_abbrev: homeAbbrev, away_abbrev: 'RIV',
+    home_colour: hexOk(_params.get('colour')) || cfg.home_colour || '#1a3a5c',
+    away_colour: hexOk(_params.get('away')) || cfg.away_colour || '#7b2d2d',
     max_overs: 20, graphics_player_card: false,
+    // Demo graphics must stay requests-free: no replay (a century asks OBS for one), no
+    // AI commentary, no league table fetch.
+    replay_on_fifty: false, graphics_commentary_over: false, graphics_league_table: false,
   });
   MAX_OVERS = 20;
   var demo = {
-    battingTeamName: 'Rival CC', bowlingTeamName: 'Home CC',
+    battingTeamName: 'Rival CC', bowlingTeamName: homeName,
+    home_abbrev: homeAbbrev, away_abbrev: 'RIV',
     innings: 2, score: 137, wickets: 4, overs: 15.3,
     batter1: { name: 'J Hatton',   runs: 48, balls: 31, onStrike: true },
     batter2: { name: 'T Gostling', runs: 23, balls: 19, onStrike: false },
@@ -3272,7 +3281,39 @@ function startPreview(styleOverride) {
       });
     }
   } catch(e) { console.warn('preview ticker:', e); }
+  var g = _params.get('graphic');
+  if (g && PREVIEW_GRAPHICS[g]) {
+    // Shown again every few seconds, so a preview left on screen keeps showing it.
+    var showIt = function() { try { PREVIEW_GRAPHICS[g](); } catch(e) { console.warn('preview graphic:', e); } };
+    setTimeout(showIt, 600);
+    setInterval(showIt, 11000);
+  }
 }
+
+// The graphics the setup/settings preview can show (?preview=1&graphic=<name>), each
+// through the same function the live overlay uses, with fixed demo figures. None of them
+// makes a request (see startPreview's cfg).
+var PREVIEW_GRAPHICS = {
+  four: function() { cfg.graphics_boundary_flash = true; showFlash('four', 'FOUR!'); },
+  six: function() { cfg.graphics_boundary_flash = true; showFlash('six', 'SIX!'); },
+  wicket: function() {
+    cfg.graphics_fow = true;
+    triggerFOW('J Hatton', 48, 31, 'c Smith b Ewen', 137, 5);
+  },
+  over: function() {
+    cfg.graphics_over_summary = true;
+    _lastOverShown = -1; _lastWicketOver = -1;
+    showOverSummary(16, 13, 'S Ewen', '2-41', parseOverString('1 4 . 6 1 1'));
+  },
+  fifty: function() {
+    cfg.graphics_milestones = true;
+    triggerMilestone('J Hatton', 50, 33, 50);
+  },
+  partnership: function() {
+    cfg.graphics_partnership = true;
+    triggerPartnership(50, 'J Hatton', '41*', 'T Gostling', '9*');
+  },
+};
 
 var _params = new URLSearchParams(location.search);
 if (_params.get('preview') === '1') {

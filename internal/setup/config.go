@@ -69,6 +69,9 @@ type Values struct {
 	AllowRemote   bool   `json:"allow_remote"`
 	// Bridge only.
 	BridgePort int `json:"bridge_port"`
+	// Secrets to remove (form names, e.g. "club_password"): a blank secret field means
+	// "keep the saved one", so removing one has to be said out loud.
+	Clear []string `json:"clear,omitempty"`
 }
 
 // AbbrevFromName is the wizard's default abbreviation: the first word that isn't "CC",

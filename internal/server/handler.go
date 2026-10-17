@@ -366,6 +366,12 @@ func (c *ctx) doGET() {
 	case path == "/" || path == "/overlay":
 		c.asset("overlay.html", "text/html; charset=utf-8", true)
 
+	case path == "/settings":
+		c.settingsPage()
+
+	case path == "/settings/info":
+		c.settingsInfo()
+
 	case path == "/control":
 		body, err := controlHTML()
 		if err != nil {

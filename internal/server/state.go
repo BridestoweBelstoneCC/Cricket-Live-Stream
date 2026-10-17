@@ -283,6 +283,35 @@ func SaveState(s M) error {
 // jsonEqual compares two values as JSON (50 == 50.0, like Python's ==).
 func jsonEqual(a, b any) bool { return reflect.DeepEqual(normalise(a), normalise(b)) }
 
+// configMapping is one config.ini key and the match_state.json field the panel shows it
+// in (startup seeding and the settings page both use the list).
+type configMapping struct {
+	section, key, field string
+	isInt               bool
+}
+
+var configStateMap = []configMapping{
+	{"Club", "name", "home_team", false},
+	{"Club", "abbreviation", "home_abbrev", false},
+	{"Club", "home_colour", "home_colour", false},
+	{"Club", "playcricket_id", "home_club_id", false},
+	{"Club", "motto", "replay_motto", false},
+	{"API", "playcricket_key", "playcricket_api_key", false},
+	{"API", "anthropic_key", "anthropic_api_key", false},
+	{"Scoring", "pcs_output_folder", "pcs_output_folder", false},
+	{"Scoring", "pcs_bridge_url", "pcs_bridge_url", false},
+	{"Scoring", "pcs_bridge_token", "pcs_bridge_token", false},
+	{"Scoring", "pcs_source", "pcs_source", false},
+	{"Scoring", "agent_host", "agent_host", false},
+	{"Scoring", "logos_folder", "logos_folder", false},
+	{"Scoring", "ground_filter", "ground_filter", false},
+	{"OBS", "obs_password", "obs_password", false},
+	{"OBS", "replay_folder", "replay_folder", false},
+	{"Graphics", "scorebar_style", "scorebar_style", false},
+	{"Stream", "youtube_title", "youtube_title_template", false},
+	{"Stream", "max_overs", "max_overs", true},
+}
+
 // SeedStateFromConfig copies config.ini values into match_state.json for fields still at
 // empty/default, so operators who filled in config.ini don't re-enter everything in the
 // panel. Panel edits win: once a field has changed from its default, config.ini no
@@ -295,31 +324,7 @@ func SeedStateFromConfig() {
 	if err != nil {
 		return
 	}
-	type mapping struct {
-		section, key, field string
-		isInt               bool
-	}
-	maps := []mapping{
-		{"Club", "name", "home_team", false},
-		{"Club", "abbreviation", "home_abbrev", false},
-		{"Club", "home_colour", "home_colour", false},
-		{"Club", "playcricket_id", "home_club_id", false},
-		{"Club", "motto", "replay_motto", false},
-		{"API", "playcricket_key", "playcricket_api_key", false},
-		{"API", "anthropic_key", "anthropic_api_key", false},
-		{"Scoring", "pcs_output_folder", "pcs_output_folder", false},
-		{"Scoring", "pcs_bridge_url", "pcs_bridge_url", false},
-		{"Scoring", "pcs_bridge_token", "pcs_bridge_token", false},
-		{"Scoring", "pcs_source", "pcs_source", false},
-		{"Scoring", "agent_host", "agent_host", false},
-		{"Scoring", "logos_folder", "logos_folder", false},
-		{"Scoring", "ground_filter", "ground_filter", false},
-		{"OBS", "obs_password", "obs_password", false},
-		{"OBS", "replay_folder", "replay_folder", false},
-		{"Graphics", "scorebar_style", "scorebar_style", false},
-		{"Stream", "youtube_title", "youtube_title_template", false},
-		{"Stream", "max_overs", "max_overs", true},
-	}
+	maps := configStateMap
 	state := LoadState()
 	defaults := DefaultState()
 	var seeded []string
