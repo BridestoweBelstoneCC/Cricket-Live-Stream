@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"cricketstream/internal/agent"
@@ -68,7 +69,24 @@ func main() {
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
 	}
-	os.Exit(run(cmd, args))
+	os.Exit(guard(func() int { return run(cmd, args) }))
+}
+
+// guard turns a crash into the framed explanation and pause every other fatal path
+// gives, rather than a stack trace in a double-clicked window that closes at once (the
+// trace is printed first, so the explanation is what's left on screen).
+func guard(f func() int) (code int) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "\n%v\n%s", r, debug.Stack())
+			console.Problem("CricketStream hit an unexpected error", fmt.Sprint(r), "",
+				"The details are printed above this box. Please report them:",
+				"  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
+			console.Pause("")
+			code = 1
+		}
+	}()
+	return f()
 }
 
 func run(cmd string, args []string) int {

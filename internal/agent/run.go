@@ -16,6 +16,7 @@ import (
 
 	"cricketstream/internal/assets"
 	"cricketstream/internal/console"
+	"cricketstream/internal/port"
 	"cricketstream/internal/scorerfile"
 )
 
@@ -305,7 +306,7 @@ func Run(o Options) int {
 		fmt.Printf("  Template File -> choose %s.\n", TemplateName)
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", o.Port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.NetworkHost(), o.Port))
 	if err != nil {
 		console.Die(fmt.Sprintf("Couldn't start on port %d", o.Port),
 			"", "  "+err.Error(), "",

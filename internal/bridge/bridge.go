@@ -28,6 +28,7 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/port"
 	"cricketstream/internal/scorerfile"
 )
 
@@ -158,7 +159,7 @@ func Run() int {
 			"A blank token would let anyone on the network read the live score.",
 			"Set one by hand, or delete bridge_config.ini and rerun to generate one.")
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", c.Port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.NetworkHost(), c.Port))
 	if err != nil {
 		console.Die(fmt.Sprintf("Couldn't start on port %d", c.Port), err.Error(), "",
 			"Is the bridge already running in another window?")

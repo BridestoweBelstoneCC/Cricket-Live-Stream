@@ -253,7 +253,12 @@ func Run(o Options) int {
 	} else {
 		log("Server didn't respond in time — season stats will load on the first player card", "warn")
 	}
-	startTelemetry()
+	if tel := startTelemetry(); tel != nil {
+		// Stopped with the launcher: it has no window, so a logger left behind would run
+		// unseen until the laptop is switched off, and the next match day would start a
+		// second one. It flushes every row, so stopping it loses nothing.
+		defer tel.Kill()
+	}
 
 	fmt.Println()
 	fmt.Printf("  Control panel: http://localhost:%d/control\n", server.Port)
@@ -607,11 +612,12 @@ func SelfTest() {
 
 // startTelemetry runs the match-day telemetry logger in the background. Started here
 // rather than left to the operator, because it only has to be forgotten once to lose a
-// whole match's data. Best-effort: never holds up match day.
-func startTelemetry() {
+// whole match's data. Best-effort: never holds up match day. Returns the process (nil
+// if it didn't start) so the launcher can stop it on the way out.
+func startTelemetry() *os.Process {
 	exe, err := os.Executable()
 	if err != nil {
-		return
+		return nil
 	}
 	cmd := exec.Command(exe, "telemetry")
 	cmd.Env = append(os.Environ(), "CRICKETSTREAM_HOME="+assets.Dir(), "CRICKETSTREAM_NO_PAUSE=1")
@@ -619,10 +625,11 @@ func startTelemetry() {
 	detachQuiet(cmd)
 	if err := cmd.Start(); err != nil {
 		log(fmt.Sprintf("Telemetry didn't start (%v) — not fatal, run `cricketstream telemetry` by hand", err), "warn")
-		return
+		return nil
 	}
 	go cmd.Wait()
 	log("Telemetry logging to diagnostics/ (bandwidth, drops, match context)", "ok")
+	return cmd.Process
 }
 
 func tailscaleIP() string {

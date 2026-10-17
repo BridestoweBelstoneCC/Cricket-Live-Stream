@@ -22,3 +22,17 @@ func Server() int {
 	}
 	return Default
 }
+
+// LoopbackOnlyEnv keeps the scorer's-laptop roles (agent, bridge) on 127.0.0.1 instead
+// of every interface. For automated runs: listening on the network makes Windows ask
+// about the firewall for every new copy of the binary.
+const LoopbackOnlyEnv = "CRICKETSTREAM_LOOPBACK_ONLY"
+
+// NetworkHost is the address the agent and bridge listen on: every interface, unless
+// LoopbackOnlyEnv is set.
+func NetworkHost() string {
+	if os.Getenv(LoopbackOnlyEnv) == "1" {
+		return "127.0.0.1"
+	}
+	return "0.0.0.0"
+}
