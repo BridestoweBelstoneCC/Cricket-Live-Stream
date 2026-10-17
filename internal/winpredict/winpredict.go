@@ -116,14 +116,16 @@ type Prediction struct {
 
 // Predict returns nil if it can't be worked out (no overs limit). target = runs needed
 // to win (innings 2 only).
-func Predict(innings, score, wickets int, overs any, oversLimit int, model Model, target int) *Prediction {
+func Predict(innings, score, wickets int, overs any, oversLimit float64, model Model, target int) *Prediction {
 	if oversLimit == 0 {
 		return nil
 	}
-	totalBalls := oversLimit * 6
+	// The limit can be fractional (balls bowled + balls left, over 6); like the original,
+	// the ball count truncates it but the expected total uses it as is.
+	totalBalls := int(oversLimit) * 6
 	ballsLeft := max(totalBalls-Balls(overs), 0)
-	mean := model.RPO * float64(oversLimit)
-	sd := model.SDRPO * float64(oversLimit)
+	mean := model.RPO * oversLimit
+	sd := model.SDRPO * oversLimit
 	r := Resources(ballsLeft, wickets, totalBalls)
 	var p float64
 	out := &Prediction{}
@@ -177,7 +179,7 @@ func Backtest(history []Innings, model *Model) BacktestResult {
 		if h.ChaseWon == nil || h.OversLimit == 0 || h.I1Runs == nil || *h.I1Runs == 0 {
 			continue
 		}
-		p := float64(Predict(2, 0, 0, 0, h.OversLimit, m, *h.I1Runs+1).Batting) / 100
+		p := float64(Predict(2, 0, 0, 0, float64(h.OversLimit), m, *h.I1Runs+1).Batting) / 100
 		won := 0.0
 		if *h.ChaseWon {
 			won = 1
