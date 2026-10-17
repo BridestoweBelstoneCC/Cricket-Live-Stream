@@ -17,6 +17,7 @@
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
 [![Version](https://img.shields.io/badge/Version-2.12-green)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/2nuBPj9rH7)
 
 **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
 
