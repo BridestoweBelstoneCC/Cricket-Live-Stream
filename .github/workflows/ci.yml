@@ -2,44 +2,83 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, master]
   pull_request:
     branches: [main]
 
 jobs:
   check:
     strategy:
-      # Don't cancel the other platform when one fails — the whole point of this matrix
+      # Don't cancel the other platforms when one fails — the whole point of this matrix
       # is to see which OS broke, and a cancelled job tells you nothing.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     env:
-      # The server and test suite print ✓/✗/emoji status characters. On Windows the
-      # default stdout codec is the ANSI code page (cp1252), which raises
-      # UnicodeEncodeError on them as soon as output is piped rather than attached to a
-      # console — which is always the case in CI. Without this the Windows job fails
-      # with ~30 spurious errors that have nothing to do with the code under test.
-      PYTHONIOENCODING: utf-8
+      # Never stop for "Press Enter" in a test that reaches a fatal path.
+      CRICKETSTREAM_NO_PAUSE: '1'
+      CRICKETSTREAM_NO_BROWSER: '1'
 
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-go@v6.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: |
+          unformatted="$(gofmt -l cmd internal scripts embed.go)"
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # The JavaScript tests (overlay/panel parsing, classifyBall parity, milestones,
+      # auto-cut) run in node, which every hosted runner has; without node they skip.
+      - name: Tests
+        run: go test ./...
+
+      - name: Tests under the race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+
+      - name: Build the app
+        run: go build -o dist/ ./cmd/cricketstream
+
+  # The parity tests run the original Python next to the Go port on the same input and
+  # compare the output byte for byte (scoring frames, INI files, result cards, match
+  # pages, transparent logos). They skip without the upstream clone, so run them here
+  # against the pinned commit in PORTING.md.
+  differential:
+    runs-on: ubuntu-latest
+    env:
+      CRICKETSTREAM_NO_PAUSE: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v6.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
 
-      # `python`, not `python3`: the Windows runners have no `python3` on PATH, while
-      # setup-python provides `python` on every platform.
-      - name: Python compile check (every top-level script, not just server.py)
-        run: python scripts/compile_check_all.py
+      - name: Fetch the Python original at the pinned commit
+        run: |
+          commit="$(grep -oE '`[0-9a-f]{40}`' PORTING.md | head -1 | tr -d '`')"
+          git clone --quiet https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream .upstream
+          git -C .upstream checkout --quiet "$commit"
+          pip install Pillow
 
-      - name: Check embedded JS (control panel + overlay)
-        run: python scripts/check_panel_js.py
+      - name: Differential tests
+        run: go test -count=1 ./internal/scoring/ ./internal/ini/ ./internal/logobg/ ./internal/resultcard/ ./internal/matchpage/ ./internal/socialclips/ -v -run 'Python|Differential|Pillow' 2>&1 | tee test.log; test ${PIPESTATUS[0]} -eq 0
 
-      - name: Run test suite
-        run: python -m unittest discover -s tests -v
+      - name: No differential test may have skipped
+        run: |
+          if grep -E -- '--- SKIP' test.log; then echo "a parity test skipped — the upstream clone or Python is missing"; exit 1; fi

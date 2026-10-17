@@ -3,6 +3,10 @@
 // Subcommands run one part directly, for automation and troubleshooting.
 package main
 
+// The Windows icon, version and manifest live in winres/ and are compiled into the
+// rsrc_windows_*.syso files beside this one (the release workflow restamps the version).
+//go:generate go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc --arch amd64,arm64
+
 import (
 	"flag"
 	"fmt"
