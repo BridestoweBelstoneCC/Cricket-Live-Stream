@@ -28,6 +28,9 @@ input[type=text],input[type=password],input[type=number],select{width:100%;paddi
 input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .row{display:flex;gap:12px;flex-wrap:wrap}
 .row>div{flex:1 1 200px}
+.pick{display:flex;gap:8px}
+.pick input[type=color]{flex:0 0 46px;height:40px;padding:2px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface-2);cursor:pointer}
 .roles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .role{display:block;border:1px solid var(--border);border-radius:var(--radius);padding:14px;
   background:var(--surface-2);cursor:pointer;font-weight:400;margin:0}
@@ -99,7 +102,8 @@ button:disabled{opacity:.6;cursor:default}
       <div><label for="abbrev">Abbreviation <span class="opt">(max 6 letters)</span></label>
         <input type="text" id="abbrev" maxlength="6"></div>
       <div><label for="colour">Home kit colour</label>
-        <input type="text" id="colour" placeholder="#1a3a5c"></div>
+        <div class="pick"><input type="color" id="colour_pick" aria-label="Pick the kit colour">
+          <input type="text" id="colour" placeholder="#1a3a5c"></div></div>
     </div>
     <label for="motto">Replay motto <span class="opt">(optional — e.g. your club nickname)</span></label>
     <input type="text" id="motto">
@@ -221,6 +225,7 @@ function selectedStyle() {
 function refreshPreview() {
   var c = ($('colour').value || '#1a3a5c').trim();
   if (c[0] !== '#') c = '#' + c;
+  if (/^#[0-9a-f]{6}$/i.test(c)) $('colour_pick').value = c.toLowerCase();
   $('preview').src = '/overlay?preview=1&style=' + encodeURIComponent(selectedStyle()) +
                      '&colour=' + encodeURIComponent(c);
 }
@@ -294,6 +299,7 @@ document.querySelectorAll('input[name=role]').forEach(function (el) { el.addEven
 $('name').addEventListener('input', function () { if (!abbrevTouched) $('abbrev').value = abbrevFromName($('name').value); });
 $('abbrev').addEventListener('input', function () { abbrevTouched = true; });
 $('colour').addEventListener('change', refreshPreview);
+$('colour_pick').addEventListener('input', function () { $('colour').value = $('colour_pick').value; refreshPreview(); });
 window.addEventListener('resize', scalePreview);
 
 $('form').addEventListener('submit', function (ev) {
