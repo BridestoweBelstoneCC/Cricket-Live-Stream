@@ -22,6 +22,7 @@ import (
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/browser"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/port"
 )
 
 //go:embed setup.html
@@ -279,7 +280,7 @@ func Run(o Options) (Result, error) {
 		o.Say = func(format string, args ...any) { fmt.Printf(format+"\n", args...) }
 	}
 	if o.Port == 0 {
-		o.Port = 5000
+		o.Port = port.Server()
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(o.Port)))
 	if err != nil {

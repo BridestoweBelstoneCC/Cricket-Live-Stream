@@ -14,6 +14,7 @@ import (
 
 	"cricketstream/internal/assets"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/port"
 )
 
 // OutputFilename: NV Play writes JSON into a .xml file — kept identical so the server's
@@ -126,7 +127,7 @@ func Run(o Options) int {
 		fmt.Printf("      %s = %s\n", p.Number, p.Name)
 	}
 	if o.Configure {
-		ConfigureServer(o.Folder, 5000)
+		ConfigureServer(o.Folder, port.Server())
 	} else {
 		fmt.Printf("  Control panel → PCS Pro output folder → %s\n", o.Folder)
 	}

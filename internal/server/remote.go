@@ -11,10 +11,12 @@ import (
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
+
+	"cricketstream/internal/port"
 )
 
-// Port is the server's HTTP port.
-var Port = 5000
+// Port is the server's HTTP port (CRICKETSTREAM_PORT overrides 5000).
+var Port = port.Server()
 
 // ── Remote access helpers (Tailscale / LAN / QR) ──────────────
 

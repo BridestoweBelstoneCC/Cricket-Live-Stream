@@ -13,6 +13,7 @@ import (
 
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/port"
 	"cricketstream/internal/pyval"
 )
 
@@ -92,7 +93,7 @@ func ok(r *obsws.Response, err error) bool { return err == nil && r != nil && r.
 func Setup(o SetupOptions) (bool, []string) {
 	log := &setupLog{verbose: o.Verbose}
 	if o.ServerPort == 0 {
-		o.ServerPort = 5000
+		o.ServerPort = port.Server()
 	}
 	c, err := obsws.Dial(o.Target, 6*time.Second)
 	if err != nil {

@@ -19,11 +19,12 @@ import (
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/port"
 	"cricketstream/internal/pyval"
 )
 
 // ServerURL is the local CricketStream server. Tests point it at a fake.
-var ServerURL = "http://127.0.0.1:5000"
+var ServerURL = fmt.Sprintf("http://127.0.0.1:%d", port.Server())
 
 // obsTarget is where OBS is: tests point it at a fake. The password comes from
 // config.ini on every call, as each tool reread it when it reconnected.

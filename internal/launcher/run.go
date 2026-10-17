@@ -402,7 +402,8 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 				"Whatever killed it is printed above this box — scroll up; the",
 				"last few lines before each restart are the useful ones.", "",
 				"Common causes:",
-				"  - Port 5000 already in use (another copy still running?)",
+				fmt.Sprintf("  - Port %d already in use (another copy still running? on a Mac,", server.Port),
+				"    AirPlay Receiver: System Settings → General → AirDrop & Handoff)",
 				"  - A setting in config.ini the server can't read", "",
 				"If it isn't obvious, please open an issue with those lines:",
 				"  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,11 +29,6 @@ type Options struct {
 // serve_forever: config, state, the control token and every background loop.
 func Start() {
 	LoadAuthConfig()
-	// Port 5000 is what every OBS overlay source points at; the override is for running
-	// a second copy side by side (tests, rehearsals).
-	if p, err := strconv.Atoi(os.Getenv("CRICKETSTREAM_PORT")); err == nil && p > 0 {
-		Port = p
-	}
 	if !fileExists(StateFile) {
 		if err := SaveState(DefaultState()); err == nil {
 			say("  Created %s\n", StateFile)
