@@ -215,6 +215,9 @@ func Call(t Target, reqs []Req, timeout time.Duration) []map[string]any {
 	return out
 }
 
+// fastDefaultIdle is how long an unused socket is trusted before it's remade.
+const fastDefaultIdle = 120 * time.Second
+
 // Fast keeps one socket open between calls (camera cuts).
 type Fast struct {
 	mu     sync.Mutex
@@ -240,7 +243,7 @@ func (f *Fast) Call(t Target, requestType string, data any, timeout time.Duratio
 	}
 	idle := f.IdleLimit
 	if idle == 0 {
-		idle = 120 * time.Second
+		idle = fastDefaultIdle
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
