@@ -83,6 +83,14 @@ func resultSentence(facts M) string {
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
+// Swappable for tests: the parts the page is gathered from.
+var (
+	pageDBFacts  = MatchFactsFromDB
+	pageCard     = BuildInstagramImage
+	pageVideoURL = todaysStreamURL
+	startPageJob = StartMatchPageBuild
+)
+
 // BuildMatchPage gathers everything and writes the page: (ok, message, path).
 func BuildMatchPage() (bool, string, string) {
 	cfg := LoadState()
@@ -91,7 +99,7 @@ func BuildMatchPage() (bool, string, string) {
 		return false, gsOr(facts, "error", "No match data yet"), ""
 	}
 	mid := CurrentMatchID()
-	db := MatchFactsFromDB(mid)
+	db := pageDBFacts(mid)
 	sides := toMs(gl(facts, "sides"))
 	dbInn := gm(db, "innings")
 	var innings []matchpage.Innings
@@ -140,9 +148,12 @@ func BuildMatchPage() (bool, string, string) {
 		return nil
 	})
 	report := ""
-	if r := GenerateMatchReport("report"); gb(r, "ok", false) {
-		report = gs(r, "text", "")
-	}
+	func() {
+		defer func() { recover() }() // a failed report just leaves that section out
+		if r := GenerateMatchReport("report"); gb(r, "ok", false) {
+			report = gs(r, "text", "")
+		}
+	}()
 	card := ""
 	func() {
 		defer func() { recover() }()
@@ -158,7 +169,7 @@ func BuildMatchPage() (bool, string, string) {
 			}
 		}
 		tmp := filepath.Join(os.TempDir(), "match_page_card.png")
-		if _, err := BuildInstagramImage(facts, photo, tmp); err == nil {
+		if _, err := pageCard(facts, photo, tmp); err == nil {
 			card, _ = b64File(tmp)
 		}
 	}()
@@ -191,7 +202,7 @@ func BuildMatchPage() (bool, string, string) {
 	html := matchpage.Render(matchpage.Data{Club: gs(cfg, "home_team", ""), Title: title, Date: date,
 		Competition: gs(facts, "competition", ""), Result: resultSentence(facts), Report: report,
 		Innings: innings, Worm: worm, Colours: []string{accent, "#d9534f"}, CardPNGB64: card,
-		CrestB64: crest, SponsorsB64: sponsors, VideoURL: todaysStreamURL(), Accent: accent})
+		CrestB64: crest, SponsorsB64: sponsors, VideoURL: pageVideoURL(), Accent: accent})
 	if err := os.MkdirAll(MatchPagesDir, 0o755); err != nil {
 		return false, err.Error(), ""
 	}
@@ -246,7 +257,7 @@ func StartMatchPageBuild() bool {
 
 func matchPageAfterStreamEnd() {
 	if !streamingNow() {
-		StartMatchPageBuild()
+		startPageJob()
 	}
 }
 
