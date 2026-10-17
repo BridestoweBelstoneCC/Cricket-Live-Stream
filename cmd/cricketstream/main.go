@@ -39,6 +39,7 @@ Usage:
         --manual / --nvplay   answer "how is today's match being scored?" up front
   cricketstream server          just the server: overlay, control panel, scoring page
   cricketstream agent [folder]  scorer's laptop on the same wifi: serve the scoreboard file
+                                (or drop the scoreboard folder onto the app)
         --port N              HTTP port (default 8788)
         --discovery-port N    UDP discovery port (default 8787)
         --check-template      report whether the NV Play scoreboard template is built in
@@ -166,6 +167,11 @@ func run(cmd string, args []string) int {
 		return 0
 	case "":
 		return byRole()
+	}
+	// A folder dropped onto the exe is the scorer's laptop pointing the agent at NV Play's
+	// output, as the old scorer-agent exe allowed (it's remembered after the first time).
+	if st, err := os.Stat(cmd); err == nil && st.IsDir() {
+		return agent.Run(agent.Options{Folder: cmd})
 	}
 	fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
 	return 2

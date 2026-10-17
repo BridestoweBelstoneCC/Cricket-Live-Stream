@@ -106,12 +106,11 @@ with the correct extension for your format.
 
 ## Logos folder location
 
-The `logos/` folder sits alongside `server.py`:
+The `logos/` folder sits alongside CricketStream itself:
 
 ```
 CricketStream/
-  server.py
-  overlay.html
+  CricketStream.exe
   config.ini
   logos/          ← add badge files here
     12345.png     ← your club's badge

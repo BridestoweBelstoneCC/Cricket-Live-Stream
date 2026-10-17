@@ -5,13 +5,13 @@ laptop does one job — scoring. Your laptop does the stream, OBS, the overlay a
 all the fiddling. If a graphic misbehaves at 3pm you fix it on your own screen,
 without leaning across the scorebox.
 
-The scoring laptop runs a small program called the **scorer agent**. It reads the
-scoreboard file PCS Pro already writes on every ball and makes it available to
-your laptop over the club's wifi. It doesn't talk to PCS Pro, doesn't change any
-file, and doesn't need internet.
+The scoring laptop runs CricketStream too — the same single file — set up as the
+**scorer agent**. In that job it reads the scoreboard file PCS Pro already writes on
+every ball and makes it available to your laptop over the club's wifi. It doesn't
+talk to PCS Pro, doesn't change any file, and doesn't need internet.
 
 This is one of two ways to split the scoring and streaming machines apart — see
-[BRIDGE.md](BRIDGE.md) for the other (`nvplay_bridge.py`), which is aimed at
+[BRIDGE.md](BRIDGE.md) for the other (the **bridge**), which is aimed at
 machines that *aren't* on the same local network (reached over Tailscale, with a
 token) rather than two laptops sitting next to each other on the club wifi. If
 both laptops are in the same room on the same wifi, the agent below is simpler —
@@ -23,17 +23,11 @@ no address to type, no token to copy.
 
 - Both laptops on the **same wifi** (or both plugged into the same router).
   A phone hotspot works fine if the club has no wifi — connect both to it.
-- One file copied onto the scoring laptop, depending on what it already has:
-  - **Windows, no Python installed:** download `CricketStreamScorerAgent.exe`
-    from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
-    — no separate Python install needed, just double-click it.
-  - **Windows or Mac, already running PCS Pro (so Python may already be
-    there) or happy to install it:** get **Python 3** from
-    [python.org](https://www.python.org/downloads/) (tick **"Add Python to
-    PATH"** on Windows) if it's not already there, then copy `scorer_agent.py`,
-    `scoreboard.template` and `Windows/start_scorer_agent.bat` (Windows) or
-    `Mac/start_scorer_agent.sh` (Mac) onto the scoring laptop, in the same
-    folder — anywhere convenient, the Desktop is fine.
+- CricketStream on the scoring laptop: the same download as the streaming laptop
+  (`CricketStream.exe` on Windows, `CricketStream-mac.zip` on a Mac) from the
+  [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest).
+  Put it in a folder of its own — a `CricketStream` folder in Documents is fine. Nothing
+  else to install.
 
 ---
 
@@ -45,9 +39,11 @@ no address to type, no token to copy.
    **Tools → Configuration → Scoreboard**, with the output folder set and
    *Enable Scoreboard Output* ticked. This is the same setup you already use;
    nothing changes here.
-2. Double-click **`CricketStreamScorerAgent.exe`** (Windows, no Python needed),
-   or **`start_scorer_agent.bat`** (Windows, from source) / **`start_scorer_agent.sh`**
-   (Mac).
+2. Double-click **`CricketStream.exe`** (or **`CricketStream.command`** on a Mac).
+   The first time, a setup page opens in the browser: under **What is this computer
+   for?** pick **Scorer's laptop, same wifi**, check the scoreboard output folder it
+   found (or paste it from PCS Pro's Scoreboard settings), and press **Save and
+   start**. Every time after that, double-clicking goes straight into the agent.
 3. A black window opens and shows something like:
 
    ```
@@ -61,26 +57,25 @@ no address to type, no token to copy.
    The first time, it also puts the CricketStream scoreboard template into NV
    Play's Templates folder and says so. If NV Play isn't using it yet, choose it
    once: **Tools → Configuration → Scoreboard → Template File →
-   `scoreboard.template`**. (The `.exe` carries the template inside it; from
-   source, it uses the `scoreboard.template` copied alongside.)
+   `scoreboard.template`**. (CricketStream carries the template inside it — there's
+   no separate file to copy.)
 
    The first time, Windows may ask whether to allow it through the firewall
-   (as **Python**, or as **CricketStreamScorerAgent** if you're using the exe).
+   (as **CricketStream**).
    Say **yes**, and tick **Private networks**. If nobody's looking and it gets
    dismissed, see *When it doesn't work* below.
 
-   If it can't find the scoreboard folder on its own, it will tell you. Copy the
-   path out of PCS Pro's Scoreboard settings and start it like this — you only
-   need to do it once, it remembers (drag-and-drop the folder onto the exe also
-   works, if you're using that):
+   If it can't find the scoreboard folder on its own, it will tell you. Drag the
+   folder from PCS Pro's Scoreboard settings onto `CricketStream.exe`, or start it
+   from a Command Prompt like this — you only need to do it once, it remembers:
 
    ```
-   python scorer_agent.py "C:\Users\Scorer\Documents\Cricket Matches\_Scoreboards\Output"
+   CricketStream agent "C:\Users\Scorer\Documents\Cricket Matches\_Scoreboards\Output"
    ```
 
 ### On the streaming laptop
 
-1. Start `server.py` as usual and open the control panel.
+1. Start CricketStream as usual and open the control panel.
 2. Under **Where the score comes from**, switch on
    **"Run the stream from a second laptop"**.
 3. Press **Find scorer laptop**.
@@ -98,8 +93,9 @@ works exactly as before. Only where the score comes from has changed.
 
 ## On match day
 
-1. Scorer opens PCS Pro, then double-clicks the agent launcher. Leave it open.
-2. You start `server.py` and OBS on your laptop.
+1. Scorer opens PCS Pro, then double-clicks CricketStream on the scoring laptop.
+   Leave it open.
+2. You double-click CricketStream on your laptop (it opens OBS for you).
 3. Check the control panel says **Connected** and is reading the file.
 
 If the scorer's laptop lands on a different IP address than last week — most club
@@ -120,7 +116,7 @@ Work down this list; it's nearly always one of the first two.
    hotspot on the other. Check the network name on both.
 3. **Firewall.** On Windows: Settings → Privacy & security → Windows Security →
    Firewall & network protection → Allow an app through firewall → find
-   **Python** and tick **Private**. This is the usual culprit if step 1 and 2 are
+   **CricketStream** and tick **Private**. This is the usual culprit if step 1 and 2 are
    fine.
 4. **Guest wifi.** Some routers isolate guest devices from each other on purpose,
    so the two laptops can't see each other no matter what. Put both on the main
@@ -159,7 +155,7 @@ and list them. Type the address you want in the box and save.
 The agent is the simplest route for two laptops on the same wifi — it needs no
 network configuration. Some alternatives, if they suit your club better:
 
-- **`nvplay_bridge.py`** (see [BRIDGE.md](BRIDGE.md)) if the two machines are
+- **The bridge** (see [BRIDGE.md](BRIDGE.md)) if the two machines are
   *not* on the same local network — it's designed to be reached over Tailscale,
   gated by a token, rather than found by broadcast.
 - **A shared folder.** If the scorer's laptop already shares its output folder
@@ -174,8 +170,8 @@ network configuration. Some alternatives, if they suit your club better:
 
 ## For the technically curious
 
-The agent is a single stdlib-only Python file. It serves two things on the local
-network and nothing else:
+The agent is `cricketstream agent` (what the scorer's-laptop role runs). It serves two
+things on the local network and nothing else:
 
 | | |
 |---|---|
@@ -186,12 +182,12 @@ network and nothing else:
 It only ever reads, never writes, and serves nothing outside the one scoreboard
 file. It has no authentication, on the assumption that anyone already on your
 club's wifi is welcome to know the score — don't run it on a public network. If
-that tradeoff is unwanted, use `nvplay_bridge.py` instead, which is token-gated.
+that tradeoff is unwanted, use the bridge instead, which is token-gated.
 
 Ports can be changed if 8788 or 8787 clash with something:
 
 ```
-python scorer_agent.py --port 9788 --discovery-port 9787
+CricketStream agent --port 9788 --discovery-port 9787
 ```
 
 If you change the HTTP port, type the full `host:port` into the control panel,
