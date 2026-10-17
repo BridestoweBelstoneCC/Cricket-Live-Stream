@@ -68,10 +68,10 @@ def draw_mark(size, transparent=False):
     for dr in (-r * 0.10, 0, r * 0.10):
         rr = big + dr
         sd.ellipse((scx - rr, scy - rr, scx + rr, scy + rr), outline=SEAM, width=int(r * 0.045))
-    for k in range(-6, 7):
+    for k in range(-10, 11):  # runs off the ball's edge; the clip trims it
         a = tilt + k * 0.055
-        x1, y1 = scx + math.cos(a) * (big - r * 0.15), scy + math.sin(a) * (big - r * 0.15)
-        x2, y2 = scx + math.cos(a) * (big + r * 0.15), scy + math.sin(a) * (big + r * 0.15)
+        x1, y1 = scx + math.cos(a) * (big - r * 0.12), scy + math.sin(a) * (big - r * 0.12)
+        x2, y2 = scx + math.cos(a) * (big + r * 0.12), scy + math.sin(a) * (big + r * 0.12)
         sd.line((x1, y1, x2, y2), fill=SEAM, width=int(r * 0.03))
     ball_mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(ball_mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
