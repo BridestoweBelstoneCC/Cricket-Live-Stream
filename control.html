@@ -1528,7 +1528,7 @@ async function useSponsor(id) {
           <div style="flex:1;">
             <label>Pairing code <span style="color:var(--muted);font-weight:400;">— shown in CricketStream on the scorer's laptop, if Find doesn't find it</span></label>
             <input type="text" id="agent_code" placeholder="e.g. K8Q2-7WMX" autocomplete="off" spellcheck="false"
-                   style="text-transform:uppercase;letter-spacing:.06em" onkeydown="if(event.key==='Enter'){event.preventDefault();pairAgent();}">
+                   style="text-transform:uppercase;letter-spacing:.06em" onkeydown="agentCodeKey(event)">
           </div>
           <button type="button" onclick="pairAgent()" style="white-space:nowrap;">Connect</button>
         </div>
@@ -2849,6 +2849,8 @@ async function refreshAgentStatus() {
 
 // The scorer's laptop's pairing code: its address, typed instead of found — for wifi that
 // blocks the automatic search. Saved by the server only once that laptop answers.
+function agentCodeKey(e) { if (e.key === 'Enter') { e.preventDefault(); pairAgent(); } }
+
 async function pairAgent() {
   const code = (document.getElementById('agent_code').value || '').trim();
   if (!code) { setAgentStatus('Type the pairing code shown on the scorer\'s laptop.', 'warn'); return; }
