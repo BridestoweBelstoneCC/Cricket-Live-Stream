@@ -66,6 +66,12 @@ func TestWrapMatchesPythonTextwrap(t *testing.T) {
 	if err != nil {
 		t.Skip("no python")
 	}
+	// Parity is with the Python the original runs on, 3.11 (the CI differential job's):
+	// newer textwrap breaks some edge cases differently (an em-dash at width 5 on 3.13).
+	if v, err := exec.Command(py, "-I", "-c", "import sys; print('%d.%d' % sys.version_info[:2])").Output(); err != nil ||
+		strings.TrimSpace(string(v)) != "3.11" {
+		t.Skipf("textwrap parity is checked against Python 3.11; this is %s", strings.TrimSpace(string(v)))
+	}
 	rng := rand.New(rand.NewSource(3))
 	words := []string{"SIX", "North", "hits", "a", "huge", "one", "over", "long-on", "hat-trick", "60-1",
 		"Smith's", "first", "fifty", "of", "the", "season!", "supercalifragilisticexpialidocious",

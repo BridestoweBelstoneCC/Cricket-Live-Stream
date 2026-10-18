@@ -47,7 +47,8 @@ jobs:
       # The JavaScript tests (overlay/panel parsing, classifyBall parity, milestones,
       # auto-cut) run in node, which every hosted runner has; without node they skip.
       - name: Tests
-        run: go test ./...
+        # GitHub's macOS runners are slow: the server package alone can pass 10 minutes.
+        run: go test -timeout 20m ./...
 
       - name: Tests under the race detector
         if: runner.os == 'Linux'
@@ -77,13 +78,14 @@ jobs:
 
       - name: Fetch the Python original at the pinned commit
         run: |
+          # shellcheck disable=SC2016 # the backticks are literal: PORTING.md writes the commit as `sha`
           commit="$(grep -oE '`[0-9a-f]{40}`' PORTING.md | head -1 | tr -d '`')"
           git clone --quiet https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream .upstream
           git -C .upstream checkout --quiet "$commit"
           pip install Pillow
 
       - name: Differential tests
-        run: go test -count=1 ./internal/scoring/ ./internal/ini/ ./internal/logobg/ ./internal/resultcard/ ./internal/matchpage/ ./internal/socialclips/ ./internal/pyfmt/ ./internal/htmlesc/ ./internal/scorerfile/ ./internal/tools/ -v -run 'Python|Differential|Pillow' 2>&1 | tee test.log; test ${PIPESTATUS[0]} -eq 0
+        run: go test -count=1 ./internal/scoring/ ./internal/ini/ ./internal/logobg/ ./internal/resultcard/ ./internal/matchpage/ ./internal/socialclips/ ./internal/pyfmt/ ./internal/htmlesc/ ./internal/scorerfile/ ./internal/tools/ -v -run 'Python|Differential|Pillow' 2>&1 | tee test.log; test "${PIPESTATUS[0]}" -eq 0
 
       - name: No differential test may have skipped
         run: |
