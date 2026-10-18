@@ -91,6 +91,15 @@ examples/
 # Built match pages (per match, published by the club where they choose)
 match_pages/
 
+# The app's own working files beside it: the settings an import replaced (config.ini
+# with its keys), a club settings export (with keys if ticked), logs, and an update's
+# download / the copy it set aside.
+backups/
+logs/
+CricketStream-*.zip
+*.download
+*.old
+
 # Go port: upstream Python reference clone (re-clone, never commit) and build output
 .upstream/
 /bin/
