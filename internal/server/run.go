@@ -59,6 +59,12 @@ func Start() {
 var remoteLabels = map[string]string{"tailscale": "Tailscale remote",
 	"cloudflare": "Cloudflare remote (public)", "lan": "Same-network remote"}
 
+// isConsole: f is a terminal (not a pipe to the app's window, or a file).
+func isConsole(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
 func banner() {
 	targets := remoteTargets()
 	var info strings.Builder
@@ -75,7 +81,11 @@ func banner() {
 	if CloudflareTunnel && ClubPassword != "" && !hasCF {
 		info.WriteString("\n  Cloudflare Tunnel starting up — its URL will appear in the control panel shortly")
 	}
-	if len(targets) > 0 {
+	if len(targets) > 0 && !isConsole(os.Stdout) {
+		// A QR code drawn in text only scans in a console: in the app's window each row is
+		// its own line of the activity log. The panel's button shows a real one.
+		say("\n  To open the control panel on a phone: click \"This machine\" at the top of the control panel for a QR code.\n")
+	} else if len(targets) > 0 {
 		top := targets[0]
 		if q, err := qrcode.New(gs(top, "url", ""), qrcode.Low); err == nil {
 			say("\n  Scan to open the control panel on another device (%s):\n", gs(top, "via", ""))

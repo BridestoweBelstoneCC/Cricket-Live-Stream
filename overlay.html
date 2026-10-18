@@ -2013,6 +2013,8 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
+    // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
+    if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
     if (cmds.show_player_cards && prev && prev.batter1 && prev.batter1.name) {
       // Manual (re)show from the control panel: clear the shown-flags so they re-fire
       delete _playerCardShown[bId(prev.batter1)];
@@ -3163,11 +3165,16 @@ function renderScorebar(state, home, away) {
 }
 
 function updateBadges(homeId, awayId, battingTeam, homeTeamName) {
+  // A side with no PlayCricket club ID (no fixture fetched) is asked for by its team name:
+  // the Pictures tab saves a badge under the name in that case. The placeholder names
+  // aren't a team.
+  if (!homeId && cfg.home_team && cfg.home_team !== 'Home CC') homeId = cfg.home_team;
+  if (!awayId && cfg.away_team && cfg.away_team !== 'Opposition CC') awayId = cfg.away_team;
   function loadBadge(imgId, clubId) {
     if (!clubId) return;
     var img = document.getElementById(imgId);
     if (!img) return;
-    var url = "/logo/" + clubId;
+    var url = "/logo/" + encodeURIComponent(clubId);
     if (img.dataset.loadedId === clubId) return;
     img.dataset.loadedId = clubId;
     img.onload  = function() { img.style.display = ""; };

@@ -36,6 +36,7 @@ import (
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/launcher"
+	"cricketstream/internal/obs"
 	"cricketstream/internal/port"
 	"cricketstream/internal/proc"
 	"cricketstream/internal/scorerfile"
@@ -82,6 +83,8 @@ type App struct {
 
 	mu          sync.Mutex
 	phase       string
+	obsOpenNow  bool // OBS open, as last asked (obsOpenCached)
+	obsOpenAt   time.Time
 	panelURL    string
 	panelToken  string
 	interrupt   chan os.Signal
@@ -282,7 +285,50 @@ var (
 	runLauncher    = launcher.Run
 	alreadyRunning = launcher.AlreadyRunning
 	agentOptions   = agent.Options{}
+	finishOBS      = func() (bool, string) { return obs.Finish(setup.ConfigFile()) }
+	obsOpen        = obs.Running
 )
+
+// stopThenClose is the close screen's "Stop and close": match day stopped (its report
+// question still comes up), then OBS closed if asked — never while it's streaming or
+// recording — and then CricketStream itself, so one choice leaves nothing running.
+func (a *App) stopThenClose(closeApp, closeOBS bool) {
+	a.stop()
+	for {
+		p := a.currentPhase()
+		if p != phStarting && p != phRunning {
+			break
+		}
+		select {
+		case <-a.done:
+			return
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	if closeOBS {
+		fmt.Println("  Closing OBS...")
+		if ok, why := finishOBS(); ok {
+			fmt.Println("  ✓ OBS closed")
+		} else {
+			fmt.Println("  ⚠ " + why)
+			closeApp = false // stay open, so the reason is on screen
+		}
+	}
+	if closeApp {
+		a.quit()
+	}
+}
+
+// obsOpenCached is whether OBS is open, asked at most every few seconds: the page polls
+// several times a second, and asking Windows means running tasklist.
+func (a *App) obsOpenCached() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if time.Since(a.obsOpenAt) > 4*time.Second {
+		a.obsOpenNow, a.obsOpenAt = obsOpen(), time.Now()
+	}
+	return a.obsOpenNow
+}
 
 // ── What this computer does ──
 
@@ -690,6 +736,9 @@ func (a *App) status(since int) map[string]any {
 		a.mu.Lock()
 		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}
 		a.mu.Unlock()
+		if phase == phRunning {
+			out["obs_open"] = a.obsOpenCached() // the close screen offers to close it too
+		}
 	case phAgent:
 		out["agent"] = agentInfo(agentRun, folder, how, agentErr)
 	case phBridge:

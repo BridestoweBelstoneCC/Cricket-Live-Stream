@@ -201,7 +201,12 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 		a.showPanel()
 		ok(nil)
 	case "POST /api/stop":
-		go a.stop()
+		var body struct {
+			Close    bool `json:"close"`
+			CloseOBS bool `json:"close_obs"`
+		}
+		readBody(r, &body)
+		go a.stopThenClose(body.Close, body.CloseOBS)
 		ok(nil)
 	case "POST /api/close":
 		// The page's Close: only once nothing is running (the page asks first).

@@ -336,6 +336,16 @@ var imageMimes = []struct{ ext, mime string }{{"png", "image/png"}, {"jpg", "ima
 	{"jpeg", "image/jpeg"}, {"svg", "image/svg+xml"}, {"webp", "image/webp"}, {"gif", "image/gif"}}
 
 // serveNamedImage serves dir/<name>.<ext> for the first extension that exists.
+// namedImage is dir/name.<any image type>, or "".
+func namedImage(dir, name string) string {
+	for _, m := range imageMimes {
+		if p := filepath.Join(dir, name+"."+m.ext); fileExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
 func (c *ctx) serveNamedImage(dir, name string) {
 	for _, m := range imageMimes {
 		p := filepath.Join(dir, name+"."+m.ext)
@@ -759,8 +769,19 @@ func (c *ctx) doGET() {
 		c.json(M{"folder": dir, "logos": out})
 
 	case strings.HasPrefix(path, "/logo/"):
-		// Club badge images from the logos folder
-		c.serveNamedImage(logosFolder(LoadState()), bareName(strings.Trim(path[6:], "/")))
+		// Club badge images from the logos folder: by PlayCricket club ID, or by team name
+		// for a side whose ID isn't known (no fixture fetched). A name is looked for as
+		// typed and as the Pictures tab saves it ("B&BCC" is kept as "BBCC").
+		dir := logosFolder(LoadState())
+		raw, err := url.PathUnescape(strings.Trim(path[6:], "/"))
+		if err != nil {
+			raw = strings.Trim(path[6:], "/")
+		}
+		name := bareName(raw)
+		if alt := libraryName(name); alt != "" && alt != name && namedImage(dir, name) == "" {
+			name = alt
+		}
+		c.serveNamedImage(dir, name)
 
 	case path == "/sponsor/bg_preview":
 		// Before the /sponsor/<id> prefix below, like /sponsor/airtime. A PNG of what

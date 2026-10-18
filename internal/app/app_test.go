@@ -952,3 +952,65 @@ func TestInstallOBSFromTheMatchDayScreen(t *testing.T) {
 		t.Errorf("without winget: %d %s", r.status, r.body)
 	}
 }
+
+// "Stop and close" (the window's X): match day stops — its report question still comes up —
+// then OBS closes if ticked, then CricketStream. If OBS can't close (on air), the app stays
+// open with the reason in the log. "Stop match day" (#stop) only stops.
+func TestStopAndCloseClosesOBSThenTheApp(t *testing.T) {
+	for _, c := range []struct {
+		name               string
+		closeApp, closeOBS bool
+		obsCloses          bool
+		wantOBS, wantQuit  bool
+	}{
+		{"stop only", false, false, true, false, false},
+		{"stop and close", true, false, true, false, true},
+		{"and OBS", true, true, true, true, true},
+		{"OBS on air", true, true, false, true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ta := newTestApp(t)
+			undo, _ := ta.log.capture()
+			defer undo()
+			so, sf := obsOpen, finishOBS
+			t.Cleanup(func() { obsOpen, finishOBS = so, sf })
+			obsOpen = func() bool { return true }
+			finished := false
+			finishOBS = func() (bool, string) {
+				finished = true
+				if c.obsCloses {
+					return true, ""
+				}
+				return false, "OBS is still streaming — stop the stream in OBS, then close it"
+			}
+			runLauncher = func(o launcher.Options) int {
+				o.OpenPanel("http://127.0.0.1:5000/control", "tok")
+				<-o.Interrupt
+				console.Confirm("Generate an AI match report for this game?", false)
+				return 0
+			}
+			ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+			ta.api("POST", "start", M{"remote": false, "manual": false})
+			st := ta.waitFor("running", phaseIs(phRunning))
+			if st["obs_open"] != true {
+				t.Errorf("the close screen isn't told OBS is open: %v", st["obs_open"])
+			}
+			ta.api("POST", "stop", M{"close": c.closeApp, "close_obs": c.closeOBS})
+			q := ta.waitFor("the report question", func(st M) bool { return st["question"] != nil })["question"].(M)
+			if finished {
+				t.Error("OBS was closed before match day had finished")
+			}
+			ta.api("POST", "answer", M{"id": q["id"], "yes": false})
+			ta.waitFor("stopped", phaseIs(phStopped))
+			quit := false
+			select {
+			case <-ta.done:
+				quit = true
+			case <-time.After(2 * time.Second):
+			}
+			if finished != c.wantOBS || quit != c.wantQuit {
+				t.Errorf("OBS closed %v (want %v), app closed %v (want %v)", finished, c.wantOBS, quit, c.wantQuit)
+			}
+		})
+	}
+}

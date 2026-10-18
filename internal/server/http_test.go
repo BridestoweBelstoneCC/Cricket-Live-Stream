@@ -736,3 +736,24 @@ func TestPollerBurstIsServed(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// "Test replay now" goes through the overlay (its REPLAY screen, then the cut), as one
+// command the overlay's next /commands poll picks up once.
+func TestTestReplayGoesThroughTheOverlay(t *testing.T) {
+	s := newTestServer(t, "")
+	setState(t, M{"replay_enabled": false})
+	_, d := s.postJSON("/replay/test", M{}, map[string]string{"Origin": "http://" + s.addr})
+	if d["ok"] != false {
+		t.Fatalf("replay off: %v", d)
+	}
+	setState(t, M{"replay_enabled": true})
+	if st, d := s.postJSON("/replay/test", M{}, map[string]string{"Origin": "http://" + s.addr}); st != 200 || d["ok"] != true {
+		t.Fatalf("%d %v", st, d)
+	}
+	if _, c := s.getJSON("/commands"); c["test_replay"] != true {
+		t.Fatalf("commands %v", c)
+	}
+	if _, c := s.getJSON("/commands"); c["test_replay"] != false {
+		t.Fatalf("not popped: %v", c)
+	}
+}

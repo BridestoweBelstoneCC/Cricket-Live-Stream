@@ -44,6 +44,28 @@ scoring page do is unchanged; what changed is how it's installed and run.
   the boundary flash take on the same type, colours and corners. Pick one under Graphics →
   Scorebar style (live preview), or in setup. `go run ./scripts/renderscorebar -panels`
   renders the panels for each style.
+- **Closing CricketStream closes everything it started.** The window's X (or the icon's
+  Close) now stops match day *and* closes CricketStream in one go, after the match report
+  question; a "Close OBS too" box does OBS as well — never while it's streaming or
+  recording (the replay buffer is stopped first, since OBS otherwise asks "exit anyway?").
+  The Stop buttons still only stop match day.
+- **The control panel's header** shows the club: its badge (the one the scorebar uses),
+  its name, and CricketStream above, on a panel washed with the club's colour.
+- **Tiles in your own order.** Drag a tile by the grip in its title (it appears on hover)
+  to put each tab's tiles in the order you like; kept on that computer, with "Reset tile
+  layout" at the bottom of Setup. Phones keep the standard layout.
+- **Fixed: "Test replay now"** cut straight to the replay without the "Instant REPLAY"
+  screen and the club's motto. It now goes through the overlay, exactly like a real one.
+- **Fixed: no badge for an opposition without a club ID** (no fixture fetched). Its badge
+  can be uploaded by team name in Pictures, and the scorebar finds it by name. "Add
+  badge…" asks for the club ID before opening the file picker, not after.
+- **Fixed: an unscannable QR code** in the start-up log (each row of the text QR became
+  its own line in the window). The log now points to the panel's "This machine" button,
+  which shows a real one.
+- **Quieter Security log.** A control panel left open in another tab from before
+  CricketStream restarted retried every few seconds with its old login, filling the log
+  with rejections. It now stops after the first and asks to sign in again, and the
+  Security view groups repeats ("Rejected ×12") and says where they usually come from.
 - **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
   when its window is behind OBS — click for the window, right-click for the activity log,
   the control panel or Close. A Windows notification when something needs someone: the
