@@ -287,12 +287,17 @@ var (
 	agentOptions   = agent.Options{}
 	finishOBS      = func() (bool, string) { return obs.Finish(setup.ConfigFile()) }
 	obsOpen        = obs.Running
+	// stopThenCloseDone, if set, is told when "Stop and close" has done all it will (tests).
+	stopThenCloseDone func()
 )
 
 // stopThenClose is the close screen's "Stop and close": match day stopped (its report
 // question still comes up), then OBS closed if asked — never while it's streaming or
 // recording — and then CricketStream itself, so one choice leaves nothing running.
 func (a *App) stopThenClose(closeApp, closeOBS bool) {
+	if stopThenCloseDone != nil {
+		defer stopThenCloseDone()
+	}
 	a.stop()
 	for {
 		p := a.currentPhase()
@@ -496,10 +501,11 @@ func (a *App) startMatchDay(remote, manual bool) error {
 	a.launcherEnd = make(chan struct{})
 	interrupt, end := a.interrupt, a.launcherEnd
 	a.mu.Unlock()
+	run := runLauncher // read here, not in the goroutine: a test restores the seam once it's done
 	go func() {
 		defer close(end)
 		defer crashed()
-		code := runLauncher(launcher.Options{Remote: &remote, Manual: &manual, Interrupt: interrupt,
+		code := run(launcher.Options{Remote: &remote, Manual: &manual, Interrupt: interrupt,
 			OpenPanel: a.panelReady})
 		fmt.Println()
 		fmt.Println("  Match day is over.")
