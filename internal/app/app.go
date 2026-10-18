@@ -103,6 +103,8 @@ type App struct {
 	precheckRunning bool
 	precheckResult  map[string]any
 
+	obsInst obsInstall
+
 	done     chan struct{}
 	doneOnce sync.Once
 }
@@ -656,6 +658,9 @@ func (a *App) status(since int) map[string]any {
 	switch phase {
 	case phHome, phStarting, phStopped, phRunning, phAlready, phWelcome:
 		out["home"] = homeInfo()
+		if phase == phHome || phase == phStopped || phase == phWelcome {
+			out["obs"] = a.obsStatus()
+		}
 		a.mu.Lock()
 		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}
 		a.mu.Unlock()

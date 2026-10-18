@@ -159,6 +159,15 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <h1 id="home_title">Match day</h1>
     <p class="lead">Start match day when you're at the ground. CricketStream opens OBS, sets up its scenes,
       fetches today's match from PlayCricket and starts the graphics, then shows the control panel here.</p>
+    <section id="obs_card" class="hidden" style="border-color:var(--warn)">
+      <div class="status" style="margin:0 0 6px"><span class="light warn" id="obs_light"></span><h2 style="margin:0" id="obs_title">OBS isn't installed on this laptop</h2></div>
+      <p class="hint" id="obs_how">CricketStream streams through OBS Studio, which is free. Install it now and match day sets it up for you.</p>
+      <div class="actions" style="margin-top:6px">
+        <button class="btn primary" type="button" id="obs_install">Install OBS</button>
+        <a class="btn" id="obs_dl" href="https://obsproject.com/download" target="_blank" rel="noopener">Download it from obsproject.com</a>
+      </div>
+      <p class="hint" id="obs_result" style="margin-top:8px"></p>
+    </section>
     <section>
       <h2>Who uses the control panel today?</h2>
       <div class="choice">
@@ -406,6 +415,26 @@ function renderHome() {
     : 'Needs a club password first — set one in Settings.');
   $('manual_note').classList.toggle('hidden', !h.manual_session);
   renderPrecheck();
+  renderOBS();
+}
+
+// OBS missing: offer to install it (Windows' own installer) or link to the download.
+function renderOBS() {
+  var o = S.obs;
+  $('obs_card').classList.toggle('hidden', !o || (o.installed && !o.installing && o.result !== 'installed'));
+  if (!o) return;
+  if (o.installed) {
+    $('obs_light').className = 'light ok'; txt('obs_title', 'OBS is installed'); txt('obs_how', 'Ready — Start match day opens and sets it up.');
+    $('obs_install').classList.add('hidden'); $('obs_dl').classList.add('hidden'); txt('obs_result', '');
+    return;
+  }
+  $('obs_install').classList.toggle('hidden', !o.can_install);
+  $('obs_install').disabled = !!o.installing;
+  $('obs_install').textContent = o.installing ? 'Installing… (Windows may ask you to allow it)' : 'Install OBS';
+  $('obs_light').className = 'light ' + (o.installing ? 'busy' : 'warn');
+  txt('obs_how', o.can_install ? 'CricketStream streams through OBS Studio, which is free. Install it now (about 150 MB, a few minutes) and match day sets it up for you. Installing accepts the OBS licence (GPL-2.0).'
+    : 'CricketStream streams through OBS Studio, which is free. Download it from obsproject.com, install it, then come back here.');
+  txt('obs_result', o.result && o.result !== 'installed' ? o.result : '');
 }
 
 // The pre-match check: each check's light, what it found, and what to do about it.
@@ -649,6 +678,10 @@ $('import_file').addEventListener('change', function () {
       poll();
     })
     .catch(function (e) { m.textContent = String(e); });
+});
+$('obs_install').addEventListener('click', function () {
+  $('obs_install').disabled = true;
+  api('install_obs', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
 });
 $('pc_run').addEventListener('click', function () {
   $('pc_run').disabled = true;

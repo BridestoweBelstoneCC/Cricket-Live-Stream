@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -880,5 +881,61 @@ func TestMoveSettingsBetweenLaptops(t *testing.T) {
 	fresh.waitFor("running", phaseIs(phRunning))
 	if r := fresh.do("POST", "/setup/import", nil, map[string]string{"Origin": fresh.srv.URL}); r.status != 409 {
 		t.Errorf("import during match day: %d", r.status)
+	}
+}
+
+// OBS missing on the streaming laptop: the match-day screen says so, installs it with
+// winget (stubbed here — nothing is installed), and checks again afterwards.
+func TestInstallOBSFromTheMatchDayScreen(t *testing.T) {
+	ta := newTestApp(t)
+	saved := [3]any{obsInstalled, findWinget, runInstall}
+	t.Cleanup(func() {
+		obsInstalled = saved[0].(func() bool)
+		findWinget = saved[1].(func() string)
+		runInstall = saved[2].(func(string, func(string)) error)
+	})
+	installed := false
+	obsInstalled = func() bool { return installed }
+	findWinget = func() string { return `C:\winget.exe` }
+	var gotWinget string
+	runInstall = func(w string, say func(string)) error {
+		gotWinget = w
+		say("Found OBS Studio [OBSProject.OBSStudio]")
+		installed = true
+		return nil
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	o := ta.status()["obs"].(M)
+	if o["installed"] != false || o["can_install"] != true {
+		t.Fatalf("status %v", o)
+	}
+	if r := ta.api("POST", "install_obs", M{}); r.status != 200 {
+		t.Fatalf("install: %d %s", r.status, r.body)
+	}
+	st := ta.waitFor("installed", func(st M) bool { o, _ := st["obs"].(M); return o["result"] == "installed" })
+	if gotWinget != `C:\winget.exe` || st["obs"].(M)["installed"] != true {
+		t.Errorf("winget %q, status %v", gotWinget, st["obs"])
+	}
+	if r := ta.api("POST", "install_obs", M{}); r.status != 409 {
+		t.Errorf("install when already installed: %d", r.status)
+	}
+
+	// The installer fails (permission refused): it says what to do, and stays offered.
+	installed = false
+	runInstall = func(string, func(string)) error { return errors.New("exit status 0x8a150056") }
+	ta.api("POST", "install_obs", M{})
+	st = ta.waitFor("the failure", func(st M) bool {
+		o, _ := st["obs"].(M)
+		r, _ := o["result"].(string)
+		return strings.Contains(r, "didn't install")
+	})
+	if o := st["obs"].(M); o["installing"] != false || o["can_install"] != true {
+		t.Errorf("after a failure: %v", o)
+	}
+
+	// No winget (an old Windows, a Mac): the download link instead.
+	findWinget = func() string { return "" }
+	if r := ta.api("POST", "install_obs", M{}); r.status != 409 || !strings.Contains(r.body, "obsproject.com") {
+		t.Errorf("without winget: %d %s", r.status, r.body)
 	}
 }
