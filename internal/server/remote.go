@@ -172,7 +172,8 @@ var rateLimits = map[string]float64{
 	"/camera/spotter":        20,  // one AI call per camera
 	// Broadcasts on the LAN — a short cooldown, just enough to stop a script (not a human
 	// clicking "Find scorer laptop") from flooding the network.
-	"/agent/discover": 3,
+	"/agent/discover":   3,
+	"/cameras/discover": 3,
 }
 
 var (

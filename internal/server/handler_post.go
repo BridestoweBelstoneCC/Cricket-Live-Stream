@@ -274,6 +274,10 @@ func (c *ctx) doPOST() {
 		out["ok"] = true
 		c.json(out)
 
+	case path == "/cameras/use":
+		out, status := CamerasUse(jsonObject(body))
+		c.json(out, status)
+
 	case path == "/agent/pair":
 		// The scorer's laptop's pairing code (shown in its window), for wifi where "Find
 		// scorer laptop" finds nothing. Saved only once the laptop answers.

@@ -13,6 +13,10 @@ scoring page do is unchanged; what changed is how it's installed and run.
   ID), player photos (with the squad roster's players who still need one), sponsor logos
   and match photos (per team) are added, previewed, renamed and removed there — from the
   laptop or a phone. No folders to find, no files to rename.
+- **Find cameras on this network** (Setup → Cameras): IP cameras answer ONVIF discovery;
+  pick one, give its login, and its stream address is asked of the camera itself (or the
+  usual one for its make) and saved — the password never comes back to the browser.
+  `cricketstream cameras` lists them from a terminal.
 - **OBS missing?** The match-day screen says so before match day and installs it with
   Windows' own installer (winget, OBS's official package), or links to obsproject.com.
 - **Pairing code** on the scorer's laptop (K8Q2-7WMX): typed into the panel, it connects

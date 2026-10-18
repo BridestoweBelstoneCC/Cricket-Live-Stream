@@ -1457,6 +1457,13 @@ async function useSponsor(id) {
   <div class="card">
     <h2>Cameras</h2>
     <div class="field">
+      <button class="btn btn-test" type="button" onclick="findCameras()">&#128269; Find cameras on this network</button>
+      <div id="cam-found"></div>
+      <p class="hint">Finds the club's IP cameras (ONVIF — on in most cameras, sometimes under the camera's own
+        Network settings) and fills in the address below, so nobody types an RTSP address. The camera's password
+        stays on this laptop.</p>
+    </div>
+    <div class="field">
       <label>Camera RTSP URL <span style="color:var(--muted);font-weight:400;">(adds the match camera to OBS for you)</span></label>
       <input type="text" id="camera_rtsp_url" placeholder="rtsp://user:pass@192.168.1.50:554/stream">
     </div>
@@ -2883,6 +2890,53 @@ async function discoverAgent() {
   } catch(e) {
     setAgentStatus('Search failed: ' + e.message, 'err');
   }
+}
+
+// ── Find cameras on this network (ONVIF) ──
+async function findCameras() {
+  const box = document.getElementById('cam-found');
+  box.textContent = 'Looking for cameras… (a few seconds)';
+  try {
+    const d = await (await apiFetch('/cameras/discover')).json();
+    box.textContent = '';
+    if (!d.cameras || !d.cameras.length) { box.textContent = d.error || 'No camera answered.'; return; }
+    d.cameras.forEach(function (cam) { box.appendChild(cameraRow(cam)); });
+  } catch (e) { box.textContent = 'Search failed: ' + e.message; }
+}
+function cameraRow(cam) {
+  const row = document.createElement('div');
+  row.style.cssText = 'border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:8px;background:var(--surface-2)';
+  const t = document.createElement('div');
+  t.style.fontWeight = '600';
+  t.textContent = cam.name + (cam.make && cam.name.indexOf(cam.make) < 0 ? ' (' + cam.make + ')' : '') + ' — ' + cam.address;
+  row.appendChild(t);
+  const grid = document.createElement('div'); grid.className = 'half-grid'; grid.style.marginTop = '6px';
+  const user = document.createElement('input'); user.type = 'text'; user.value = 'admin'; user.placeholder = 'Camera username';
+  const pass = document.createElement('input'); pass.type = 'password'; pass.placeholder = 'Camera password';
+  grid.appendChild(user); grid.appendChild(pass); row.appendChild(grid);
+  const acts = document.createElement('div'); acts.className = 'half-grid'; acts.style.marginTop = '6px';
+  const msg = document.createElement('div'); msg.className = 'hint'; msg.style.marginTop = '6px';
+  [['1', 'Use as main camera'], ['2', 'Use as bowler-end camera']].forEach(function (p) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = p[1];
+    b.addEventListener('click', function () { useCamera(cam, user.value, pass.value, p[0], msg, b); });
+    acts.appendChild(b);
+  });
+  row.appendChild(acts); row.appendChild(msg);
+  return row;
+}
+async function useCamera(cam, user, pass, slot, msg, btn) {
+  btn.disabled = true;
+  msg.textContent = 'Asking the camera for its stream address…';
+  try {
+    const d = await (await apiFetch('/cameras/use', {method: 'POST', body: JSON.stringify({address: cam.address, name: cam.name,
+      make: cam.make, hardware: cam.hardware, xaddr: cam.xaddr, user: user, pass: pass, slot: slot})})).json();
+    if (!d.ok) { msg.textContent = d.error || 'That did not work.'; return; }
+    // The stored address holds the password: the form shows it as saved, never the address itself.
+    const field = document.getElementById(slot === '2' ? 'camera2_rtsp_url' : 'camera_rtsp_url');
+    if (field) field.value = '••••••••';
+    msg.textContent = d.note + ' (' + d.masked + ')';
+  } catch (e) { msg.textContent = 'Could not reach the server.'; }
+  finally { btn.disabled = false; }
 }
 
 async function testReplay() {

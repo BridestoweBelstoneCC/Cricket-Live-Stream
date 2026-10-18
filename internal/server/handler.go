@@ -532,6 +532,13 @@ func (c *ctx) doGET() {
 		}
 		c.json(info)
 
+	case path == "/cameras/discover":
+		// Shout on the network for IP cameras (ONVIF). Behind the login: it maps the LAN.
+		if !c.checkToken() || !c.rateLimit(path) {
+			return
+		}
+		c.json(CamerasDiscover())
+
 	case path == "/agent/discover":
 		// Shout on the local network and report every scorer agent that answers.
 		if !c.rateLimit(path) {
