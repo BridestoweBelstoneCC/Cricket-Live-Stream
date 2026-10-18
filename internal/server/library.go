@@ -281,3 +281,35 @@ func LibraryOpen(kind, file string) (io.ReadCloser, string, error) {
 	mime := map[string]string{"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}[ext]
 	return f, mime, err
 }
+
+// LibraryDir is where one kind of picture is kept now ("photos:2nd" included); "" for an
+// unknown kind. Export and import of the club's settings use it.
+func LibraryDir(kind string) string {
+	k, err := libraryKindFor(kind)
+	if err != nil {
+		return ""
+	}
+	return k.dir(LoadState())
+}
+
+// LibraryExts are the file types one kind of picture may be.
+func LibraryExts(kind string) []string {
+	k, err := libraryKindFor(kind)
+	if err != nil {
+		return nil
+	}
+	return k.exts
+}
+
+// LibraryTeams are the per-team match photo folders that exist (socials/2nd, ...).
+func LibraryTeams() []string {
+	var out []string
+	if entries, err := os.ReadDir(socialsRoot()); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && photoTeam.MatchString(e.Name()) {
+				out = append(out, e.Name())
+			}
+		}
+	}
+	return out
+}

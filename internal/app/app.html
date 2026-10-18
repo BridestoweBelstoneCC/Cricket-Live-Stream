@@ -147,6 +147,11 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <p class="hint" style="margin-top:16px">The scorer is somewhere else, not on the same wifi?
       <button class="btn quiet" type="button" data-role="bridge" style="padding:0;text-decoration:underline">Set this computer up as an NV Play bridge</button>
       (it's reached over Tailscale).</p>
+    <p class="hint">Moving from another laptop?
+      <button class="btn quiet" type="button" id="import_btn" style="padding:0;text-decoration:underline">Import its settings</button>
+      (a file made on that laptop with Settings → Export settings).
+      <input type="file" id="import_file" accept=".zip,application/zip" hidden></p>
+    <p class="note hidden" id="import_msg"></p>
   </div>
 
   <!-- The streaming laptop, before match day. -->
@@ -627,6 +632,22 @@ $('start').addEventListener('click', function () {
 });
 $('start_again').addEventListener('click', function () { homeAgain = true; homeSeen = false; render(); });
 $('back_panel').addEventListener('click', function () { api('panel', {}); });
+$('import_btn').addEventListener('click', function () { $('import_file').click(); });
+$('import_file').addEventListener('change', function () {
+  var f = this.files && this.files[0], m = $('import_msg');
+  this.value = '';
+  if (!f) return;
+  m.classList.remove('hidden'); m.classList.remove('good'); m.textContent = 'Importing ' + f.name + '…';
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { m.textContent = d.error || 'Import failed'; return; }
+      m.classList.add('good');
+      m.textContent = 'Imported ' + (d.summary.club || 'the club') + '\'s settings.';
+      poll();
+    })
+    .catch(function (e) { m.textContent = String(e); });
+});
 $('pc_run').addEventListener('click', function () {
   $('pc_run').disabled = true;
   api('precheck', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });

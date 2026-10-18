@@ -13,6 +13,10 @@ scoring page do is unchanged; what changed is how it's installed and run.
   ID), player photos (with the squad roster's players who still need one), sponsor logos
   and match photos (per team) are added, previewed, renamed and removed there — from the
   laptop or a phone. No folders to find, no files to rename.
+- **Move to another laptop / back up:** Settings → Export settings makes one file with the
+  setup answers, the panel's settings, the squad and every picture; Import settings (also
+  on the first screen of a new laptop) applies it. Passwords and keys only if ticked; each
+  laptop keeps its own OBS password and folders; the old settings are backed up first.
 - **Pre-match check on the match-day screen**, before match day starts: every login and
   connection tried for real, with what to fix.
 - **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by

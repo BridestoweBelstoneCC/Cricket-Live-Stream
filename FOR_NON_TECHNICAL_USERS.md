@@ -314,6 +314,13 @@ The window uses Microsoft Edge WebView2, which comes with Windows 10 and 11. If 
 missing, CricketStream opens its screens in your web browser instead, and everything still
 works. To get the window back, install "WebView2 Runtime" from Microsoft's website.
 
+### Moving to a new laptop
+
+On the old laptop: CricketStream → **Settings** → **Export settings** (tick *Include
+passwords and API keys* if the file stays with you). On the new laptop: download
+CricketStream, open it, and on the first screen choose **Import its settings** — badges,
+photos, sponsors, the squad and the graphics settings all come across.
+
 ### My settings have disappeared
 
 CricketStream keeps `config.ini` (your answers) next to itself. If you've moved the file

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -810,5 +811,74 @@ func TestPrecheckSeesTheConfigsKeys(t *testing.T) {
 	c := r["checks"].([]any)[0].(server.M)
 	if c["detail"] != "abc123" {
 		t.Errorf("the check saw key %q, not config.ini's", c["detail"])
+	}
+}
+
+// Settings → Export on one laptop, Import on a new one's welcome screen: it moves straight
+// on to the club's match-day screen. Not from another site, not during match day.
+func TestMoveSettingsBetweenLaptops(t *testing.T) {
+	ta := newTestApp(t)
+	server.SetAppDir(ta.dir)
+	t.Cleanup(func() { server.SetAppDir(assets.Dir()) })
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242", "club_password": "pw"})
+	os.MkdirAll(filepath.Join(ta.dir, "logos"), 0o755)
+	os.WriteFile(filepath.Join(ta.dir, "logos", "4242.png"), []byte("\x89PNG\r\n\x1a\nx"), 0o644)
+
+	if r := ta.do("POST", "/setup/export", M{}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
+		t.Errorf("export from another site: %d", r.status)
+	}
+	r := ta.do("POST", "/setup/export", M{"secrets": false}, map[string]string{"Origin": ta.srv.URL})
+	if r.status != 200 || !strings.HasPrefix(r.body, "PK") {
+		t.Fatalf("export: %d %.80q", r.status, r.body)
+	}
+	zr, err := zip.NewReader(strings.NewReader(r.body), int64(len(r.body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		if strings.Contains(string(b), "club_password = pw") {
+			t.Errorf("the password went into a file exported without keys (%s)", f.Name)
+		}
+	}
+	file := []byte(r.body)
+
+	// A brand-new laptop.
+	fresh := newTestApp(t)
+	server.SetAppDir(fresh.dir)
+	fresh.enterRole("")
+	if st := fresh.status(); st["phase"] != phWelcome {
+		t.Fatalf("fresh laptop phase %v", st["phase"])
+	}
+	req, _ := http.NewRequest("POST", fresh.srv.URL+"/setup/import", bytes.NewReader(file))
+	req.Header.Set("Origin", fresh.srv.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d M
+	json.NewDecoder(resp.Body).Decode(&d)
+	resp.Body.Close()
+	if d["ok"] != true || d["summary"].(M)["club"] != "Test Town CC" {
+		t.Fatalf("import: %v", d)
+	}
+	st := fresh.status()
+	if st["phase"] != phHome || st["home"].(M)["club"] != "Test Town CC" {
+		t.Errorf("after import: %v %v", st["phase"], st["home"])
+	}
+	if _, err := os.Stat(filepath.Join(fresh.dir, "logos", "4242.png")); err != nil {
+		t.Error("the badge didn't come across")
+	}
+
+	// Not while match day runs.
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	runLauncher = func(o launcher.Options) int { o.OpenPanel("http://127.0.0.1:5000/control", ""); <-block; return 0 }
+	fresh.api("POST", "start", M{})
+	fresh.waitFor("running", phaseIs(phRunning))
+	if r := fresh.do("POST", "/setup/import", nil, map[string]string{"Origin": fresh.srv.URL}); r.status != 409 {
+		t.Errorf("import during match day: %d", r.status)
 	}
 }
