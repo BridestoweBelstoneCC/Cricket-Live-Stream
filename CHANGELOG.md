@@ -39,7 +39,11 @@ scoring page do is unchanged; what changed is how it's installed and run.
   block turns black). Franchise is set in Barlow Condensed, which the app now serves to the
   overlay itself (`/fonts/`), so it looks the same on every laptop; Neon uses Windows'
   Bahnschrift and Block Segoe UI Black, each falling back to Barlow Condensed or Arial
-  Black elsewhere. Pick one under Graphics → Scorebar style (live preview), or in setup.
+  Black elsewhere. Each is the whole look, not just the bar: the wicket and milestone
+  straps, the over summary, partnership and win predictor, the scorecard, player cards and
+  the boundary flash take on the same type, colours and corners. Pick one under Graphics →
+  Scorebar style (live preview), or in setup. `go run ./scripts/renderscorebar -panels`
+  renders the panels for each style.
 - **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
   when its window is behind OBS — click for the window, right-click for the activity log,
   the control panel or Close. A Windows notification when something needs someone: the
