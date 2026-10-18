@@ -44,6 +44,12 @@ scoring page do is unchanged; what changed is how it's installed and run.
   both signatures and runs the signed build before publishing. The README has the code
   signing policy, a privacy statement (every service the app talks to, and when) and what
   it changes on the computer and how to remove it.
+- **Security: requests saying `Origin: null` are refused.** The cross-site check let
+  through a request whose Origin or Referer named no host — which is what a sandboxed
+  iframe or a `file://` page sends — so any web page could post to the panel (when no club
+  password is set) or the setup page. Now only this server's own pages and clients that
+  send no Origin at all (curl, scripts on the laptop) get through. The Python edition has
+  the same check.
 - **Pre-releases.** v3 ships as `-beta.N` pre-releases until it has had real matches, so
   neither edition's update check offers a beta; the update check now knows a release is
   newer than its own betas (it used to read `3.0.0-beta.1` as 3.0.0.1).

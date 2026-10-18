@@ -241,6 +241,9 @@ func (c *ctx) checkToken() bool {
 // originOK is true unless Origin/Referer is present and points at a different host —
 // defense in depth against CSRF-style cross-site requests. Absent headers pass (curl,
 // some embedded-browser fetches don't send them); only a *mismatched* one is rejected.
+// So is one naming no host at all: "Origin: null" is what a sandboxed iframe or a
+// file:// page sends, and the Python original let it through — any web page could post
+// to the panel that way (a deliberate difference from upstream).
 func (c *ctx) originOK() bool {
 	host := c.r.Host
 	for _, hdr := range []string{"Origin", "Referer"} {
@@ -252,7 +255,7 @@ func (c *ctx) originOK() bool {
 		if err != nil {
 			return false
 		}
-		if u.Host != "" && u.Host != host {
+		if u.Host != host {
 			return false
 		}
 	}

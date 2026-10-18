@@ -195,6 +195,12 @@ func TestPageCarriesItsKeyAndOnlyThePageCanDriveTheApp(t *testing.T) {
 	if r := ta.do("POST", "/setup/save", M{"role": "scorer"}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
 		t.Errorf("cross-origin setup save: %d", r.status)
 	}
+	// "Origin: null" is a sandboxed iframe or a file:// page — any website can make one.
+	for _, p := range []string{"/setup/save", "/setup/import"} {
+		if r := ta.do("POST", p, M{"role": "scorer"}, map[string]string{"Origin": "null"}); r.status != 403 {
+			t.Errorf("%s from Origin: null: %d", p, r.status)
+		}
+	}
 	if _, err := os.Stat(filepath.Join(ta.dir, "config.ini")); err == nil {
 		t.Error("a refused save wrote config.ini")
 	}

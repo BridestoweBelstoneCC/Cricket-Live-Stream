@@ -52,7 +52,8 @@ func sameOrigin(r *http.Request) bool {
 	for _, h := range []string{"Origin", "Referer"} {
 		if v := r.Header.Get(h); v != "" {
 			u, err := url.Parse(v)
-			if err != nil || (u.Host != "" && u.Host != r.Host) {
+			// "null" (a sandboxed iframe, a file:// page) names no host: refused too.
+			if err != nil || u.Host != r.Host {
 				return false
 			}
 		}
