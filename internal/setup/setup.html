@@ -280,6 +280,22 @@ button:disabled{opacity:.6;cursor:default}
   </section>
   </div>
 
+  <section id="files" class="hidden">
+    <h2>Your files</h2>
+    <p class="hint">Badges, player photos and sponsor logos are files in folders beside
+    CricketStream. These open the folder on this laptop — made for you if it isn't there yet.</p>
+    <div class="chips" id="folder_buttons">
+      <button type="button" class="chip" data-folder="logos">Club badges</button>
+      <button type="button" class="chip" data-folder="headshots">Player photos</button>
+      <button type="button" class="chip" data-folder="sponsors">Sponsor logos</button>
+      <button type="button" class="chip" data-folder="socials">Match photos</button>
+      <button type="button" class="chip" data-folder="replays">Replays</button>
+      <button type="button" class="chip" data-folder="app">The CricketStream folder</button>
+    </div>
+    <p class="result" id="result_folders" role="status"></p>
+    <p class="hint" id="version_line" style="margin:10px 0 0"></p>
+  </section>
+
   <label class="check hidden" id="shortcut_row"><input type="checkbox" id="desktop_shortcut" checked>
     Put a CricketStream shortcut on the desktop</label>
 
@@ -351,6 +367,7 @@ function showForRole() {
     el.classList.toggle('hidden', el.getAttribute('data-for').split(' ').indexOf(r) < 0);
   });
   $('name').required = (r === 'streaming');
+  $('files').classList.toggle('hidden', !(MODE === 'settings' && info.folders && r === 'streaming'));
   if (MODE === 'settings') {
     $('save').textContent = 'Save settings';
     $('role_note').classList.toggle('hidden', !info.existing || info.existing.role === r);
@@ -450,6 +467,19 @@ document.querySelectorAll('[data-check]').forEach(function (b) {
   });
 });
 
+// ── Your files (settings page only) ──
+document.querySelectorAll('[data-folder]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var out = $('result_folders');
+    api('/open_folder', {which: b.getAttribute('data-folder')})
+      .then(function (d) {
+        out.className = 'result ' + (d.ok ? 'ok' : 'bad');
+        out.textContent = d.ok ? 'Opened ' + d.folder : (d.error || 'Couldn\'t open it.');
+      })
+      .catch(function (e) { out.className = 'result bad'; out.textContent = String(e.message || e); });
+  });
+});
+
 // ── Saved secrets: say so beside the blank field, and let them be removed ──
 function showSaved() {
   var set = info.secrets_set || {};
@@ -485,6 +515,15 @@ function load() {
       $('back').classList.remove('hidden');
     }
     $('shortcut_row').classList.toggle('hidden', !(MODE === 'setup' && d.os === 'windows'));
+    if (MODE === 'settings' && d.folders) {
+      $('version_line').textContent = 'CricketStream ' + (d.version ? 'v' + d.version : '(development build)') +
+        ' · settings in ' + d.config_file;
+      if (!d.local) {
+        $('folder_buttons').classList.add('hidden');
+        var fo = $('result_folders'); fo.className = 'result warn';
+        fo.textContent = 'Open these from the CricketStream laptop itself — they open there, not on this device.';
+      }
+    }
     var def = d.defaults || {};
     $('colour').value = def.colour; $('replay_folder').value = def.replay_folder;
     $('yt_title').value = def.yt_title; $('max_overs').value = def.max_overs;

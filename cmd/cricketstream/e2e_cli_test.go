@@ -15,7 +15,7 @@ func TestE2EHelpListsEveryCommand(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	for _, c := range []string{"setup", "start", "server", "agent", "bridge", "simulate", "obs-setup",
-		"telemetry", "camera-encoder", "refresh-cam", "quality-test"} {
+		"telemetry", "camera-encoder", "refresh-cam", "quality-test", "version"} {
 		if !strings.Contains(out, "cricketstream "+c) {
 			t.Errorf("help doesn't mention %q", c)
 		}
@@ -152,5 +152,13 @@ func TestE2EDataLivesBesideTheApp(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(a.dir, "config.ini")); err == nil {
 		t.Error("config.ini written somewhere else")
+	}
+}
+
+func TestE2EVersion(t *testing.T) {
+	a := newApp(t)
+	out, code := a.run(10*time.Second, "version")
+	if code != 0 || !strings.Contains(out, "CricketStream (development build)") {
+		t.Errorf("exit %d: %q", code, out)
 	}
 }

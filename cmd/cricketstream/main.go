@@ -59,6 +59,7 @@ Match-day diagnostics:
         --source Cam / --interval 60 / --once / --host H / --port P
   cricketstream quality-test    drive the quality ladder down and back while live
 
+  cricketstream version         which version this is
   cricketstream help            this text
 `
 
@@ -180,6 +181,13 @@ func run(cmd string, args []string) int {
 		return tools.RefreshCam(o)
 	case "quality-test":
 		return tools.QualityTest()
+	case "version", "--version":
+		if version == "" {
+			fmt.Println("CricketStream (development build)")
+		} else {
+			fmt.Println("CricketStream v" + strings.TrimPrefix(version, "v"))
+		}
+		return 0
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0

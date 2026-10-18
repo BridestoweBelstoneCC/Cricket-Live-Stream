@@ -21,3 +21,14 @@ var Open = func(url string) error {
 	}
 	return exec.Command("xdg-open", url).Start()
 }
+
+// OpenFolder shows a folder in Explorer / Finder / the file manager (swappable for tests).
+var OpenFolder = func(dir string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("explorer.exe", dir).Start()
+	case "darwin":
+		return exec.Command("open", dir).Start()
+	}
+	return exec.Command("xdg-open", dir).Start()
+}

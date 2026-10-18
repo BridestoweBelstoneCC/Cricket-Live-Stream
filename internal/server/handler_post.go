@@ -213,6 +213,9 @@ func (c *ctx) doPOST() {
 	case path == "/settings/check":
 		c.settingsCheck(body)
 
+	case path == "/settings/open_folder":
+		c.settingsOpenFolder(body)
+
 	case path == "/sponsor/remove_background":
 		d := jsonObject(body)
 		ok, out := saveTransparentSponsor(str(d, "id", ""), str(d, "mode", ""))

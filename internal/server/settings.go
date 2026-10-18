@@ -8,9 +8,12 @@ package server
 // machine's role wait for a restart.
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"cricketstream/internal/browser"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/setup"
 )
@@ -35,6 +38,9 @@ func (c *ctx) settingsInfo() {
 	out := setup.Info()
 	out["mode"] = "settings"
 	out["port"] = Port
+	out["version"] = Version
+	out["folders"] = appFolders()
+	out["local"] = c.trustedLoopback() // folders can only be opened from this laptop
 	c.json(out)
 }
 
@@ -121,4 +127,45 @@ func applyConfigChanges(before, after *ini.File) []string {
 		}
 	})
 	return names
+}
+
+// appFolders are the folders the settings page can open on this laptop, for adding
+// badges, photos and logos without hunting for them.
+func appFolders() map[string]string {
+	st := LoadState()
+	socials := trim(gs(st, "socials_folder", ""))
+	if socials == "" {
+		socials = filepath.Join(appDir, "socials")
+	}
+	return map[string]string{
+		"app":       appDir,
+		"logos":     logosFolder(st),
+		"headshots": headshotsFolder(st),
+		"sponsors":  SponsorDir,
+		"socials":   expandUser(socials),
+		"replays":   replayFolder(st),
+	}
+}
+
+// settingsOpenFolder opens one of appFolders in the file manager, making it first if it
+// isn't there yet. It opens on THIS laptop, so it only answers this laptop's own browser.
+func (c *ctx) settingsOpenFolder(body []byte) {
+	if !c.trustedLoopback() {
+		c.json(M{"ok": false, "error": "Folders open on the CricketStream laptop — use its own browser."}, 403)
+		return
+	}
+	dir, ok := appFolders()[str(jsonObject(body), "which", "")]
+	if !ok || dir == "" {
+		c.json(M{"ok": false, "error": "Unknown folder"}, 400)
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		c.json(M{"ok": false, "error": err.Error()}, 500)
+		return
+	}
+	if err := browser.OpenFolder(dir); err != nil {
+		c.json(M{"ok": false, "error": err.Error()}, 500)
+		return
+	}
+	c.json(M{"ok": true, "folder": dir})
 }

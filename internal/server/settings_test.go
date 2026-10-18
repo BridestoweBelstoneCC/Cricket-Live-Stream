@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"cricketstream/internal/browser"
 	"cricketstream/internal/ini"
 )
 
@@ -177,3 +178,32 @@ func TestSettingsCheckFolder(t *testing.T) {
 func TestControlPanelLinksToSettings(t *testing.T) {
 	contains(t, page(t, "control.html"), `href="/settings"`)
 }
+
+func TestSettingsOpensFoldersOnlyForThisLaptop(t *testing.T) {
+	s := settingsServer(t, "")
+	var opened []string
+	browser.OpenFolder = func(dir string) error { opened = append(opened, dir); return nil }
+	h := map[string]string{"Origin": "http://" + s.addr}
+	st, d := s.postJSON("/settings/open_folder", M{"which": "logos"}, h)
+	mustEq(t, st, 200)
+	if len(opened) != 1 || opened[0] != logosFolder(LoadState()) {
+		t.Fatalf("opened %v", opened)
+	}
+	if !dirExists(opened[0]) {
+		t.Error("the folder wasn't made first")
+	}
+	mustEq(t, d["folder"], any(opened[0]))
+	if st, _ := s.postJSON("/settings/open_folder", M{"which": "../.."}, h); st != 400 {
+		t.Errorf("unknown folder: %d", st)
+	}
+	h["X-Forwarded-For"] = "203.0.113.9" // through a tunnel: not this laptop
+	if st, _ := s.postJSON("/settings/open_folder", M{"which": "logos"}, h); st != 403 {
+		t.Errorf("remote open: %d", st)
+	}
+	_, info := s.getJSON("/settings/info")
+	if f, _ := info["folders"].(M); f["headshots"] == nil || info["local"] != true {
+		t.Errorf("info folders %v local %v", info["folders"], info["local"])
+	}
+}
+
+func dirExists(p string) bool { st, err := os.Stat(p); return err == nil && st.IsDir() }

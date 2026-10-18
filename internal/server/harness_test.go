@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"cricketstream/internal/assets"
+	"cricketstream/internal/browser"
 	"cricketstream/internal/obs"
 )
 
@@ -57,6 +58,10 @@ func sandbox(t *testing.T, password string) string {
 	obs.ConfigDir = func() string { return filepath.Join(dir, "obs-config") }
 	obs.FindOBS = func() string { return "" }
 	t.Cleanup(func() { obs.ConfigDir, obs.FindOBS = savedCfg, savedFind })
+	savedOpen, savedFolder := browser.Open, browser.OpenFolder // no test opens a window
+	browser.Open = func(string) error { return nil }
+	browser.OpenFolder = func(string) error { return nil }
+	t.Cleanup(func() { browser.Open, browser.OpenFolder = savedOpen, savedFolder })
 	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
 	t.Setenv("HOME", filepath.Join(dir, "home"))
 	ClubPassword, ControlToken = password, strings.Repeat("cd", 32)
