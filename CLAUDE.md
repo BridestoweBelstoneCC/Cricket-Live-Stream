@@ -103,7 +103,8 @@ go build -o dist/ ./cmd/cricketstream
 - **Env switches:** `CRICKETSTREAM_NO_PAUSE=1` (no "Press Enter"), `CRICKETSTREAM_NO_BROWSER=1`
   (nothing opens a browser), `CRICKETSTREAM_NO_WINDOW=1` (the app serves its page and opens
   no window — tests drive it over HTTP with the page's key), `CRICKETSTREAM_APP_PORT`
-  (0 = any), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`, `CRICKETSTREAM_OBS_PORTABLE`,
+  (0 = any), `CRICKETSTREAM_NO_WEBVIEW=1` (the browser instead of the window — the
+  no-WebView2 fallback, by choice), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`, `CRICKETSTREAM_OBS_PORTABLE`,
   `CRICKETSTREAM_OBS_WS_PORT`, `CRICKETSTREAM_DEVTOOLS=1` (right-click → Inspect in the
   window). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
   script drive the real window over CDP.

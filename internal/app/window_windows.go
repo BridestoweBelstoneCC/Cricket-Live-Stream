@@ -3,6 +3,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
@@ -30,6 +31,9 @@ var (
 	procAllowSetForegroundWnd = user32.NewProc("AllowSetForegroundWindow")
 	procGetDpiForSystem       = user32.NewProc("GetDpiForSystem")
 	procGetSystemMetrics      = user32.NewProc("GetSystemMetrics")
+	procGetWindowPlacement    = user32.NewProc("GetWindowPlacement")
+	procSetWindowPlacement    = user32.NewProc("SetWindowPlacement")
+	procMonitorFromRect       = user32.NewProc("MonitorFromRect")
 )
 
 const (
@@ -72,6 +76,7 @@ func openWindow(a *App, start string) (window, error) {
 	}
 	nw := &nativeWindow{wv: wv, hwnd: uintptr(wv.Window()), a: a}
 	nw.setIcon()
+	nw.restorePlacement()
 	// The close button asks first when something's running: catch WM_CLOSE before the
 	// web view's own window procedure destroys the window.
 	nw.orig, _, _ = procSetWindowLongPtrW.Call(nw.hwnd, gwlpWndProc, windows.NewCallback(nw.wndproc))
@@ -147,8 +152,12 @@ func (nw *nativeWindow) AddScript(js string) {
 	<-done
 }
 func (nw *nativeWindow) Run() { nw.wv.Run() }
+func (nw *nativeWindow) SetTitle(t string) {
+	nw.wv.Dispatch(func() { nw.wv.SetTitle(t) })
+}
 
 func (nw *nativeWindow) Close() {
+	nw.savePlacement()
 	nw.closing.Store(true)
 	nw.wv.Destroy()
 }
@@ -205,3 +214,53 @@ func windowSize() (int, int) {
 // allowForeground lets the copy already open take the foreground when this one (which
 // the person just double-clicked) asks it to come to the front.
 func allowForeground() { procAllowSetForegroundWnd.Call(^uintptr(0)) }
+
+// ── Where the window was ──
+// The window opens where it was left, the size it was, maximised if it was — unless that
+// place is no longer on any screen (a projector unplugged since).
+
+type windowPlacement struct {
+	Length, Flags, ShowCmd uint32
+	MinPos, MaxPos         [2]int32
+	Normal                 [4]int32 // left, top, right, bottom
+}
+
+const swShowMaximized, swShowNormal, monitorDefaultToNull = 3, 1, 0
+
+func placementFile() string { return filepath.Join(windowStateDir(), "window.json") }
+
+func windowStateDir() string {
+	return filepath.Join(os.Getenv("LOCALAPPDATA"), "CricketStream")
+}
+
+func (nw *nativeWindow) savePlacement() {
+	wp := windowPlacement{Length: uint32(unsafe.Sizeof(windowPlacement{}))}
+	if r, _, _ := procGetWindowPlacement.Call(nw.hwnd, uintptr(unsafe.Pointer(&wp))); r == 0 {
+		return
+	}
+	b, _ := json.Marshal(map[string]any{"normal": wp.Normal, "maximized": wp.ShowCmd == swShowMaximized})
+	os.MkdirAll(windowStateDir(), 0o755)
+	os.WriteFile(placementFile(), b, 0o644)
+}
+
+func (nw *nativeWindow) restorePlacement() {
+	b, err := os.ReadFile(placementFile())
+	if err != nil {
+		return
+	}
+	var saved struct {
+		Normal    [4]int32 `json:"normal"`
+		Maximized bool     `json:"maximized"`
+	}
+	if json.Unmarshal(b, &saved) != nil || saved.Normal[2]-saved.Normal[0] < 200 || saved.Normal[3]-saved.Normal[1] < 150 {
+		return
+	}
+	if m, _, _ := procMonitorFromRect.Call(uintptr(unsafe.Pointer(&saved.Normal)), monitorDefaultToNull); m == 0 {
+		return
+	}
+	wp := windowPlacement{Length: uint32(unsafe.Sizeof(windowPlacement{})), ShowCmd: swShowNormal, Normal: saved.Normal}
+	if saved.Maximized {
+		wp.ShowCmd = swShowMaximized
+	}
+	procSetWindowPlacement.Call(nw.hwnd, uintptr(unsafe.Pointer(&wp)))
+}

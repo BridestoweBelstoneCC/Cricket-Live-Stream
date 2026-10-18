@@ -671,3 +671,60 @@ func TestKeysAreRandom(t *testing.T) {
 		t.Errorf("%q %q", a, b)
 	}
 }
+
+// A newer release shows in the window; the same or an older one, a development build or
+// no answer shows nothing.
+func TestUpdateNotice(t *testing.T) {
+	tag := "v3.1"
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tag == "" {
+			http.Error(w, "rate limited", 403)
+			return
+		}
+		fmt.Fprintf(w, `{"tag_name": %q}`, tag)
+	}))
+	defer gh.Close()
+	saved := releasesAPI
+	releasesAPI = gh.URL
+	t.Cleanup(func() { releasesAPI = saved })
+
+	for _, c := range []struct {
+		tag, have string
+		want      any
+	}{
+		{"v3.1", "3.0.2", "3.1"},
+		{"v3.1", "v3.1", nil},
+		{"v3.0", "3.1", nil},
+		{"v3.1", "", nil}, // development build
+		{"", "3.0", nil},  // no answer
+	} {
+		tag = c.tag
+		var u updateInfo
+		u.check(c.have)
+		st := u.status()
+		var got any
+		if st != nil {
+			got = st["latest"]
+			if st["url"] != releasesPage {
+				t.Errorf("url %v", st["url"])
+			}
+		}
+		if got != c.want {
+			t.Errorf("tag %q have %q: %v, want %v", c.tag, c.have, got, c.want)
+		}
+	}
+}
+
+func TestWindowTitleSaysWhatThisComputerIs(t *testing.T) {
+	ta := newTestApp(t)
+	if got := windowTitle(""); got != "CricketStream" {
+		t.Error(got)
+	}
+	if got := windowTitle("scorer"); got != "CricketStream — Scorer's laptop" {
+		t.Error(got)
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	if got := windowTitle("streaming"); got != "CricketStream — Test Town CC" {
+		t.Error(got)
+	}
+}

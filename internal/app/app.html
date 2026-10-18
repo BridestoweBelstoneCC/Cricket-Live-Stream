@@ -130,6 +130,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
 </header>
 
 <main>
+  <p class="note good hidden" id="update"></p>
   <!-- First run: which computer is this? -->
   <div id="v-welcome" class="view hidden">
     <h1>Welcome to CricketStream</h1>
@@ -347,12 +348,27 @@ function render() {
   txt('where', where);
   $('to_panel').classList.toggle('hidden', !(S.phase === 'running' && S.panel_url));
   txt('foot', 'CricketStream ' + (S.version ? 'v' + S.version.replace(/^v/, '') : '(development build)'));
+  renderUpdate();
   if (v === 'home') renderHome();
   if (v === 'starting') renderStarting();
   if (v === 'stopped') renderStopped();
   if (v === 'agent') renderAgent();
   if (v === 'bridge') renderBridge();
   if (v === 'close') renderClose();
+}
+
+// A newer release: a line with a link, on every screen. The download replaces
+// CricketStream.exe in the same folder; everything else (settings, match data) stays.
+function renderUpdate() {
+  var u = S.update, el = $('update');
+  el.classList.toggle('hidden', !u);
+  if (!u || el.getAttribute('data-v') === u.latest) return;
+  el.setAttribute('data-v', u.latest);
+  el.textContent = 'CricketStream v' + u.latest + ' is available (this is v' + String(S.version).replace(/^v/, '') + '). ';
+  var a = document.createElement('a');
+  a.href = u.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Download it';
+  el.appendChild(a);
+  el.appendChild(document.createTextNode(' and put it in place of CricketStream.exe in the same folder — your settings stay.'));
 }
 
 var homeSeen = false;

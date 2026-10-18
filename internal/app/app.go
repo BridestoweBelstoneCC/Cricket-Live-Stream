@@ -77,6 +77,7 @@ type App struct {
 	log  *Log
 	ask  *asker
 	win  window
+	upd  updateInfo
 
 	mu          sync.Mutex
 	phase       string
@@ -133,6 +134,7 @@ func Run(o Options) int {
 	fmt.Printf("  CricketStream %s — app page %s/\n", versionText(o.Version), a.base)
 
 	a.enterRole(setup.Role())
+	go a.upd.check(o.Version)
 
 	// Ctrl+C at a terminal (a Mac's, where the pages are in the browser): the same clean
 	// stop as the window's Stop — the launcher's own shutdown, then close. A second Ctrl+C
@@ -157,10 +159,15 @@ func Run(o Options) int {
 	case o.Headless:
 		<-a.done
 	default:
-		if w, err := openWindow(a, a.base+"/"); err == nil {
+		w, err := window(nil), errBrowserChosen
+		if os.Getenv(NoWebViewEnv) != "1" {
+			w, err = openWindow(a, a.base+"/")
+		}
+		if err == nil {
 			a.mu.Lock()
 			a.win = w
 			a.mu.Unlock()
+			a.updateTitle(setup.Role())
 			console.HideOwnConsole() // a development build's console window: the window replaces it
 			w.Run()                  // until the window closes
 		} else {
@@ -191,6 +198,12 @@ func randomKey() string {
 }
 
 var errAlreadyOpen = errors.New("already open")
+
+// NoWebViewEnv=1 uses the browser instead of a window of its own: the fallback for a PC
+// without WebView2, by choice (and how that fallback is tested).
+const NoWebViewEnv = "CRICKETSTREAM_NO_WEBVIEW"
+
+var errBrowserChosen = errors.New(NoWebViewEnv + " is set")
 
 func appPort() int {
 	if v := os.Getenv(AppPortEnv); v != "" {
@@ -244,6 +257,7 @@ var (
 
 // enterRole starts this computer's job (after setup, or at start).
 func (a *App) enterRole(role string) {
+	defer a.updateTitle(role)
 	a.stopAgent()
 	a.stopBridge()
 	switch role {
@@ -276,6 +290,32 @@ func (a *App) enterRole(role string) {
 		}
 		a.setPhase(phHome)
 	}
+}
+
+// updateTitle names the window after what it's doing — on the taskbar, two CricketStream
+// windows (a test on the scorer's laptop, say) are told apart at a glance.
+func (a *App) updateTitle(role string) {
+	a.mu.Lock()
+	w := a.win
+	a.mu.Unlock()
+	if w != nil {
+		w.SetTitle(windowTitle(role))
+	}
+}
+
+func windowTitle(role string) string {
+	switch role {
+	case setup.RoleScorer:
+		return "CricketStream — Scorer's laptop"
+	case setup.RoleBridge:
+		return "CricketStream — NV Play bridge"
+	case "":
+		return "CricketStream"
+	}
+	if club := homeInfo()["club"].(string); club != "" {
+		return "CricketStream — " + club
+	}
+	return "CricketStream"
 }
 
 func (a *App) setPhase(p string) {
@@ -490,6 +530,7 @@ func (a *App) closeRequested() bool {
 type window interface {
 	Navigate(url string) // from any goroutine
 	AddScript(js string) // run at the start of every page loaded after this
+	SetTitle(title string)
 	Focus()
 	Close()
 	Run() // on the main goroutine, until the window closes
@@ -557,7 +598,7 @@ func (a *App) status(since int) map[string]any {
 	out := map[string]any{"phase": a.phase, "role": setup.Role(), "version": a.opts.Version,
 		"os": goos(), "window": a.win != nil, "log": lines, "next": next, "panel_url": a.panelURL,
 		"log_file": LogFile(), "app_folder": assets.Dir(),
-		"start_line": a.startLine}
+		"start_line": a.startLine, "update": a.upd.status()}
 	phase := a.phase
 	agentRun, folder, how, agentErr := a.agentRun, a.agentFolder, a.agentHow, a.agentErr
 	bridgeRun, bridgeErr := a.bridgeRun, a.bridgeErr

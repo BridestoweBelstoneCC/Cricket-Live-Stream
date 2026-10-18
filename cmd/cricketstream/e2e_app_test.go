@@ -356,3 +356,25 @@ func TestE2ECtrlCStopsTheAppCleanly(t *testing.T) {
 	waitClosed(t, a.port, 10*time.Second)
 	mustContain(t, p.output(), "Server stopped. Bye!", "Match day is over.")
 }
+
+// Without a web view (a PC missing WebView2, macOS for now): the same page in the browser,
+// and the page's own Close ends the app.
+func TestE2EWithoutAWebViewThePagesOpenInTheBrowser(t *testing.T) {
+	a := newApp(t)
+	for i, kv := range a.env {
+		if kv == "CRICKETSTREAM_NO_WINDOW=1" {
+			a.env[i] = "CRICKETSTREAM_NO_WEBVIEW=1" // NO_BROWSER stays: nothing actually opens
+		}
+	}
+	p, pg := a.openApp()
+	p.waitFor(`opening it in the browser instead`, 10*time.Second)
+	if st := pg.status(); st["phase"] != "welcome" || st["window"] != false {
+		t.Errorf("status %v / window %v", st["phase"], st["window"])
+	}
+	if r := pg.api("POST", "close", map[string]any{}); r.status != 200 {
+		t.Fatalf("close: %d", r.status)
+	}
+	if code := p.wait(15 * time.Second); code != 0 {
+		t.Errorf("exit %d", code)
+	}
+}
