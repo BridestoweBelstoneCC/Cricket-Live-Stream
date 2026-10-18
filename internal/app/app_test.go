@@ -23,6 +23,7 @@ import (
 	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/server"
 )
 
 type M = map[string]any
@@ -748,5 +749,66 @@ func TestScorersLaptopRefusesTheAppsOwnFolder(t *testing.T) {
 	r := ta.api("POST", "agent/folder", M{"folder": ta.dir})
 	if r.status != 400 || !strings.Contains(r.body, "CricketStream's own folder") {
 		t.Errorf("%d %s", r.status, r.body)
+	}
+}
+
+// The pre-match check runs from the home screen, in the background, and its results come
+// back in the status; once match day is on it's the control panel's, not the home screen's.
+func TestPrecheckFromTheHomeScreen(t *testing.T) {
+	ta := newTestApp(t)
+	saved := runPrecheck
+	t.Cleanup(func() { runPrecheck = saved })
+	release := make(chan struct{})
+	runPrecheck = func() map[string]any {
+		<-release
+		return map[string]any{"ok": false, "ran_at": "2026-10-18T10:00:00", "checks": []any{
+			map[string]any{"id": "playcricket", "name": "PlayCricket", "status": "bad", "detail": "Key refused", "fix": "Check the key"}}}
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	if r := ta.api("POST", "precheck", M{}); r.status != 200 {
+		t.Fatalf("start: %d %s", r.status, r.body)
+	}
+	if p := ta.status()["precheck"].(M); p["running"] != true {
+		t.Errorf("not running: %v", p)
+	}
+	close(release)
+	st := ta.waitFor("the result", func(st M) bool { p, _ := st["precheck"].(M); return p != nil && p["result"] != nil })
+	res := st["precheck"].(M)["result"].(M)
+	if res["ok"] != false || len(res["checks"].([]any)) != 1 {
+		t.Errorf("result %v", res)
+	}
+
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	runLauncher = func(o launcher.Options) int { o.OpenPanel("http://127.0.0.1:5000/control", ""); <-block; return 0 }
+	ta.api("POST", "start", M{})
+	ta.waitFor("running", phaseIs(phRunning))
+	if r := ta.api("POST", "precheck", M{}); r.status != 409 {
+		t.Errorf("precheck during match day: %d", r.status)
+	}
+}
+
+// The check, run the way the home screen runs it, in an app folder of its own, sees
+// config.ini's keys (seeded into the state as match day would) — with a stand-in check
+// in place of the real ones, so no test talks to PlayCricket.
+func TestPrecheckSeesTheConfigsKeys(t *testing.T) {
+	ta := newTestApp(t)
+	server.SetAppDir(ta.dir)
+	t.Cleanup(func() { server.SetAppDir(assets.Dir()) })
+	saved := server.Prechecks
+	t.Cleanup(func() { server.Prechecks = saved })
+	server.Prechecks = []struct {
+		ID, Name string
+		Fn       func(server.M) server.CheckResult
+	}{{"key", "Key", func(st server.M) server.CheckResult {
+		k, _ := st["playcricket_api_key"].(string)
+		return server.CheckResult{Status: "ok", Detail: k}
+	}}}
+	os.WriteFile(filepath.Join(ta.dir, "config.ini"),
+		[]byte("[App]\nrole = streaming\n[Club]\nname = X\nplaycricket_id = 1\n[API]\nplaycricket_key = abc123\n"), 0o644)
+	r := runPrecheck()
+	c := r["checks"].([]any)[0].(server.M)
+	if c["detail"] != "abc123" {
+		t.Errorf("the check saw key %q, not config.ini's", c["detail"])
 	}
 }

@@ -298,19 +298,16 @@ your mind.
 ## Step 7 — Player photos (optional)
 
 When a new batter comes in, the overlay can show a player card with their photo and
-season stats. To enable photos:
+season stats. To add photos: control panel → **Pictures** → Player photos → **Add photos…**,
+and give each the player's name ("John Walker"). Square images around 400×400 pixels look
+best; JPG, PNG and WebP all work, and it works from a phone too.
 
-1. Create a folder called `headshots` inside your CricketStream folder (next to `CricketStream.exe`).
-2. Add player photos named by **surname** — for example `Smith.jpg`. Square images around
-   400x400 pixels look best. JPG, PNG and WebP all work.
-3. That's it. The next time that batter comes in, their photo appears on the card.
+If you've entered the squad roster (Setup tab), the Pictures tab lists who still needs a
+photo, with an **Add photo…** button beside each name.
 
-Because NV Play only gives surnames, the overlay accepts several filename patterns, so
-any of these match a batter shown as "Smith": `Smith.jpg`, `smith.png`, `J_Smith.jpg`,
-`JOHN_SMITH.png`. If no photo is found the card shows the player's initials instead —
-it never breaks the graphic.
-
-No restart is needed — drop a file in and refresh the Overlay source in OBS.
+Because NV Play only gives surnames, names are matched loosely — "John Walker", "J Walker"
+and "Walker" all find a batter shown as "WALKER". If no photo is found the card shows the
+player's initials instead — it never breaks the graphic. No restart needed.
 
 ---
 
@@ -486,39 +483,27 @@ settings — a low camera bitrate makes a soft picture that no OBS setting can f
 
 ## Club Badges (optional)
 
-Small circular club badge icons appear next to team names in the scorebar.
-They are matched automatically by PlayCricket club ID.
+Small circular club badge icons appear next to team names in the scorebar, matched by
+PlayCricket club ID — which CricketStream already knows, so there's nothing to look up.
 
-**First-time setup:**
+**Adding badges:** control panel → **Pictures** → Club badges:
 
-1. Create a `logos\` folder inside your CricketStream folder (alongside `CricketStream.exe`)
-2. Find your PlayCricket club ID — it's the `playcricket_id` value in `config.ini`
-3. Save your club badge as `logos\{your_id}.png` — for example `logos\12345.png`
-4. Refresh the Overlay source in OBS — your badge appears on the left of the scorebar
+- **Our badge** → **Upload…** once.
+- **Today's opposition** (after **Fetch today's match**) → **Upload…** — on the scorebar
+  straight away.
+- Any other club: type its PlayCricket ID and **Add badge…** (e.g. your league's badges
+  before the season).
 
-**Adding opposition badges:**
+Badges you add stay, so over a season most opponents' badges are already there.
 
-1. Click **Fetch today's match** in the control panel
-2. The match details show the away club information — note the club name
-3. Find that club's PlayCricket ID (number in their play-cricket.com URL)
-   — or check `http://127.0.0.1:5000/state` and look for `away_club_id`
-4. Save their badge as `logos\{away_club_id}.png`
-5. Right-click the Overlay source in OBS → **Refresh** — badge appears immediately
+**Badge status:** Graphics & sponsor → Team colours & badges shows both teams' badges, with
+a green tick or an amber warning, so you can see what's ready before going live. Its
+**Home badge** / **Away badge** pickers choose any badge you've added when the fixture
+doesn't carry a club ID (cups, friendlies).
 
-**Badge status in the control panel:**
+PNG with a transparent background looks best; WebP and JPG work too.
 
-The Kit Colours card shows a live badge status panel with two slots — home and away.
-Each slot shows a preview of the badge if found (green tick) or an amber warning
-if the file is missing, so you can see at a glance what's ready before going live.
-
-**Custom logos folder:**
-
-If your badge files are stored elsewhere, set the path in:
-- Control panel → Kit Colours → **Logos folder** field, or
-- `config.ini` → `[Scoring]` → `logos_folder = C:/path/to/your/logos`
-
-Supported formats: PNG (recommended, use transparent background), SVG, WebP, JPG.
-
+See [CLUB_LOGOS.md](CLUB_LOGOS.md) for tips on finding club badges.
 See [CLUB_LOGOS.md](CLUB_LOGOS.md) for full instructions and tips on finding club badges.
 
 ---

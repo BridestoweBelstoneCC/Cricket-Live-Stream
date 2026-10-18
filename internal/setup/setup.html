@@ -285,13 +285,10 @@ button:disabled{opacity:.6;cursor:default}
 
   <section id="files" class="hidden">
     <h2>Your files</h2>
-    <p class="hint">Badges, player photos and sponsor logos are files in folders beside
-    CricketStream. These open the folder on this laptop — made for you if it isn't there yet.</p>
+    <p class="hint">Club badges, player photos, sponsor logos and match photos are added in the
+    control panel's <a href="/control" onclick="try{localStorage.setItem('cs_panel_tab','pictures')}catch(e){}">Pictures tab</a>
+    — from this laptop or a phone. Replays and everything else CricketStream keeps are in its folder:</p>
     <div class="chips" id="folder_buttons">
-      <button type="button" class="chip" data-folder="logos">Club badges</button>
-      <button type="button" class="chip" data-folder="headshots">Player photos</button>
-      <button type="button" class="chip" data-folder="sponsors">Sponsor logos</button>
-      <button type="button" class="chip" data-folder="socials">Match photos</button>
       <button type="button" class="chip" data-folder="replays">Replays</button>
       <button type="button" class="chip" data-folder="app">The CricketStream folder</button>
     </div>

@@ -685,6 +685,34 @@ func (c *ctx) doGET() {
 	case strings.HasPrefix(path, "/headshot/"):
 		c.headshot()
 
+	case path == "/library":
+		// The Pictures tab's list (player names from the roster: behind the login).
+		if !c.checkToken() {
+			return
+		}
+		out, err := LibraryList(c.q("kind"))
+		if err != nil {
+			c.json(M{"ok": false, "error": err.Error()}, 400)
+			return
+		}
+		c.json(out)
+
+	case path == "/library/file":
+		// A thumbnail. Open, like /logo/ and /headshot/ (an <img> can't send the login,
+		// and these are the same pictures the overlay shows anyway).
+		f, mime, err := LibraryOpen(c.q("kind"), c.q("file"))
+		if err != nil {
+			c.notFoundEmpty()
+			return
+		}
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, SponsorUploadMaxBytes+1))
+		if err != nil {
+			c.notFoundEmpty()
+			return
+		}
+		c.bytes(b, mime)
+
 	case path == "/logos/list":
 		// Badge files in the logos folder, so the control panel can offer a manual picker.
 		dir := logosFolder(LoadState())
@@ -1208,52 +1236,57 @@ func (c *ctx) headshot() {
 		}
 	}
 	sort.Strings(files)
+	if f := matchHeadshot(files, resolved, num, byNum); f != "" {
+		ext := strings.ToLower(f[strings.LastIndex(f, ".")+1:])
+		c.file(filepath.Join(hdir, f), mimes[ext], false)
+		return
+	}
+	c.notFoundEmpty()
+}
+
+// matchHeadshot picks the photo for a player from the photo files' names, tiered so the
+// scorebar name finds the photo even when they differ in form:
+//
+//	number : '21.png'    — only for a CONFIRMED roster match (byNum: the surname agrees),
+//	                       so it can't grab a home file for an away player
+//	full   : 'P SMITH'   -> 'p.smith'
+//	initsur: 'K J JONES' -> 'k.jones'  (first initial + surname)
+//	surname: 'WALKER'    -> 'j.walker' (only when one file has that surname)
+//
+// "" when none fits. The Pictures tab uses it too, to say which players have no photo.
+func matchHeadshot(files []string, name, num string, byNum bool) string {
 	stem := func(f string) string {
 		if i := strings.LastIndex(f, "."); i >= 0 {
 			return f[:i]
 		}
 		return ""
 	}
-	serve := func(f string) {
-		ext := strings.ToLower(f[strings.LastIndex(f, ".")+1:])
-		c.file(filepath.Join(hdir, f), mimes[ext], false)
+	if byNum && num != "" {
+		for _, f := range files {
+			if trim(stem(f)) == num {
+				return f
+			}
+		}
 	}
-	// Tiered so the scorebar name finds the photo even when they differ in form:
-	//   full   : 'P SMITH'   -> 'p.smith'
-	//   initsur: 'K J JONES' -> 'k.jones'  (first initial + surname)
-	//   surname: 'WALKER'    -> 'j.walker' (only when one file has that surname)
-	want := nameKeys(resolved)
+	want := nameKeys(name)
 	fkeys := make([]keys, len(files))
 	for i, f := range files {
 		fkeys[i] = nameKeys(stem(f))
 	}
-	// 0) a file named by shirt number ('21.png') — only for a CONFIRMED roster match
-	//    (surname agrees), so it can't grab a home file for an away player
-	if byNum && num != "" {
-		for _, f := range files {
-			if trim(stem(f)) == num {
-				serve(f)
-				return
-			}
-		}
-	}
 	if want.full != "" {
 		for i, f := range files {
 			if fkeys[i].full == want.full {
-				serve(f)
-				return
+				return f
 			}
 		}
 	}
 	if want.initsur != "" {
 		for i, f := range files {
 			if fkeys[i].initsur == want.initsur {
-				serve(f)
-				return
+				return f
 			}
 		}
 	}
-	// 3) surname only — just when exactly one file matches (avoids brother mix-ups)
 	if want.surname != "" {
 		var hits []string
 		for i, f := range files {
@@ -1262,11 +1295,10 @@ func (c *ctx) headshot() {
 			}
 		}
 		if len(hits) == 1 {
-			serve(hits[0])
-			return
+			return hits[0]
 		}
 	}
-	c.notFoundEmpty()
+	return ""
 }
 
 func (c *ctx) playerStats() {

@@ -275,35 +275,25 @@ You don't need to use this every match — once you've answered the setup questi
 ## Club badges in the scorebar
 
 The scorebar can show a small circular badge next to each team name — like the
-ones you see on professional cricket broadcasts. They appear automatically once
-you have added the badge file.
+ones you see on professional cricket broadcasts. You add them in the control panel's
+**Pictures** tab, which also holds player photos, sponsor logos and match photos. No
+folders, no renaming files — and it works from a phone too.
 
-**Adding your own club badge:**
+**Adding your own club badge:** Pictures → Club badges → **Our badge** → **Upload…**, and
+choose the picture (from your club website or play-cricket.com). Once is enough.
 
-1. Find a PNG image of your club badge (from your club website or play-cricket.com)
-2. Open `config.ini` and note the number next to `playcricket_id` — that is your club ID
-3. Rename the badge image to `{your_id}.png` — for example `12345.png`
-4. Create a folder called `logos` inside your CricketStream folder (next to
-   `CricketStream.exe`)
-5. Put the renamed badge file into that `logos` folder
-6. Right-click the Overlay source in OBS → **Refresh**
+**Adding opposition badges:** after **Fetch today's match** (Match day tab), Pictures →
+Club badges → **Today's opposition** → **Upload…**. It's on the scorebar straight away.
 
-Your badge appears immediately — no restart needed.
-
-**Adding opposition badges:**
-
-1. In the control panel, click **Fetch today's match**
-2. The match details card shows the away club information
-3. Visit that club's page on play-cricket.com — the number in the URL is their club ID
-4. Download their badge, rename it `{their_id}.png`, and put it in your `logos` folder
-5. Right-click the Overlay in OBS → **Refresh**
+**Player photos:** Pictures → Player photos. If you've entered the squad roster (Setup),
+it lists who still needs a photo, with an **Add photo…** button beside each name.
 
 Over a season your badge library builds up automatically — once you have added a club
 they will always have their badge shown whenever you play them again.
 
 **Checking badge status:**
 
-The control panel → Kit Colours section has a badge status display showing both teams.
+The control panel → Graphics & sponsor → Team colours & badges shows both teams' badges.
 A green tick means the badge file was found. An amber warning means it is missing.
 You can see this before you go live so you know exactly what will appear on stream.
 

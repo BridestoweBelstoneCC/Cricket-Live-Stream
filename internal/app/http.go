@@ -172,6 +172,12 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok(nil)
+	case "POST /api/precheck":
+		if err := a.startPrecheck(); err != nil {
+			fail(409, err.Error())
+			return
+		}
+		ok(nil)
 	case "POST /api/panel":
 		a.showPanel()
 		ok(nil)

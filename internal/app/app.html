@@ -182,6 +182,17 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     </div>
     <p class="hint" style="margin-top:14px">To rehearse without a scorer, start match day and use
       <strong>Match day → Practice match</strong> in the control panel.</p>
+
+    <section style="margin-top:22px">
+      <div class="status" style="margin:0 0 6px"><span class="light" id="pc_light"></span><h2 style="margin:0">Pre-match check</h2></div>
+      <p class="hint">A few days before the match: tries every login and connection for real — PlayCricket,
+        YouTube, the AI key, OBS, the cameras, the scorer's feed, upload speed — and says what needs fixing.</p>
+      <ul class="steps" id="pc_list"></ul>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn" type="button" id="pc_run">Run the pre-match check</button>
+        <span class="hint" id="pc_when" style="margin:0"></span>
+      </div>
+    </section>
   </div>
 
   <!-- Getting ready, and match day running. -->
@@ -388,6 +399,34 @@ function renderHome() {
   txt('remote_why', h.password ? 'Volunteers on the club\'s wifi or Tailscale can open it. They\'ll need the club password.'
     : 'Needs a club password first — set one in Settings.');
   $('manual_note').classList.toggle('hidden', !h.manual_session);
+  renderPrecheck();
+}
+
+// The pre-match check: each check's light, what it found, and what to do about it.
+var pcShown = '';
+function renderPrecheck() {
+  var p = S.precheck || {}, r = p.result;
+  $('pc_run').disabled = !!p.running;
+  $('pc_run').textContent = p.running ? 'Checking… (up to 20 seconds)' : (r ? 'Run it again' : 'Run the pre-match check');
+  $('pc_light').className = 'light ' + (p.running ? 'busy' : !r ? '' : r.ok ? 'ok' : 'bad');
+  txt('pc_when', r && r.ran_at ? 'Last run ' + String(r.ran_at).replace('T', ' ').slice(0, 16) : '');
+  var key = JSON.stringify(r || null);
+  if (key === pcShown) return;
+  pcShown = key;
+  var ul = $('pc_list');
+  ul.textContent = '';
+  ((r && r.checks) || []).forEach(function (c) {
+    var li = document.createElement('li');
+    li.className = {ok: 'ok', warn: 'warn', bad: 'bad'}[c.status] || 'plain';
+    var b = document.createElement('strong'); b.textContent = c.name + ': ';
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(c.detail || ''));
+    if (c.fix && c.status !== 'ok') {
+      var f = document.createElement('div'); f.className = 'hint'; f.style.margin = '2px 0 0'; f.textContent = c.fix;
+      li.appendChild(f);
+    }
+    ul.appendChild(li);
+  });
 }
 
 // The launcher's lines since "Start match day", as a checklist.
@@ -588,6 +627,10 @@ $('start').addEventListener('click', function () {
 });
 $('start_again').addEventListener('click', function () { homeAgain = true; homeSeen = false; render(); });
 $('back_panel').addEventListener('click', function () { api('panel', {}); });
+$('pc_run').addEventListener('click', function () {
+  $('pc_run').disabled = true;
+  api('precheck', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
+});
 $('to_panel').addEventListener('click', function () { api('panel', {}); });
 $('open_existing').addEventListener('click', function () { api('panel', {}); });
 $('stop_match').addEventListener('click', function () { location.hash = 'close'; render(); });

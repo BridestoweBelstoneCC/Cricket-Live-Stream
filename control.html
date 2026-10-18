@@ -39,6 +39,33 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
   .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  /* The Pictures tab: the club's badges, player photos, sponsor logos and match photos. */
+  .pic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin:10px 0}
+  .pic{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:11px;
+    display:flex;flex-direction:column;gap:4px;min-width:0}
+  .pic.mark{border-color:var(--accent)}
+  .pic img{width:100%;height:78px;object-fit:contain;border-radius:4px;
+    background:repeating-conic-gradient(#ffffff10 0 25%,transparent 0 50%) 0 0/12px 12px}
+  .pic .nm{word-break:break-word;color:var(--text);text-align:center}
+  .pic .tag{color:var(--accent);text-align:center;font-weight:600}
+  .pic .acts{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}
+  .pic .acts button,.pic-row button,.pic-quick button,.pic-squad button{font:inherit;font-size:11px;padding:3px 8px;border-radius:5px;cursor:pointer;
+    background:var(--surface-3);color:var(--text);border:1px solid var(--line)}
+  .pic .acts button.sure{border-color:#ff6b6b;color:#ff6b6b}
+  .pic input,.pic-row input{width:100%;font:inherit;font-size:12px;padding:4px 6px;box-sizing:border-box;
+    background:var(--surface-3);color:var(--text);border:1px solid var(--line);border-radius:5px}
+  .pic-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .pic-row select{font:inherit;font-size:12px;padding:4px 6px;background:var(--surface-3);color:var(--text);
+    border:1px solid var(--line);border-radius:5px;flex:1}
+  .pic-row img{width:44px;height:44px;object-fit:cover;border-radius:4px;flex:0 0 auto}
+  .pic-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .pic-quick > div{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+  .pic-squad{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:6px}
+  .pic-squad div{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:12px;
+    border-bottom:1px solid var(--line)}
+  .pic-squad .pic-has{color:#3ccf8e}
+  .pic-msg{font-size:12px;min-height:16px;margin-top:4px}
+  .pic-add{text-align:center;cursor:pointer;margin-top:6px}
   .side-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
   .btn-row{display:flex;gap:8px;flex-wrap:wrap}
   @media(max-width:768px){
@@ -395,6 +422,7 @@
   <button type="button" role="tab" data-tab="match" onclick="showTab('match')">Match day</button>
   <button type="button" role="tab" data-tab="graphics" onclick="showTab('graphics')">Graphics<span class="long"> &amp; sponsor</span></button>
   <button type="button" role="tab" data-tab="after" onclick="showTab('after')">After<span class="long"> the match</span></button>
+  <button type="button" role="tab" data-tab="pictures" onclick="showTab('pictures')">Pictures</button>
   <button type="button" role="tab" data-tab="setup" onclick="showTab('setup')">Setup</button>
 </nav>
 
@@ -919,7 +947,7 @@
           </select>
         </div>
       </div>
-      <p class="hint" style="margin-top:8px;">Manually set each side's badge from your logos folder — handy when PlayCricket didn't supply the opposition's club ID. Picking a file sets that side's badge immediately.</p>
+      <p class="hint" style="margin-top:8px;">Pick each side's badge from the ones you've added in the <b>Pictures</b> tab — handy when PlayCricket didn't supply the opposition's club ID. Picking one sets that side's badge immediately.</p>
     </div>
   </div>
   <div class="card highlight">
@@ -1085,6 +1113,293 @@
     </div>
 </div>
 </section>
+
+<section class="tab-panel" id="tab-pictures" role="tabpanel">
+<div class="grid">
+  <div class="card">
+    <h2>Club badges</h2>
+    <p class="hint">The round badge beside each team's name on the scorebar. Upload ours once; the
+      opposition's each week (or keep a library — every club you've played stays here).</p>
+    <div class="pic-quick" id="pics-badges-quick"></div>
+    <div class="pic-grid" id="pics-badges-grid"></div>
+    <div class="pic-row">
+      <input type="text" id="pics-badge-id" placeholder="Another club's PlayCricket ID (the number in its play-cricket.com address)">
+      <label class="pic-add" style="margin:0;white-space:nowrap"><button type="button" onclick="this.nextElementSibling.click()">Add badge…</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="addBadgeByID(this)"></label>
+    </div>
+    <div class="pic-msg" id="pics-badges-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Player photos</h2>
+    <p class="hint">Shown on the player card when a batter comes in. Name each photo after the
+      player ("John Walker"), or by shirt number if the squad roster (Setup tab) has them.</p>
+    <div id="pics-headshots-squad"></div>
+    <div class="pic-grid" id="pics-headshots-grid"></div>
+    <div id="pics-headshots-pending"></div>
+    <label class="btn btn-test pic-add">Add photos…<input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onchange="stagePictures('headshots', this)"></label>
+    <div class="pic-msg" id="pics-headshots-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Sponsor logos</h2>
+    <p class="hint">Every sponsor's logo, kept from week to week. <b>Use this weekend</b> puts one on the
+      sponsor strap (the name and transparent-background tools are in Graphics &amp; sponsor).</p>
+    <div class="pic-grid" id="pics-sponsors-grid"></div>
+    <label class="btn btn-test pic-add">Add a sponsor logo…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onchange="addSponsorPicture(this)"></label>
+    <div class="pic-msg" id="pics-sponsors-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Match photos</h2>
+    <p class="hint">Photos for the result card and social posts (After the match) to use as a backdrop.
+      A team's own photos are used for that team's matches when it has some.</p>
+    <div class="pic-row"><label style="margin:0;white-space:nowrap">Team</label>
+      <select id="pics-photo-team" onchange="loadPictures('photos')">
+        <option value="">Every team</option><option value="1st">1st XI</option><option value="2nd">2nd XI</option>
+        <option value="3rd">3rd XI</option><option value="youth">Youth sides (stock photos — no players' faces)</option>
+      </select></div>
+    <div class="pic-grid" id="pics-photos-grid"></div>
+    <div id="pics-photos-pending"></div>
+    <label class="btn btn-test pic-add">Add photos…<input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onchange="stagePictures('photos', this)"></label>
+    <div class="pic-msg" id="pics-photos-msg"></div>
+  </div>
+</div>
+</section>
+
+<script>
+// ── The Pictures tab ──
+// Every picture goes up to the streaming laptop and lands where the overlay and the result
+// card read it (logos/, headshots/, sponsors/, socials/ in the CricketStream folder) —
+// nobody has to find a folder or know a badge is named after a club ID.
+var PICS = {};   // the last list of each kind
+function picMsg(kind, text, bad) {
+  var m = document.getElementById('pics-' + kind + '-msg');
+  if (m) { m.textContent = text || ''; m.style.color = bad ? '#ff6b6b' : 'var(--muted)'; }
+}
+// The kind as the server knows it: match photos for one team are "photos:2nd".
+function kp(kind) {
+  var t = kind === 'photos' && document.getElementById('pics-photo-team');
+  return t && t.value ? 'photos:' + t.value : kind;
+}
+function picURL(kind, it) {
+  return '/library/file?kind=' + encodeURIComponent(kp(kind)) + '&file=' + encodeURIComponent(it.file) + '&t=' + (it.mtime || 0);
+}
+function cleanName(file) {
+  return file.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+async function loadPictures(kind) {
+  try {
+    var r = await apiFetch('/library?kind=' + encodeURIComponent(kp(kind)));
+    if (!r.ok) return;
+    PICS[kind] = await r.json();
+    renderPictures(kind);
+  } catch (e) { picMsg(kind, 'Could not reach the server.', true); }
+}
+// The Team colours card's badge status, after a badge was added, renamed or removed here.
+async function refreshBadgeStatus() {
+  if (typeof checkBadges !== 'function') return;
+  try {
+    var st = await (await apiFetch('/state')).json();
+    checkBadges(st.home_club_id || '', st.away_club_id || '', st.home_abbrev || 'Home', st.away_abbrev || 'Away');
+  } catch (e) {}
+}
+function loadAllPictures() { ['badges', 'headshots', 'sponsors', 'photos'].forEach(loadPictures); }
+
+async function uploadPicture(kind, file, name) {
+  var r = await apiFetch('/library/upload?kind=' + encodeURIComponent(kp(kind)) + '&name=' + encodeURIComponent(name || ''),
+    {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: file});
+  var d = {};
+  try { d = await r.json(); } catch (e) {}
+  if (!r.ok || !d.ok) throw new Error(d.error || ('Upload failed (' + r.status + ')'));
+  return d;
+}
+
+function renderPictures(kind) {
+  var d = PICS[kind] || {items: []};
+  var grid = document.getElementById('pics-' + kind + '-grid');
+  grid.textContent = '';
+  (d.items || []).forEach(function (it) {
+    var box = document.createElement('div');
+    box.className = 'pic' + ((it.who || (kind === 'sponsors' && it.name === d.current)) ? ' mark' : '');
+    var img = document.createElement('img'); img.src = picURL(kind, it); img.alt = it.name; img.loading = 'lazy';
+    var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.name;
+    box.appendChild(img); box.appendChild(nm);
+    var tag = it.who === 'home' ? 'Our badge' : it.who === 'away' ? "Today's opposition" :
+      (kind === 'sponsors' && it.name === d.current) ? 'This weekend' : '';
+    if (tag) { var tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = tag; box.appendChild(tg); }
+    var acts = document.createElement('div'); acts.className = 'acts';
+    function act(label, fn) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = function () { fn(b); }; acts.appendChild(b); return b; }
+    if (kind === 'sponsors' && it.name !== d.current) act('Use this weekend', function () { useSponsor(it.name); });
+    if (kind !== 'sponsors') act('Rename', function () { startRename(kind, it, box, nm); });
+    act('Remove', function (b) {
+      if (!b.classList.contains('sure')) {   // a second press to remove, without a pop-up
+        b.classList.add('sure'); b.textContent = 'Sure?';
+        setTimeout(function () { b.classList.remove('sure'); b.textContent = 'Remove'; }, 3000);
+        return;
+      }
+      removePicture(kind, it);
+    });
+    box.appendChild(acts);
+    grid.appendChild(box);
+  });
+  if (!(d.items || []).length) {
+    var none = document.createElement('div'); none.className = 'hint'; none.textContent = 'None yet.';
+    grid.appendChild(none);
+  }
+  if (kind === 'badges') renderBadgeQuick(d);
+  if (kind === 'headshots') renderSquad(d);
+}
+
+function startRename(kind, it, box, nm) {
+  var input = document.createElement('input'); input.value = it.name;
+  nm.replaceWith(input); input.focus(); input.select();
+  async function done(save) {
+    if (!save || !input.value.trim() || input.value.trim() === it.name) { loadPictures(kind); return; }
+    var r = await apiFetch('/library/rename', {method: 'POST', body: JSON.stringify({kind: kp(kind), file: it.file, name: input.value})});
+    var d = {}; try { d = await r.json(); } catch (e) {}
+    picMsg(kind, d.ok ? 'Renamed to ' + cleanName(d.file) + '.' : (d.error || 'Could not rename it.'), !d.ok);
+    loadPictures(kind);
+    if (kind === 'badges') refreshBadgeStatus();
+  }
+  input.onkeydown = function (e) { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  input.onblur = function () { done(true); };
+}
+async function removePicture(kind, it) {
+  var r = await apiFetch('/library/delete', {method: 'POST', body: JSON.stringify({kind: kp(kind), file: it.file})});
+  var d = {}; try { d = await r.json(); } catch (e) {}
+  picMsg(kind, d.ok ? 'Removed ' + it.name + '.' : (d.error || 'Could not remove it.'), !d.ok);
+  loadPictures(kind);
+  if (kind === 'badges') refreshBadgeStatus();
+}
+
+// Badges: ours and today's opposition first, by the IDs CricketStream already knows.
+function renderBadgeQuick(d) {
+  var q = document.getElementById('pics-badges-quick');
+  q.textContent = '';
+  [['home', 'Our badge'], ['away', "Today's opposition"]].forEach(function (pair) {
+    var side = d[pair[0]] || {}, box = document.createElement('div');
+    var t = document.createElement('div'); t.style.fontWeight = '600'; t.textContent = pair[1];
+    var s = document.createElement('div'); s.className = 'hint';
+    box.appendChild(t); box.appendChild(s);
+    if (!side.id) {
+      s.textContent = pair[0] === 'home' ? 'Set the club\'s PlayCricket ID in Setup first.' : 'No opposition club ID yet — Fetch today\'s match (Match day), or add it below by ID.';
+    } else {
+      s.textContent = (side.team ? side.team + ' · ' : '') + 'club ID ' + side.id + (side.has ? ' · ✓ uploaded' : ' · no badge yet');
+      var lab = document.createElement('label'); lab.style.display = 'inline-block'; lab.style.marginTop = '6px';
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = side.has ? 'Replace…' : 'Upload…';
+      var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp'; f.hidden = true;
+      b.onclick = function () { f.click(); };
+      f.onchange = function () { addBadge(f, side.id); };
+      lab.appendChild(b); lab.appendChild(f); box.appendChild(lab);
+    }
+    q.appendChild(box);
+  });
+}
+async function addBadge(input, id) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  picMsg('badges', 'Uploading…');
+  try {
+    await uploadPicture('badges', file, id);
+    picMsg('badges', 'Badge saved for club ' + id + ' — on the scorebar straight away.');
+  } catch (e) { picMsg('badges', e.message, true); }
+  loadPictures('badges');
+  refreshBadgeStatus();
+}
+function addBadgeByID(input) {
+  var id = (document.getElementById('pics-badge-id').value || '').trim();
+  if (!id) { input.value = ''; picMsg('badges', 'Type the club\'s PlayCricket ID first.', true); return; }
+  addBadge(input, id);
+  document.getElementById('pics-badge-id').value = '';
+}
+
+// Player photos: the squad roster's players, ticked when the scorebar would find a photo.
+function renderSquad(d) {
+  var box = document.getElementById('pics-headshots-squad');
+  box.textContent = '';
+  var squad = d.squad || [];
+  if (!squad.length) return;
+  var missing = squad.filter(function (p) { return !p.has; }).length;
+  var h = document.createElement('div'); h.className = 'hint';
+  h.textContent = 'Squad roster: ' + (missing ? missing + ' of ' + squad.length + ' without a photo.' : 'every player has a photo.');
+  box.appendChild(h);
+  var list = document.createElement('div'); list.className = 'pic-squad';
+  squad.forEach(function (p) {
+    var row = document.createElement('div');
+    var n = document.createElement('span'); n.textContent = (p.num ? p.num + ' · ' : '') + p.name;
+    row.appendChild(n);
+    if (p.has) { var ok = document.createElement('span'); ok.className = 'pic-has'; ok.textContent = '✓ photo'; row.appendChild(ok); }
+    else {
+      var lab = document.createElement('label');
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Add photo…';
+      var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp'; f.hidden = true;
+      b.onclick = function () { f.click(); };
+      f.onchange = async function () {
+        var file = f.files && f.files[0]; f.value = '';
+        if (!file) return;
+        try { await uploadPicture('headshots', file, p.name); picMsg('headshots', 'Photo saved for ' + p.name + '.'); }
+        catch (e) { picMsg('headshots', e.message, true); }
+        loadPictures('headshots');
+      };
+      lab.appendChild(b); lab.appendChild(f); row.appendChild(lab);
+    }
+    list.appendChild(row);
+  });
+  box.appendChild(list);
+}
+
+// Photos chosen in bulk: a name for each (from its file name), then Save all.
+function stagePictures(kind, input) {
+  var files = Array.prototype.slice.call(input.files || []);
+  input.value = '';
+  var box = document.getElementById('pics-' + kind + '-pending');
+  box.textContent = '';
+  if (!files.length) return;
+  var rows = files.map(function (file) {
+    var row = document.createElement('div'); row.className = 'pic-row';
+    var img = document.createElement('img'); img.src = URL.createObjectURL(file); img.alt = '';
+    var name = document.createElement('input'); name.value = cleanName(file.name);
+    name.placeholder = kind === 'headshots' ? 'Player\'s name, e.g. John Walker' : 'Name';
+    row.appendChild(img); row.appendChild(name); box.appendChild(row);
+    return {file: file, name: name};
+  });
+  var bar = document.createElement('div'); bar.className = 'pic-row';
+  var save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save ' + (rows.length === 1 ? 'it' : 'all ' + rows.length);
+  var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel';
+  cancel.onclick = function () { box.textContent = ''; };
+  save.onclick = async function () {
+    save.disabled = true;
+    var done = 0, failed = [];
+    for (var i = 0; i < rows.length; i++) {
+      try { await uploadPicture(kind, rows[i].file, rows[i].name.value); done++; }
+      catch (e) { failed.push(rows[i].name.value + ': ' + e.message); }
+    }
+    box.textContent = '';
+    picMsg(kind, done + ' saved.' + (failed.length ? ' Not saved — ' + failed.join('; ') : ''), failed.length > 0);
+    loadPictures(kind);
+  };
+  bar.appendChild(save); bar.appendChild(cancel); box.appendChild(bar);
+}
+
+async function addSponsorPicture(input) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  picMsg('sponsors', 'Uploading…');
+  try {
+    var d = await uploadPicture('sponsors', file, '');
+    picMsg('sponsors', 'Saved — it\'s this weekend\'s logo now.');
+    var f = document.getElementById('sponsor_id');
+    if (f) { f.value = cleanName(d.file); if (typeof showSponsorPreview === 'function') showSponsorPreview(); }
+  } catch (e) { picMsg('sponsors', e.message, true); }
+  loadPictures('sponsors');
+}
+async function useSponsor(id) {
+  var r = await apiFetch('/state', {method: 'POST', body: JSON.stringify({sponsor_id: id})});
+  picMsg('sponsors', r.ok ? 'Logo ' + id + ' is on the sponsor strap this weekend.' : 'Could not change it.', !r.ok);
+  var f = document.getElementById('sponsor_id');
+  if (f && r.ok) { f.value = id; if (typeof showSponsorPreview === 'function') showSponsorPreview(); }
+  loadPictures('sponsors');
+}
+</script>
 
 <section class="tab-panel" id="tab-setup" role="tabpanel">
 <div class="grid">
@@ -1265,7 +1580,10 @@
   </button>
   </div>
   <div class="card">
-    <h2>Folders</h2>
+    <h2>Where pictures are kept</h2>
+    <p class="hint">Add badges, player photos, sponsor logos and match photos in the <b>Pictures</b> tab —
+      no folders needed. Only if the club already keeps them somewhere else (a shared drive), point
+      CricketStream at that folder here; blank uses the CricketStream folder.</p>
     <!-- Logos folder -->
     <div class="field" style="margin-top:14px;">
       <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ in the CricketStream folder)</span></label>
@@ -1286,7 +1604,7 @@
   <div class="card">
     <h2>Squad roster</h2>
     <label>Squad Roster — tells brothers apart</label>
-    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
+    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Add photos in the <b>Pictures</b> tab, which lists who in the squad still needs one. Enter it once per season.</p>
     <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
     <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
     <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
@@ -1311,6 +1629,11 @@ function showTab(name) {
   // hidden; re-measure when it becomes visible. (Defined in the main script below; a
   // click can only happen after that has run.)
   if (name === 'graphics' && typeof scaleScorebarPreview === 'function') scaleScorebarPreview();
+  // On page load this runs before the main script (apiFetch) exists: wait for it.
+  if (name === 'pictures') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { loadAllPictures(); }, {once: true});
+    else loadAllPictures();
+  }
 }
 (function () {
   let t = 'match';

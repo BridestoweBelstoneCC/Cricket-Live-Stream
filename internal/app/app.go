@@ -39,6 +39,7 @@ import (
 	"cricketstream/internal/port"
 	"cricketstream/internal/proc"
 	"cricketstream/internal/scorerfile"
+	"cricketstream/internal/server"
 	"cricketstream/internal/setup"
 )
 
@@ -98,6 +99,9 @@ type App struct {
 
 	bridgeRun *bridge.Running
 	bridgeErr string
+
+	precheckRunning bool
+	precheckResult  map[string]any
 
 	done     chan struct{}
 	doneOnce sync.Once
@@ -589,6 +593,47 @@ func panelLoginScript(panelURL, token string) string {
 		`sessionStorage.setItem('bbcc_token',` + string(t) + `);}catch(e){}})();`
 }
 
+// ── The pre-match check, from the home screen ──
+
+// runPrecheck is the control panel's pre-match check, run before match day starts: every
+// login and connection tried for real, so a wrong key or a missing camera shows up days
+// before the match. The server's state takes config.ini's keys as match day would.
+// Swappable for tests.
+var runPrecheck = func() map[string]any {
+	server.LoadAuthConfig()
+	if _, err := os.Stat(server.StateFile); err != nil {
+		server.SaveState(server.DefaultState())
+	}
+	server.SeedStateFromConfig()
+	return server.RunPrecheck()
+}
+
+func (a *App) startPrecheck() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.phase != phHome && a.phase != phStopped {
+		return errors.New("The pre-match check runs from the match-day screen (once match day is on, it's in the control panel's Setup tab).")
+	}
+	if a.precheckRunning {
+		return nil
+	}
+	a.precheckRunning = true
+	go func() {
+		defer crashed()
+		fmt.Println("  Running the pre-match check...")
+		r := runPrecheck()
+		a.mu.Lock()
+		a.precheckRunning, a.precheckResult = false, r
+		a.mu.Unlock()
+		if ok, _ := r["ok"].(bool); ok {
+			fmt.Println("  ✓ Pre-match check: nothing wrong")
+		} else {
+			fmt.Println("  ⚠ Pre-match check: something needs fixing — see the match-day screen")
+		}
+	}()
+	return nil
+}
+
 // ── Status for the page ──
 
 func (a *App) status(since int) map[string]any {
@@ -611,6 +656,9 @@ func (a *App) status(since int) map[string]any {
 	switch phase {
 	case phHome, phStarting, phStopped, phRunning, phAlready, phWelcome:
 		out["home"] = homeInfo()
+		a.mu.Lock()
+		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}
+		a.mu.Unlock()
 	case phAgent:
 		out["agent"] = agentInfo(agentRun, folder, how, agentErr)
 	case phBridge:

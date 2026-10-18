@@ -9,6 +9,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
 scoring page do is unchanged; what changed is how it's installed and run.
 
+- **Pictures tab** in the control panel: club badges (ours, today's opposition, any club by
+  ID), player photos (with the squad roster's players who still need one), sponsor logos
+  and match photos (per team) are added, previewed, renamed and removed there — from the
+  laptop or a phone. No folders to find, no files to rename.
+- **Pre-match check on the match-day screen**, before match day starts: every login and
+  connection tried for real, with what to fix.
 - **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by
   the repository's release workflow, each signing approved by hand; the release checks
   both signatures and runs the signed build before publishing. The README has the code
