@@ -1627,9 +1627,13 @@ func (c *ctx) live(mutate bool) {
 			// Logging must never interrupt the stream: each step guards itself.
 			BufferPCSEvents(pcsState) // advances event detection
 			MatchLogSnapshot(pcsState)
-			FollowMatchID(pcsState)  // an id change mid-match keeps its data
-			LogBallData(pcsState)    // our own ball-by-ball database
-			LogLiveFigures(pcsState) // the scorer's totals, for the report/card
+			func() {
+				dbLogMu.RLock() // a practice's clean-up waits for this poll's writes
+				defer dbLogMu.RUnlock()
+				FollowMatchID(pcsState)  // an id change mid-match keeps its data
+				LogBallData(pcsState)    // our own ball-by-ball database
+				LogLiveFigures(pcsState) // the scorer's totals, for the report/card
+			}()
 			// Hand buffered events to the overlay and clear — under the lock, so an
 			// event landing mid-pop can't be silently dropped
 			if ev := drainEvents(); ev != nil {
