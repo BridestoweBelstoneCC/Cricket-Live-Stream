@@ -25,6 +25,10 @@ scoring page do is unchanged; what changed is how it's installed and run.
   over, fifty and partnership graphics.
 - **Check buttons** try the PlayCricket key and club ID, the AI key and the NV Play folder
   on the spot. Saved keys show as "Saved" and can be removed.
+- **Practice match** in the control panel: a simulated match through the real overlay,
+  with the score source put back and every trace removed afterwards.
+- **Your files** on the settings page opens the badges, player photos, sponsor logos,
+  match photos and replays folders.
 - **Desktop shortcut** (Windows), offered by setup.
 - **The control panel opens by itself** once match day is up, and double-clicking
   CricketStream again while it's running brings the panel back instead of starting a

@@ -249,6 +249,9 @@ When the software is running, open **http://127.0.0.1:5000/control** in your bro
 - After the match: compile highlights, make social clips, open the match page, and make a match report, social post and Instagram result picture
 - A few days before a match: **Setup → Run pre-match check** tries every login and
   connection and tells you in plain words what (if anything) needs fixing
+- The night before: **Match day → Practice match** plays a made-up match through your
+  stream, so you can see every graphic and replay working in OBS without a scorer. It
+  puts everything back afterwards
 - Optional extras, all off until you switch them on: the **AI camera spotter** (warns you
   if a camera lens fogs up or gets knocked — costs a few pence a match), and **spoken
   commentary** (a computer voice reads out the end-of-over line)

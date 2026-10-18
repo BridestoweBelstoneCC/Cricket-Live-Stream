@@ -253,11 +253,11 @@ The control panel opens in your browser by itself, with today's match already fi
 (Double-clicking CricketStream again while it's running just brings the control panel
 back up.)
 
-> **Rehearse first.** With CricketStream running, open a second Command Prompt in the
-> CricketStream folder and run `CricketStream simulate --configure`: it plays a whole
-> simulated match into the overlay, so you can watch every graphic and replay without a
-> scorer. `CricketStream simulate --list` shows the scenarios. Afterwards, set the score
-> source back to NV Play's folder in the control panel.
+> **Rehearse first.** Control panel → **Match day** → **Practice match** plays a made-up
+> match through the real overlay — scorebar, wicket cards, boundaries, replays, the
+> end-of-over graphics — so you can watch everything in OBS without a scorer. Pick a whole
+> match, a tense chase, a century or a collapse, and 2, 5 or 10 overs. When it ends (or you
+> press Stop) the score source is put back as it was and nothing from the practice is kept.
 
 ---
 

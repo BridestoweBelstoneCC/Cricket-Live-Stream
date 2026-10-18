@@ -151,10 +151,12 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   step the stream quality down a ladder when the line is genuinely struggling — manually,
   or automatically with safeguards against flapping. Stepping down also reduces CPU load
   on older laptops.
-- **Match simulator** *(new)* — `CricketStream simulate` rehearses the entire broadcast
-  without a scorer: a realistic simulated match (full game, tense chase, century chase, or
-  batting collapse) drives every graphic, replay and database exactly as a real feed would.
-  Perfect for testing your setup the night before a stream.
+- **Practice match** *(new)* — one button in the control panel (Match day → Practice
+  match) rehearses the entire broadcast without a scorer: a realistic simulated match (full
+  game, tense chase, century chase, or batting collapse) drives every graphic and replay
+  exactly as a real feed would, then puts everything back and keeps nothing. Perfect for
+  testing your setup the night before a stream. (`CricketStream simulate` does the same
+  from the command line.)
 
 ---
 
