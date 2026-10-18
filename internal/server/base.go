@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"cricketstream/internal/assets"
@@ -238,10 +239,16 @@ func truncRunes(s string, n int) string {
 	return s
 }
 
+// background counts the safeGo jobs still running, so tests can let one finish before
+// pointing the package at the next test's files.
+var background sync.WaitGroup
+
 // safeGo runs fn on its own goroutine; a panic is recorded, never fatal (nothing in the
 // match-day loop may take the stream down).
 func safeGo(where string, fn func()) {
+	background.Add(1)
 	go func() {
+		defer background.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				logServerError(where, fmt.Errorf("%v", r))

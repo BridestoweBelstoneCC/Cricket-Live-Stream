@@ -45,9 +45,13 @@ type testServer struct {
 // sets ClubPassword explicitly: never inherit whatever a real config.ini says.
 func sandbox(t *testing.T, password string) string {
 	t.Helper()
+	// A job the last test started (a season-stats build, a replay) may still be running
+	// against the last test's files: let it finish before moving everything.
+	waitBackground(t)
 	closeDB()
 	dir := t.TempDir()
 	SetAppDir(dir)
+	t.Cleanup(func() { waitBackground(t) })
 	// Nothing a test does may reach this machine's own OBS settings or home folder: the
 	// OBS guard writes OBS's global.ini on a normal close, and defaults (the replay
 	// folder) come from the home folder.
@@ -91,6 +95,16 @@ func sandbox(t *testing.T, password string) string {
 	DBInit()
 	t.Cleanup(closeDB)
 	return dir
+}
+
+func waitBackground(t *testing.T) {
+	done := make(chan struct{})
+	go func() { background.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Log("a background job is still running after 30s")
+	}
 }
 
 func newTestServer(t *testing.T, password string) *testServer {
