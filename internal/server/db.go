@@ -215,6 +215,9 @@ func parseTicker(s string) []Ball {
 // if we have one, else a date+teams fallback so a non-pinned match still gets a
 // consistent id all day.
 func CurrentMatchID() string {
+	if id := rehearsalMatchID(); id != "" {
+		return id // a practice match never shares a real match's id
+	}
 	cfg := LoadState()
 	mid := ""
 	if mu := trim(gs(cfg, "match_url", "")); mu != "" {

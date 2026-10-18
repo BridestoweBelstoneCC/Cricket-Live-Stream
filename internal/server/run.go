@@ -35,6 +35,7 @@ func Start() {
 		}
 	}
 	SeedStateFromConfig()
+	RecoverInterruptedRehearsal()
 	EnsureControlToken()
 	StartWatchdog()
 	StartStreamMonitor()
@@ -134,6 +135,7 @@ func Run(opts Options) error {
 		case <-sig:
 		case <-opts.Stop:
 		}
+		StopRehearsal() // puts the score source back
 		say("\n  Server stopped.")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

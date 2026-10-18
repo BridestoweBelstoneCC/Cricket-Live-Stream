@@ -372,6 +372,12 @@ func (c *ctx) doGET() {
 	case path == "/settings/info":
 		c.settingsInfo()
 
+	case path == "/rehearsal":
+		if !c.checkToken() {
+			return
+		}
+		c.json(RehearsalStatus())
+
 	case path == "/control":
 		body, err := controlHTML()
 		if err != nil {

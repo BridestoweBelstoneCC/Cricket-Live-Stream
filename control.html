@@ -655,11 +655,40 @@
       1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">console.cloud.google.com</a><br>
       2. Create a project → Enable YouTube Data API v3<br>
       3. Create OAuth2 credentials (Desktop app) → Download JSON<br>
-      4. Rename file to <strong style="color:var(--text);">yt_credentials.json</strong> and place in the same folder as server.py<br>
-      5. Run: <code style="color:var(--text);">pip install google-api-python-client google-auth-oauthlib</code><br>
-      6. Click the button above — a browser window will open to authorise once<br>
+      4. Rename file to <strong style="color:var(--text);">yt_credentials.json</strong> and put it in the CricketStream folder (next to the app)<br>
+      5. Click the button above — a browser window will open to authorise once<br>
       <span style="color:var(--warn);">Tip: create the broadcast first (YouTube Studio → Go Live → Stream), then click Update to fill in its details.</span>
     </div>
+  </div>
+  <div class="card">
+    <h2>Practice match</h2>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      No scorer needed: a made-up match plays through the real overlay &mdash; scorebar, wicket
+      cards, boundaries, replays, the end-of-over graphics &mdash; so you can rehearse in OBS.
+      The score source is put back afterwards and nothing is kept. Not while you're live.
+      (With AI commentary on, each over uses a little of your AI credit, as a real one would.)
+    </p>
+    <div class="half-grid">
+      <div class="field">
+        <label for="practice-scenario">Match</label>
+        <select id="practice-scenario">
+          <option value="full">A whole match</option>
+          <option value="chase">A tense chase</option>
+          <option value="century">A century</option>
+          <option value="collapse">A batting collapse</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="practice-overs">Overs each side</label>
+        <select id="practice-overs">
+          <option value="2">2 (about 2 minutes)</option>
+          <option value="5" selected>5 (about 5 minutes)</option>
+          <option value="10">10 (about 10 minutes)</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-test" id="practice-btn" onclick="togglePractice()" style="width:100%;">&#9654; Start a practice match</button>
+    <div id="practice-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
   </div>
 </div>
 </section>
@@ -1211,8 +1240,8 @@
     <h2>Stream health check</h2>
   <p class="section-note">
     Measures your actual upload speed and recommends a bitrate and resolution from it. Both
-    are applied to OBS for you the next time quickstart runs (pin your own in config.ini's
-    [Stream] section). Quickstart also picks OBS's video encoder: a hardware one if this
+    are applied to OBS for you the next time CricketStream starts (pin your own in config.ini's
+    [Stream] section). It also picks OBS's video encoder: a hardware one if this
     laptop has one. Runs automatically once per session.
   </p>
   <div id="stream-check-body" style="font-size:12px;color:var(--muted);padding:10px 12px;
@@ -1228,17 +1257,17 @@
     <h2>Folders</h2>
     <!-- Logos folder -->
     <div class="field" style="margin-top:14px;">
-      <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
+      <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ in the CricketStream folder)</span></label>
       <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
       <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label>Headshots folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
+      <label>Headshots folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use headshots/ in the CricketStream folder)</span></label>
       <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
       <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label>Socials folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
+      <label>Socials folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use socials/ in the CricketStream folder)</span></label>
       <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
       <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
     </div>
@@ -1302,7 +1331,7 @@ window.onerror = function (message, source, lineno, colno) {
   }
   el.textContent = "Control panel script error: " + message +
     " (line " + lineno + ", col " + colno + ") -- the panel did not load correctly. " +
-    "Check the browser console, and server.py for a raw backslash inside CONTROL_HTML.";
+    "Check the browser console (F12) and report it with what it says.";
 };
 </script>
 
@@ -1353,6 +1382,7 @@ async function doLogin() {
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      pollPractice();            // a practice already running when the panel opens
       loadSocialClips();         // same: /social/clips is token-gated
       loadMatchPage();           // same: /match/page is token-gated
     } else {
@@ -1378,6 +1408,7 @@ async function doSkip() {
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      pollPractice();            // a practice already running when the panel opens
       loadSocialClips();         // same: /social/clips is token-gated
       loadMatchPage();           // same: /match/page is token-gated
     } else {
@@ -1784,6 +1815,56 @@ loadSocialClips();
 // Every row is built with textContent: the details include error text from outside services.
 const PRECHECK_MARK = {ok: ['\u2713', 'var(--ok)'], warn: ['\u26A0', 'var(--warn)'],
                        bad: ['\u2717', 'var(--bad)'], skip: ['\u2013', 'var(--muted)']};
+// ── Practice match ──
+var _practiceTimer = null;
+function showPractice(d) {
+  const btn = document.getElementById('practice-btn');
+  const msg = document.getElementById('practice-msg');
+  if (d && d.running) {
+    btn.innerHTML = '&#9632; Stop the practice match';
+    msg.style.color = 'var(--accent)';
+    msg.textContent = 'Playing: ' + (d.score || 'starting…') + ' — watch it in OBS.';
+    if (!_practiceTimer) _practiceTimer = setInterval(pollPractice, 3000);
+  } else {
+    btn.innerHTML = '&#9654; Start a practice match';
+    if (_practiceTimer) {
+      clearInterval(_practiceTimer); _practiceTimer = null;
+      msg.style.color = 'var(--ok)';
+      msg.textContent = 'Practice over — the score source is back as it was.';
+    }
+  }
+}
+async function pollPractice() {
+  try {
+    const res = await apiFetch('/rehearsal');
+    if (res.ok) showPractice(await res.json());
+  } catch (e) {}
+}
+async function togglePractice() {
+  const btn = document.getElementById('practice-btn');
+  const msg = document.getElementById('practice-msg');
+  const running = !!_practiceTimer;
+  btn.disabled = true;
+  try {
+    const res = await apiFetch('/rehearsal', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(running ? {action: 'stop'} : {action: 'start',
+        scenario: document.getElementById('practice-scenario').value,
+        overs: parseInt(document.getElementById('practice-overs').value, 10)})});
+    const d = await res.json();
+    if (!res.ok || d.ok === false) {
+      msg.style.color = 'var(--bad)';
+      msg.textContent = d.error || ('Could not start it (' + res.status + ')');
+      return;
+    }
+    showPractice(d);
+  } catch (e) {
+    msg.style.color = 'var(--bad)';
+    msg.textContent = 'Could not reach the server';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function runPrecheck() {
   const box = document.getElementById('precheck-results');
   const btn = document.getElementById('precheck-btn');
@@ -1875,6 +1956,7 @@ function renderPrecheck(d) {
   }
 }
 loadPrecheckLast();
+pollPractice();
 setInterval(loadPrecheckLast, 600000);
 
 // ── Sponsor airtime (read-only; the overlay reports, the server times it) ──
@@ -1962,11 +2044,10 @@ async function showRemoteOverlay() {
     _remoteTargets = d.targets || [];
     if (!_remoteTargets.length) {
       body.innerHTML = '<p style="font-size:12px;color:var(--text-2);line-height:1.5;">' +
-        'Not reachable from another device yet — set <code style="background:var(--bg);' +
-        'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
-        'var(--bg);padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
-        'Tailscale, or enable <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">' +
-        'cloudflare_tunnel</code>, then restart the server.</p>';
+        'Not reachable from another device yet — in <a href="/settings">Settings</a>, set a club ' +
+        'password and tick <em>Allow phones and tablets on the wifi</em>; or install Tailscale, or ' +
+        'enable <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">' +
+        'cloudflare_tunnel</code> in config.ini. Then restart CricketStream.</p>';
       return;
     }
     renderRemoteTarget(_remoteTargets[0].via);
@@ -3282,7 +3363,7 @@ async function checkLiveStatus() {
     dot.style.background = 'var(--bad)';
     dot.style.animation  = 'none';
     line1.textContent    = e.name === 'AbortError' ? 'Server slow — retrying' : 'Cannot reach server';
-    line2.textContent    = 'Make sure server.py is running';
+    line2.textContent    = 'Make sure CricketStream is running';
     src.textContent      = 'Offline';
     src.style.background = '#3a0d0d';
     src.style.color      = 'var(--bad)';

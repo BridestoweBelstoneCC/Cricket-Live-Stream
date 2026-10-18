@@ -216,6 +216,24 @@ func (c *ctx) doPOST() {
 	case path == "/settings/open_folder":
 		c.settingsOpenFolder(body)
 
+	case path == "/rehearsal":
+		d := jsonObject(body)
+		switch str(d, "action", "") {
+		case "start":
+			if err := StartRehearsal(str(d, "scenario", "full"), gi(d, "overs", 5)); err != nil {
+				c.json(M{"ok": false, "error": err.Error()}, 409)
+				return
+			}
+		case "stop":
+			StopRehearsal()
+		default:
+			c.json(M{"ok": false, "error": "action must be start or stop"}, 400)
+			return
+		}
+		out := RehearsalStatus()
+		out["ok"] = true
+		c.json(out)
+
 	case path == "/sponsor/remove_background":
 		d := jsonObject(body)
 		ok, out := saveTransparentSponsor(str(d, "id", ""), str(d, "mode", ""))
