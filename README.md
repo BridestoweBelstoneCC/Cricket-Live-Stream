@@ -15,10 +15,14 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Built%20with-Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.12-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.0--beta.1-orange)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
-**[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
+**[Download →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** &nbsp;·&nbsp; **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
+
+> **v3 is in beta.** It's the whole app rewritten as one download with its own window. It
+> has been tested end to end but not yet through a full season, so the proven Python
+> edition (v2.12) stays available on the [`python` branch](../../tree/python).
 
 ---
 
@@ -285,7 +289,7 @@ New to this? Read your platform's quick start first:
 
 **One file. You run the same one every time — on every machine.**
 
-1. Download it from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, one download covers both Apple Silicon and Intel) — and put it in a folder of its own (say, Documents → CricketStream).
+1. Download it from the [website](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download) or the [releases page](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, one download covers both Apple Silicon and Intel) — and put it in a folder of its own (say, Documents → CricketStream).
 2. Double-click it. That's the whole job.
 
 It works out for itself what still needs doing:
@@ -331,13 +335,12 @@ CricketStream quality-test     drive the quality ladder down and back while live
 
 ## Control panel
 
-Once running, open the control panel in any browser on the same machine
-(`http://localhost:5000/control` on Windows, `http://127.0.0.1:5000/control` on Mac).
+On the streaming laptop the control panel opens in CricketStream's own window when match
+day starts, already signed in. It's also at `http://localhost:5000/control` in any browser.
 
-**Using it from your phone or tablet:** if you set `bind_host = 0.0.0.0` in `config.ini`
-and your phone is on the same Wi-Fi, you can open the panel from any device at
-`http://<laptop-ip>:5000/control` (your laptop's local IP is shown in the terminal when
-the server starts). The panel is fully responsive and designed to work at phone-screen size.
+**Using it from your phone or tablet:** choose **Phones and tablets too** on the match-day
+screen (it needs a club password), then click **This machine** at the top of the panel for
+a QR code to scan. The panel is fully responsive and designed to work at phone-screen size.
 
 **API keys and settings load automatically from `config.ini`** — values you entered in
 `[API]`, `[OBS]`, `[Scoring]`, and `[Stream]` are seeded into the panel on first run.
@@ -360,9 +363,10 @@ It lets you:
 - Cut between camera angles from the pinned bar (or press `C`)
 - Upload a sponsor logo from your phone and make its background transparent
 
-The panel has four tabs, one per moment of the day — **Match day**, **Graphics & sponsor**,
-**After the match** and **Setup** — under a pinned bar with the live status, Save, the
-camera buttons and the match-day checklist.
+The panel has five tabs — **Match day**, **Graphics & sponsor**, **After the match**,
+**Pictures** (badges, player photos, sponsor logos and match photos) and **Setup** — under a
+pinned bar with the live status, Save, the camera buttons and the match-day checklist.
+Drag a tile by the grip in its title to put each tab in your own order.
 
 ---
 
@@ -706,9 +710,9 @@ Streaming via OBS Studio.
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
-
-The Windows downloads (`CricketStream.exe`, `CricketStream-arm64.exe`) are signed, so
+[SignPath Foundation](https://signpath.org) — **being set up**: until it is, the Windows
+downloads are unsigned and Windows asks once (More info → Run anyway). Once signed, the
+Windows downloads (`CricketStream.exe`, `CricketStream-arm64.exe`) are signed, so
 Windows shows **SignPath Foundation** as the publisher; the file's own details name
 Bridestowe & Belstone CC. They are built only by this repository's
 [release workflow](.github/workflows/build-executables.yml), on GitHub's own build machines,

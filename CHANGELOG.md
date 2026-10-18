@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## v3.0.0-beta.1 — the Go edition (unreleased)
+## v3.0.0-beta.1 — the Go edition (2026-10-18)
 
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
 scoring page do is unchanged; what changed is how it's installed and run.
