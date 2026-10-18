@@ -77,6 +77,10 @@ func (s *State) snapshot() (int, time.Time, string) {
 	return s.requests, s.lastRequest, s.lastClient
 }
 
+// Collected is how many times the streaming laptop has collected the file, when it last
+// did, and from where (the app's window shows it).
+func (s *State) Collected() (n int, last time.Time, client string) { return s.snapshot() }
+
 func epoch(t time.Time) float64 { return float64(t.UnixNano()) / 1e9 }
 
 // LocalIP is a best guess at this machine's LAN address (no traffic is actually sent).

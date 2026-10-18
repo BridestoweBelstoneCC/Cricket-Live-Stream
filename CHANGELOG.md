@@ -9,6 +9,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
 scoring page do is unchanged; what changed is how it's installed and run.
 
+- **Its own window.** Double-clicked, CricketStream opens a window (no console window, no
+  browser tabs): **which computer is this?** — the streaming laptop or the scorer's laptop
+  — then the setup questions for that one, then its job, without a restart. The streaming
+  laptop gets a match-day screen (who uses the panel today, how the match is scored,
+  **Start match day**), the steps ticking off as they happen, and the control panel in the
+  same window, already logged in, with **Activity** and **Stop** buttons. The scorer's
+  laptop shows whether NV Play is writing, whether the streaming laptop is collecting it,
+  and its own address, with **Browse…** for NV Play's folder. Questions come up in the
+  window, closing it asks before stopping anything, a second double-click brings the open
+  window forward, and everything it does is in **Activity** and `logs/`. On a Mac the same
+  screens open in the browser for now.
+
 - **One download, nothing to install.** `CricketStream.exe` (Windows x64 or Arm),
   `CricketStream-mac.zip` (one universal binary for Apple Silicon and Intel) or
   `CricketStream-linux`. No Python, no packages, no installer, no project folder. Every

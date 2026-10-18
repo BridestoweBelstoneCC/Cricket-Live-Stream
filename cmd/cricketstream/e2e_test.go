@@ -124,6 +124,11 @@ func newApp(t *testing.T) *app {
 		"CRICKETSTREAM_LOOPBACK_ONLY=1",
 		fmt.Sprintf("CRICKETSTREAM_PORT=%d", a.port),
 		"CRICKETSTREAM_OBS_PORTABLE="+obsp,
+		// OBS's port moved to one nothing listens on: the machine's own OBS (on 4455
+		// whenever it's open) is out of reach even before the portable guard.
+		fmt.Sprintf("CRICKETSTREAM_OBS_WS_PORT=%d", freePort(t)),
+		"CRICKETSTREAM_APP_PORT=0",
+		"CRICKETSTREAM_NO_WINDOW=1", // the app's page, driven over HTTP as its window would
 		"HOME="+a.home, "USERPROFILE="+a.home,
 		"APPDATA="+filepath.Join(a.home, "AppData", "Roaming"),
 		"LOCALAPPDATA="+filepath.Join(a.home, "AppData", "Local"),

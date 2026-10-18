@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cricketstream/internal/assets"
@@ -146,6 +147,52 @@ func Handler(folder, token string) http.Handler {
 			"mtime": float64(st.ModTime().UnixNano()) / 1e9, "content": content}, 200)
 	})
 }
+
+// Running is a bridge that's serving (the app's window shows it).
+type Running struct {
+	Config Config
+
+	srv         *http.Server
+	mu          sync.Mutex
+	fetches     int
+	lastFetch   time.Time
+	lastFetcher string
+}
+
+// Fetches is how many times the streaming machine has collected the file, and when it
+// last did.
+func (r *Running) Fetches() (n int, last time.Time, from string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.fetches, r.lastFetch, r.lastFetcher
+}
+
+// Start serves c without asking anything; c must have a token.
+func Start(c Config) (*Running, error) {
+	if c.Token == "" {
+		return nil, errors.New("no token set in bridge_config.ini — a blank token would let anyone on the network read the live score")
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.NetworkHost(), c.Port))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't start on port %d (is the bridge already running?): %w", c.Port, err)
+	}
+	r := &Running{Config: c}
+	h := Handler(c.Folder, c.Token)
+	r.srv = &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/pcs/latest") && subtle.ConstantTimeCompare([]byte(req.Header.Get("X-Bridge-Token")), []byte(c.Token)) == 1 {
+			host, _, _ := net.SplitHostPort(req.RemoteAddr)
+			r.mu.Lock()
+			r.fetches, r.lastFetch, r.lastFetcher = r.fetches+1, time.Now(), host
+			r.mu.Unlock()
+		}
+		h.ServeHTTP(w, req)
+	})}
+	go r.srv.Serve(ln)
+	return r, nil
+}
+
+// Stop stops serving.
+func (r *Running) Stop() { r.srv.Close() }
 
 // Run serves until stopped.
 func Run() int {

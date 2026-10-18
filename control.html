@@ -283,6 +283,17 @@
               font-size:11px;color:var(--text-2);white-space:nowrap;">
     &#128274; Security
   </div>
+  <!-- Only in CricketStream's own window: back to its activity log, and stopping match day
+       (closing the window asks the same). Hidden in a browser or on a phone. -->
+  <div id="app-pills" style="display:none;margin-left:8px;gap:8px">
+    <button type="button" onclick="csApp.go('log')" title="What CricketStream did to get ready, and everything since"
+      style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
+             cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Activity</button>
+    <button type="button" onclick="csApp.go('close')" title="Stop match day and close CricketStream"
+      style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
+             cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Stop</button>
+  </div>
+  <script>if (window.csApp && window.csApp.go) document.getElementById('app-pills').style.display = 'flex';</script>
 </header>
 
 <!-- ── Remote access overlay — QR code for pairing another device ── -->

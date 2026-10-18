@@ -132,6 +132,7 @@ button:disabled{opacity:.6;cursor:default}
         <span>NV Play runs here and the streaming laptop reaches it over Tailscale,
         using a token shown at the end.</span></label>
     </div>
+    <p class="found hidden" id="role_chosen"></p>
     <p class="note hidden" id="role_note">Changing this takes effect the next time CricketStream starts.</p>
   </section>
 
@@ -226,6 +227,7 @@ button:disabled{opacity:.6;cursor:default}
     <div id="found" class="found hidden"></div>
     <label for="pcs_folder">Scoreboard output folder</label>
     <div class="field-row"><input type="text" id="pcs_folder">
+      <button type="button" class="small hidden" data-browse="pcs_folder">Browse…</button>
       <button type="button" class="small" data-check="folder">Check</button></div>
     <p class="result" id="result_folder" role="status"></p>
     <div data-for="bridge"><label for="bridge_port">Port to serve on</label>
@@ -238,7 +240,8 @@ button:disabled{opacity:.6;cursor:default}
     <p class="hint">Nothing to set up in OBS — CricketStream switches on its WebSocket server
     and replay buffer for you on match day. Replay clips are saved here.</p>
     <label for="replay_folder">Replay folder</label>
-    <input type="text" id="replay_folder">
+    <div class="field-row"><input type="text" id="replay_folder">
+      <button type="button" class="small hidden" data-browse="replay_folder">Browse…</button></div>
   </section>
 
   <section>
@@ -313,6 +316,12 @@ button:disabled{opacity:.6;cursor:default}
 <script>
 var info = {};
 var MODE = location.pathname.indexOf('/settings') === 0 ? 'settings' : 'setup';
+// In CricketStream's own window (setup?app=1): the role was picked on the welcome screen
+// (&role=), and saving goes back to the app, which carries on with this computer's job.
+var QS = new URLSearchParams(location.search);
+var APP = QS.get('app') === '1';
+var PRESET = APP ? QS.get('role') : null;
+var ROLE_NAMES = {streaming: 'The streaming laptop', scorer: 'The scorer’s laptop', bridge: 'An NV Play bridge (the scorer is elsewhere)'};
 var API = '/' + MODE;
 var clearing = {};          // saved secrets the operator asked to remove
 var graphic = '';           // the demo graphic showing in the preview
@@ -372,7 +381,7 @@ function showForRole() {
     $('save').textContent = 'Save settings';
     $('role_note').classList.toggle('hidden', !info.existing || info.existing.role === r);
   } else {
-    $('save').textContent = 'Save and start';
+    $('save').textContent = APP && info.have_config ? 'Save' : APP ? 'Save and continue' : 'Save and start';
   }
   if (r === 'streaming') { scalePreview(); }
 }
@@ -508,6 +517,12 @@ function load() {
     info = d;
     $('form').classList.remove('hidden');
     $('cfg-path').textContent = d.config_file;
+    if (APP && MODE === 'setup') {
+      $('back').href = '/';
+      $('back').textContent = '← Back';
+      $('back').classList.remove('hidden');
+      if (d.have_config) { $('title').textContent = 'Settings'; $('lead').textContent = 'Change anything here — it’s used from the next match day you start.'; }
+    }
     if (MODE === 'settings') {
       document.title = 'CricketStream Settings';
       $('title').textContent = 'Settings';
@@ -570,6 +585,13 @@ function load() {
         el.placeholder = (info.secrets_set || {})[el.id] ? 'Saved — type a new one to change it' : '';
       });
     }
+    var preset = PRESET && document.querySelector('input[name=role][value="' + PRESET + '"]');
+    if (preset) {
+      preset.checked = true;
+      showRoleChosen(true);
+      if (PRESET === 'scorer') { $('title').textContent = 'Set up the scorer’s laptop'; $('lead').textContent = 'Just one thing: where NV Play saves its scoreboard. It’s usually found for you.'; }
+      if (PRESET === 'bridge') { $('title').textContent = 'Set up the NV Play bridge'; }
+    }
     showSaved();
     showForRole();
     refreshPreview();
@@ -578,6 +600,31 @@ function load() {
     if (MODE === 'settings' && !$('login').classList.contains('hidden')) return;   // asking for the password
     $('form').classList.remove('hidden');
     msg('Couldn\'t load: ' + (e.message || e), true);
+  });
+}
+
+// The role picked on the welcome screen, shown as a line rather than the three choices.
+function showRoleChosen(on) {
+  var line = $('role_chosen');
+  document.querySelector('.roles').classList.toggle('hidden', on);
+  line.classList.toggle('hidden', !on);
+  if (!on) return;
+  line.textContent = 'This computer: ' + (ROLE_NAMES[role()] || role()) + '. ';
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'linkbtn'; b.textContent = 'Change';
+  b.addEventListener('click', function () { showRoleChosen(false); });
+  line.appendChild(b);
+}
+
+// Folder fields: Windows' own folder box, in CricketStream's window.
+if (window.csApp && window.csApp.pickFolder) {
+  document.querySelectorAll('[data-browse]').forEach(function (b) {
+    var field = $(b.getAttribute('data-browse'));
+    b.classList.remove('hidden');
+    b.addEventListener('click', function () {
+      var title = field.id === 'pcs_folder' ? 'Choose NV Play’s scoreboard Output folder' : 'Choose where replay clips are saved';
+      window.csApp.pickFolder(title, field.value.trim()).then(function (p) { if (p) { field.value = p; field.dispatchEvent(new Event('input')); } });
+    });
   });
 }
 
@@ -613,6 +660,11 @@ $('form').addEventListener('submit', function (ev) {
       $('save').disabled = false;
       if (!d.ok) { msg(d.error || 'Couldn\'t save.', true); return; }
       if (MODE === 'settings') { settingsSaved(d); return; }
+      if (APP && d.next) {
+        msg(d.template ? 'Saved. The scoreboard template is in NV Play’s Templates folder — choose it once in NV Play (Tools → Configuration → Scoreboard → Template File).' : 'Saved.', 'good');
+        setTimeout(function () { location.href = d.next; }, d.template ? 2500 : 400);
+        return;
+      }
       msg('');
       $('form').classList.add('hidden');
       var next = $('next');

@@ -62,15 +62,15 @@ You only need the one CricketStream file on this machine — nothing else to ins
 1. Download `CricketStream.exe` (or `CricketStream-mac.zip`) from the
    [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
    and put it in a folder of its own on the NV Play machine.
-2. Double-click it. The setup page opens in the browser: under **What is this computer
-   for?** pick **Scorer's machine, elsewhere**.
+2. Double-click it. The CricketStream window asks which computer this is: click **Set
+   this computer up as an NV Play bridge** (under the two big choices).
 3. Give it the NV Play output folder (find it in NV Play under **Tools → Configuration →
-   Scoreboard**; it's often filled in for you) and keep the suggested port (5050) unless
-   something else uses it. Press **Save and start**.
-4. The page shows a **token** — copy it; the streaming machine needs it. It's saved in
-   `bridge_config.ini` next to CricketStream, so you won't be asked again: on future match
-   days just double-click CricketStream. The black window prints the token every time it
-   starts, too. Keep this window open while streaming.
+   Scoreboard**; it's often filled in for you, or press **Browse…**) and keep the
+   suggested port (5050) unless something else uses it. Press **Save and continue**.
+4. The window shows the **bridge address** and **token**, each with a **Copy** button —
+   the streaming machine needs both. They're saved in `bridge_config.ini` next to
+   CricketStream, so you won't be asked again: on future match days just double-click
+   CricketStream and the same window shows them. Keep it open while streaming.
 
 (Running it by hand, or on a machine already set up for something else:
 `CricketStream bridge` asks the same two questions in the window instead.)

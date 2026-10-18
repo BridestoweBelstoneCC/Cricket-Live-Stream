@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="app-key" content="{{APP_KEY}}">
+<title>CricketStream</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{
+  --bg:#0b1422; --surface:#13203a; --surface-2:#1a2a48; --border:#2a3d63;
+  --text:#e8eef8; --muted:#9fb0cc; --accent:#4c9aff; --accent-strong:#2f7de1;
+  --on-accent:#ffffff; --ok:#3ccf8e; --warn:#f5b942; --bad:#ff6b6b;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;min-height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);
+  background:var(--surface)}
+header img{width:28px;height:28px}
+header .name{font-weight:700;font-size:16px}
+header .where{color:var(--muted);font-size:13.5px}
+header .grow{flex:1}
+main{flex:1;width:100%;max-width:880px;margin:0 auto;padding:28px 18px 40px}
+h1{font-size:26px;margin:0 0 6px}
+h2{font-size:17px;margin:0 0 6px}
+p.lead{color:var(--muted);margin:0 0 22px;font-size:15.5px}
+a{color:var(--accent)}
+section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px;margin:0 0 14px}
+.hint{color:var(--muted);font-size:13.5px;margin:0 0 10px}
+button{font:inherit}
+.btn{font-weight:600;border:1px solid var(--border);border-radius:8px;padding:9px 16px;cursor:pointer;
+  background:var(--surface-2);color:var(--text)}
+.btn:hover{border-color:var(--accent)}
+a.btn{text-decoration:none;display:inline-block}
+.btn.primary{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--on-accent)}
+.btn.big{padding:14px 28px;font-size:17px}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.quiet{background:none;border-color:transparent;color:var(--muted)}
+.btn.quiet:hover{color:var(--text)}
+.btn:disabled{opacity:.55;cursor:default}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{display:block;text-align:left;border:1px solid var(--border);border-radius:var(--radius);padding:18px;
+  background:var(--surface);color:var(--text);cursor:pointer;width:100%}
+.card:hover,.card:focus-visible{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.card .icon{font-size:30px;line-height:1;margin-bottom:10px}
+.card strong{display:block;font-size:16px;margin-bottom:4px}
+.card span{color:var(--muted);font-size:13.5px}
+.card.small{padding:12px 16px}
+.choice{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:12px;
+  background:var(--surface-2);cursor:pointer}
+.opt:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.opt input{margin:4px 0 0}
+.opt strong{display:block}
+.opt span{color:var(--muted);font-size:13.5px}
+.status{display:flex;gap:14px;align-items:center;margin:0 0 18px}
+.light{width:18px;height:18px;border-radius:50%;flex:0 0 auto;background:var(--muted)}
+.light.ok{background:var(--ok);box-shadow:0 0 12px var(--ok)}
+.light.warn{background:var(--warn)}
+.light.bad{background:var(--bad)}
+.light.busy{background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.status h1{margin:0}
+.facts{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:14px}
+.fact{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.fact .k{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.04em}
+.fact .v{font-size:16px;font-weight:600;margin-top:2px;word-break:break-word}
+.fact .s{color:var(--muted);font-size:13.5px;margin-top:2px}
+.ok-t{color:var(--ok)} .warn-t{color:var(--warn)} .bad-t{color:var(--bad)}
+code,.mono{font-family:ui-monospace,Consolas,monospace}
+.token{font:600 15px ui-monospace,Consolas,monospace;background:var(--surface-2);padding:8px 10px;
+  border-radius:6px;word-break:break-all;user-select:all;flex:1}
+.copyrow{display:flex;gap:8px;align-items:center;margin:4px 0 10px}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{padding:5px 0 5px 28px;position:relative;border-bottom:1px solid rgba(42,61,99,.5)}
+.steps li:last-child{border-bottom:0}
+.steps li::before{position:absolute;left:4px;top:5px;content:"•";color:var(--muted)}
+.steps li.ok::before{content:"✓";color:var(--ok)}
+.steps li.warn::before{content:"⚠";color:var(--warn)}
+.steps li.bad::before{content:"✗";color:var(--bad)}
+.steps li.ok,.steps li.plain{color:var(--text)}
+.steps li.warn{color:var(--warn)}
+.steps li.bad{color:var(--bad)}
+.steps li.head{font-weight:700;padding-left:4px;margin-top:6px}
+.steps li.head::before{content:""}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--surface-2);border-radius:6px;font-size:14px;margin:10px 0}
+.note.good{border-color:var(--ok)}
+.field-row{display:flex;gap:8px}
+.field-row input{flex:1;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);
+  color:var(--text);font:inherit}
+/* The activity log: everything the app prints, as the console window used to show it. */
+#logpane{position:fixed;inset:auto 0 0 0;height:46vh;background:#060c16;border-top:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:20}
+#logpane .bar{display:flex;gap:10px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);font-size:13.5px}
+#logpane .bar strong{flex:1}
+#log{flex:1;overflow:auto;margin:0;padding:8px 12px;font:12.5px/1.45 ui-monospace,Consolas,monospace;
+  white-space:pre-wrap;word-break:break-word;color:#c9d6ea}
+#log .ok{color:var(--ok)} #log .warn{color:var(--warn)} #log .bad{color:var(--bad)}
+body.logopen main{padding-bottom:48vh}
+/* A question the app is waiting on. */
+#ask{position:fixed;inset:0;background:rgba(3,7,14,.72);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+#ask .box{background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:560px;width:100%;
+  padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+#ask .box.problem{border-color:var(--bad)}
+#ask h2{font-size:19px}
+#ask .lines{white-space:pre-wrap;color:var(--text);font-size:14px;margin:8px 0 0;max-height:46vh;overflow:auto}
+#ask input{width:100%;margin-top:12px;padding:9px 11px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);font:inherit}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none !important}
+footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
+@media (max-width:560px){h1{font-size:22px}main{padding:18px 14px}}
+</style>
+</head>
+<body>
+<header>
+  <img src="/brand/mark-transparent.png" alt="">
+  <div><div class="name">CricketStream</div><div class="where" id="where"></div></div>
+  <div class="grow"></div>
+  <button class="btn quiet hidden" id="to_panel" type="button">Control panel</button>
+  <button class="btn quiet" id="log_toggle" type="button" aria-expanded="false">Activity</button>
+</header>
+
+<main>
+  <!-- First run: which computer is this? -->
+  <div id="v-welcome" class="view hidden">
+    <h1>Welcome to CricketStream</h1>
+    <p class="lead">Live scores and graphics on your club's YouTube stream. First, which computer is this?</p>
+    <div class="cards">
+      <button class="card" type="button" data-role="streaming"><div class="icon">🎥</div>
+        <strong>The streaming laptop</strong>
+        <span>Runs OBS and sends the stream to YouTube. Pick this if NV Play is on this laptop too.</span></button>
+      <button class="card" type="button" data-role="scorer"><div class="icon">📋</div>
+        <strong>The scorer's laptop</strong>
+        <span>NV Play runs here. It shares the score with the streaming laptop over the club's wifi.</span></button>
+    </div>
+    <p class="hint" style="margin-top:16px">The scorer is somewhere else, not on the same wifi?
+      <button class="btn quiet" type="button" data-role="bridge" style="padding:0;text-decoration:underline">Set this computer up as an NV Play bridge</button>
+      (it's reached over Tailscale).</p>
+  </div>
+
+  <!-- The streaming laptop, before match day. -->
+  <div id="v-home" class="view hidden">
+    <h1 id="home_title">Match day</h1>
+    <p class="lead">Start match day when you're at the ground. CricketStream opens OBS, sets up its scenes,
+      fetches today's match from PlayCricket and starts the graphics, then shows the control panel here.</p>
+    <section>
+      <h2>Who uses the control panel today?</h2>
+      <div class="choice">
+        <label class="opt"><input type="radio" name="remote" value="0" checked><div>
+          <strong>Just this laptop</strong><span>The usual choice.</span></div></label>
+        <label class="opt"><input type="radio" name="remote" value="1"><div>
+          <strong>Phones and tablets too</strong><span>Volunteers on the club's wifi or Tailscale can open it.
+          They'll need the club password.</span></div></label>
+      </div>
+    </section>
+    <section>
+      <h2>How is today's match being scored?</h2>
+      <div class="choice">
+        <label class="opt"><input type="radio" name="manual" value="0" checked><div>
+          <strong>NV Play / PCS Pro</strong><span>The scorer's software feeds the score (on this laptop or the scorer's).</span></div></label>
+        <label class="opt"><input type="radio" name="manual" value="1"><div>
+          <strong>By hand</strong><span>Someone scores ball by ball on a phone or tablet.</span></div></label>
+      </div>
+      <p class="note hidden" id="manual_note">A saved hand-scoring session is still here from last time. Starting
+        with NV Play asks whether to clear it, so it doesn't replace the scorer's feed.</p>
+    </section>
+    <div class="actions">
+      <button class="btn primary big" type="button" id="start">Start match day</button>
+      <a class="btn" href="/setup?app=1" id="home_settings">Settings</a>
+      <button class="btn quiet" type="button" data-open="app">Open the CricketStream folder</button>
+    </div>
+    <p class="hint" style="margin-top:14px">To rehearse without a scorer, start match day and use
+      <strong>Match day → Practice match</strong> in the control panel.</p>
+  </div>
+
+  <!-- Getting ready, and match day running. -->
+  <div id="v-starting" class="view hidden">
+    <div class="status"><span class="light busy" id="run_light"></span><h1 id="run_title">Getting ready…</h1></div>
+    <p class="lead" id="run_lead">Opening OBS, fetching today's match and starting the graphics. This takes up to a minute.</p>
+    <section><ul class="steps" id="steps"></ul></section>
+    <div class="actions">
+      <button class="btn primary" type="button" id="back_panel" hidden>Back to the control panel</button>
+      <button class="btn danger" type="button" id="stop_match" hidden>Stop match day</button>
+    </div>
+  </div>
+
+  <!-- Match day over. -->
+  <div id="v-stopped" class="view hidden">
+    <div class="status"><span class="light ok"></span><h1>Match day is over</h1></div>
+    <p class="lead">Thanks for streaming. Anything saved (the match report, sponsor airtime) is listed below and
+      in the CricketStream folder.</p>
+    <section><ul class="steps" id="saved_list"></ul></section>
+    <div class="actions">
+      <button class="btn primary" type="button" data-close>Close CricketStream</button>
+      <button class="btn" type="button" data-open="app">Open the CricketStream folder</button>
+      <button class="btn quiet" type="button" id="start_again">Start again</button>
+    </div>
+  </div>
+
+  <!-- A second copy on a laptop already running match day. -->
+  <div id="v-already" class="view hidden">
+    <div class="status"><span class="light ok"></span><h1>Already running</h1></div>
+    <p class="lead">CricketStream is already running match day on this laptop (another window started it).
+      You can open its control panel here.</p>
+    <div class="actions"><button class="btn primary" type="button" id="open_existing">Open the control panel</button>
+      <button class="btn quiet" type="button" data-close>Close this window</button></div>
+  </div>
+
+  <!-- The scorer's laptop. -->
+  <div id="v-agent" class="view hidden">
+    <div class="status"><span class="light" id="agent_light"></span><h1 id="agent_title">Scorer's laptop</h1></div>
+    <p class="lead" id="agent_lead"></p>
+    <section id="agent_pick" class="hidden">
+      <h2>Where does NV Play save its scoreboard?</h2>
+      <p class="hint">In NV Play / PCS Pro it's under Tools → Configuration → Scoreboard, the "Output Folder" box.
+        You only choose it once.</p>
+      <div class="field-row"><input type="text" id="agent_folder_in" placeholder="C:\Users\…\Cricket Matches\_Scoreboards\Output" aria-label="NV Play's output folder">
+        <button class="btn" type="button" id="agent_browse" hidden>Browse…</button>
+        <button class="btn primary" type="button" id="agent_use">Use this folder</button></div>
+      <p class="hint bad-t" id="agent_pick_msg"></p>
+    </section>
+    <div class="facts" id="agent_facts">
+      <div class="fact"><div class="k">NV Play's scoreboard</div><div class="v" id="a_file">—</div><div class="s" id="a_file_s"></div></div>
+      <div class="fact"><div class="k">Streaming laptop</div><div class="v" id="a_client">Not connected yet</div><div class="s" id="a_client_s"></div></div>
+      <div class="fact"><div class="k">This laptop's address</div><div class="v mono" id="a_addr">—</div><div class="s">The streaming laptop finds it with "Find scorer laptop".</div></div>
+    </div>
+    <section id="agent_folder_box">
+      <h2>Watching</h2>
+      <div class="copyrow"><code class="token" id="a_folder"></code>
+        <button class="btn" type="button" id="agent_change">Change…</button></div>
+      <p class="hint" id="a_template"></p>
+    </section>
+    <p class="note hidden" id="agent_err"></p>
+    <section>
+      <h2>On the streaming laptop</h2>
+      <p class="hint" style="margin:0">Control panel → <strong>Setup</strong> → Scoring source → <strong>Scorer laptop (network)</strong>,
+        then <strong>Find scorer laptop</strong>. Keep this window open for the whole match — minimise it if it's in the way.</p>
+    </section>
+    <div class="actions">
+      <a class="btn" href="/setup?app=1">Change setup</a>
+      <button class="btn danger" type="button" data-askclose id="agent_stop">Stop sharing</button>
+    </div>
+  </div>
+
+  <!-- The NV Play bridge. -->
+  <div id="v-bridge" class="view hidden">
+    <div class="status"><span class="light" id="bridge_light"></span><h1 id="bridge_title">NV Play bridge</h1></div>
+    <p class="lead" id="bridge_lead"></p>
+    <section>
+      <h2>On the streaming laptop</h2>
+      <p class="hint">Control panel → <strong>Setup</strong> → Scoring source → NV Play bridge. Enter:</p>
+      <div class="k hint" style="margin:0">Bridge address</div>
+      <div class="copyrow"><code class="token" id="b_url"></code><button class="btn" type="button" data-copy="b_url">Copy</button></div>
+      <div class="k hint" style="margin:0">Bridge token</div>
+      <div class="copyrow"><code class="token" id="b_token"></code><button class="btn" type="button" data-copy="b_token">Copy</button></div>
+      <p class="hint" id="b_ts"></p>
+    </section>
+    <div class="facts">
+      <div class="fact"><div class="k">NV Play's scoreboard</div><div class="v" id="b_file">—</div><div class="s" id="b_file_s"></div></div>
+      <div class="fact"><div class="k">Streaming laptop</div><div class="v" id="b_client">Not connected yet</div><div class="s" id="b_client_s"></div></div>
+    </div>
+    <p class="note hidden" id="bridge_err"></p>
+    <div class="actions">
+      <a class="btn" href="/setup?app=1">Change setup</a>
+      <button class="btn danger" type="button" data-askclose id="bridge_stop">Stop the bridge</button>
+    </div>
+  </div>
+
+  <!-- Closing while something's running. -->
+  <div id="v-close" class="view hidden">
+    <h1 id="close_title">Stop CricketStream?</h1>
+    <p class="lead" id="close_lead"></p>
+    <div class="actions">
+      <button class="btn danger big" type="button" id="close_yes">Stop and close</button>
+      <button class="btn" type="button" id="close_no">Keep it running</button>
+    </div>
+  </div>
+</main>
+<footer id="foot"></footer>
+
+<div id="ask" class="hidden" role="dialog" aria-modal="true" aria-labelledby="ask_title">
+  <div class="box">
+    <h2 id="ask_title"></h2>
+    <div class="lines" id="ask_lines"></div>
+    <input type="text" id="ask_input" class="hidden" aria-label="Your answer">
+    <div class="actions" id="ask_buttons"></div>
+  </div>
+</div>
+
+<div id="logpane" class="hidden">
+  <div class="bar"><strong>Activity</strong>
+    <button class="btn quiet" type="button" data-open="logs">Open the log folder</button>
+    <button class="btn quiet" type="button" id="log_close">Hide</button></div>
+  <pre id="log"></pre>
+</div>
+
+<script>
+var KEY = document.querySelector('meta[name=app-key]').content;
+var S = {phase: '', log: []};      // the last status
+var since = 0, logLines = [], shownQ = 0, closeWanted = false, homeAgain = false;
+function $(id) { return document.getElementById(id); }
+function api(path, body) {
+  var o = {headers: {'X-App-Key': KEY}};
+  if (body !== undefined) { o.method = 'POST'; o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
+  return fetch('/api/' + path, o).then(function (r) { return r.json(); });
+}
+function txt(id, t) { var e = $(id); if (e) e.textContent = t == null ? '' : String(t); }
+function ago(s) {
+  if (s == null) return '';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + ' min ago';
+  return Math.floor(s / 3600) + ' h ago';
+}
+function kind(line) {
+  var t = line.trim();
+  if (/^(✓|✔|\[ok\])/i.test(t)) return 'ok';
+  if (/^(⚠|\[!!\]|!)/.test(t) || /WARNING/.test(t)) return 'warn';
+  if (/^(✗|PROBLEM)/.test(t)) return 'bad';
+  return '';
+}
+
+// ── Views ──
+function view() {
+  var h = location.hash.replace('#', '');
+  if (h === 'close' && ['starting', 'running', 'agent', 'bridge'].indexOf(S.phase) >= 0) return 'close';
+  var p = S.phase;
+  if (p === 'running') return 'starting';
+  if (p === 'stopped' && homeAgain) return 'home';
+  return p || 'welcome';
+}
+function render() {
+  var v = view();
+  document.querySelectorAll('.view').forEach(function (el) { el.classList.toggle('hidden', el.id !== 'v-' + v); });
+  var where = {welcome: 'First-time setup', home: 'Streaming laptop', starting: 'Streaming laptop — match day',
+    running: 'Streaming laptop — match day', stopped: 'Streaming laptop', already: 'Streaming laptop',
+    agent: "Scorer's laptop", bridge: 'NV Play bridge'}[S.phase] || '';
+  if (S.home && S.home.club && ['home', 'starting', 'running', 'stopped'].indexOf(S.phase) >= 0) where = S.home.club + ' · ' + where;
+  txt('where', where);
+  $('to_panel').classList.toggle('hidden', !(S.phase === 'running' && S.panel_url));
+  txt('foot', 'CricketStream ' + (S.version ? 'v' + S.version.replace(/^v/, '') : '(development build)'));
+  if (v === 'home') renderHome();
+  if (v === 'starting') renderStarting();
+  if (v === 'stopped') renderStopped();
+  if (v === 'agent') renderAgent();
+  if (v === 'bridge') renderBridge();
+  if (v === 'close') renderClose();
+}
+
+var homeSeen = false;
+function renderHome() {
+  var h = S.home || {};
+  txt('home_title', h.club ? 'Match day at ' + h.club : 'Match day');
+  if (!homeSeen) {   // the saved answers once, then the operator's own choice
+    homeSeen = true;
+    document.querySelector('input[name=remote][value="' + (h.remote ? 1 : 0) + '"]').checked = true;
+  }
+  $('manual_note').classList.toggle('hidden', !h.manual_session);
+}
+
+// The launcher's lines since "Start match day", as a checklist.
+function stepLines(from) {
+  return logLines.filter(function (l) { return l.n > from; }).map(function (l) { return l.t; })
+    .filter(function (t) {
+      // The consoles' boxes and their Ctrl+C advice: the window has its own Stop.
+      return t.trim() && !/^[╔╚║╠╣═─\s]+$/.test(t.trim()) && !/^\s*[╔╚║╠]/.test(t) &&
+        !/Ctrl\+C|Keep this window open/.test(t);
+    });
+}
+function renderStarting() {
+  var running = S.phase === 'running';
+  $('run_light').className = 'light ' + (running ? 'ok' : 'busy');
+  txt('run_title', running ? 'Match day is running' : 'Getting ready…');
+  txt('run_lead', running ? 'The control panel is where everything happens. This page shows what CricketStream did to get ready.'
+    : 'Opening OBS, fetching today\'s match and starting the graphics. This takes up to a minute.');
+  $('back_panel').hidden = !running;
+  $('stop_match').hidden = !running;
+  var ul = $('steps');
+  var lines = stepLines(S.start_line || 0).slice(-60);
+  ul.textContent = '';
+  lines.forEach(function (t) {
+    var li = document.createElement('li');
+    var k = kind(t);
+    li.className = k || (/^\s{0,2}\S/.test(t) && /[:—]$|^─/.test(t.trim()) ? 'head' : 'plain');
+    li.textContent = t.trim().replace(/^(✓|⚠|✗)\s*/, '');
+    ul.appendChild(li);
+  });
+}
+function renderStopped() {
+  var ul = $('saved_list');
+  ul.textContent = '';
+  var saved = stepLines(S.start_line || 0).filter(function (t) { return /Saved to:|Saved .* —|airtime/i.test(t); });
+  var none = !saved.length;
+  if (none) saved = ['Nothing was saved this time.'];
+  saved.forEach(function (t) { var li = document.createElement('li'); li.className = none ? 'plain' : 'ok'; li.textContent = t.trim(); ul.appendChild(li); });
+}
+
+function renderAgent() {
+  var a = S.agent || {};
+  var light = 'warn', title = 'Waiting for NV Play', lead = '';
+  if (a.need_folder) {
+    light = 'warn'; title = 'Choose NV Play\'s folder';
+    lead = 'CricketStream couldn\'t find where NV Play saves its scoreboard on this laptop.';
+  } else if (!a.running) {
+    light = 'bad'; title = 'Not sharing the score'; lead = a.error || '';
+  } else if (a.health === 'live') {
+    light = 'ok'; title = 'Sharing the score';
+    lead = a.collected ? 'NV Play is scoring and the streaming laptop is collecting it.' : 'NV Play is scoring. Waiting for the streaming laptop to connect.';
+  } else if (a.file) {
+    light = 'warn'; title = 'Ready — waiting for the next ball';
+    lead = 'NV Play\'s scoreboard file is here but hasn\'t changed lately. Normal before play and between innings.';
+  } else {
+    lead = 'No scoreboard file yet. In NV Play, make sure scoreboard output is switched on (Tools → Configuration → Scoreboard).';
+  }
+  $('agent_stop').classList.toggle('hidden', !a.running);
+  $('agent_light').className = 'light ' + light;
+  txt('agent_title', title); txt('agent_lead', lead);
+  var pick = $('agent_pick');
+  pick.classList.toggle('hidden', !a.need_folder && !agentPicking);
+  $('agent_facts').classList.toggle('hidden', !!a.need_folder);
+  $('agent_folder_box').classList.toggle('hidden', !!a.need_folder);
+  txt('a_folder', a.folder || '');
+  txt('a_file', a.file || 'No file yet');
+  txt('a_file_s', a.file ? (a.health === 'live' ? 'Updated ' + ago(a.age) + ' — live' : 'Updated ' + ago(a.age)) : 'Waiting for NV Play');
+  $('a_file').className = 'v ' + (a.health === 'live' ? 'ok-t' : a.file ? 'warn-t' : '');
+  txt('a_client', a.collected ? 'Connected' : 'Not connected yet');
+  $('a_client').className = 'v ' + (a.collected && a.collected_ago < 30 ? 'ok-t' : '');
+  txt('a_client_s', a.collected ? 'Collected ' + ago(a.collected_ago) + (a.client ? ' by ' + a.client : '') : 'It connects when the streaming laptop picks "Scorer laptop".');
+  txt('a_addr', a.ip ? a.ip + ':' + a.port : '—');
+  var t = {installed: 'Put the CricketStream scoreboard template in NV Play\'s Templates folder. In NV Play: Tools → Configuration → Scoreboard → Template File → scoreboard.template (once).',
+    updated: 'Updated the CricketStream scoreboard template in NV Play\'s Templates folder (the old one is kept as scoreboard.template.old).',
+    current: 'NV Play\'s Templates folder has the CricketStream scoreboard template.'}[a.template] || '';
+  txt('a_template', t);
+  var err = $('agent_err');
+  var e = a.error || a.discovery_error && ('The streaming laptop can\'t find this one automatically (' + a.discovery_error + '). Type ' + a.ip + ':' + a.port + ' into its control panel instead.');
+  err.classList.toggle('hidden', !e); txt('agent_err', e || '');
+}
+var agentPicking = false;
+
+function renderBridge() {
+  var b = S.bridge || {};
+  var light = 'warn', title = 'Waiting for NV Play', lead = '';
+  if (!b.running) { light = 'bad'; title = 'The bridge isn\'t running'; lead = b.error || ''; }
+  else if (!b.folder_ok) { light = 'bad'; title = 'NV Play\'s folder is missing'; lead = 'The folder in setup doesn\'t exist on this computer: ' + (b.folder || '(none)') + '. Press Change setup.'; }
+  else if (b.health === 'live') { light = 'ok'; title = 'Bridging the score'; lead = b.collected ? 'NV Play is scoring and the streaming laptop is collecting it.' : 'NV Play is scoring. Waiting for the streaming laptop to connect.'; }
+  else if (b.file) { title = 'Ready — waiting for the next ball'; lead = 'The scoreboard file is here but hasn\'t changed lately. Normal before play.'; }
+  else { lead = 'No scoreboard file yet. In NV Play, make sure scoreboard output is switched on.'; }
+  $('bridge_stop').classList.toggle('hidden', !b.running);
+  $('bridge_light').className = 'light ' + light;
+  txt('bridge_title', title); txt('bridge_lead', lead);
+  txt('b_url', b.url || ''); txt('b_token', b.token || '');
+  txt('b_ts', b.tailscale ? 'That\'s this computer\'s Tailscale address — the streaming laptop needs Tailscale too, on the same account.'
+    : 'Tailscale isn\'t running here, so that\'s the local network address. Install Tailscale on both machines to reach this one from anywhere.');
+  txt('b_file', b.file || 'No file yet');
+  $('b_file').className = 'v ' + (b.health === 'live' ? 'ok-t' : b.file ? 'warn-t' : '');
+  txt('b_file_s', b.file ? 'Updated ' + ago(b.age) : 'Waiting for NV Play');
+  txt('b_client', b.collected ? 'Connected' : 'Not connected yet');
+  txt('b_client_s', b.collected ? 'Collected ' + ago(b.collected_ago) + (b.client ? ' by ' + b.client : '') : '');
+  var err = $('bridge_err'); err.classList.toggle('hidden', !b.error); txt('bridge_err', b.error || '');
+}
+
+function renderClose() {
+  var p = S.phase;
+  if (p === 'agent' || p === 'bridge') {
+    txt('close_title', p === 'agent' ? 'Stop sharing the score?' : 'Stop the bridge?');
+    txt('close_lead', 'The streaming laptop stops getting the score from NV Play until CricketStream is opened here again.');
+  } else {
+    txt('close_title', 'Stop match day?');
+    txt('close_lead', 'The graphics stop on the stream, and the control panel closes. OBS keeps running — stop the stream in OBS (or the control panel) first if you\'re finished.');
+  }
+}
+
+// ── The log ──
+function addLog(lines) {
+  if (!lines || !lines.length) return;
+  var pre = $('log');
+  var atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+  lines.forEach(function (l) {
+    logLines.push(l);
+    var span = document.createElement('span');
+    var k = kind(l.t);
+    if (k) span.className = k;
+    span.textContent = l.t + '\n';
+    pre.appendChild(span);
+  });
+  if (logLines.length > 3000) { logLines = logLines.slice(-3000); while (pre.childNodes.length > 3000) pre.removeChild(pre.firstChild); }
+  if (atEnd) pre.scrollTop = pre.scrollHeight;
+}
+function showLog(open) {
+  $('logpane').classList.toggle('hidden', !open);
+  document.body.classList.toggle('logopen', open);
+  $('log_toggle').setAttribute('aria-expanded', String(open));
+  if (open) $('log').scrollTop = $('log').scrollHeight;
+}
+$('log_toggle').addEventListener('click', function () { showLog($('logpane').classList.contains('hidden')); });
+$('log_close').addEventListener('click', function () { showLog(false); });
+
+// ── Questions the app is waiting on ──
+function renderQuestion(q) {
+  var box = $('ask');
+  if (!q) { box.classList.add('hidden'); shownQ = 0; return; }
+  if (q.id === shownQ) return;
+  shownQ = q.id;
+  box.classList.remove('hidden');
+  box.querySelector('.box').classList.toggle('problem', !!q.title);
+  txt('ask_title', q.title || q.text || 'CricketStream');
+  txt('ask_lines', q.title ? (q.lines || []).join('\n') + (q.text ? '\n\n' + q.text : '') : '');
+  var input = $('ask_input');
+  input.classList.toggle('hidden', q.kind !== 'input');
+  input.value = '';
+  var bar = $('ask_buttons');
+  bar.textContent = '';
+  function button(label, cls, body) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn ' + (cls || ''); b.textContent = label;
+    b.addEventListener('click', function () {
+      body.id = q.id;
+      if (q.kind === 'input' && !body.dismissed) body.text = input.value;
+      bar.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+      api('answer', body).then(poll, poll);
+    });
+    bar.appendChild(b);
+    return b;
+  }
+  var first;
+  if (q.kind === 'confirm') {
+    first = button('Yes', q.default ? 'primary' : '', {yes: true});
+    var no = button('No', q.default ? '' : 'primary', {yes: false});
+    if (!q.default) first = no;
+  } else if (q.kind === 'input') {
+    first = button('OK', 'primary', {});
+    button('Cancel', '', {dismissed: true});
+    input.onkeydown = function (e) { if (e.key === 'Enter') first.click(); };
+    setTimeout(function () { input.focus(); }, 30);
+    return;
+  } else {
+    first = button(q.button || 'Continue', 'primary', {});
+  }
+  setTimeout(function () { first.focus(); }, 30);
+}
+
+// ── Actions ──
+document.querySelectorAll('[data-role]').forEach(function (b) {
+  b.addEventListener('click', function () { location.href = '/setup?app=1&role=' + b.getAttribute('data-role'); });
+});
+$('start').addEventListener('click', function () {
+  var remote = document.querySelector('input[name=remote]:checked').value === '1';
+  var manual = document.querySelector('input[name=manual]:checked').value === '1';
+  $('start').disabled = true;
+  homeAgain = false;
+  api('start', {remote: remote, manual: manual}).then(function (d) {
+    $('start').disabled = false;
+    if (!d.ok) alertNote(d.error);
+    poll();
+  });
+});
+$('start_again').addEventListener('click', function () { homeAgain = true; homeSeen = false; render(); });
+$('back_panel').addEventListener('click', function () { api('panel', {}); });
+$('to_panel').addEventListener('click', function () { api('panel', {}); });
+$('open_existing').addEventListener('click', function () { api('panel', {}); });
+$('stop_match').addEventListener('click', function () { location.hash = 'close'; render(); });
+document.querySelectorAll('[data-askclose]').forEach(function (b) { b.addEventListener('click', function () { location.hash = 'close'; render(); }); });
+$('close_no').addEventListener('click', function () {
+  location.hash = '';
+  if (S.phase === 'running') api('panel', {}); else render();
+});
+$('close_yes').addEventListener('click', function () {
+  closeWanted = S.phase === 'agent' || S.phase === 'bridge';
+  $('close_yes').disabled = true;
+  location.hash = '';
+  api('stop', {}).then(function () {
+    if (closeWanted) api('close', {});
+    $('close_yes').disabled = false;
+    poll();
+  });
+});
+document.querySelectorAll('[data-close]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    api('close', {}).then(function (d) { if (!d.ok) alertNote(d.error); else document.body.innerHTML = '<main><h1>CricketStream has closed</h1><p class="lead">You can close this tab.</p></main>'; });
+  });
+});
+document.querySelectorAll('[data-open]').forEach(function (b) {
+  b.addEventListener('click', function () { api('open', {what: b.getAttribute('data-open')}); });
+});
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = $(b.getAttribute('data-copy')).textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () {
+      b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+    }, function () { var r = document.createRange(); r.selectNodeContents($(b.getAttribute('data-copy'))); getSelection().removeAllRanges(); getSelection().addRange(r); });
+  });
+});
+function useFolder(f) {
+  if (!f) return;
+  txt('agent_pick_msg', '');
+  api('agent/folder', {folder: f}).then(function (d) {
+    if (!d.ok) { txt('agent_pick_msg', d.error); return; }
+    agentPicking = false; poll();
+  });
+}
+$('agent_use').addEventListener('click', function () { useFolder($('agent_folder_in').value.trim()); });
+$('agent_folder_in').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('agent_use').click(); });
+if (window.csApp && window.csApp.pickFolder) {
+  $('agent_browse').hidden = false;
+  $('agent_browse').addEventListener('click', function () {
+    window.csApp.pickFolder('Choose NV Play\'s scoreboard Output folder', (S.agent || {}).folder || '').then(function (p) {
+      if (p) { $('agent_folder_in').value = p; useFolder(p); }
+    });
+  });
+}
+$('agent_change').addEventListener('click', function () {
+  if (window.csApp && window.csApp.pickFolder) {
+    window.csApp.pickFolder('Choose NV Play\'s scoreboard Output folder', (S.agent || {}).folder || '').then(useFolder);
+  } else { agentPicking = true; $('agent_folder_in').value = (S.agent || {}).folder || ''; render(); }
+});
+function alertNote(msg) {
+  renderQuestion({id: -Date.now(), kind: 'pause', text: msg || 'Something went wrong.', button: 'OK'});
+  var b = $('ask_buttons').querySelector('button');
+  if (b) b.onclick = function (e) { e.stopImmediatePropagation(); $('ask').classList.add('hidden'); shownQ = 0; };
+}
+window.addEventListener('hashchange', function () {
+  if (location.hash === '#log') { showLog(true); }
+  render();
+});
+
+// ── Polling ──
+var polling = false;
+function poll() {
+  if (polling) return;
+  polling = true;
+  api('status?since=' + since).then(function (d) {
+    polling = false;
+    addLog(d.log); since = d.next;
+    S = d;
+    render();
+    renderQuestion(d.question);
+  }, function () { polling = false; });
+}
+if (location.hash === '#log') showLog(true);
+poll();
+setInterval(poll, 800);
+</script>
+</body>
+</html>

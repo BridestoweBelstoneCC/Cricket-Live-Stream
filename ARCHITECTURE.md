@@ -144,15 +144,22 @@ A live manual-scoring session (`/scoring`) outranks all three.
 
 Everything is one Go program, `CricketStream`, with every page, font and template built
 in (`embed.go`; a file of the same name beside the binary overrides the built-in copy, so
-panel edits still show on refresh). With no arguments it does the job `config.ini`'s
-`role` says, or opens the setup page if there's no `config.ini` yet:
+panel edits still show on refresh). With no arguments it opens its own window
+(`internal/app`) and does the job `config.ini`'s `role` says there, or asks which
+computer this is if there's no `config.ini` yet:
 
-| Role (setup page) | Runs | Package |
+| Role (first screen) | Runs, in the window | Package |
 |---|---|---|
-| Streaming laptop | the launcher: fixture, OBS prep + setup, the server as a supervised child process, pre-flight, telemetry; airtime + report on Ctrl+C | `internal/launcher` → `internal/server` |
-| Scorer's laptop, same wifi | the scorer agent | `internal/agent` |
-| Scorer's machine, elsewhere | the NV Play bridge | `internal/bridge` |
-| (no config.ini) | the setup page, then the chosen role | `internal/setup` |
+| The streaming laptop | the match-day screen; Start runs the launcher (fixture, OBS prep + setup, the server as a supervised child process, pre-flight, telemetry), then the control panel shows in the window; Stop offers the airtime + report | `internal/app` → `internal/launcher` → `internal/server` |
+| The scorer's laptop | the scorer agent, with its status (NV Play's file, the streaming laptop collecting it, this laptop's address) | `internal/app` → `internal/agent` |
+| NV Play bridge (scorer elsewhere) | the bridge, with its address and token | `internal/app` → `internal/bridge` |
+| (no config.ini) | "which computer is this?", the setup page, then that role — no restart | `internal/app` → `internal/setup` |
+
+The window is the system web view (WebView2 on Windows) showing pages the app serves on a
+loopback port, each API call carrying a per-run key only its own page has. Where there's
+no web view the same pages open in the browser. The control panel stays a web page served
+by the server, because phones and tablets use it too; in the window it's logged in with
+the launcher's session and gains Activity and Stop buttons.
 
 Every part is also a subcommand (`server`, `agent`, `bridge`, `simulate`, `obs-setup`,
 `telemetry`, …) for automation and troubleshooting.
@@ -245,6 +252,7 @@ flowchart LR
 | `internal/logobg` | Transparent background for sponsor logos | yes |
 | `internal/obs` | OBS config files while OBS is closed; launch, close, crash marker, freeze ping; scenes, sources, stream key over the WebSocket | no |
 | `internal/obsws` | The OBS WebSocket v5 client (per-call and held-open); `obswstest` is a fake OBS for tests | no |
+| `internal/app` | The window: first screen, match-day screen, agent/bridge status, the console's questions, activity log | no |
 | `internal/launcher` / `internal/setup` | Match-day launch chain; the first-run setup page | no |
 | `internal/agent` / `internal/bridge` | The scorer's-laptop roles; no dependency on the server package | no |
 | `internal/simulate` | Rehearsal feed: real NV Play quirks, `--chaos` failures | no |

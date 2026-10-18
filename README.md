@@ -289,14 +289,17 @@ It works out for itself what still needs doing:
 
 | | |
 |---|---|
-| **First run** | Opens a setup page in your browser: what this computer is for, your club details, a preview of your stream in your colours with every graphic · writes `config.ini` · starts the match |
-| **Every run after** | Goes straight to the job — on the streaming laptop: OBS, today's fixture, season stats, pre-flight check |
+| **First run** | CricketStream opens in its own window and asks **which computer is this?** — the streaming laptop, or the scorer's laptop — then the setup questions for that one: your club details, a preview of your stream in your colours with every graphic · writes `config.ini` |
+| **Every run after** | Opens on this computer's job — on the streaming laptop the match-day screen (**Start match day**: OBS, today's fixture, season stats, pre-flight check, then the control panel in the same window, logged in); on the scorer's laptop, sharing the score, with a green light when the streaming laptop is collecting it |
 
-Nothing to install first, no files to edit, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time". Everything setup asked can be changed later from **Settings** in the control panel, live. Everything it keeps — settings, match data, badges, sponsor logos — lives in the folder beside it, so one folder is the whole install (and the whole backup).
+Nothing to install first, no files to edit, no console window and no browser tabs, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time". Questions it needs answering come up in the window, an **Activity** view shows everything it did (and saves it in `logs/` beside the app), and closing the window asks before it stops anything that's running. Everything setup asked can be changed later from **Settings** in the control panel, live. Everything it keeps — settings, match data, badges, sponsor logos — lives in the folder beside it, so one folder is the whole install (and the whole backup).
 
-> **Two laptops?** The scorer's machine runs the very same file; on its setup page pick
-> *Scorer's laptop, same wifi* (or *Scorer's machine, elsewhere* for the bridge).
-> See [`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md).
+> **Two laptops?** The scorer's machine runs the very same file; on its first screen click
+> *The scorer's laptop* (or *Set this computer up as an NV Play bridge* when the scorer is
+> elsewhere). See [`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md).
+>
+> **On a Mac** the same screens open in the browser for now, with a Terminal window behind
+> them; the control panel is a web page on every platform, so phones and tablets can use it.
 
 If anything goes wrong, it tells you what and waits — these windows never close on an error you haven't read.
 

@@ -40,19 +40,19 @@ no address to type, no token to copy.
    *Enable Scoreboard Output* ticked. This is the same setup you already use;
    nothing changes here.
 2. Double-click **`CricketStream.exe`** (or **`CricketStream.command`** on a Mac).
-   The first time, a setup page opens in the browser: under **What is this computer
-   for?** pick **Scorer's laptop, same wifi**, check the scoreboard output folder it
-   found (or paste it from PCS Pro's Scoreboard settings), and press **Save and
-   start**. Every time after that, double-clicking goes straight into the agent.
-3. A black window opens and shows something like:
+   The first time, the CricketStream window asks **which computer is this?** — click
+   **The scorer's laptop**. It only needs one answer: the scoreboard output folder, which
+   it usually finds by itself (otherwise press **Browse…**, or paste it from PCS Pro's
+   Scoreboard settings). Press **Save and continue**. Every time after that,
+   double-clicking goes straight to sharing the score.
+3. The window shows a green light and **Sharing the score**, with:
+   - **NV Play's scoreboard** — the file, and how long ago NV Play last wrote it
+   - **Streaming laptop** — *Connected* once the streaming laptop is collecting it
+   - **This laptop's address** — e.g. `192.168.1.40:8788`
 
-   ```
-   Watching folder : C:\Users\Scorer\Documents\Cricket Matches\_Scoreboards\Output
-   This machine    : 192.168.1.40
-   Serving on      : http://192.168.1.40:8788/pcs
-   ```
-
-   That's it. **Leave the window open** for the whole match and forget about it.
+   That's it. **Leave the window open** (minimise it if it's in the way) for the whole
+   match and forget about it. Closing it asks first, because it stops the score reaching
+   the stream.
 
    The first time, it also puts the CricketStream scoreboard template into NV
    Play's Templates folder and says so. If NV Play isn't using it yet, choose it
@@ -65,13 +65,9 @@ no address to type, no token to copy.
    Say **yes**, and tick **Private networks**. If nobody's looking and it gets
    dismissed, see *When it doesn't work* below.
 
-   If it can't find the scoreboard folder on its own, it will tell you. Drag the
-   folder from PCS Pro's Scoreboard settings onto `CricketStream.exe`, or start it
-   from a Command Prompt like this — you only need to do it once, it remembers:
-
-   ```
-   CricketStream agent "C:\Users\Scorer\Documents\Cricket Matches\_Scoreboards\Output"
-   ```
+   If it can't find the scoreboard folder on its own, the window says so and asks for it
+   — **Browse…** to it once and it's remembered. (Dragging the folder onto
+   `CricketStream.exe` does the same, and **Change…** picks another one later.)
 
 ### On the streaming laptop
 
@@ -110,8 +106,8 @@ finds it again automatically.
 
 Work down this list; it's nearly always one of the first two.
 
-1. **Is the agent actually running?** Check the black window is still open on the
-   scoring laptop and hasn't been closed or minimised into oblivion.
+1. **Is it actually sharing?** Check the CricketStream window on the scoring laptop is
+   still open and says **Sharing the score** (or **Ready — waiting for the next ball**).
 2. **Are both laptops on the same wifi?** Not "the club wifi" on one and a phone
    hotspot on the other. Check the network name on both.
 3. **Firewall.** On Windows: Settings → Privacy & security → Windows Security →
@@ -121,8 +117,9 @@ Work down this list; it's nearly always one of the first two.
 4. **Guest wifi.** Some routers isolate guest devices from each other on purpose,
    so the two laptops can't see each other no matter what. Put both on the main
    network, or use a phone hotspot for the pair of them.
-5. **Type the address by hand.** The agent window prints its address
-   (`192.168.1.40:8788`). Put that in the *Scorer laptop address* box and save.
+5. **Type the address by hand.** The scoring laptop's window shows its address under
+   **This laptop's address** (`192.168.1.40:8788`). Put that in the *Scorer laptop
+   address* box and save.
    This skips discovery entirely and is worth doing if your club network is
    awkward — it only breaks when the address changes.
 

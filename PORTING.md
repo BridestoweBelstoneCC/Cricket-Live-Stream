@@ -134,6 +134,16 @@ page, Check buttons, "Your files" folder buttons, desktop shortcut (Windows), pr
 match from the control panel (internal/server/rehearsal.go), auto-opening control panel,
 second-start detection, panic guard, `cricketstream version`.
 
+The app window (2026-10-18, internal/app): the double-click opens CricketStream's own
+window (WebView2 via go-webview2, pure Go; browser fallback elsewhere) with "which computer
+is this?", setup in the window, the match-day screen, the control panel shown in the window
+logged in, agent and bridge status screens, the console's prompts as window questions,
+an activity log + logs/ file, close-asks-first, single instance (port 5098). Windows
+release builds are -H windowsgui. A native Mac window (webview_go needs cgo on a macOS
+runner) is the obvious next step. The OBS sandbox guard (obs.PIDs/Running/Kill/Close
+filtered to the portable copy; obsws.Guard; CRICKETSTREAM_OBS_WS_PORT) came out of a
+manual test that reached the maintainer's open OBS — see CLAUDE.md.
+
 Tests beyond the original's: binary end-to-end (cmd/cricketstream/e2e_*: every role,
 setup -> match day -> Ctrl+C, agent and bridge feeding a server), portable-OBS
 integration (internal/integration: prep/setup/replay/tools, the whole launcher, crash

@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -175,6 +174,22 @@ func isDir(p string) bool {
 	return err == nil && st.IsDir()
 }
 
+// FindFolder is the folder remembered from last time, else NV Play's output folder found
+// on this machine (then remembered): "" if neither. how is "saved", "auto" or "auto-stale".
+func FindFolder() (folder, how string) {
+	if saved := LoadSavedFolder(); saved != "" && isDir(expandUser(saved)) {
+		return expandUser(saved), "saved"
+	}
+	if folder, fresh := scorerfile.Autodetect(); folder != "" {
+		SaveFolder(folder)
+		if fresh == "live" {
+			return folder, "auto"
+		}
+		return folder, "auto-stale"
+	}
+	return "", ""
+}
+
 // ResolveFolder works out which folder to watch, and how we arrived at it.
 func ResolveFolder(argFolder string) (string, string) {
 	if argFolder != "" {
@@ -191,15 +206,8 @@ func ResolveFolder(argFolder string) (string, string) {
 		SaveFolder(folder)
 		return folder, "argument"
 	}
-	if saved := LoadSavedFolder(); saved != "" && isDir(expandUser(saved)) {
-		return expandUser(saved), "saved"
-	}
-	if folder, fresh := scorerfile.Autodetect(); folder != "" {
-		SaveFolder(folder)
-		if fresh == "live" {
-			return folder, "auto"
-		}
-		return folder, "auto-stale"
+	if folder, how := FindFolder(); folder != "" {
+		return folder, how
 	}
 	fmt.Println()
 	fmt.Println("  Could not find the PCS Pro / NV Play scoreboard output folder.")
@@ -271,14 +279,71 @@ type Options struct {
 	CheckTemplate bool
 }
 
-// Run is the agent's whole life: find the folder, install the template, serve.
-func Run(o Options) int {
+func (o *Options) defaults() {
 	if o.Port == 0 {
 		o.Port = DefaultHTTPPort
 	}
 	if o.DiscoveryPort == 0 {
 		o.DiscoveryPort = DefaultDiscoveryPort
 	}
+}
+
+// Running is an agent that's serving (the app's window shows its State).
+type Running struct {
+	State *State
+	// Template is what EnsureTemplate did ("installed", "updated", "current", "") and
+	// TemplatesDir where NV Play's Templates folder is ("" if not found).
+	Template, TemplatesDir string
+	// DiscoveryErr is why discovery couldn't start (nil when it did): the streaming
+	// laptop can still connect by address.
+	DiscoveryErr error
+
+	srv  *http.Server
+	disc net.PacketConn
+}
+
+// PortInUseError is Start failing to listen: almost always the agent already running.
+type PortInUseError struct {
+	Port int
+	Err  error
+}
+
+func (e *PortInUseError) Error() string {
+	return fmt.Sprintf("couldn't start on port %d: %v", e.Port, e.Err)
+}
+
+// Start installs the template and serves folder, without asking anything: the folder is
+// already resolved.
+func Start(folder string, o Options) (*Running, error) {
+	o.defaults()
+	r := &Running{State: NewState(folder, o.Port)}
+	r.Template, r.TemplatesDir = EnsureTemplate(folder)
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.NetworkHost(), o.Port))
+	if err != nil {
+		return nil, &PortInUseError{Port: o.Port, Err: err}
+	}
+	if pc, err := ListenDiscovery(o.DiscoveryPort); err != nil {
+		r.DiscoveryErr = err
+	} else {
+		r.disc = pc
+		go r.State.RespondToDiscovery(pc)
+	}
+	r.srv = &http.Server{Handler: r.State.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go r.srv.Serve(ln)
+	return r, nil
+}
+
+// Stop stops serving (the discovery port too).
+func (r *Running) Stop() {
+	if r.disc != nil {
+		r.disc.Close()
+	}
+	r.srv.Close()
+}
+
+// Run is the agent's whole life at a console: find the folder, install the template, serve.
+func Run(o Options) int {
+	o.defaults()
 	if o.CheckTemplate {
 		// For the build's smoke test: proves the template is really inside the app.
 		if b, err := assets.Embedded(TemplateName); err == nil && len(b) > 0 {
@@ -289,55 +354,41 @@ func Run(o Options) int {
 		return 1
 	}
 	folder, how := ResolveFolder(o.Folder)
-	st := NewState(folder, o.Port)
-
-	if result, templates := EnsureTemplate(folder); result == "installed" || result == "updated" {
-		verb := "Copied"
-		if result == "updated" {
-			verb = "Updated"
-		}
-		fmt.Println()
-		fmt.Printf("  %s the CricketStream scoreboard template into NV Play's Templates folder:\n", verb)
-		fmt.Printf("     %s\n", filepath.Join(templates, TemplateName))
-		if result == "updated" {
-			fmt.Printf("  (the previous one is kept as %s.old)\n", TemplateName)
-		}
-		fmt.Println("  If NV Play isn't using it yet: Tools -> Configuration -> Scoreboard ->")
-		fmt.Printf("  Template File -> choose %s.\n", TemplateName)
-	}
-
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.NetworkHost(), o.Port))
+	r, err := Start(folder, o)
 	if err != nil {
 		console.Die(fmt.Sprintf("Couldn't start on port %d", o.Port),
-			"", "  "+err.Error(), "",
+			"", "  "+err.(*PortInUseError).Err.Error(), "",
 			"Almost always this means the agent is ALREADY RUNNING — look for",
 			"another window like this one before starting a second.",
 			"",
 			fmt.Sprintf("If you genuinely need a different port, start it with:  --port %d", o.Port+1),
 			"(and type that same port into the streaming laptop's control panel).")
 	}
-	banner(folder, how, o.Port, o.DiscoveryPort)
-
-	if pc, err := ListenDiscovery(o.DiscoveryPort); err != nil {
-		fmt.Printf("  !  Could not listen for discovery on UDP %d: %v\n", o.DiscoveryPort, err)
-		fmt.Printf("     The stream laptop can still connect by typing this machine's address: %s:%d\n", LocalIP(), o.Port)
-	} else {
-		go st.RespondToDiscovery(pc)
-	}
-	go func() {
-		last := ""
-		for {
-			if line := st.StatusLine(); line != last {
-				fmt.Printf("  [%s] %s\n", time.Now().Format("15:04:05"), line)
-				last = line
-			}
-			time.Sleep(5 * time.Second)
+	if r.Template == "installed" || r.Template == "updated" {
+		verb := "Copied"
+		if r.Template == "updated" {
+			verb = "Updated"
 		}
-	}()
-	srv := &http.Server{Handler: st.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		fmt.Println("  Agent stopped:", err)
-		return 1
+		fmt.Println()
+		fmt.Printf("  %s the CricketStream scoreboard template into NV Play's Templates folder:\n", verb)
+		fmt.Printf("     %s\n", filepath.Join(r.TemplatesDir, TemplateName))
+		if r.Template == "updated" {
+			fmt.Printf("  (the previous one is kept as %s.old)\n", TemplateName)
+		}
+		fmt.Println("  If NV Play isn't using it yet: Tools -> Configuration -> Scoreboard ->")
+		fmt.Printf("  Template File -> choose %s.\n", TemplateName)
 	}
-	return 0
+	banner(folder, how, o.Port, o.DiscoveryPort)
+	if r.DiscoveryErr != nil {
+		fmt.Printf("  !  Could not listen for discovery on UDP %d: %v\n", o.DiscoveryPort, r.DiscoveryErr)
+		fmt.Printf("     The stream laptop can still connect by typing this machine's address: %s:%d\n", LocalIP(), o.Port)
+	}
+	last := ""
+	for {
+		if line := r.State.StatusLine(); line != last {
+			fmt.Printf("  [%s] %s\n", time.Now().Format("15:04:05"), line)
+			last = line
+		}
+		time.Sleep(5 * time.Second)
+	}
 }

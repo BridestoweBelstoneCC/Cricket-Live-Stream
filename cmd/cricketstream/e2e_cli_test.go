@@ -70,18 +70,17 @@ func TestE2EAgentHasTheTemplateBuiltIn(t *testing.T) {
 	}
 }
 
-// Nothing listens on OBS's port in a test (it'd be a real OBS): obs-setup explains.
+// No OBS for the test to reach: obs-setup explains. Safe with an OBS open on this machine
+// too — the harness moves OBS's port somewhere nothing listens, and a sandboxed copy
+// refuses any OBS but the portable one.
 func TestE2EObsSetupWithoutOBSExplains(t *testing.T) {
 	a := newApp(t)
-	if !portClosed(4455) {
-		t.Skip("something is listening on OBS's port — never touch a real OBS from a test")
-	}
 	a.streamingConfig("")
 	out, code := a.run(30*time.Second, "obs-setup")
 	if code != 1 {
 		t.Errorf("exit %d", code)
 	}
-	mustContain(t, out, "Setup incomplete")
+	mustContain(t, out, "Cannot connect to OBS", "Setup incomplete")
 }
 
 func TestE2ETelemetrySummaryMatchesTheOriginal(t *testing.T) {

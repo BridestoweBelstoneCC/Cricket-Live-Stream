@@ -11,9 +11,11 @@ Done this before, or just want to get going? This is the whole job; everything b
 2. **Once** — download `CricketStream-mac.zip` from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) (one download works on both Apple Silicon and Intel Macs), unzip it, and put both files in a folder of their own, such as `Documents/CricketStream`.
 3. **Every time, including the first** — double-click **`CricketStream.command`**.
 
-That's the whole thing. It works out what still needs doing: on the first run it opens a
-setup page in your browser to create `config.ini`; on every run after that it goes
-straight to starting the match — OBS, today's fixture, season stats, pre-flight check.
+That's the whole thing. CricketStream's screens open in your browser (on Windows it has a
+window of its own; on a Mac that's still to come), with a Terminal window behind them. On
+the first run it asks which computer this is and the setup questions, and writes
+`config.ini`; on every run after that it opens on the match-day screen — press **Start
+match day** for OBS, today's fixture, season stats and the pre-flight check.
 Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
 
 OBS's scenes, the overlay source and the replay buffer are all set up for you. Full detail,
@@ -77,8 +79,8 @@ Double-click **`CricketStream.command`**. It opens in Terminal.
 > **Allow**. It's needed for the control panel on a phone or tablet, and for a scorer's
 > laptop to be found.
 
-Your browser shows the setup page. The first question is **What is this computer for?** —
-choose **Streaming laptop** (for the scorer's own laptop, see
+Your browser shows CricketStream's first screen: **which computer is this?** — click
+**The streaming laptop** (for the scorer's own laptop, see
 [TWO_LAPTOP_SETUP.md](TWO_LAPTOP_SETUP.md)). Then your club name, kit colour (there's a
 colour picker), PlayCricket ID, and any API keys you have. **Your stream** shows exactly
 what viewers will see — your name and colours on each of the four scorebar styles, over a
@@ -87,11 +89,11 @@ end-of-over summary and more. The **Check** buttons try the PlayCricket key, the
 scoreboard folder and the AI key on the spot. Anything you don't have yet can be left
 blank and added later.
 
-Press **Save and start**. `config.ini` is written next to CricketStream and the Terminal
-window goes straight on into starting the match.
+Press **Save and continue**. `config.ini` is written next to CricketStream and the page
+moves on to the match-day screen.
 
-If the page doesn't open by itself, the Terminal window prints its address (usually
-`http://127.0.0.1:5000/setup`) — type that into Safari or Chrome.
+If the page doesn't open by itself, the Terminal window prints its address (`app page
+http://127.0.0.1:5098/`) — type that into Safari or Chrome.
 
 ---
 
@@ -252,9 +254,9 @@ in the [repository](scoreboard.template) to download.
 
 ## Step 6 — First run
 
-Double-click **`CricketStream.command`**. It asks how you want to run today (control panel on
-this laptop only, or reachable from phones and tablets too) and how the match is being
-scored, then you will see something like:
+Double-click **`CricketStream.command`**. The match-day screen asks who uses the control
+panel today (just this laptop, or phones and tablets too) and how the match is being
+scored. Press **Start match day** and the steps tick off as they happen, something like:
 ```
   ✓ Club: Your Club CC
   ✓ Match found: Your Club CC vs Example Opposition CC
@@ -273,9 +275,8 @@ scored, then you will see something like:
   Overlay:       http://localhost:5000/overlay
 ```
 
-The control panel opens in your browser by itself, with today's match already filled in.
-(Double-clicking CricketStream again while it's running just brings the control panel
-back up.)
+The control panel then opens in a new browser tab, with today's match already filled in.
+(Double-clicking CricketStream again while it's open just brings its page back up.)
 
 > **Rehearse first.** Control panel → **Match day** → **Practice match** plays a made-up
 > match through the real overlay — scorebar, wicket cards, boundaries, replays, the
@@ -395,8 +396,9 @@ shows up here, not on the day.
     result card (pick a backdrop photo first if you like), then copy the caption
 14. Click **Compile highlights reel** to create the post-match video (needs
     [FFmpeg](https://ffmpeg.org/download.html) installed)
-15. Press **Ctrl+C** in the Terminal window to stop. It prints the sponsors' screen time and
-    saves `sponsor_airtime_<date>.txt` and the match report in the CricketStream folder.
+15. Press **Ctrl+C** in the Terminal window to stop (the match-day page's **Stop** does the
+    same). It asks about the match report on the page, and saves the sponsors' screen time
+    (`sponsor_airtime_<date>.txt`) and the match report in the CricketStream folder.
 
 ---
 

@@ -80,12 +80,31 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
-        run: go build -trimpath -ldflags "-s -w -X main.version=${{ steps.v.outputs.version }}" -o "dist/${{ matrix.out }}" ./cmd/cricketstream
+        # On Windows it's a GUI program: CricketStream opens its own window, with no console
+        # window behind it (run from a terminal, it borrows the terminal's for subcommands).
+        run: |
+          gui=""
+          [[ "$GOOS" != windows ]] || gui="-H windowsgui"
+          go build -trimpath -ldflags "-s -w $gui -X main.version=${{ steps.v.outputs.version }}" -o "dist/${{ matrix.out }}" ./cmd/cricketstream
+
+      - name: Check the Windows build is a GUI program
+        if: matrix.goos == 'windows'
+        shell: bash
+        run: |
+          # The PE optional header's Subsystem: 2 = Windows GUI, 3 = console.
+          python - "dist/${{ matrix.out }}" <<'PY'
+          import struct, sys
+          b = open(sys.argv[1], 'rb').read(4096)
+          pe = struct.unpack_from('<I', b, 0x3C)[0]
+          sub = struct.unpack_from('<H', b, pe + 0x5C)[0]
+          print('subsystem', sub)
+          sys.exit(0 if sub == 2 else 1)
+          PY
 
       # Run the binary somewhere that is NOT the checkout, so nothing can be read from the
-      # source tree: the setup page must come up from the built-in copy, and the NV Play
-      # template must be inside the binary. A broken build fails here rather than on a
-      # club's match morning.
+      # source tree: the app's page and the setup page must come up from the built-in
+      # copies, and the NV Play template must be inside the binary. A broken build fails
+      # here rather than on a club's match morning.
       - name: Smoke-test the binary
         # Native builds only (the Windows and macOS runners can't run every architecture).
         if: matrix.goos == 'linux' || matrix.goos == 'windows' && matrix.goarch == 'amd64' || matrix.goos == 'darwin' && matrix.goarch == 'arm64'
@@ -93,6 +112,7 @@ jobs:
         env:
           CRICKETSTREAM_NO_PAUSE: '1'
           CRICKETSTREAM_NO_BROWSER: '1'
+          CRICKETSTREAM_NO_WINDOW: '1' # serve the window's page, open nothing
         run: |
           set -e
           dir="$RUNNER_TEMP/smoke"
@@ -107,16 +127,16 @@ jobs:
           ./${{ matrix.out }} > run.log 2>&1 &
           pid=$!
           ok=""
-          # The setup page takes port 5000 if it can, any free port if not (macOS's
-          # AirPlay receiver holds 5000), and prints the address either way.
+          # The app prints its page's address (its own port, or any free one).
           for i in $(seq 1 30); do
-            url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/setup' run.log | head -1 || true)"
-            if [ -n "$url" ] && curl -fsS "$url" -o setup.html; then ok=1; break; fi
+            base="$(grep -oE 'app page http://127\.0\.0\.1:[0-9]+' run.log | head -1 | cut -d' ' -f3 || true)"
+            if [ -n "$base" ] && curl -fsS "$base/" -o app.html && curl -fsS "$base/setup?app=1" -o setup.html; then ok=1; break; fi
             sleep 1
           done
           kill $pid 2>/dev/null || true
           cat run.log
-          [ -n "$ok" ] || { echo "setup page never came up"; exit 1; }
+          [ -n "$ok" ] || { echo "the app's page never came up"; exit 1; }
+          grep -q "which computer is this" app.html
           grep -q "CricketStream Setup" setup.html
           grep -q "streaming laptop" setup.html
 

@@ -120,11 +120,13 @@ and move the file (on a Mac, both unzipped files) into it.
 > it just starts the match. So this same file is both "set it up" and "go live on
 > Saturday" — there's nothing else to find.
 
-A black window opens, and then a page in your web browser with the setup questions. The
-first one is **what this computer is for** — pick **Streaming laptop** (the one with the
-camera and OBS). If your scorer has their own laptop, see
-[TWO_LAPTOP_SETUP.md](TWO_LAPTOP_SETUP.md): it's the same file, and on that laptop you pick
-one of the other two answers.
+The CricketStream window opens and asks **which computer is this?** Click **The streaming
+laptop** (the one with the camera and OBS). If your scorer has their own laptop, see
+[TWO_LAPTOP_SETUP.md](TWO_LAPTOP_SETUP.md): it's the same file, and on that laptop you click
+**The scorer's laptop** instead.
+
+> **On a Mac** these screens open in your web browser rather than a window of their own,
+> and a Terminal window stays open behind them — leave it open.
 
 Then:
 
@@ -136,8 +138,8 @@ Then:
 - **PlayCricket club ID** — the number in your club's play-cricket.com address
 - **PlayCricket API key** — email PlayCricket support to request one (it's free)
 - **Scoreboard output folder** — where NV Play saves the live score. If NV Play is on this
-  laptop it's usually found for you; otherwise your scorer can see it in NV Play under
-  Tools → Configuration → Scoreboard
+  laptop it's usually found for you; otherwise press **Browse…** and choose it (your scorer
+  can see it in NV Play under Tools → Configuration → Scoreboard)
 - **Your stream** — pick one of four scorebar looks and see your stream as viewers will:
   your name and colours over a drawing of a ground (or a photo of yours), with buttons to
   try the wicket card, a four, a six, the end-of-over summary and more
@@ -149,8 +151,8 @@ buttons next to the PlayCricket key, the scoreboard folder and the AI key try th
 and then, so a typo shows up now rather than on match morning. On Windows, leave **Put a
 CricketStream shortcut on the desktop** ticked and you'll have an icon to double-click.
 
-Click **Save and start** and the black window carries straight on into starting the
-match (you can close it if today isn't a match day).
+Click **Save and continue**. The window moves on to the match-day screen — you can close
+it if today isn't a match day.
 
 > If anything goes wrong, see the Troubleshooting section at the bottom.
 
@@ -185,21 +187,27 @@ when something needs changing, and OBS can only have its settings changed while 
 1. Double-click the **same file you used to set it up**:
    **Windows:** `CricketStream.exe` · **Mac:** `CricketStream.command`
 
-   It skips the setup questions this time (it can see you've already answered them) and
-   goes straight to starting the match — opening OBS, finding today's fixture, and
-   starting the server. It also starts a small logger that records how the stream is
-   doing (useful if anyone needs to work out why it stuttered) — you don't need to do
-   anything with it.
+   The CricketStream window opens on the match-day screen. Two questions, already
+   answered with the usual choices:
+   - **Who uses the control panel today?** *Just this laptop*, or *Phones and tablets
+     too* if volunteers will use it from their phones
+   - **How is today's match being scored?** *NV Play*, or *By hand* on a phone or tablet
+
+   Press **Start match day**. CricketStream opens OBS, finds today's fixture and starts
+   the graphics, ticking each step off as it goes. It also starts a small logger that
+   records how the stream is doing (useful if anyone needs to work out why it stuttered) —
+   you don't need to do anything with it.
 
    > Want to change the setup answers later — a new club password, say, or a different
-   > scorebar style? In the control panel, open the **Setup** tab and press **Open
-   > settings**: the same page, with your answers filled in, and the changes show on the
-   > stream straight away.
+   > scorebar style? Press **Settings** on the match-day screen, or once match day is
+   > running, the control panel's **Setup** tab → **Open settings**: the same page, with
+   > your answers filled in, and the changes show on the stream straight away.
 
-2. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
-3. Your web browser opens the control panel by itself (it lives at
-   **http://127.0.0.1:5000/control** if you ever need to type it in).
-   This is your control panel. The **Match-day checklist** at the top ticks itself as
+2. You should see your club name, today's opposition, and the umpires' names appear in
+   the list of steps.
+3. The control panel then opens in the same window, already logged in (on a Mac, in your
+   web browser; it lives at **http://127.0.0.1:5000/control** if you ever need to type it
+   in). The **Match-day checklist** at the top ticks itself as
    things become ready, and anything not ready has a button next to it that does it —
    **Start OBS**, **Start replay buffer**, **Fetch today's match**, and **Go live** when
    you're ready
@@ -227,9 +235,10 @@ when something needs changing, and OBS can only have its settings changed while 
 13. A **match page** (one web page with the result, the report, both scorecards and a link
     to the stream) is made by itself about a minute after the stream stops. Open it from
     **After the match → Match page** and send it to the club website or WhatsApp group.
-14. Press **Ctrl+C** in the black window (or just close it) to stop. Ctrl+C is the better
-    way: it first prints the sponsors' screen time for the match and saves the match
-    report, both as files in the CricketStream folder.
+14. Press **Stop** at the top of the control panel (or close the CricketStream window, which
+    asks first). It saves the sponsors' screen time for the match, offers to write the
+    match report, and lists both files — they're in the CricketStream folder. On a Mac,
+    press **Ctrl+C** in the Terminal window instead.
 
 > **If OBS crashes during the match**, leave it — it reopens by itself within a few
 > seconds and the stream carries on. Closing OBS yourself after the match is fine; it
@@ -300,12 +309,18 @@ For full details including where to find club badge images, see **`CLUB_LOGOS.md
 
 ## Troubleshooting
 
-### The black window closes immediately
+### Something went wrong and I want to know why
 
-It shouldn't: whatever goes wrong, CricketStream stops and waits with *"Press Enter to
-close this window..."* so you can read why. If the window really does vanish, open Command
-Prompt (press Start, type `cmd`), drag `CricketStream.exe` into that window and press Enter
-— it runs the same way, but the window stays open afterwards.
+Whatever goes wrong, CricketStream says so in its window and waits for you to close it. The
+**Activity** button (top right of the CricketStream window, and in the control panel) shows
+everything it has done, and it's all saved in the `logs` folder next to `CricketStream.exe`
+too — send that file if you ask for help.
+
+### The CricketStream window is blank or doesn't open (Windows)
+
+The window uses Microsoft Edge WebView2, which comes with Windows 10 and 11. If it's
+missing, CricketStream opens its screens in your web browser instead, and everything still
+works. To get the window back, install "WebView2 Runtime" from Microsoft's website.
 
 ### My settings have disappeared
 
@@ -314,10 +329,10 @@ to a new folder, or downloaded a new copy somewhere else, it starts fresh. Move 
 `CricketStream.exe` into your old CricketStream folder, replacing the old one — your
 settings, logos and match data are all still there.
 
-### The setup page didn't open
+### I double-clicked CricketStream again and nothing new opened
 
-The black window prints its address — something like `http://127.0.0.1:5000/setup`.
-Type that into your web browser on the same computer.
+That's on purpose: it's already open, so the window it's in comes to the front (check the
+taskbar if it was minimised). Only one copy runs at a time.
 
 ### The overlay shows on my browser but not in OBS
 
@@ -339,7 +354,8 @@ The overlay will appear white/blank in a browser — that's normal. It only show
 
 ### I can't see the control panel
 
-Make sure the black window (the server) is still open. If you closed it, double-click CricketStream again.
+Make sure CricketStream is still open (it's on the taskbar). If you closed it, double-click
+CricketStream again and press **Start match day**.
 
 ---
 

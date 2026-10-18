@@ -16,12 +16,24 @@ rules. Behaviour, output bytes and tests were carried over; don't redesign while
 file on every ball. The server reads it, parses it, and serves the live state on `/live`.
 `overlay.html` (an OBS browser source) polls `/live` every ~2.5s and renders the graphics.
 
-**One binary, four roles** (`cmd/cricketstream`): double-clicked, it runs the job
-`config.ini`'s `[App] role` names — streaming laptop (`internal/launcher` → the server as
-a supervised child process), scorer's laptop on the same wifi (`internal/agent`), or
-scorer's machine elsewhere (`internal/bridge`) — or opens the setup page
-(`internal/setup`) when there's no `config.ini`. Every part is also a subcommand
-(`cricketstream help`).
+**One binary, four roles** (`cmd/cricketstream`): double-clicked, it opens its own window
+(`internal/app`): on first run "which computer is this?" and the setup page
+(`internal/setup`), then the job `config.ini`'s `[App] role` names — streaming laptop
+(the match-day screen → `internal/launcher` → the server as a supervised child process,
+the control panel shown in the window, logged in), scorer's laptop on the same wifi
+(`internal/agent`, with its status), or scorer's machine elsewhere (`internal/bridge`).
+Every part is also a subcommand (`cricketstream help`) that works at a console as before.
+
+**The window** is the system web view (WebView2 on Windows, via `go-webview2`, pure Go —
+no C compiler) showing pages the app serves on loopback port 5098 (`CRICKETSTREAM_APP_PORT`;
+a second double-click finds the first copy there and brings it forward). Where there's no
+web view — macOS/Linux for now, or Windows without WebView2 — the same pages open in the
+browser. The console's prompts (`console.Pause/Input/Confirm/Die`) become questions in the
+window through `console.SetUI`, and everything printed (the server child's output too)
+goes to the window's Activity log and `logs/cricketstream-<date>.log`. Release builds on
+Windows are `-H windowsgui` (no console window); run from a terminal they attach to it for
+subcommands. The launcher stops the server by closing its stdin (`CRICKETSTREAM_STOP_ON_EOF`),
+which is a clean stop on Windows too.
 
 **Assets are built in** (`embed.go`: the three pages, the scoreboard template, fonts,
 brand, graphics, the example config). `internal/assets` reads a file of the same name
@@ -35,6 +47,7 @@ works with no rebuild. Everything the app writes lives beside the binary too
 |---|---|---|
 | `cmd/cricketstream` | role dispatch, subcommands, Windows resources (`winres/`, go generate) | `cricketstream.py` |
 | `internal/server` | every HTTP route, PCS parsing, ball DB, OBS ops, background loops (split by concern; PORTING.md maps files to line ranges) | `server.py` |
+| `internal/app` | the window: role choice, match-day screen, agent/bridge status, questions, activity log (`app.html`) | — |
 | `internal/launcher` | match-day launch chain, crash-restart loop, after-match airtime + report | `quickstart.py` |
 | `internal/setup` | the first-run setup page (`setup.html`) and config.ini writing | `setup_wizard.py` |
 | `internal/scoring` | the scorer's-book engine + event-sourced session | `scoring_engine.py` |
@@ -57,6 +70,7 @@ gofmt -l cmd internal scripts      # nothing printed = formatted
 go vet ./...
 go test ./...                      # ~1 min; the JS tests need node (they skip without it)
 go build -o dist/ ./cmd/cricketstream
+# release-style Windows build (no console window): add -ldflags "-H windowsgui"
 ```
 
 - **Differential tests** run the Python original beside the port and compare bytes
@@ -72,14 +86,27 @@ go build -o dist/ ./cmd/cricketstream
   and fails if the machine's own OBS settings change. Never test against the installed
   OBS: overriding `APPDATA` doesn't isolate OBS on Windows (it asks Windows for the folder
   directly), and an "isolated" test once rearranged a maintainer's real scenes.
+- **Sandboxes can't reach the installed OBS.** With `CRICKETSTREAM_OBS_PORTABLE` set,
+  `obs.PIDs/Running/Close/Kill` see only processes inside the portable folder, and
+  `obsws.Guard` refuses any connection to OBS's port (4455) while an OBS from anywhere else
+  is running. `CRICKETSTREAM_OBS_WS_PORT` moves 4455 for everything (the e2e harness and
+  the server's `sandbox` point it at a closed port). Both exist because a manual test of
+  the window, run from a sandbox folder with a binary built before the redirect existed,
+  reached the maintainer's open OBS (no WebSocket password) and re-ran its setup, pointing
+  the Overlay source at the sandbox's port. Always build a fresh binary for a manual run,
+  and check `Get-Process obs64` first.
 - **Test seams** are package vars (`obsCall`, `obsTarget`, `ServerURL`, `ConfigDir`,
   `FindOBS`, `Running`, `Launch`, wait durations…), swapped in tests and restored with
   `t.Cleanup`. The server's HTTP tests use `harness_test.go` (`sandbox`, `newTestServer`),
   which points state, DB and config at a temp dir and sets the club password explicitly
   — never let a test read the real `config.ini`.
 - **Env switches:** `CRICKETSTREAM_NO_PAUSE=1` (no "Press Enter"), `CRICKETSTREAM_NO_BROWSER=1`
-  (setup doesn't open a browser), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`,
-  `CRICKETSTREAM_OBS_PORTABLE`.
+  (nothing opens a browser), `CRICKETSTREAM_NO_WINDOW=1` (the app serves its page and opens
+  no window — tests drive it over HTTP with the page's key), `CRICKETSTREAM_APP_PORT`
+  (0 = any), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`, `CRICKETSTREAM_OBS_PORTABLE`,
+  `CRICKETSTREAM_OBS_WS_PORT`, `CRICKETSTREAM_DEVTOOLS=1` (right-click → Inspect in the
+  window). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
+  script drive the real window over CDP.
 
 **No path may exit without pausing first.** A double-clicked exe owns its console window,
 so exiting closes it with the reason inside. Fatal paths go through `console.Die()` (framed

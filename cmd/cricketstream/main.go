@@ -1,6 +1,7 @@
-// CricketStream is the whole app in one program. Double-clicked, it works out what this
-// machine is for (from config.ini, or the in-app setup on first run) and does it.
-// Subcommands run one part directly, for automation and troubleshooting.
+// CricketStream is the whole app in one program. Double-clicked, it opens its own window
+// (internal/app): on first run that asks which computer this is and runs setup, and from
+// then on it does this computer's job in the window. Subcommands run one part directly at
+// a console, for automation and troubleshooting.
 package main
 
 // The Windows icon, version and manifest live in winres/ and are compiled into the
@@ -10,15 +11,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 
 	"cricketstream/internal/agent"
+	csapp "cricketstream/internal/app"
 	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/console"
-	"cricketstream/internal/ini"
 	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/server"
@@ -33,8 +36,8 @@ var version = ""
 const usage = `CricketStream — live-stream graphics for grassroots cricket.
 
 Usage:
-  cricketstream                 what this machine is set up for (first run opens setup)
-  cricketstream setup           open the setup page (change the club's details or role)
+  cricketstream                 open CricketStream's window (first run: setup)
+  cricketstream setup           the setup page in the browser (change the details or role)
   cricketstream start           match day on the streaming laptop
         --remote / --local    answer "how do you want to run today?" up front
         --manual / --nvplay   answer "how is today's match being scored?" up front
@@ -105,7 +108,7 @@ func run(cmd string, args []string) int {
 	case "start":
 		return startMatch(args)
 	case "server":
-		if err := server.Run(server.Options{}); err != nil {
+		if err := server.Run(server.Options{Stop: stopOnEOF()}); err != nil {
 			console.Die("The stream server stopped", err.Error())
 		}
 		return 0
@@ -192,12 +195,15 @@ func run(cmd string, args []string) int {
 		fmt.Print(usage)
 		return 0
 	case "":
-		return byRole()
+		return openApp()
 	}
 	// A folder dropped onto the exe is the scorer's laptop pointing the agent at NV Play's
-	// output, as the old scorer-agent exe allowed (it's remembered after the first time).
+	// output, as the old scorer-agent exe allowed: remembered, and the window opens on it.
 	if st, err := os.Stat(cmd); err == nil && st.IsDir() {
-		return agent.Run(agent.Options{Folder: cmd})
+		if abs, err := filepath.Abs(cmd); err == nil {
+			agent.SaveFolder(abs)
+		}
+		return openApp()
 	}
 	fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
 	return 2
@@ -232,34 +238,23 @@ func roleName(r string) string {
 	return "the streaming laptop"
 }
 
-// byRole is the double-click: first run opens the setup page, then every run goes
-// straight into the job this machine was set up for.
-func byRole() int {
-	role := setup.Role()
-	if role == "" {
-		fmt.Println()
-		fmt.Println("  Welcome to CricketStream — no config.ini yet, so first a one-time setup.")
-		fmt.Println()
-		res, err := setup.Run(setup.Options{OpenBrowser: true})
-		if err != nil {
-			fmt.Println("\n  " + err.Error())
-			console.Pause("")
-			return 1
-		}
-		role = res.Values.Role
-		fmt.Printf("\n  Saved. This machine is %s.\n\n", roleName(role))
+// openApp is the double-click: CricketStream's own window.
+func openApp() int {
+	return csapp.Run(csapp.Options{Version: version, Headless: os.Getenv("CRICKETSTREAM_NO_WINDOW") == "1"})
+}
+
+// stopOnEOF is how the launcher stops the server it supervises: by closing its stdin
+// (a clean stop on every platform, where a Windows TerminateProcess can't be caught).
+func stopOnEOF() <-chan struct{} {
+	if os.Getenv(launcher.StopOnEOFEnv) != "1" {
+		return nil
 	}
-	switch role {
-	case setup.RoleScorer:
-		folder := ""
-		if f, err := ini.Load(setup.ConfigFile()); err == nil {
-			folder = f.Get("Scoring", "pcs_output_folder", "")
-		}
-		return agent.Run(agent.Options{Folder: folder})
-	case setup.RoleBridge:
-		return bridge.Run()
-	}
-	return launcher.Run(launcher.Options{})
+	ch := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, os.Stdin)
+		close(ch)
+	}()
+	return ch
 }
 
 func startMatch(args []string) int {

@@ -68,6 +68,12 @@ func ask(prompt, def string) string {
 type Options struct {
 	// Remote / Manual pre-answer the two match-day questions (nil = ask).
 	Remote, Manual *bool
+	// OpenPanel shows the control panel once the server is up (the app's window passes
+	// its own; nil = the default browser). token is the launcher's own login, "" with no
+	// club password.
+	OpenPanel func(url, token string)
+	// Interrupt stops match day (the app's window sends on it); nil = Ctrl+C.
+	Interrupt <-chan os.Signal
 }
 
 // Run is match day. It returns the process exit code.
@@ -86,7 +92,7 @@ func Run(o Options) int {
 	// restart until it gave up. Bring up the control panel instead.
 	if AlreadyRunning() {
 		log("CricketStream is already running on this laptop — opening the control panel.", "ok")
-		openBrowser(base() + "/control")
+		openPanel(o, base()+"/control", "")
 		fmt.Println("  (Its own window is the one to keep open; this one can close.)")
 		console.Pause("")
 		return 0
@@ -135,7 +141,7 @@ func Run(o Options) int {
 		mf := assets.Join("manual_scoring.json")
 		if _, err := os.Stat(mf); err == nil {
 			log("A saved manual-scoring session exists — it would OVERRIDE the scorer's feed!", "warn")
-			if a := strings.ToLower(ask("  Clear it so NV Play drives the overlay today? [Y/n]: ", "")); a == "" || a == "y" || a == "yes" {
+			if yes, _ := console.Confirm("Clear it so NV Play drives the overlay today?", true); yes {
 				if err := os.Remove(mf); err != nil {
 					log(fmt.Sprintf("Could not remove it (%v) — delete manual_scoring.json by hand", err), "err")
 				} else {
@@ -262,7 +268,7 @@ func Run(o Options) int {
 		token = SessionToken(cfg)
 		PullSeasonStats(apiKey, token)
 		SelfTest()
-		openBrowser(base() + "/control") // the match-day checklist is the next thing to look at
+		openPanel(o, base()+"/control", token) // the match-day checklist is the next thing to look at
 	} else {
 		log("Server didn't respond in time — season stats will load on the first player card", "warn")
 	}
@@ -301,10 +307,22 @@ func Run(o Options) int {
 	fmt.Println("  ─────────────────────────────────────────────")
 	fmt.Println()
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	defer signal.Stop(interrupt)
+	interrupt := o.Interrupt
+	if interrupt == nil {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		defer signal.Stop(ch)
+		interrupt = ch
+	}
 	return RunServerWithRestarts(p, launch, token, ServerMaxRestarts, 2*time.Second, time.Sleep, interrupt)
+}
+
+func openPanel(o Options, url, token string) {
+	if o.OpenPanel != nil {
+		o.OpenPanel(url, token)
+		return
+	}
+	openBrowser(url)
 }
 
 func checkScoreSource(state M, manual bool) {
@@ -362,13 +380,26 @@ type Proc interface {
 }
 
 type osProc struct {
-	cmd  *exec.Cmd
-	done chan error
+	cmd   *exec.Cmd
+	done  chan error
+	stdin io.Closer
 }
 
 func (p *osProc) Wait() error { return <-p.done }
-func (p *osProc) Terminate()  { terminate(p.cmd.Process) }
 func (p *osProc) Kill()       { p.cmd.Process.Kill() }
+
+// Terminate asks the server to stop by closing its stdin: it then stops cleanly (a
+// practice match puts the score source back) on every platform, where a Windows
+// TerminateProcess can't be caught. The signal is the fallback.
+func (p *osProc) Terminate() {
+	if p.stdin != nil && p.stdin.Close() == nil {
+		return
+	}
+	terminate(p.cmd.Process)
+}
+
+// StopOnEOFEnv tells `cricketstream server` its supervisor will close stdin to stop it.
+const StopOnEOFEnv = "CRICKETSTREAM_STOP_ON_EOF"
 
 // startServer runs this same program as `cricketstream server`, in its own process
 // group so the operator's Ctrl+C doesn't reach it.
@@ -378,13 +409,20 @@ func startServer(bind string) (Proc, error) {
 		return nil, err
 	}
 	cmd := exec.Command(exe, "server")
-	cmd.Env = append(os.Environ(), "BBCC_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir())
+	// Its stdin is how it's told to stop; a fatal problem in it must exit (and be
+	// restarted), not wait for an Enter nobody can type.
+	cmd.Env = append(os.Environ(), "BBCC_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir(), StopOnEOFEnv+"=1",
+		"CRICKETSTREAM_NO_PAUSE=1")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &osProc{cmd: cmd, done: make(chan error, 1)}
+	p := &osProc{cmd: cmd, done: make(chan error, 1), stdin: stdin}
 	go func() { p.done <- cmd.Wait() }()
 	return p, nil
 }
@@ -708,11 +746,11 @@ func ReportSponsorAirtime() string {
 func OfferMatchReport(token string) {
 	fmt.Println()
 	airtime := ReportSponsorAirtime()
-	ans, ok := console.Input("  Generate an AI match report for this game? [y/N]: ")
+	yes, ok := console.Confirm("Generate an AI match report for this game?", false)
 	if !ok {
 		return
 	}
-	if a := strings.ToLower(strings.TrimSpace(ans)); a != "y" && a != "yes" {
+	if !yes {
 		fmt.Println("  No report generated.")
 		return
 	}
