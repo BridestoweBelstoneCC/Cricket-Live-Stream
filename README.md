@@ -243,7 +243,7 @@ Full setup steps, a security rundown, and troubleshooting: **[`BRIDGE.md`](BRIDG
 Keep the scorer's laptop scoring and nothing else — the streaming laptop runs OBS, the
 server and the overlay, and can be restarted or fiddled with mid-match without reaching
 across to the scorer. The scoring laptop runs the same CricketStream download, set up as
-*Scorer's laptop, same wifi*, and the streaming laptop finds it on the club wifi
+*The scorer's laptop*, and the streaming laptop finds it on the club wifi
 automatically (no address to type). This is the option for two laptops already on the
 same local network; use the NV Play bridge above instead if they aren't (e.g. reached
 over Tailscale).

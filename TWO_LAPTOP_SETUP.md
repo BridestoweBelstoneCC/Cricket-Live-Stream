@@ -72,7 +72,7 @@ no address to type, no token to copy.
 ### On the streaming laptop
 
 1. Start CricketStream as usual and open the control panel.
-2. Under **Where the score comes from**, switch on
+2. In the **Setup** tab, under **Scoring source**, switch on
    **"Run the stream from a second laptop"**.
 3. Press **Find scorer laptop**.
 4. It should find it by itself and go green:

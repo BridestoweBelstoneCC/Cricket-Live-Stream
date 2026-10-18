@@ -120,17 +120,17 @@ button:disabled{opacity:.6;cursor:default}
     <p class="hint">Pick the job this machine does on match day.</p>
     <div class="roles">
       <label class="role"><input type="radio" name="role" value="streaming" checked>
-        <strong>Streaming laptop</strong>
+        <strong>The streaming laptop</strong>
         <span>Runs OBS, the overlay and the control panel. The usual choice — and the
         right one if the scorer's software is on this laptop too.</span></label>
       <label class="role"><input type="radio" name="role" value="scorer">
-        <strong>Scorer's laptop, same wifi</strong>
+        <strong>The scorer's laptop</strong>
         <span>NV Play runs here; the streaming laptop finds this one on the club's
         network with a button press.</span></label>
       <label class="role"><input type="radio" name="role" value="bridge">
-        <strong>Scorer's machine, elsewhere</strong>
-        <span>NV Play runs here and the streaming laptop reaches it over Tailscale,
-        using a token shown at the end.</span></label>
+        <strong>An NV Play bridge</strong>
+        <span>The scorer is somewhere else: NV Play runs here and the streaming laptop
+        reaches it over Tailscale, using an address and token shown here.</span></label>
     </div>
     <p class="found hidden" id="role_chosen"></p>
     <p class="note hidden" id="role_note">Changing this takes effect the next time CricketStream starts.</p>

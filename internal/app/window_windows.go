@@ -80,7 +80,7 @@ func openWindow(a *App, start string) (window, error) {
 	// The close button asks first when something's running: catch WM_CLOSE before the
 	// web view's own window procedure destroys the window.
 	nw.orig, _, _ = procSetWindowLongPtrW.Call(nw.hwnd, gwlpWndProc, windows.NewCallback(nw.wndproc))
-	wv.SetSize(scale(860), scale(600), webview2.HintMin)
+	wv.SetSize(scale(860), scale(700), webview2.HintMin)
 
 	// What the pages can ask of the window. Harmless to any page: a folder the person
 	// chooses, a link opened in their browser, a screen of the app.

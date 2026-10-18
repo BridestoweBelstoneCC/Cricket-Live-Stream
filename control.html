@@ -1185,8 +1185,8 @@
     </div>
     <div class="field" style="padding:10px;background:#0a1428;border:1px solid var(--line);border-radius:5px;margin-bottom:10px;">
       <label style="color:var(--accent);">&#9679; NV Play on separate hardware <span style="color:var(--muted);font-size:10px;font-weight:400;">— optional, instead of the folder above</span></label>
-      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (run nvplay_bridge.py on that machine)" style="margin-bottom:6px;">
-      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (printed when nvplay_bridge.py starts)">
+      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (shown in CricketStream's window on that machine)" style="margin-bottom:6px;">
+      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (shown beside the address, with a Copy button)">
       <p class="hint" style="color:var(--muted);">If NV Play runs on its own machine (not this one) so its heat/CPU doesn't share the
       streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
       IP is the recommended way to reach it.</p>
@@ -1196,7 +1196,7 @@
       <div class="toggle-row" style="margin:0;">
         <div>
           <div class="toggle-label" style="color:#c8a000;">Run the stream from a second laptop</div>
-          <div class="toggle-desc">Scorer runs <code>scorer_agent.py</code> once at the start of the day and is otherwise left alone;
+          <div class="toggle-desc">The scorer opens CricketStream (set up as <b>The scorer's laptop</b>) at the start of the day and leaves it alone;
           this laptop finds it on the club wifi automatically. See TWO_LAPTOP_SETUP.md.</div>
         </div>
         <label class="toggle"><input type="checkbox" id="pcs_source_agent" onchange="onAgentToggle()"><span class="track"></span></label>
@@ -2489,8 +2489,8 @@ async function refreshAgentStatus() {
   try {
     const d = await (await apiFetch('/agent/status')).json();
     if (!d.address) {
-      setAgentStatus('Not connected yet. Start <code>scorer_agent.py</code> on the scoring '
-                   + 'laptop, then press <b>Find scorer laptop</b>.', 'warn');
+      setAgentStatus('Not connected yet. Open CricketStream on the scoring laptop (set up as '
+                   + '<b>The scorer\'s laptop</b>), then press <b>Find scorer laptop</b>.', 'warn');
       return;
     }
     // hostname/file/address/error all come from the scorer agent over the network

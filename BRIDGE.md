@@ -91,11 +91,12 @@ anyway if you're also using remote access for the control panel or scoring page.
 
 ### 3. On the streaming machine
 
-1. Open the control panel → the **Match** card.
+1. Open the control panel → the **Setup** tab → the **Scoring source** card.
 2. Find **"NV Play on separate hardware"**, just below the PCS output folder field.
 3. Leave the PCS output folder field blank, and fill in:
-   - **URL**: `http://<the Tailscale IP from step 2>:5050`
-   - **Token**: exactly what the bridge printed
+   - **URL**: `http://<the Tailscale IP from step 2>:5050` — the bridge machine's window shows
+     it as **Bridge address**, with a Copy button
+   - **Token**: the **Bridge token** from the same window
 4. Save.
 
 ### 4. Verify it's working

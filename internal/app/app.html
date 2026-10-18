@@ -243,8 +243,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <p class="note hidden" id="agent_err"></p>
     <section>
       <h2>On the streaming laptop</h2>
-      <p class="hint" style="margin:0">Control panel → <strong>Setup</strong> → Scoring source → <strong>Scorer laptop (network)</strong>,
-        then <strong>Find scorer laptop</strong>. Keep this window open for the whole match — minimise it if it's in the way.</p>
+      <p class="hint" style="margin:0">Control panel → <strong>Setup</strong> → Scoring source: switch on
+        <strong>Run the stream from a second laptop</strong>, then press <strong>Find scorer laptop</strong>. Keep this window open for the whole match — minimise it if it's in the way.</p>
     </section>
     <div class="actions">
       <a class="btn" href="/setup?app=1">Change setup</a>
@@ -258,7 +258,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <p class="lead" id="bridge_lead"></p>
     <section>
       <h2>On the streaming laptop</h2>
-      <p class="hint">Control panel → <strong>Setup</strong> → Scoring source → NV Play bridge. Enter:</p>
+      <p class="hint">Control panel → <strong>Setup</strong> → Scoring source → <strong>NV Play on separate hardware</strong>. Enter:</p>
       <div class="k hint" style="margin:0">Bridge address</div>
       <div class="copyrow"><code class="token" id="b_url"></code><button class="btn" type="button" data-copy="b_url">Copy</button></div>
       <div class="k hint" style="margin:0">Bridge token</div>
@@ -449,7 +449,7 @@ function renderAgent() {
   $('a_file').className = 'v ' + (a.health === 'live' ? 'ok-t' : a.file ? 'warn-t' : '');
   txt('a_client', a.collected ? 'Connected' : 'Not connected yet');
   $('a_client').className = 'v ' + (a.collected && a.collected_ago < 30 ? 'ok-t' : '');
-  txt('a_client_s', a.collected ? 'Collected ' + ago(a.collected_ago) + (a.client ? ' by ' + a.client : '') : 'It connects when the streaming laptop picks "Scorer laptop".');
+  txt('a_client_s', a.collected ? 'Collected ' + ago(a.collected_ago) + (a.client ? ' by ' + a.client : '') : 'It connects when the streaming laptop presses "Find scorer laptop".');
   txt('a_addr', a.ip ? a.ip + ':' + a.port : '—');
   var t = {installed: 'Put the CricketStream scoreboard template in NV Play\'s Templates folder. In NV Play: Tools → Configuration → Scoreboard → Template File → scoreboard.template (once).',
     updated: 'Updated the CricketStream scoreboard template in NV Play\'s Templates folder (the old one is kept as scoreboard.template.old).',
