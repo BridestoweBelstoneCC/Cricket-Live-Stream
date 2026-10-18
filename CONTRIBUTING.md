@@ -19,20 +19,26 @@ how it gets better. You don't need to be a professional developer to help.
   output. If your club scores with something else, a parser for it would open the project up
   to many more clubs.
 - **Improve the overlay design** or add a graphic — the overlay is a single self-contained
-  HTML file, so it's approachable to edit.
+  HTML file, so it's approachable to edit. Put your edited `overlay.html` (or
+  `control.html`, `scoring.html`) next to CricketStream and refresh: a file beside the app
+  overrides the built-in copy, no rebuild needed.
 
 ## Making a change
 
 1. **Fork** the repository and create a branch for your change.
 2. Keep changes focused — one feature or fix per pull request makes review easier.
-3. **Test before you push.** All three run in CI too, and need nothing installed:
-   - `python scripts/compile_check_all.py` — every top-level script compiles.
-   - `python scripts/check_panel_js.py` — the JavaScript in `control.html`, `overlay.html`
-     and `scoring.html` parses (a single syntax error kills a whole page).
-   - `python -m unittest discover -s tests` — the test suite, under a minute.
+3. **Test before you push.** CricketStream is written in Go; install it from
+   [go.dev/dl](https://go.dev/dl/) (the version in `go.mod`). These all run in CI too:
+   - `go vet ./...` and `gofmt -l .` — nothing printed means all is well.
+   - `go test ./...` — the whole suite, about a minute. With [Node.js](https://nodejs.org)
+     installed it also runs the overlay's and panel's own JavaScript (a single syntax error
+     kills a whole page); without it those tests skip.
+   - `go build ./cmd/cricketstream` — builds the app, everything built in.
    - If you touch the control panel (`control.html`) or the overlay, load it in a browser
-     and check the parts you changed. For the scorebar, `python scripts/render_scorebar.py`
+     and check the parts you changed. For the scorebar, `go run ./scripts/renderscorebar`
      screenshots every style — nothing else catches a visual regression.
+   - Touching OBS setup? `internal/integration` drives a real, *portable* OBS end to end
+     (see the comment at the top of that test for how to make the portable copy).
 4. **Don't commit secrets.** Never commit a populated `match_state.json`, real API keys, or
    the `match_data.db` database — these are git-ignored for a reason. The repo ships
    `match_state.example.json` as a safe template.
@@ -54,9 +60,9 @@ named or shown, call it out clearly in your pull request.
 
 ## Architecture notes
 
-- **Remote access:** see `CLAUDE.md`'s gotchas section for the design constraints around
-  LAN/Tailscale/Cloudflare Tunnel access — worth reading before touching anything
-  network-related.
+- **Start with [ARCHITECTURE.md](ARCHITECTURE.md)** for how the pieces fit, and
+  [CLAUDE.md](CLAUDE.md) for the gotchas — the hard-won rules (remote access, OBS, the
+  scorer's feed) that look odd until you know why they're there.
 
 ## Licence
 

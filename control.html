@@ -39,6 +39,33 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .split-grid{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
   .half-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  /* The Pictures tab: the club's badges, player photos, sponsor logos and match photos. */
+  .pic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin:10px 0}
+  .pic{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:11px;
+    display:flex;flex-direction:column;gap:4px;min-width:0}
+  .pic.mark{border-color:var(--accent)}
+  .pic img{width:100%;height:78px;object-fit:contain;border-radius:4px;
+    background:repeating-conic-gradient(#ffffff10 0 25%,transparent 0 50%) 0 0/12px 12px}
+  .pic .nm{word-break:break-word;color:var(--text);text-align:center}
+  .pic .tag{color:var(--accent);text-align:center;font-weight:600}
+  .pic .acts{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}
+  .pic .acts button,.pic-row button,.pic-quick button,.pic-squad button{font:inherit;font-size:11px;padding:3px 8px;border-radius:5px;cursor:pointer;
+    background:var(--surface-3);color:var(--text);border:1px solid var(--line)}
+  .pic .acts button.sure{border-color:#ff6b6b;color:#ff6b6b}
+  .pic input,.pic-row input{width:100%;font:inherit;font-size:12px;padding:4px 6px;box-sizing:border-box;
+    background:var(--surface-3);color:var(--text);border:1px solid var(--line);border-radius:5px}
+  .pic-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .pic-row select{font:inherit;font-size:12px;padding:4px 6px;background:var(--surface-3);color:var(--text);
+    border:1px solid var(--line);border-radius:5px;flex:1}
+  .pic-row img{width:44px;height:44px;object-fit:cover;border-radius:4px;flex:0 0 auto}
+  .pic-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .pic-quick > div{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+  .pic-squad{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:6px}
+  .pic-squad div{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:12px;
+    border-bottom:1px solid var(--line)}
+  .pic-squad .pic-has{color:#3ccf8e}
+  .pic-msg{font-size:12px;min-height:16px;margin-top:4px}
+  .pic-add{text-align:center;cursor:pointer;margin-top:6px}
   .side-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
   .btn-row{display:flex;gap:8px;flex-wrap:wrap}
   @media(max-width:768px){
@@ -158,6 +185,38 @@
   h1{font-size:18px;letter-spacing:.2px}
   h1 span{color:var(--text-2)}
   .badge{background:var(--accent-strong);border-color:var(--accent);color:var(--on-accent)}
+  /* The header: the club first — its badge and name — on a panel washed with its colour,
+     with CricketStream as the small line above. */
+  header{background:var(--surface);
+         background:linear-gradient(100deg, color-mix(in srgb, var(--accent-strong) 30%, var(--surface)) 0%,
+                    var(--surface) 55%, var(--surface-2) 100%);
+         border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px;
+         box-shadow:var(--shadow)}
+  .crest{width:54px;height:54px;flex-shrink:0;position:relative}
+  .crest .badge{width:54px;height:54px;font-size:18px}
+  .crest [hidden]{display:none !important}
+  /* Tiles in your own order: a grip in each tile's title, seen on hover (see the script at
+     the end). Not on touch screens, which can't drag. */
+  .card h2{position:relative}
+  .tile-grip{position:absolute;right:-6px;top:50%;transform:translateY(-50%);cursor:grab;
+             color:var(--muted);font-size:13px;letter-spacing:-3px;padding:2px 6px;border-radius:4px;
+             opacity:0;transition:opacity .15s;user-select:none}
+  .card:hover .tile-grip{opacity:.7}
+  .tile-grip:hover{opacity:1 !important;background:var(--surface-3);color:var(--text)}
+  .tile-grip:active{cursor:grabbing}
+  .tile-dragging{opacity:.45;outline:2px dashed var(--accent);outline-offset:2px}
+  @media(hover:none){.tile-grip{display:none}}
+  button.linkish{background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;
+                 text-decoration:underline;padding:0}
+  .crest img{width:54px;height:54px;border-radius:50%;object-fit:contain;background:#fff;padding:4px;
+             box-shadow:0 0 0 2px var(--accent-strong),0 4px 12px rgba(0,0,0,.35)}
+  .titles{min-width:0}
+  .eyebrow{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:1.6px;
+           text-transform:uppercase;color:var(--text-2)}
+  .eyebrow img{width:16px;height:16px;border-radius:3px}
+  .eyebrow span{color:var(--muted);font-weight:500;letter-spacing:1px}
+  header h1{font-size:24px;font-weight:800;color:var(--text);letter-spacing:.2px;line-height:1.15;margin-top:3px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card{background:linear-gradient(180deg,var(--surface),var(--surface-2));
         border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
   .card h2{font-size:11px;letter-spacing:1.6px;color:var(--text-2);margin-bottom:14px;
@@ -227,7 +286,11 @@
   @media(max-width:600px){
     .long{display:none}
     header{flex-wrap:wrap;gap:10px;margin-bottom:14px}
-    header h1{flex:1 1 auto;min-width:0;font-size:15px}
+    header{padding:10px 12px}
+    header .titles{flex:1 1 auto}
+    header h1{font-size:18px}
+    .crest,.crest .badge,.crest img{width:40px;height:40px}
+    .eyebrow span{display:none}
     #remote-pill{margin-left:0}
     #topbar{padding:8px 0}
     #topbar #live-status{padding:8px 12px !important;gap:8px !important}
@@ -249,8 +312,8 @@
     </div>
     <h2 style="font-size:15px;color:var(--text);margin-bottom:6px;">Enter club password</h2>
     <p style="font-size:12px;color:var(--accent);margin-bottom:20px;">
-      Set as <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">club_password</code>
-      in <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">config.ini [Auth]</code>
+      The password chosen at setup (changeable in Settings, or
+      <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">club_password</code> in config.ini)
     </p>
     <input type="password" id="auth-input" placeholder="Club password"
            style="width:100%;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;
@@ -272,8 +335,15 @@
 </div>
 
 <header>
-  <div class="badge" id="panel-club-badge">CC</div>
-  <h1>Stream Control Panel<span id="panel-club-name">Your Club</span></h1>
+  <!-- The club's own badge (the one the scorebar uses); its initials until there is one. -->
+  <div class="crest">
+    <img id="panel-club-logo" alt="" hidden>
+    <div class="badge" id="panel-club-badge">CC</div>
+  </div>
+  <div class="titles">
+    <div class="eyebrow"><img src="/favicon.png" alt="">CricketStream<span>&middot; Match-day control</span></div>
+    <h1 id="panel-club-name">Your Club</h1>
+  </div>
   <div id="remote-pill" onclick="showRemoteOverlay()" title="Click for a QR code to open this panel on another device">
     <span class="dot"></span><span id="remote-pill-label">This machine</span>
   </div>
@@ -283,6 +353,17 @@
               font-size:11px;color:var(--text-2);white-space:nowrap;">
     &#128274; Security
   </div>
+  <!-- Only in CricketStream's own window: back to its activity log, and stopping match day
+       (closing the window asks the same). Hidden in a browser or on a phone. -->
+  <div id="app-pills" style="display:none;margin-left:8px;gap:8px">
+    <button type="button" onclick="csApp.go('log')" title="What CricketStream did to get ready, and everything since"
+      style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
+             cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Activity</button>
+    <button type="button" onclick="csApp.go('stop')" title="Stop match day (CricketStream stays open)"
+      style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
+             cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Stop</button>
+  </div>
+  <script>if (window.csApp && window.csApp.go) document.getElementById('app-pills').style.display = 'flex';</script>
 </header>
 
 <!-- ── Remote access overlay — QR code for pairing another device ── -->
@@ -384,6 +465,7 @@
   <button type="button" role="tab" data-tab="match" onclick="showTab('match')">Match day</button>
   <button type="button" role="tab" data-tab="graphics" onclick="showTab('graphics')">Graphics<span class="long"> &amp; sponsor</span></button>
   <button type="button" role="tab" data-tab="after" onclick="showTab('after')">After<span class="long"> the match</span></button>
+  <button type="button" role="tab" data-tab="pictures" onclick="showTab('pictures')">Pictures</button>
   <button type="button" role="tab" data-tab="setup" onclick="showTab('setup')">Setup</button>
 </nav>
 
@@ -655,11 +737,40 @@
       1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">console.cloud.google.com</a><br>
       2. Create a project → Enable YouTube Data API v3<br>
       3. Create OAuth2 credentials (Desktop app) → Download JSON<br>
-      4. Rename file to <strong style="color:var(--text);">yt_credentials.json</strong> and place in the same folder as server.py<br>
-      5. Run: <code style="color:var(--text);">pip install google-api-python-client google-auth-oauthlib</code><br>
-      6. Click the button above — a browser window will open to authorise once<br>
+      4. Rename file to <strong style="color:var(--text);">yt_credentials.json</strong> and put it in the CricketStream folder (next to the app)<br>
+      5. Click the button above — a browser window will open to authorise once<br>
       <span style="color:var(--warn);">Tip: create the broadcast first (YouTube Studio → Go Live → Stream), then click Update to fill in its details.</span>
     </div>
+  </div>
+  <div class="card">
+    <h2>Practice match</h2>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      No scorer needed: a made-up match plays through the real overlay &mdash; scorebar, wicket
+      cards, boundaries, replays, the end-of-over graphics &mdash; so you can rehearse in OBS.
+      The score source is put back afterwards and nothing is kept. Not while you're live.
+      (With AI commentary on, each over uses a little of your AI credit, as a real one would.)
+    </p>
+    <div class="half-grid">
+      <div class="field">
+        <label for="practice-scenario">Match</label>
+        <select id="practice-scenario">
+          <option value="full">A whole match</option>
+          <option value="chase">A tense chase</option>
+          <option value="century">A century</option>
+          <option value="collapse">A batting collapse</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="practice-overs">Overs each side</label>
+        <select id="practice-overs">
+          <option value="2">2 (about 2 minutes)</option>
+          <option value="5" selected>5 (about 5 minutes)</option>
+          <option value="10">10 (about 10 minutes)</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-test" id="practice-btn" onclick="togglePractice()" style="width:100%;">&#9654; Start a practice match</button>
+    <div id="practice-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
   </div>
 </div>
 </section>
@@ -675,10 +786,14 @@
         <option value="modern">Modern — dark broadcast slab, team-colour top rule</option>
         <option value="impact">Impact — bold angled cuts, white score plate</option>
         <option value="minimal">Minimal — clean white, high contrast</option>
+        <option value="franchise">Franchise — royal purple and gold, condensed capitals</option>
+        <option value="neon">Neon — black bar, electric glow, for evening matches</option>
+        <option value="block">Block — flat colour blocks, heavy type</option>
       </select>
       <p class="hint">Changes the look of the bottom scorebar. Takes effect on the overlay's
-        next poll (a few seconds), no restart needed. All four use your team colours.
-        Impact reads best on phones; Minimal sits better under a bright daytime picture.</p>
+        next poll (a few seconds), no restart needed. Every style uses your team colours.
+        Impact and Franchise read best on phones; Minimal and Block sit better under a bright
+        daytime picture; Neon is made for evening matches.</p>
       <!-- Live preview: the REAL overlay in ?preview=1 mode (one static frame of demo
            data, no polling — it must never call /live or /commands, both of which have
            side effects). Scaled 1920->full width so it shows the actual CSS rather than a
@@ -879,7 +994,7 @@
           </select>
         </div>
       </div>
-      <p class="hint" style="margin-top:8px;">Manually set each side's badge from your logos folder — handy when PlayCricket didn't supply the opposition's club ID. Picking a file sets that side's badge immediately.</p>
+      <p class="hint" style="margin-top:8px;">Pick each side's badge from the ones you've added in the <b>Pictures</b> tab — handy when PlayCricket didn't supply the opposition's club ID. Picking one sets that side's badge immediately.</p>
     </div>
   </div>
   <div class="card highlight">
@@ -1046,8 +1161,313 @@
 </div>
 </section>
 
+<section class="tab-panel" id="tab-pictures" role="tabpanel">
+<div class="grid">
+  <div class="card">
+    <h2>Club badges</h2>
+    <p class="hint">The round badge beside each team's name on the scorebar. Upload ours once; the
+      opposition's each week (or keep a library — every club you've played stays here).</p>
+    <div class="pic-quick" id="pics-badges-quick"></div>
+    <div class="pic-grid" id="pics-badges-grid"></div>
+    <div class="pic-row">
+      <input type="text" id="pics-badge-id" placeholder="Another club's PlayCricket ID (the number in its play-cricket.com address)">
+      <label class="pic-add" style="margin:0;white-space:nowrap"><button type="button" onclick="pickBadgeFile(this)">Add badge…</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="addBadgeByID(this)"></label>
+    </div>
+    <div class="pic-msg" id="pics-badges-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Player photos</h2>
+    <p class="hint">Shown on the player card when a batter comes in. Name each photo after the
+      player ("John Walker"), or by shirt number if the squad roster (Setup tab) has them.</p>
+    <div id="pics-headshots-squad"></div>
+    <div class="pic-grid" id="pics-headshots-grid"></div>
+    <div id="pics-headshots-pending"></div>
+    <label class="btn btn-test pic-add">Add photos…<input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onchange="stagePictures('headshots', this)"></label>
+    <div class="pic-msg" id="pics-headshots-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Sponsor logos</h2>
+    <p class="hint">Every sponsor's logo, kept from week to week. <b>Use this weekend</b> puts one on the
+      sponsor strap (the name and transparent-background tools are in Graphics &amp; sponsor).</p>
+    <div class="pic-grid" id="pics-sponsors-grid"></div>
+    <label class="btn btn-test pic-add">Add a sponsor logo…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onchange="addSponsorPicture(this)"></label>
+    <div class="pic-msg" id="pics-sponsors-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Match photos</h2>
+    <p class="hint">Photos for the result card and social posts (After the match) to use as a backdrop.
+      A team's own photos are used for that team's matches when it has some.</p>
+    <div class="pic-row"><label style="margin:0;white-space:nowrap">Team</label>
+      <select id="pics-photo-team" onchange="loadPictures('photos')">
+        <option value="">Every team</option><option value="1st">1st XI</option><option value="2nd">2nd XI</option>
+        <option value="3rd">3rd XI</option><option value="youth">Youth sides (stock photos — no players' faces)</option>
+      </select></div>
+    <div class="pic-grid" id="pics-photos-grid"></div>
+    <div id="pics-photos-pending"></div>
+    <label class="btn btn-test pic-add">Add photos…<input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onchange="stagePictures('photos', this)"></label>
+    <div class="pic-msg" id="pics-photos-msg"></div>
+  </div>
+</div>
+</section>
+
+<script>
+// ── The Pictures tab ──
+// Every picture goes up to the streaming laptop and lands where the overlay and the result
+// card read it (logos/, headshots/, sponsors/, socials/ in the CricketStream folder) —
+// nobody has to find a folder or know a badge is named after a club ID.
+var PICS = {};   // the last list of each kind
+function picMsg(kind, text, bad) {
+  var m = document.getElementById('pics-' + kind + '-msg');
+  if (m) { m.textContent = text || ''; m.style.color = bad ? '#ff6b6b' : 'var(--muted)'; }
+}
+// The kind as the server knows it: match photos for one team are "photos:2nd".
+function kp(kind) {
+  var t = kind === 'photos' && document.getElementById('pics-photo-team');
+  return t && t.value ? 'photos:' + t.value : kind;
+}
+function picURL(kind, it) {
+  return '/library/file?kind=' + encodeURIComponent(kp(kind)) + '&file=' + encodeURIComponent(it.file) + '&t=' + (it.mtime || 0);
+}
+function cleanName(file) {
+  return file.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+async function loadPictures(kind) {
+  try {
+    var r = await apiFetch('/library?kind=' + encodeURIComponent(kp(kind)));
+    if (!r.ok) return;
+    PICS[kind] = await r.json();
+    renderPictures(kind);
+  } catch (e) { picMsg(kind, 'Could not reach the server.', true); }
+}
+// The Team colours card's badge status, after a badge was added, renamed or removed here.
+async function refreshBadgeStatus() {
+  if (typeof checkBadges !== 'function') return;
+  try {
+    var st = await (await apiFetch('/state')).json();
+    checkBadges(st.home_club_id || '', st.away_club_id || '', st.home_abbrev || 'Home', st.away_abbrev || 'Away');
+  } catch (e) {}
+}
+function loadAllPictures() { ['badges', 'headshots', 'sponsors', 'photos'].forEach(loadPictures); }
+
+async function uploadPicture(kind, file, name) {
+  var r = await apiFetch('/library/upload?kind=' + encodeURIComponent(kp(kind)) + '&name=' + encodeURIComponent(name || ''),
+    {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: file});
+  var d = {};
+  try { d = await r.json(); } catch (e) {}
+  if (!r.ok || !d.ok) throw new Error(d.error || ('Upload failed (' + r.status + ')'));
+  return d;
+}
+
+function renderPictures(kind) {
+  var d = PICS[kind] || {items: []};
+  var grid = document.getElementById('pics-' + kind + '-grid');
+  grid.textContent = '';
+  (d.items || []).forEach(function (it) {
+    var box = document.createElement('div');
+    box.className = 'pic' + ((it.who || (kind === 'sponsors' && it.name === d.current)) ? ' mark' : '');
+    var img = document.createElement('img'); img.src = picURL(kind, it); img.alt = it.name; img.loading = 'lazy';
+    var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.name;
+    box.appendChild(img); box.appendChild(nm);
+    var tag = it.who === 'home' ? 'Our badge' : it.who === 'away' ? "Today's opposition" :
+      (kind === 'sponsors' && it.name === d.current) ? 'This weekend' : '';
+    if (tag) { var tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = tag; box.appendChild(tg); }
+    var acts = document.createElement('div'); acts.className = 'acts';
+    function act(label, fn) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = function () { fn(b); }; acts.appendChild(b); return b; }
+    if (kind === 'sponsors' && it.name !== d.current) act('Use this weekend', function () { useSponsor(it.name); });
+    if (kind !== 'sponsors') act('Rename', function () { startRename(kind, it, box, nm); });
+    act('Remove', function (b) {
+      if (!b.classList.contains('sure')) {   // a second press to remove, without a pop-up
+        b.classList.add('sure'); b.textContent = 'Sure?';
+        setTimeout(function () { b.classList.remove('sure'); b.textContent = 'Remove'; }, 3000);
+        return;
+      }
+      removePicture(kind, it);
+    });
+    box.appendChild(acts);
+    grid.appendChild(box);
+  });
+  if (!(d.items || []).length) {
+    var none = document.createElement('div'); none.className = 'hint'; none.textContent = 'None yet.';
+    grid.appendChild(none);
+  }
+  if (kind === 'badges') renderBadgeQuick(d);
+  if (kind === 'headshots') renderSquad(d);
+}
+
+function startRename(kind, it, box, nm) {
+  var input = document.createElement('input'); input.value = it.name;
+  nm.replaceWith(input); input.focus(); input.select();
+  async function done(save) {
+    if (!save || !input.value.trim() || input.value.trim() === it.name) { loadPictures(kind); return; }
+    var r = await apiFetch('/library/rename', {method: 'POST', body: JSON.stringify({kind: kp(kind), file: it.file, name: input.value})});
+    var d = {}; try { d = await r.json(); } catch (e) {}
+    picMsg(kind, d.ok ? 'Renamed to ' + cleanName(d.file) + '.' : (d.error || 'Could not rename it.'), !d.ok);
+    loadPictures(kind);
+    if (kind === 'badges') refreshBadgeStatus();
+  }
+  input.onkeydown = function (e) { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  input.onblur = function () { done(true); };
+}
+async function removePicture(kind, it) {
+  var r = await apiFetch('/library/delete', {method: 'POST', body: JSON.stringify({kind: kp(kind), file: it.file})});
+  var d = {}; try { d = await r.json(); } catch (e) {}
+  picMsg(kind, d.ok ? 'Removed ' + it.name + '.' : (d.error || 'Could not remove it.'), !d.ok);
+  loadPictures(kind);
+  if (kind === 'badges') refreshBadgeStatus();
+}
+
+// Badges: ours and today's opposition first, by the IDs CricketStream already knows.
+function renderBadgeQuick(d) {
+  var q = document.getElementById('pics-badges-quick');
+  q.textContent = '';
+  [['home', 'Our badge'], ['away', "Today's opposition"]].forEach(function (pair) {
+    var side = d[pair[0]] || {}, box = document.createElement('div');
+    var t = document.createElement('div'); t.style.fontWeight = '600'; t.textContent = pair[1];
+    var s = document.createElement('div'); s.className = 'hint';
+    box.appendChild(t); box.appendChild(s);
+    if (!side.key) {
+      s.textContent = pair[0] === 'home' ? 'Set the club\'s name or PlayCricket ID in Setup first.' : 'No opposition yet — Fetch today\'s match (Match day) or type their name there, then upload their badge here.';
+    } else {
+      s.textContent = (side.team ? side.team + ' · ' : '') + (side.id ? 'club ID ' + side.id : 'by name — no club ID') + (side.has ? ' · ✓ uploaded' : ' · no badge yet');
+      var lab = document.createElement('label'); lab.style.display = 'inline-block'; lab.style.marginTop = '6px';
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = side.has ? 'Replace…' : 'Upload…';
+      var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp'; f.hidden = true;
+      b.onclick = function () { f.click(); };
+      f.onchange = function () { addBadge(f, side.key); };
+      lab.appendChild(b); lab.appendChild(f); box.appendChild(lab);
+    }
+    q.appendChild(box);
+  });
+}
+async function addBadge(input, id) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  picMsg('badges', 'Uploading…');
+  try {
+    await uploadPicture('badges', file, id);
+    picMsg('badges', 'Badge saved for ' + (/^\d+$/.test(id) ? 'club ' + id : id) + ' — on the scorebar straight away.');
+  } catch (e) { picMsg('badges', e.message, true); }
+  loadPictures('badges');
+  refreshBadgeStatus();
+}
+// Ask for the ID before the file, not after the picker has been and gone.
+function pickBadgeFile(btn) {
+  if (!(document.getElementById('pics-badge-id').value || '').trim()) {
+    picMsg('badges', 'Type the club\'s PlayCricket ID first (the number in its play-cricket.com address).', true);
+    document.getElementById('pics-badge-id').focus();
+    return;
+  }
+  btn.nextElementSibling.click();
+}
+function addBadgeByID(input) {
+  var id = (document.getElementById('pics-badge-id').value || '').trim();
+  if (!id) { input.value = ''; picMsg('badges', 'Type the club\'s PlayCricket ID first.', true); return; }
+  addBadge(input, id);
+  document.getElementById('pics-badge-id').value = '';
+}
+
+// Player photos: the squad roster's players, ticked when the scorebar would find a photo.
+function renderSquad(d) {
+  var box = document.getElementById('pics-headshots-squad');
+  box.textContent = '';
+  var squad = d.squad || [];
+  if (!squad.length) return;
+  var missing = squad.filter(function (p) { return !p.has; }).length;
+  var h = document.createElement('div'); h.className = 'hint';
+  h.textContent = 'Squad roster: ' + (missing ? missing + ' of ' + squad.length + ' without a photo.' : 'every player has a photo.');
+  box.appendChild(h);
+  var list = document.createElement('div'); list.className = 'pic-squad';
+  squad.forEach(function (p) {
+    var row = document.createElement('div');
+    var n = document.createElement('span'); n.textContent = (p.num ? p.num + ' · ' : '') + p.name;
+    row.appendChild(n);
+    if (p.has) { var ok = document.createElement('span'); ok.className = 'pic-has'; ok.textContent = '✓ photo'; row.appendChild(ok); }
+    else {
+      var lab = document.createElement('label');
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Add photo…';
+      var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp'; f.hidden = true;
+      b.onclick = function () { f.click(); };
+      f.onchange = async function () {
+        var file = f.files && f.files[0]; f.value = '';
+        if (!file) return;
+        try { await uploadPicture('headshots', file, p.name); picMsg('headshots', 'Photo saved for ' + p.name + '.'); }
+        catch (e) { picMsg('headshots', e.message, true); }
+        loadPictures('headshots');
+      };
+      lab.appendChild(b); lab.appendChild(f); row.appendChild(lab);
+    }
+    list.appendChild(row);
+  });
+  box.appendChild(list);
+}
+
+// Photos chosen in bulk: a name for each (from its file name), then Save all.
+function stagePictures(kind, input) {
+  var files = Array.prototype.slice.call(input.files || []);
+  input.value = '';
+  var box = document.getElementById('pics-' + kind + '-pending');
+  box.textContent = '';
+  if (!files.length) return;
+  var rows = files.map(function (file) {
+    var row = document.createElement('div'); row.className = 'pic-row';
+    var img = document.createElement('img'); img.src = URL.createObjectURL(file); img.alt = '';
+    var name = document.createElement('input'); name.value = cleanName(file.name);
+    name.placeholder = kind === 'headshots' ? 'Player\'s name, e.g. John Walker' : 'Name';
+    row.appendChild(img); row.appendChild(name); box.appendChild(row);
+    return {file: file, name: name};
+  });
+  var bar = document.createElement('div'); bar.className = 'pic-row';
+  var save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save ' + (rows.length === 1 ? 'it' : 'all ' + rows.length);
+  var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel';
+  cancel.onclick = function () { box.textContent = ''; };
+  save.onclick = async function () {
+    save.disabled = true;
+    var done = 0, failed = [];
+    for (var i = 0; i < rows.length; i++) {
+      try { await uploadPicture(kind, rows[i].file, rows[i].name.value); done++; }
+      catch (e) { failed.push(rows[i].name.value + ': ' + e.message); }
+    }
+    box.textContent = '';
+    picMsg(kind, done + ' saved.' + (failed.length ? ' Not saved — ' + failed.join('; ') : ''), failed.length > 0);
+    loadPictures(kind);
+  };
+  bar.appendChild(save); bar.appendChild(cancel); box.appendChild(bar);
+}
+
+async function addSponsorPicture(input) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  picMsg('sponsors', 'Uploading…');
+  try {
+    var d = await uploadPicture('sponsors', file, '');
+    picMsg('sponsors', 'Saved — it\'s this weekend\'s logo now.');
+    var f = document.getElementById('sponsor_id');
+    if (f) { f.value = cleanName(d.file); if (typeof showSponsorPreview === 'function') showSponsorPreview(); }
+  } catch (e) { picMsg('sponsors', e.message, true); }
+  loadPictures('sponsors');
+}
+async function useSponsor(id) {
+  var r = await apiFetch('/state', {method: 'POST', body: JSON.stringify({sponsor_id: id})});
+  picMsg('sponsors', r.ok ? 'Logo ' + id + ' is on the sponsor strap this weekend.' : 'Could not change it.', !r.ok);
+  var f = document.getElementById('sponsor_id');
+  if (f && r.ok) { f.value = id; if (typeof showSponsorPreview === 'function') showSponsorPreview(); }
+  loadPictures('sponsors');
+}
+</script>
+
 <section class="tab-panel" id="tab-setup" role="tabpanel">
 <div class="grid">
+  <div class="card">
+    <h2>Settings</h2>
+    <p class="hint" style="margin-top:3px;margin-bottom:10px;">
+      Everything first-time setup asked &mdash; club name and colours, the scorebar style with a
+      preview of the stream, PlayCricket, the AI key, the club password &mdash; on one page.
+      Changes reach the overlay straight away.
+    </p>
+    <a class="btn" id="open-settings" href="/settings" style="text-align:center;text-decoration:none;">&#9881;&#65039; Open settings</a>
+  </div>
   <div class="card">
     <h2>Pre-match check</h2>
     <p class="hint" style="margin-top:3px;margin-bottom:10px;">
@@ -1093,6 +1513,13 @@
   <div class="card">
     <h2>Cameras</h2>
     <div class="field">
+      <button class="btn btn-test" type="button" onclick="findCameras()">&#128269; Find cameras on this network</button>
+      <div id="cam-found"></div>
+      <p class="hint">Finds the club's IP cameras (ONVIF — on in most cameras, sometimes under the camera's own
+        Network settings) and fills in the address below, so nobody types an RTSP address. The camera's password
+        stays on this laptop.</p>
+    </div>
+    <div class="field">
       <label>Camera RTSP URL <span style="color:var(--muted);font-weight:400;">(adds the match camera to OBS for you)</span></label>
       <input type="text" id="camera_rtsp_url" placeholder="rtsp://user:pass@192.168.1.50:554/stream">
     </div>
@@ -1136,8 +1563,8 @@
     </div>
     <div class="field" style="padding:10px;background:#0a1428;border:1px solid var(--line);border-radius:5px;margin-bottom:10px;">
       <label style="color:var(--accent);">&#9679; NV Play on separate hardware <span style="color:var(--muted);font-size:10px;font-weight:400;">— optional, instead of the folder above</span></label>
-      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (run nvplay_bridge.py on that machine)" style="margin-bottom:6px;">
-      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (printed when nvplay_bridge.py starts)">
+      <input type="text" id="pcs_bridge_url" placeholder="e.g. http://100.101.102.103:5050 (shown in CricketStream's window on that machine)" style="margin-bottom:6px;">
+      <input type="text" id="pcs_bridge_token" placeholder="Bridge token (shown beside the address, with a Copy button)">
       <p class="hint" style="color:var(--muted);">If NV Play runs on its own machine (not this one) so its heat/CPU doesn't share the
       streaming machine's budget, leave the folder above blank and point this at that machine's bridge instead — a Tailscale
       IP is the recommended way to reach it.</p>
@@ -1147,7 +1574,7 @@
       <div class="toggle-row" style="margin:0;">
         <div>
           <div class="toggle-label" style="color:#c8a000;">Run the stream from a second laptop</div>
-          <div class="toggle-desc">Scorer runs <code>scorer_agent.py</code> once at the start of the day and is otherwise left alone;
+          <div class="toggle-desc">The scorer opens CricketStream (set up as <b>The scorer's laptop</b>) at the start of the day and leaves it alone;
           this laptop finds it on the club wifi automatically. See TWO_LAPTOP_SETUP.md.</div>
         </div>
         <label class="toggle"><input type="checkbox" id="pcs_source_agent" onchange="onAgentToggle()"><span class="track"></span></label>
@@ -1159,6 +1586,14 @@
             <input type="text" id="agent_host" placeholder="found automatically — or type e.g. 192.168.1.40:8788">
           </div>
           <button type="button" onclick="discoverAgent()" style="white-space:nowrap;">Find scorer laptop</button>
+        </div>
+        <div style="display:flex;gap:6px;align-items:flex-end;margin-top:8px;">
+          <div style="flex:1;">
+            <label>Pairing code <span style="color:var(--muted);font-weight:400;">— shown in CricketStream on the scorer's laptop, if Find doesn't find it</span></label>
+            <input type="text" id="agent_code" placeholder="e.g. K8Q2-7WMX" autocomplete="off" spellcheck="false"
+                   style="text-transform:uppercase;letter-spacing:.06em" onkeydown="agentCodeKey(event)">
+          </div>
+          <button type="button" onclick="pairAgent()" style="white-space:nowrap;">Connect</button>
         </div>
         <div id="agent-status" class="hint" style="margin-top:8px;padding:8px;border-radius:4px;background:#150f03;border:1px solid #3a2c00;color:#8a6a20;">
           Checking&hellip;
@@ -1202,8 +1637,8 @@
     <h2>Stream health check</h2>
   <p class="section-note">
     Measures your actual upload speed and recommends a bitrate and resolution from it. Both
-    are applied to OBS for you the next time quickstart runs (pin your own in config.ini's
-    [Stream] section). Quickstart also picks OBS's video encoder: a hardware one if this
+    are applied to OBS for you the next time CricketStream starts (pin your own in config.ini's
+    [Stream] section). It also picks OBS's video encoder: a hardware one if this
     laptop has one. Runs automatically once per session.
   </p>
   <div id="stream-check-body" style="font-size:12px;color:var(--muted);padding:10px 12px;
@@ -1216,20 +1651,23 @@
   </button>
   </div>
   <div class="card">
-    <h2>Folders</h2>
+    <h2>Where pictures are kept</h2>
+    <p class="hint">Add badges, player photos, sponsor logos and match photos in the <b>Pictures</b> tab —
+      no folders needed. Only if the club already keeps them somewhere else (a shared drive), point
+      CricketStream at that folder here; blank uses the CricketStream folder.</p>
     <!-- Logos folder -->
     <div class="field" style="margin-top:14px;">
-      <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ next to server.py)</span></label>
+      <label>Logos folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use logos/ in the CricketStream folder)</span></label>
       <input type="text" id="logos_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/logos">
       <p class="hint">Folder containing club badge PNG files named by PlayCricket club ID (e.g. 12345.png)</p>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label>Headshots folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use headshots/ next to server.py)</span></label>
+      <label>Headshots folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use headshots/ in the CricketStream folder)</span></label>
       <input type="text" id="headshots_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/headshots">
       <p class="hint">Player photo PNGs named by player name. Spaces, dots and case don't matter (e.g. <code>p.smith.jpg</code>, <code>P SMITH.png</code> and <code>psmith.jpg</code> all match the scorebar name "P SMITH").</p>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label>Socials folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use socials/ next to server.py)</span></label>
+      <label>Socials folder <span style="color:var(--muted);font-weight:400;">(optional — leave blank to use socials/ in the CricketStream folder)</span></label>
       <input type="text" id="socials_folder" placeholder="e.g. /Users/yourname/Documents/CricketStream/socials">
       <p class="hint">Match photos for social posts (JPG/PNG). The match report tool lists these so you can attach one.</p>
     </div>
@@ -1237,7 +1675,7 @@
   <div class="card">
     <h2>Squad roster</h2>
     <label>Squad Roster — tells brothers apart</label>
-    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Photos can be named by number (<code>21.png</code>) or by name (<code>p.smith.png</code>). Enter it once per season.</p>
+    <p class="hint" style="margin-bottom:8px;">One player per line as <b>number = Full Name</b> (e.g. <code>21 = Peter Smith</code>). The shirt number is unique per player, so this resolves same-surname brothers to the right stats and photo even when the scorebar shows only the surname. Add photos in the <b>Pictures</b> tab, which lists who in the squad still needs one. Enter it once per season.</p>
     <textarea id="roster-text" rows="8" placeholder="21 = Peter Smith&#10;7 = James Smith&#10;14 = Michael Smith&#10;9 = Karl Jones&#10;23 = Jamie Jones" style="width:100%;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
     <button class="btn btn-test" onclick="saveRoster()" style="margin-top:8px;width:100%;">Save roster</button>
     <span id="roster-status" style="margin-left:10px;font-size:12px;"></span>
@@ -1262,6 +1700,11 @@ function showTab(name) {
   // hidden; re-measure when it becomes visible. (Defined in the main script below; a
   // click can only happen after that has run.)
   if (name === 'graphics' && typeof scaleScorebarPreview === 'function') scaleScorebarPreview();
+  // On page load this runs before the main script (apiFetch) exists: wait for it.
+  if (name === 'pictures') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { loadAllPictures(); }, {once: true});
+    else loadAllPictures();
+  }
 }
 (function () {
   let t = 'match';
@@ -1293,7 +1736,7 @@ window.onerror = function (message, source, lineno, colno) {
   }
   el.textContent = "Control panel script error: " + message +
     " (line " + lineno + ", col " + colno + ") -- the panel did not load correctly. " +
-    "Check the browser console, and server.py for a raw backslash inside CONTROL_HTML.";
+    "Check the browser console (F12) and report it with what it says.";
 };
 </script>
 
@@ -1307,13 +1750,26 @@ const PRESETS = /*__KIT_PRESETS__*/[];
 // value = token to send as Authorization: Bearer
 function getToken() { return sessionStorage.getItem('bbcc_token'); }
 
+// A refused session stays refused until someone signs in again, so after the first 401
+// the panel stops asking: a panel left open in another tab or browser with an old login
+// (a server restart makes every old login invalid) used to retry its background checks
+// every few seconds and fill the Security log with rejections.
+let _sessionRefused = false;
 async function apiFetch(url, opts) {
+  if (_sessionRefused) {
+    return new Response('{"ok":false,"error":"Unauthorized"}',
+      {status: 401, headers: {'Content-Type': 'application/json'}});
+  }
   const t = getToken();
   const baseHeaders = (opts && opts.headers) ? opts.headers : {'Content-Type':'application/json'};
   const h = Object.assign({}, baseHeaders);
   if (t) h['Authorization'] = 'Bearer ' + t;
   const r = await fetch(url, Object.assign({}, opts, {headers: h}));
-  if (r.status === 401) showLoginOverlay('Session expired — log in again');
+  if (r.status === 401) {
+    _sessionRefused = true;
+    sessionStorage.removeItem('bbcc_token');
+    showLoginOverlay('Session expired — log in again');
+  }
   return r;
 }
 
@@ -1340,10 +1796,12 @@ async function doLogin() {
     const d = await res.json();
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
+      _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      pollPractice();            // a practice already running when the panel opens
       loadSocialClips();         // same: /social/clips is token-gated
       loadMatchPage();           // same: /match/page is token-gated
     } else {
@@ -1365,10 +1823,12 @@ async function doSkip() {
     const d = await res.json();
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
+      _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
       loadPrecheckLast();        // same: /precheck/last is token-gated
+      pollPractice();            // a practice already running when the panel opens
       loadSocialClips();         // same: /social/clips is token-gated
       loadMatchPage();           // same: /match/page is token-gated
     } else {
@@ -1775,6 +2235,56 @@ loadSocialClips();
 // Every row is built with textContent: the details include error text from outside services.
 const PRECHECK_MARK = {ok: ['\u2713', 'var(--ok)'], warn: ['\u26A0', 'var(--warn)'],
                        bad: ['\u2717', 'var(--bad)'], skip: ['\u2013', 'var(--muted)']};
+// ── Practice match ──
+var _practiceTimer = null;
+function showPractice(d) {
+  const btn = document.getElementById('practice-btn');
+  const msg = document.getElementById('practice-msg');
+  if (d && d.running) {
+    btn.innerHTML = '&#9632; Stop the practice match';
+    msg.style.color = 'var(--accent)';
+    msg.textContent = 'Playing: ' + (d.score || 'starting…') + ' — watch it in OBS.';
+    if (!_practiceTimer) _practiceTimer = setInterval(pollPractice, 3000);
+  } else {
+    btn.innerHTML = '&#9654; Start a practice match';
+    if (_practiceTimer) {
+      clearInterval(_practiceTimer); _practiceTimer = null;
+      msg.style.color = 'var(--ok)';
+      msg.textContent = 'Practice over — the score source is back as it was.';
+    }
+  }
+}
+async function pollPractice() {
+  try {
+    const res = await apiFetch('/rehearsal');
+    if (res.ok) showPractice(await res.json());
+  } catch (e) {}
+}
+async function togglePractice() {
+  const btn = document.getElementById('practice-btn');
+  const msg = document.getElementById('practice-msg');
+  const running = !!_practiceTimer;
+  btn.disabled = true;
+  try {
+    const res = await apiFetch('/rehearsal', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(running ? {action: 'stop'} : {action: 'start',
+        scenario: document.getElementById('practice-scenario').value,
+        overs: parseInt(document.getElementById('practice-overs').value, 10)})});
+    const d = await res.json();
+    if (!res.ok || d.ok === false) {
+      msg.style.color = 'var(--bad)';
+      msg.textContent = d.error || ('Could not start it (' + res.status + ')');
+      return;
+    }
+    showPractice(d);
+  } catch (e) {
+    msg.style.color = 'var(--bad)';
+    msg.textContent = 'Could not reach the server';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function runPrecheck() {
   const box = document.getElementById('precheck-results');
   const btn = document.getElementById('precheck-btn');
@@ -1866,6 +2376,7 @@ function renderPrecheck(d) {
   }
 }
 loadPrecheckLast();
+pollPractice();
 setInterval(loadPrecheckLast, 600000);
 
 // ── Sponsor airtime (read-only; the overlay reports, the server times it) ──
@@ -1953,11 +2464,10 @@ async function showRemoteOverlay() {
     _remoteTargets = d.targets || [];
     if (!_remoteTargets.length) {
       body.innerHTML = '<p style="font-size:12px;color:var(--text-2);line-height:1.5;">' +
-        'Not reachable from another device yet — set <code style="background:var(--bg);' +
-        'padding:1px 5px;border-radius:3px;">bind_host</code> under <code style="background:' +
-        'var(--bg);padding:1px 5px;border-radius:3px;">[Network]</code> in config.ini, install ' +
-        'Tailscale, or enable <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">' +
-        'cloudflare_tunnel</code>, then restart the server.</p>';
+        'Not reachable from another device yet — in <a href="/settings">Settings</a>, set a club ' +
+        'password and tick <em>Allow phones and tablets on the wifi</em>; or install Tailscale, or ' +
+        'enable <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">' +
+        'cloudflare_tunnel</code> in config.ini. Then restart CricketStream.</p>';
       return;
     }
     renderRemoteTarget(_remoteTargets[0].via);
@@ -1984,6 +2494,18 @@ const AUTH_EVENT_LABEL = {
   '401': 'Rejected (no/invalid session)'
 };
 
+// Repeats in a row (same event, same address) as one line with a count: a stale panel
+// tab's retries are one thing that happened, not fifty.
+function groupAuthEntries(entries) {
+  const out = [];
+  entries.forEach(function (e) {
+    const last = out[out.length - 1];
+    if (last && last.event === e.event && last.ip === e.ip) { last.count++; last.first = e.time; }
+    else out.push({event: e.event, ip: e.ip, time: e.time, first: e.time, count: 1});
+  });
+  return out;
+}
+
 async function showSecurityOverlay() {
   const ov   = document.getElementById('security-overlay');
   const body = document.getElementById('security-modal-body');
@@ -2003,8 +2525,9 @@ async function showSecurityOverlay() {
     body.innerHTML = '<p style="font-size:11px;color:var(--accent);text-transform:uppercase;' +
       'letter-spacing:1px;margin-bottom:8px;">Recent activity</p>' +
       '<div style="max-height:220px;overflow-y:auto;">' +
-      d.entries.map(function(e) {
-        const label = AUTH_EVENT_LABEL[e.event] || e.event;
+      groupAuthEntries(d.entries).map(function(e) {
+        let label = AUTH_EVENT_LABEL[e.event] || e.event;
+        if (e.count > 1) label += ' \u00d7' + e.count;
         const color = (e.event === 'login_ok') ? 'var(--ok)' :
                       (e.event === 'logout_all') ? 'var(--accent)' : 'var(--bad)';
         return '<div style="display:flex;justify-content:space-between;gap:10px;' +
@@ -2012,7 +2535,13 @@ async function showSecurityOverlay() {
           '<span style="color:' + color + '">' + label + '</span>' +
           '<span style="color:var(--muted);">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
           '</div>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' +
+      (d.entries.some(function (e) { return e.event === '401'; })
+        ? '<p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">Rejections from ' +
+          '127.0.0.1 are this laptop: usually a control panel left open in another tab or browser ' +
+          'from before CricketStream last started (an old login stops working when it restarts). ' +
+          'Close that tab, or sign in there again.</p>'
+        : '');
   } catch (err) {
     body.innerHTML = '<p style="font-size:12px;color:var(--bad);">Could not reach server</p>';
   }
@@ -2318,6 +2847,14 @@ async function loadState() {
   const clubNameEl  = document.getElementById('panel-club-name');
   if (clubBadgeEl) clubBadgeEl.textContent = (s.home_abbrev || clubName || 'CC').slice(0,2).toUpperCase();
   if (clubNameEl)  clubNameEl.textContent  = clubName;
+  // The club's badge, as the scorebar finds it (club ID, or the name with no ID yet).
+  const logoEl = document.getElementById('panel-club-logo');
+  const logoKey = s.home_club_id || (s.home_team && s.home_team !== 'Home CC' ? s.home_team : '');
+  if (logoEl && logoKey) {
+    logoEl.onload  = function () { logoEl.hidden = false; if (clubBadgeEl) clubBadgeEl.hidden = true; };
+    logoEl.onerror = function () { logoEl.hidden = true;  if (clubBadgeEl) clubBadgeEl.hidden = false; };
+    logoEl.src = '/logo/' + encodeURIComponent(logoKey) + '?t=' + Date.now();
+  }
   document.title = 'Stream Control — ' + clubName;
 }
 
@@ -2388,8 +2925,8 @@ async function refreshAgentStatus() {
   try {
     const d = await (await apiFetch('/agent/status')).json();
     if (!d.address) {
-      setAgentStatus('Not connected yet. Start <code>scorer_agent.py</code> on the scoring '
-                   + 'laptop, then press <b>Find scorer laptop</b>.', 'warn');
+      setAgentStatus('Not connected yet. Open CricketStream on the scoring laptop (set up as '
+                   + '<b>The scorer\'s laptop</b>), then press <b>Find scorer laptop</b>.', 'warn');
       return;
     }
     // hostname/file/address/error all come from the scorer agent over the network
@@ -2415,6 +2952,27 @@ async function refreshAgentStatus() {
   }
 }
 
+// The scorer's laptop's pairing code: its address, typed instead of found — for wifi that
+// blocks the automatic search. Saved by the server only once that laptop answers.
+function agentCodeKey(e) { if (e.key === 'Enter') { e.preventDefault(); pairAgent(); } }
+
+async function pairAgent() {
+  const code = (document.getElementById('agent_code').value || '').trim();
+  if (!code) { setAgentStatus('Type the pairing code shown on the scorer\'s laptop.', 'warn'); return; }
+  setAgentStatus('Connecting&hellip;', '');
+  try {
+    const d = await (await apiFetch('/agent/pair', {method: 'POST', body: JSON.stringify({code: code})})).json();
+    if (!d.ok) { setAgentStatus(escapeAgentText(d.error || 'That did not work.'), 'err'); return; }
+    document.getElementById('agent_host').value = d.address;
+    document.getElementById('agent_code').value = '';
+    const tog = document.getElementById('pcs_source_agent');
+    if (tog && !tog.checked) { tog.checked = true; if (typeof onAgentToggle === 'function') onAgentToggle(); }
+    await refreshAgentStatus();
+  } catch (e) {
+    setAgentStatus('Could not connect: ' + e.message, 'err');
+  }
+}
+
 async function discoverAgent() {
   setAgentStatus('Looking for the scoring laptop on this network&hellip;', '');
   try {
@@ -2432,12 +2990,60 @@ async function discoverAgent() {
   }
 }
 
+// ── Find cameras on this network (ONVIF) ──
+async function findCameras() {
+  const box = document.getElementById('cam-found');
+  box.textContent = 'Looking for cameras… (a few seconds)';
+  try {
+    const d = await (await apiFetch('/cameras/discover')).json();
+    box.textContent = '';
+    if (!d.cameras || !d.cameras.length) { box.textContent = d.error || 'No camera answered.'; return; }
+    d.cameras.forEach(function (cam) { box.appendChild(cameraRow(cam)); });
+  } catch (e) { box.textContent = 'Search failed: ' + e.message; }
+}
+function cameraRow(cam) {
+  const row = document.createElement('div');
+  row.style.cssText = 'border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:8px;background:var(--surface-2)';
+  const t = document.createElement('div');
+  t.style.fontWeight = '600';
+  t.textContent = cam.name + (cam.make && cam.name.indexOf(cam.make) < 0 ? ' (' + cam.make + ')' : '') + ' — ' + cam.address;
+  row.appendChild(t);
+  const grid = document.createElement('div'); grid.className = 'half-grid'; grid.style.marginTop = '6px';
+  const user = document.createElement('input'); user.type = 'text'; user.value = 'admin'; user.placeholder = 'Camera username';
+  const pass = document.createElement('input'); pass.type = 'password'; pass.placeholder = 'Camera password';
+  grid.appendChild(user); grid.appendChild(pass); row.appendChild(grid);
+  const acts = document.createElement('div'); acts.className = 'half-grid'; acts.style.marginTop = '6px';
+  const msg = document.createElement('div'); msg.className = 'hint'; msg.style.marginTop = '6px';
+  [['1', 'Use as main camera'], ['2', 'Use as bowler-end camera']].forEach(function (p) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = p[1];
+    b.addEventListener('click', function () { useCamera(cam, user.value, pass.value, p[0], msg, b); });
+    acts.appendChild(b);
+  });
+  row.appendChild(acts); row.appendChild(msg);
+  return row;
+}
+async function useCamera(cam, user, pass, slot, msg, btn) {
+  btn.disabled = true;
+  msg.textContent = 'Asking the camera for its stream address…';
+  try {
+    const d = await (await apiFetch('/cameras/use', {method: 'POST', body: JSON.stringify({address: cam.address, name: cam.name,
+      make: cam.make, hardware: cam.hardware, xaddr: cam.xaddr, user: user, pass: pass, slot: slot})})).json();
+    if (!d.ok) { msg.textContent = d.error || 'That did not work.'; return; }
+    // The stored address holds the password: the form shows it as saved, never the address itself.
+    const field = document.getElementById(slot === '2' ? 'camera2_rtsp_url' : 'camera_rtsp_url');
+    if (field) field.value = '••••••••';
+    msg.textContent = d.note + ' (' + d.masked + ')';
+  } catch (e) { msg.textContent = 'Could not reach the server.'; }
+  finally { btn.disabled = false; }
+}
+
 async function testReplay() {
   showStatus('Triggering test replay...','ok');
   try {
-    const res = await apiFetch('/replay', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Test'})});
+    // Through the overlay (it shows the REPLAY screen, then cuts), so OBS must be showing it.
+    const res = await apiFetch('/replay/test', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d = await res.json();
-    showStatus(d.ok ? 'Replay triggered — check OBS' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
+    showStatus(d.ok ? 'Replay sent to the overlay — watch OBS (the overlay must be on screen)' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 
@@ -3273,7 +3879,7 @@ async function checkLiveStatus() {
     dot.style.background = 'var(--bad)';
     dot.style.animation  = 'none';
     line1.textContent    = e.name === 'AbortError' ? 'Server slow — retrying' : 'Cannot reach server';
-    line2.textContent    = 'Make sure server.py is running';
+    line2.textContent    = 'Make sure CricketStream is running';
     src.textContent      = 'Offline';
     src.style.background = '#3a0d0d';
     src.style.color      = 'var(--bad)';
@@ -3376,6 +3982,106 @@ async function pollHealth() {
 }
 pollHealth();
 setInterval(pollHealth, 10000);
+</script>
+<script>
+// ── Tiles in your own order ──
+// Each tab's tiles can be dragged into the order this operator prefers, by the grip in a
+// tile's title (only the grip: clicking, typing and selecting work as before). The order is
+// kept in this browser only, per tab; "Reset tile layout" (bottom of Setup) puts it back.
+// Touch screens don't drag, so a phone keeps the standard layout.
+(function () {
+  var KEY = 'cs_panel_layout_v1';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function save(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
+  function cardKey(card) {
+    var h = card.querySelector('h2');
+    // The title's own words, not the grip this script adds to it.
+    return h ? h.textContent.replace(/⠇/g, '').replace(/\s+/g, ' ').trim().toLowerCase() : '';
+  }
+  function grids() {
+    // Named by tab and by the grid's place within that tab.
+    return Array.prototype.slice.call(document.querySelectorAll('.tab-panel > .grid')).map(function (g) {
+      var i = Array.prototype.indexOf.call(g.parentNode.querySelectorAll(':scope > .grid'), g);
+      return {el: g, key: (g.parentNode.id || 'tab') + ':' + i};
+    });
+  }
+  function cardsOf(g) {
+    return Array.prototype.filter.call(g.children, function (c) { return c.classList.contains('card') && cardKey(c); });
+  }
+  // Put a grid's tiles in the saved order; tiles the saved order doesn't know (added in a
+  // newer version) keep their place after the known ones.
+  function restore() {
+    var saved = load();
+    grids().forEach(function (g) {
+      var order = saved[g.key];
+      if (!order || !order.length) return;
+      var byKey = {};
+      cardsOf(g.el).forEach(function (c) { byKey[cardKey(c)] = c; });
+      order.forEach(function (k) { if (byKey[k]) { g.el.appendChild(byKey[k]); delete byKey[k]; } });
+      Object.keys(byKey).forEach(function (k) { g.el.appendChild(byKey[k]); });
+    });
+  }
+  function remember(g) {
+    var saved = load();
+    saved[g.key] = cardsOf(g.el).map(cardKey);
+    save(saved);
+    showReset();
+  }
+  var dragging = null;
+  function wire(g) {
+    cardsOf(g.el).forEach(function (card) {
+      var h = card.querySelector('h2');
+      var grip = document.createElement('span');
+      grip.className = 'tile-grip'; grip.textContent = '⠇⠇';
+      grip.title = 'Drag to move this tile';
+      grip.setAttribute('draggable', 'true');
+      h.appendChild(grip);
+      grip.addEventListener('dragstart', function (e) {
+        dragging = {card: card, grid: g};
+        card.classList.add('tile-dragging');
+        try { e.dataTransfer.setData('text/plain', cardKey(card)); e.dataTransfer.setDragImage(card, 20, 20); } catch (x) {}
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      grip.addEventListener('dragend', function () {
+        card.classList.remove('tile-dragging');
+        document.querySelectorAll('.tile-over').forEach(function (c) { c.classList.remove('tile-over'); });
+        if (dragging) remember(dragging.grid);
+        dragging = null;
+      });
+      card.addEventListener('dragover', function (e) {
+        if (!dragging || dragging.grid.el !== g.el || dragging.card === card) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var r = card.getBoundingClientRect();
+        // Before this tile if the pointer is in its first half (reading order), after if not.
+        var before = (e.clientY - r.top) < r.height / 2 && (e.clientX - r.left) < r.width;
+        g.el.insertBefore(dragging.card, before ? card : card.nextSibling);
+      });
+      card.addEventListener('drop', function (e) { if (dragging) e.preventDefault(); });
+    });
+  }
+  function showReset() {
+    var el = document.getElementById('tile-reset');
+    if (el) el.hidden = !Object.keys(load()).length;
+  }
+  function addReset() {
+    var setup = document.getElementById('tab-setup');
+    if (!setup) return;
+    var p = document.createElement('p');
+    p.id = 'tile-reset'; p.className = 'hint'; p.style.textAlign = 'center'; p.style.margin = '6px 0 18px';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkish'; b.textContent = 'Reset tile layout';
+    b.title = 'Put every tab’s tiles back in the standard order (on this computer)';
+    b.addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+    p.appendChild(document.createTextNode('Tiles are in your own order on this computer. '));
+    p.appendChild(b);
+    setup.appendChild(p);
+    showReset();
+  }
+  restore();
+  grids().forEach(wire);
+  addReset();
+})();
 </script>
 </body>
 </html>

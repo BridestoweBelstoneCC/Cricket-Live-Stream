@@ -9,7 +9,7 @@ The document follows the usual system-design views, outside in:
 1. [Purpose and quality drivers](#1-purpose-and-quality-drivers): what the design is optimised for
 2. [System context](#2-system-context): people and external systems
 3. [Deployment view](#3-deployment-view): what runs on which machine
-4. [Component view](#4-component-view): inside `server.py` and the browser clients
+4. [Component view](#4-component-view): the one binary, inside the server, and the browser clients
 5. [Runtime views](#5-runtime-views): a ball, an over, a replay, the end of the match
 6. [Concurrency view](#6-concurrency-view): every background thread and its cadence
 7. [Data view](#7-data-view): files, the SQLite schema, what survives a restart
@@ -25,8 +25,8 @@ The document follows the usual system-design views, outside in:
 
 A free broadcast-graphics system for grassroots cricket. The volunteer running it is
 not technical, and nobody is at the laptop for most of the match. The scorer's software
-writes a file every ball. A Python server turns that file into live graphics inside OBS,
-and OBS streams to YouTube.
+writes a file every ball. CricketStream — one Go binary — turns that file into live
+graphics inside OBS, and OBS streams to YouTube.
 
 The design in one sentence: **every score source speaks the NV Play "scoreboard frame"
 dialect.** The scorer's file, the phone scoring page and the match simulator all produce the
@@ -34,11 +34,11 @@ same frame, so every downstream feature works the same whatever the source.
 
 | Driver | What it means here | Where it shows |
 |---|---|---|
-| **The stream must not stop** | Nothing optional may take the broadcast down | Logging never raises; each overlay stage is isolated in its own try/catch; OBS crash and freeze recovery; quickstart restarts a crashed server |
+| **The stream must not stop** | Nothing optional may take the broadcast down | Logging never panics (every background loop recovers); each overlay stage is isolated in its own try/catch; OBS crash and freeze recovery; the launcher restarts a crashed server |
 | **Unattended** | Nobody at the laptop to click a dialog | OBS's Safe Mode and update prompts are pre-empted; a detected checklist; a pre-match check that runs itself |
-| **Runs on an old laptop that is also encoding video** | CPU headroom belongs to OBS | Stdlib HTTP server; mtime-cached state; post-match video work at below-normal priority; no encoding mid-match |
+| **Runs on an old laptop that is also encoding video** | CPU headroom belongs to OBS | One native binary, stdlib HTTP server; mtime-cached state; post-match video work at below-normal priority; no encoding mid-match |
 | **Correct numbers, never invented ones** | A wrong score on a public result card is worse than none | Facts come from the scorer's own figures or PlayCricket; AI only writes prose around them, and is refused when there's no data |
-| **Volunteer-proof** | Setup by double-click; failures explained in words | One launcher; every fatal path pauses with a plain explanation; a ✓/⚠/✗ pre-match check |
+| **Volunteer-proof** | Setup by double-click; failures explained in words | One file to download, nothing to install; first-run setup is a web page; every fatal path pauses with a plain explanation; a ✓/⚠/✗ pre-match check |
 | **Cheap** | Free to run; AI optional, priced in pence | Claude Haiku throughout; every AI feature has a non-AI fallback or is opt-in |
 
 ---
@@ -52,7 +52,7 @@ flowchart TB
     viewers(["👥 Viewers<br/>YouTube"])
     club(["👥 Club and sponsors<br/>result card, clips, match page,<br/>airtime report"])
 
-    cs["<b>CricketStream</b><br/>server.py + overlay + control panel<br/>on the streaming laptop"]
+    cs["<b>CricketStream</b><br/>server + overlay + control panel<br/>on the streaming laptop"]
 
     pc[("PlayCricket API<br/>fixtures, scorecards,<br/>league tables")]
     yt[("YouTube<br/>Live ingest (RTMP)<br/>+ Data API v3")]
@@ -84,17 +84,17 @@ stream, the scorebar, replays, highlights and ball database all still work.
 flowchart LR
     subgraph SCORE["Scorer's machine (optional, separate)"]
         nv["NV Play / PCS Pro<br/>writes scoreboard file"]
-        agent["scorer_agent.py<br/>HTTP :8788 + UDP discovery :8787<br/>(same wifi, no token)"]
-        bridge["nvplay_bridge.py<br/>HTTP, token-gated<br/>(over Tailscale)"]
+        agent["CricketStream agent<br/>HTTP :8788 + UDP discovery :8787<br/>(same wifi, no token)"]
+        bridge["CricketStream bridge<br/>HTTP :5050, token-gated<br/>(over Tailscale)"]
         nv --> agent
         nv --> bridge
     end
 
     subgraph STREAM["Streaming laptop"]
-        launcher["CricketStream.exe<br/>→ quickstart.py<br/>(restarts server up to 3×)"]
-        subgraph PY["server.py: one process, ThreadingHTTPServer :5000"]
-            http["HTTP handler<br/>(thread per request)"]
-            bg["8 background threads<br/>(see §6)"]
+        launcher["CricketStream (launcher role)<br/>(runs the server as a child,<br/>restarts it up to 3×)"]
+        subgraph PY["CricketStream server: one process, net/http :5000"]
+            http["HTTP handler<br/>(goroutine per request)"]
+            bg["background loops<br/>(see §6)"]
         end
         subgraph OBSBOX["OBS Studio"]
             ov["overlay.html<br/>browser source 1920×1080"]
@@ -126,13 +126,13 @@ machine and drive the OBS on the streaming laptop. Remote *operation* is what's 
 instead: Tailscale (recommended) or an opt-in Cloudflare quick tunnel. Both require a club
 password.
 
-**Three ways to reach the scorer's file**, behind one function (`read_score_source()`):
+**Three ways to reach the scorer's file**, behind one function (`ReadScoreSource()`):
 
 | Mode | When | Transport | Auth |
 |---|---|---|---|
 | `local` | NV Play on the streaming laptop | file read | n/a |
-| `local` + bridge | NV Play elsewhere, different network | `nvplay_bridge.py` over Tailscale, mirrored to `.pcs_bridge_cache/` | shared token |
-| `agent` | Two laptops on the same club wifi | `scorer_agent.py`, found by UDP broadcast | none (broadcast domain only) |
+| `local` + bridge | NV Play elsewhere, different network | `cricketstream bridge` over Tailscale, mirrored to `.pcs_bridge_cache/` | shared token |
+| `agent` | Two laptops on the same club wifi | `cricketstream agent`, found by UDP broadcast | none (broadcast domain only) |
 
 A live manual-scoring session (`/scoring`) outranks all three.
 
@@ -140,7 +140,39 @@ A live manual-scoring session (`/scoring`) outranks all three.
 
 ## 4. Component view
 
-### 4.1 Inside `server.py`
+### 4.1 One binary, four roles
+
+Everything is one Go program, `CricketStream`, with every page, font and template built
+in (`embed.go`; a file of the same name beside the binary overrides the built-in copy, so
+panel edits still show on refresh). With no arguments it opens its own window
+(`internal/app`) and does the job `config.ini`'s `role` says there, or asks which
+computer this is if there's no `config.ini` yet:
+
+| Role (first screen) | Runs, in the window | Package |
+|---|---|---|
+| The streaming laptop | the match-day screen; Start runs the launcher (fixture, OBS prep + setup, the server as a supervised child process, pre-flight, telemetry), then the control panel shows in the window; Stop offers the airtime + report | `internal/app` → `internal/launcher` → `internal/server` |
+| The scorer's laptop | the scorer agent, with its status (NV Play's file, the streaming laptop collecting it, this laptop's address) | `internal/app` → `internal/agent` |
+| NV Play bridge (scorer elsewhere) | the bridge, with its address and token | `internal/app` → `internal/bridge` |
+| (no config.ini) | "which computer is this?", the setup page, then that role — no restart | `internal/app` → `internal/setup` |
+
+The window is the system web view (WebView2 on Windows) showing pages the app serves on a
+loopback port, each API call carrying a per-run key only its own page has. Where there's
+no web view the same pages open in the browser. The control panel stays a web page served
+by the server, because phones and tablets use it too; in the window it's logged in with
+the launcher's session and gains Activity and Stop buttons.
+
+On Windows the window also owns an icon by the clock (`tray_windows.go`, Shell_NotifyIcon
+on the window's own message loop) and its notifications. `alerts.go` decides what is
+worth one, every 10 seconds: `/health` during match day (feed freshness, the OBS guard's
+last event), the agent's own collected-ago on the scorer's laptop, a newer release, and
+the launcher's "server stopped unexpectedly" lines from the log. Each condition notifies
+once and once more when it clears; an OBS event already there when the app first looks is
+the baseline, not news.
+
+Every part is also a subcommand (`server`, `agent`, `bridge`, `simulate`, `obs-setup`,
+`telemetry`, …) for automation and troubleshooting.
+
+### 4.2 Inside the server
 
 Data flows left to right: sources, one ingest door, the per-poll pipeline, storage, and
 the products built from it. The control plane (HTTP routes, background services, OBS
@@ -150,22 +182,22 @@ adapters) sits underneath and drives the rest.
 flowchart LR
     subgraph SRC["Sources"]
         f1["Scoreboard file<br/>(local or bridge mirror)"]
-        f2["scorer_agent.py<br/>over the LAN"]
+        f2["scorer agent<br/>over the LAN"]
         f3["/scoring events"]
     end
 
     subgraph ING["Ingest"]
-        rss["read_score_source()"]
-        man["ManualScoringSession<br/>+ InningsEngine"]
-        parse["parse_pcs_json()<br/>one parser, one frame shape"]
+        rss["ReadScoreSource()"]
+        man["manual session<br/>+ scoring.Innings"]
+        parse["ParsePCSJSON()<br/>one parser, one frame shape"]
     end
 
     subgraph PIPE["Per-poll pipeline: /live only"]
-        ev["buffer_pcs_events()"]
-        fm["follow_match_id()"]
-        lb["log_ball_data()"]
-        lf["log_live_figures()"]
-        wp["win_prediction()"]
+        ev["BufferPCSEvents()"]
+        fm["FollowMatchID()"]
+        lb["LogBallData()"]
+        lf["LogLiveFigures()"]
+        wp["WinPrediction()"]
     end
 
     subgraph STORE["Storage"]
@@ -174,18 +206,18 @@ flowchart LR
     end
 
     subgraph PROD["Products"]
-        facts["merged_match_facts()"]
+        facts["mergedMatchFacts()"]
         rep["AI match report"]
-        card["result_card.py"]
-        page["match_page.py"]
-        clips["social_clips.py"]
+        card["resultcard"]
+        page["matchpage"]
+        clips["socialclips"]
         hl["highlights reel"]
     end
 
     subgraph CTRL["Control plane"]
         routes["HTTP routes<br/>auth · origin · rate limits"]
         svc["Background services<br/>watchdog · stream monitor · OBS guard<br/>viewers · pre-match · spotter · bridge"]
-        obsio["OBS adapters<br/>_obs_call · _obs_fast_call<br/>obs_prep · obs_setup"]
+        obsio["OBS adapters<br/>obsCall · obsFastCall<br/>obs prep · obs setup"]
     end
 
     f1 --> rss
@@ -216,26 +248,30 @@ flowchart LR
     svc --> page
 ```
 
-| Module | Responsibility | Pure? |
+| Package | Responsibility | Pure? |
 |---|---|---|
-| `server.py` | HTTP surface, ingest, ball DB, OBS control, background services, auth | no |
-| `scoring_engine.py` | Deterministic scorer's book: strike rotation, extras, dismissals, figures, frame rendering | yes |
-| `win_predictor.py` | DLS-shaped resources × this season's scoring, normal-distribution totals; `backtest()` | yes |
-| `result_card.py` | Result card PNG from facts + look (Pillow, bundled fonts) | yes |
-| `match_page.py` | Self-contained HTML match page; everything HTML-escaped | yes |
-| `social_clips.py` | 1080×1920 ffmpeg filter graph; text only via `textfile=` | yes (+ ffmpeg) |
-| `voice.py` | Text to WAV with the OS voice; text always via a file | yes (+ OS TTS) |
-| `logo_bg.py` | Transparent background for sponsor logos | yes |
-| `obs_prep.py` | OBS config files while OBS is closed; launch, close, crash marker, freeze ping | no |
-| `obs_setup.py` | Scenes, sources, stream key over the WebSocket | no |
-| `quickstart.py` / `cricketstream.py` / `setup_wizard.py` | Launch chain and installer | no |
-| `scorer_agent.py` / `nvplay_bridge.py` | Standalone, stdlib-only, no import of `server.py` | no |
-| `simulate_match.py` | Rehearsal feed: real NV Play quirks, `--chaos` failures | no |
+| `internal/server` | HTTP surface, ingest, ball DB (pure-Go SQLite), OBS control, background services, auth | no |
+| `internal/scoring` | Deterministic scorer's book: strike rotation, extras, dismissals, figures, frame rendering; the event-sourced session | yes |
+| `internal/winpredict` | DLS-shaped resources × this season's scoring, normal-distribution totals; `Backtest()` | yes |
+| `internal/resultcard` | Result card PNG from facts + look (built-in fonts) | yes |
+| `internal/matchpage` | Self-contained HTML match page; everything HTML-escaped | yes |
+| `internal/socialclips` | 1080×1920 ffmpeg filter graph; text only via `textfile=` | yes (+ ffmpeg) |
+| `internal/voice` | Text to WAV with the OS voice; text always via a file | yes (+ OS TTS) |
+| `internal/logobg` | Transparent background for sponsor logos | yes |
+| `internal/obs` | OBS config files while OBS is closed; launch, close, crash marker, freeze ping; scenes, sources, stream key over the WebSocket | no |
+| `internal/obsws` | The OBS WebSocket v5 client (per-call and held-open); `obswstest` is a fake OBS for tests | no |
+| `internal/app` | The window: first screen, match-day screen, agent/bridge status, the console's questions, activity log | no |
+| `internal/launcher` / `internal/setup` | Match-day launch chain; the first-run setup page | no |
+| `internal/agent` / `internal/bridge` | The scorer's-laptop roles; no dependency on the server package | no |
+| `internal/simulate` | Rehearsal feed: real NV Play quirks, `--chaos` failures | no |
+| `internal/tools` | Telemetry, camera encoder read-out, camera refresher, quality-ladder test | no |
+| `internal/pyval`, `internal/pyfmt`, `internal/ini`, `internal/htmlesc` | Python-compatible values, number formatting, configparser-compatible INI, `html.escape` — so output stays byte-identical to the original's | yes |
 
-The pure modules are the ones with deep test coverage. `server.py` gathers inputs and
-hands them over, so the logic can be tested without a server, OBS or a network.
+The pure packages are the ones with deep test coverage, several of them differential
+tests against the Python original. The server gathers inputs and hands them over, so the
+logic can be tested without a server, OBS or a network.
 
-### 4.2 Browser clients
+### 4.3 Browser clients
 
 | Client | Served at | Polls | Side effects allowed |
 |---|---|---|---|
@@ -259,23 +295,23 @@ sequenceDiagram
     autonumber
     participant S as Scorer (NV Play)
     participant F as Scoreboard file
-    participant SV as server.py
+    participant SV as server
     participant DB as match_data.db
     participant OV as overlay.html (OBS)
     participant OBS as OBS Studio
 
     S->>F: write frame (18.4 ov, ball is a SIX)
     OV->>SV: GET /state then GET /live
-    SV->>F: read_score_source() + parse_pcs_json()
-    SV->>SV: buffer_pcs_events() and follow_match_id()
+    SV->>F: ReadScoreSource() + ParsePCSJSON()
+    SV->>SV: BufferPCSEvents() and FollowMatchID()
     SV->>DB: rewrite current over (delete + reinsert)
     SV->>DB: upsert scorer's figures (live_* tables)
-    SV->>SV: win_prediction() from season scorecards
+    SV->>SV: WinPrediction() from season scorecards
     SV-->>OV: state + winPredictor + drained wicket events
     OV->>OV: render scorebar, diff ticker → new ball "6"
     OV->>OV: SIX! flash
     OV->>SV: POST /replay {reason: Six}
-    SV-->>OV: 200 (replay runs on its own thread)
+    SV-->>OV: 200 (replay runs on its own goroutine)
     SV->>OBS: SaveReplayBuffer
     SV->>DB: tag clip "SIX · SMITH 34* · 88-2 (18.4 ov)"
     SV->>OBS: ReplayClip ← clip, cut to Replay
@@ -292,9 +328,9 @@ recovered from the score delta and credited from the previous poll's snapshot.
 ```mermaid
 sequenceDiagram
     participant OV as overlay.html
-    participant SV as server.py
+    participant SV as server
     participant AI as Claude Haiku
-    participant TTS as voice.py
+    participant TTS as voice
 
     Note over OV: poll sees overs 5.0 (was 4.5)<br/>bowler already = next over's
     OV->>OV: over runs = max(ticker sum, score delta)
@@ -319,12 +355,12 @@ flowchart LR
     endst(["Stream goes off-air<br/>(stream monitor)"]) --> wait["wait 60 s"]
     wait --> still{"still off?"}
     still -- "no: ladder restart<br/>or operator restart" --> skip(["do nothing"])
-    still -- yes --> mp["build_match_page()"]
+    still -- yes --> mp["BuildMatchPage()"]
 
     subgraph FACTS["One source of facts"]
         pcf["PlayCricket scorecard<br/>(if published, with result)"]
         live["live_* tables<br/>(scorer's own figures)"]
-        mf["merged_match_facts()"]
+        mf["mergedMatchFacts()"]
         pcf --> mf
         live --> mf
     end
@@ -345,32 +381,32 @@ flowchart LR
 
 ## 6. Concurrency view
 
-One process, one interpreter. The HTTP server gives every request its own thread
-(`daemon_threads`, `request_queue_size = 64`: a burst of reconnecting pollers was refused
-at the OS level with the default of 5). Long-lived work runs on dedicated daemon threads,
-each with a loop that catches everything and never dies:
+One process. `net/http` gives every request its own goroutine, and keeps connections
+alive, so a burst of reconnecting pollers costs far less than it did with the original's
+connection-per-request server (whose default backlog of 5 refused them at the OS level).
+Long-lived work runs on background loops started through `loop()`, each of which recovers
+from a panic and carries on:
 
-| Thread | Cadence | Does | If it fails |
+| Loop | Cadence | Does | If it fails |
 |---|---|---|---|
-| `_watchdog_loop` | 90 s | Unsticks the season-stats build, restarts a dead Cloudflare tunnel, trims rate-limit state, logs feed staleness and Mac thermal throttling | Logs, retries next tick |
-| `_stream_monitor_loop` | 15 s | OBS stream status, congestion samples, quality-ladder decision, stream-end trigger for the match page | Marks OBS unreachable |
-| `_obs_guard_loop` | 5 s | OBS crash (sentinel present) → reopen, scene, restart stream if it was live; freeze (window hung 60 s **and** bytes not moving) → kill → reopen | Capped at 3 reopens / 30 min, then a human |
-| `_viewer_loop` | 60 s, live only | YouTube concurrent viewers for sponsor viewer-minutes | Count goes stale (>3 min) and is not used |
-| `_precheck_loop` | 30 s after start, then 6 h | All pre-match checks in parallel, 20 s budget | A check that errors is reported ✗, never raised |
-| `_spotter_loop` | 60 s tick, check every N min, live only | Camera screenshots → frozen check → Claude Haiku | "Couldn't check", never a false camera problem |
-| `_pcs_bridge_sync_loop` | 2 s, bridge mode only | Mirrors the remote file atomically, keeps its mtime | Holds the last mirror |
+| Watchdog | 90 s | Unsticks the season-stats build, restarts a dead Cloudflare tunnel, trims rate-limit state, logs feed staleness and Mac thermal throttling | Logs, retries next tick |
+| Stream monitor | 15 s | OBS stream status, congestion samples, quality-ladder decision, stream-end trigger for the match page | Marks OBS unreachable |
+| OBS crash recovery (`obsGuardTick`) | 5 s | OBS crash (sentinel present) → reopen, scene, restart stream if it was live; freeze (window hung 60 s **and** bytes not moving) → kill → reopen | Capped at 3 reopens / 30 min, then a human |
+| Viewer sampler | 60 s, live only | YouTube concurrent viewers for sponsor viewer-minutes | Count goes stale (>3 min) and is not used |
+| Pre-match check | 30 s after start, then 6 h | All pre-match checks in parallel, 20 s budget | A check that errors is reported ✗, never raised |
+| Camera spotter | 60 s tick, check every N min, live only | Camera screenshots → frozen check → Claude Haiku | "Couldn't check", never a false camera problem |
+| Bridge mirror (`pcsBridgeTick`) | 2 s, bridge mode only | Mirrors the remote file atomically, keeps its mtime | Holds the last mirror |
 | Cloudflare reader | event-driven | Captures the tunnel URL | Watchdog restarts the tunnel |
 
-Short-lived worker threads: replay (one per trigger), AI over commentary, match page,
-social clips, highlights, the checklist's Start OBS job, season-stats build, league table.
+Short-lived goroutines (`safeGo`, which also recovers): replay (one per trigger), AI over
+commentary, match page, social clips, highlights, the checklist's Start OBS job,
+season-stats build, league table.
 
-**Shared-state rules.** `save_state()` is serialised (`_state_write_lock`) and atomic.
-Any read-modify-write goes through `update_state()` (`_state_rmw_lock`). The DB is
-reached through `_db_lock` with WAL. Job flags ("already building") are set under a
-lock. The overlay-facing event buffer is drained under `_event_buffer_lock`, so an event
-arriving mid-drain is never lost.
-
----
+**Shared-state rules.** `SaveState()` is serialised (`stateWriteMu`) and atomic. Any
+read-modify-write goes through `UpdateState()` (`stateRMWMu`). The DB is reached through
+`dbMu` with WAL. Job flags ("already building") are set under a lock. The overlay-facing
+event buffer is drained under `eventBufferMu`, so an event arriving mid-drain is never
+lost. CI runs the whole suite under the race detector.
 
 ## 7. Data view
 
@@ -378,13 +414,18 @@ arriving mid-drain is never lost.
 
 | File | Holds | Written by | Survives restart | Git |
 |---|---|---|---|---|
-| `config.ini` | Club identity, keys, OBS/stream policy, auth | setup wizard, `obs_prep` | yes | ignored |
-| `match_state.json` | Everything the panel edits | `save_state` (atomic, mtime-cached reads) | yes | ignored |
+| `config.ini` | Club identity, keys, OBS/stream policy, auth, this machine's role | setup page, OBS prep | yes | ignored |
+| `match_state.json` | Everything the panel edits | `SaveState` (atomic, mtime-cached reads) | yes | ignored |
 | `match_data.db` | Ball log, live figures, replay tags, reconciled scorecards | loggers | yes | ignored |
 | `manual_scoring.json` | `/scoring` event log | every action | yes, replayed on load | ignored |
 | `season_stats_cache.json` | Season batting lookup + `innings_history` for the win model | daily build | yes (same day) | ignored |
 | `sponsor_airtime.json` | Per-day on-air seconds, shows, viewer-minutes | airtime beacon | yes | ignored |
 | `match_pages/`, `.voice/`, replay folder | Post-match outputs, spoken lines (last 20), clips | jobs | yes | ignored |
+| `diagnostics/telemetry_*.csv` | Match-day bandwidth, drops, congestion, match context | `cricketstream telemetry` (started by the launcher) | yes | ignored |
+| `bridge_config.ini`, `scorer_agent.json` | The bridge's folder/port/token; the agent's remembered folder | those roles | yes | ignored |
+
+All of these live beside the binary (or under `CRICKETSTREAM_HOME`), never in a system
+folder: one folder is the whole install and the whole backup.
 
 ### 7.2 Database schema
 
@@ -491,7 +532,7 @@ Three layers, in increasing order of authority:
    written by Reconcile. They are the record of truth after the match.
 
 `match_id` is the PlayCricket id once known, else `date_home_v_away`. Every table keyed
-by it is listed in `_MATCH_TABLES`, so `follow_match_id()` can move a match's rows when the
+by it is listed in `matchTables`, so `FollowMatchID()` can move a match's rows when the
 id changes mid-innings.
 
 ---
@@ -502,17 +543,17 @@ id changes mid-innings.
 |---|---|---|---|
 | Scorer's file mid-write or corrupt | parse fails | Hold the last good frame | Nothing |
 | Scorer feed stops | watchdog, `/health` | Overlay keeps the last score | "feed stale" in the health strip |
-| Scorer's laptop (agent) unreachable | `read_agent_file` | Last score for 120 s, then rediscover every 15 s | Agent status + checklist button |
+| Scorer's laptop (agent) unreachable | `ReadAgentFile` | Last score for 120 s, then rediscover every 15 s | Agent status + checklist button |
 | OBS crashes | OBS guard: port down + crash sentinel | Clear sentinel, reopen past Safe Mode, Main scene, restart stream **only if it was live** | Event in `/health` → `obs_recovery` |
 | OBS freezes | Window hung 60 s **and** stream bytes not moving | Force-close → treated as a crash | Same |
 | OBS frozen but still streaming | Bytes moving | **Left alone** (killing it would cause the outage) | Warning |
 | Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down (never up on its own) | Monitor card, step history |
-| server.py crashes | quickstart | Relaunch up to 3× with backoff | Console |
-| State file unreadable | `load_state` | Last good copy, else defaults | Console warning |
+| Server crashes | launcher | Relaunch up to 3× with backoff | Console |
+| State file unreadable | `LoadState` | Last good copy, else defaults | Console warning |
 | YouTube login expired | refresh error | Say so; never open a login mid-match | Pre-match check ✗ |
 | Anthropic unavailable | API error | Commentary skipped; captions fall back to templates | Nothing on air |
 | Camera fogged or knocked | Camera spotter (opt-in) | None (can't wipe a lens) | Red camera badge in the pinned bar |
-| Leftover quality downshift | Pre-match check, `/health` | Quickstart resets the bitrate on next start | ⚠/✗ before going live |
+| Leftover quality downshift | Pre-match check, `/health` | The launcher resets the bitrate on next start | ⚠/✗ before going live |
 
 The rule behind the table: **automate what is safe to repeat, never what could put the
 club on air by surprise.** The stream is only restarted when OBS itself said it was live
@@ -536,7 +577,7 @@ flowchart LR
         anon["anonymous"]
     end
 
-    srv{{"server.py"}}
+    srv{{"server"}}
     obsov -- "loopback carve-out:<br/>/replay, /camera/scene,<br/>/commentary/over/generate,<br/>/weather/*, /sponsor/airtime" --> srv
     lan -- "Bearer session token<br/>(HMAC, 12 h, epoch-revocable)<br/>+ Origin check on POST" --> srv
     cf -- "same, and never<br/>treated as loopback" --> srv
@@ -548,7 +589,7 @@ flowchart LR
 - **Sessions:** the password is exchanged for `expiry:nonce:HMAC(control_token+epoch)`.
   Tokens are Bearer only, never cookies, so a cross-site page has nothing to ride on.
   "Log everyone out" rotates the epoch. Five failures in 10 minutes lock that client out.
-- **Secrets never reach a browser.** `/state` replaces each key in `SECRET_KEYS` with a
+- **Secrets never reach a browser.** `/state` replaces each key in `SecretKeys` with a
   sentinel, and a POST carrying the sentinel leaves the stored value alone.
 - **Inputs are distrusted:** uploads are typed by magic bytes (never SVG). Paths are
   reduced to a basename. AI text and player names are escaped in every HTML sink. Text
@@ -584,7 +625,7 @@ Routing rule: exact paths are matched before prefixes (`/sponsor/airtime` before
 |---|---|---|---|
 | D1 | One frame dialect for every source | Every feature written once and tested against one shape | Per-source adapters downstream |
 | D2 | `/live` mutates; everything else reads `/live/view` | The pipeline needs exactly one clock: the overlay's poll | A server-side poll loop (a second clock to keep in step) |
-| D3 | Stdlib `ThreadingHTTPServer`, connection-per-call OBS | No dependencies to install; nothing long-lived to wedge after an OBS restart | asyncio/web framework; one persistent OBS socket for everything |
+| D3 | Stdlib `net/http`, connection-per-call OBS | Nothing to install; nothing long-lived to wedge after an OBS restart | A web framework; one persistent OBS socket for everything |
 | D4 | Held-open OBS socket for camera cuts only | Cuts 3.6× quicker; reconnect-on-error keeps it safe | Using it for everything |
 | D5 | OBS settings edited as files while OBS is closed | OBS has no API for them, and overwrites them on exit if open | Driving the settings UI; editing while running |
 | D6 | Event-sourced manual scoring over a deterministic engine | Exact undo and edit; restart resumes mid-over | Mutable scorecard with patch-up undo |
@@ -593,22 +634,25 @@ Routing rule: exact paths are matched before prefixes (`/sponsor/airtime` before
 | D9 | Post-match video work after the stream, below-normal priority | x264 on the same laptop competes with OBS's encoder | Rendering clips as replays happen |
 | D10 | Opt-in for anything that costs money or speaks on air | Volunteers must never be surprised by a bill or a voice | On by default |
 | D11 | Server stays on the club laptop; remote access via Tailscale/Cloudflare | It must read the scorer's file and drive the local OBS | A cloud relay (scoped, not built) |
+| D12 | One Go binary for every role, assets built in, data beside it | A volunteer downloads one file per machine and never installs a runtime; nothing can be half-installed | Python + installer + per-role executables (the original: three launchers, a wizard that installed Python, and a separate scorer-agent exe) |
+| D13 | First-run setup as a web page served by the binary | Works the same on Windows and macOS, shows a live scorebar preview, and needs no GUI toolkit | A console interview (the original); a native GUI per platform |
+| D14 | Port, not rewrite: behaviour, output bytes and tests carried over | Clubs' overlays, panels and saved files keep working unchanged; differential tests prove it | Redesigning while porting |
 
 ---
 
 ## 12. Invariants
 
-Each of these was broken once and fixed. `CLAUDE.md` has the full story for each.
+Each of these was broken once and fixed. [`CLAUDE.md`](CLAUDE.md) has the full story for each.
 
 1. Only the OBS overlay calls `/live` and `/commands`. Preview mode makes one `/state`
    read and nothing else.
-2. Every score-feed consumer goes through `read_score_source()` / `effective_pcs_folder()`,
+2. Every score-feed consumer goes through `ReadScoreSource()` / `EffectivePCSFolder()`,
    and honours a live manual session first.
-3. Nothing in the match-day loop may raise. Logging is wrapped; overlay stages are isolated.
-4. State writes are atomic and serialised. Read-modify-write goes through `update_state()`.
+3. Nothing in the match-day loop may panic or fail the request. Logging swallows its errors; background loops recover; overlay stages are isolated.
+4. State writes are atomic and serialised. Read-modify-write goes through `UpdateState()`.
 5. On the over-completing write, the bowler and ends have already rotated. Credit the final
    ball from the previous poll's snapshot. Match each ticker to the over it belongs to.
-6. A new `match_id`-keyed table must be added to `_MATCH_TABLES`.
+6. A new `match_id`-keyed table must be added to `matchTables`.
 7. Endpoints the overlay calls need the loopback carve-out. Endpoints that start OBS or go
    live must never get it.
 8. No club identity in defaults. No secrets in git (globbed ignores).

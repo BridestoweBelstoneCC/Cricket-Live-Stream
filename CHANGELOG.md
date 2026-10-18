@@ -4,6 +4,148 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## v3.0.0-beta.1 — the Go edition (2026-10-18)
+
+CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
+scoring page do is unchanged; what changed is how it's installed and run.
+
+- **Pictures tab** in the control panel: club badges (ours, today's opposition, any club by
+  ID), player photos (with the squad roster's players who still need one), sponsor logos
+  and match photos (per team) are added, previewed, renamed and removed there — from the
+  laptop or a phone. No folders to find, no files to rename.
+- **Update now** (Windows): when a newer release is out, the window downloads it, checks
+  it — the release's published checksum, Windows' own signature check, signed by the same
+  publisher as the copy running, and the version inside the file — swaps it in and
+  restarts. Settings and pictures stay; anything wrong leaves the old copy as it was.
+- **Find cameras on this network** (Setup → Cameras): IP cameras answer ONVIF discovery;
+  pick one, give its login, and its stream address is asked of the camera itself (or the
+  usual one for its make) and saved — the password never comes back to the browser.
+  `cricketstream cameras` lists them from a terminal.
+- **OBS missing?** The match-day screen says so before match day and installs it with
+  Windows' own installer (winget, OBS's official package), or links to obsproject.com.
+- **Pairing code** on the scorer's laptop (K8Q2-7WMX): typed into the panel, it connects
+  where the automatic search is blocked (guest wifi, some club routers). It's the address
+  in a form that's easy to read out, with a check character that catches any typo.
+- **Move to another laptop / back up:** Settings → Export settings makes one file with the
+  setup answers, the panel's settings, the squad and every picture; Import settings (also
+  on the first screen of a new laptop) applies it. Passwords and keys only if ticked; each
+  laptop keeps its own OBS password and folders; the old settings are backed up first.
+- **Pre-match check on the match-day screen**, before match day starts: every login and
+  connection tried for real, with what to fix.
+- **Three new scorebar styles, with new type.** *Franchise* (royal purple and gold, a
+  gold score plate, condensed capitals — the big-league T20 look), *Neon* (a black bar, a
+  glowing lime score, outlined ball markers that light up for a four, a six or a wicket —
+  for evening matches) and *Block* (flat colour blocks and heavy type; the striker's whole
+  block turns black). Franchise is set in Barlow Condensed, which the app now serves to the
+  overlay itself (`/fonts/`), so it looks the same on every laptop; Neon uses Windows'
+  Bahnschrift and Block Segoe UI Black, each falling back to Barlow Condensed or Arial
+  Black elsewhere. Each is the whole look, not just the bar: the wicket and milestone
+  straps, the over summary, partnership and win predictor, the scorecard, player cards and
+  the boundary flash take on the same type, colours and corners. Pick one under Graphics →
+  Scorebar style (live preview), or in setup. `go run ./scripts/renderscorebar -panels`
+  renders the panels for each style.
+- **Closing CricketStream closes everything it started.** The window's X (or the icon's
+  Close) now stops match day *and* closes CricketStream in one go, after the match report
+  question; a "Close OBS too" box does OBS as well — never while it's streaming or
+  recording (the replay buffer is stopped first, since OBS otherwise asks "exit anyway?").
+  The Stop buttons still only stop match day.
+- **The control panel's header** shows the club: its badge (the one the scorebar uses),
+  its name, and CricketStream above, on a panel washed with the club's colour.
+- **Tiles in your own order.** Drag a tile by the grip in its title (it appears on hover)
+  to put each tab's tiles in the order you like; kept on that computer, with "Reset tile
+  layout" at the bottom of Setup. Phones keep the standard layout.
+- **Fixed: "Test replay now"** cut straight to the replay without the "Instant REPLAY"
+  screen and the club's motto. It now goes through the overlay, exactly like a real one.
+- **Fixed: no badge for an opposition without a club ID** (no fixture fetched). Its badge
+  can be uploaded by team name in Pictures, and the scorebar finds it by name. "Add
+  badge…" asks for the club ID before opening the file picker, not after.
+- **Fixed: an unscannable QR code** in the start-up log (each row of the text QR became
+  its own line in the window). The log now points to the panel's "This machine" button,
+  which shows a real one.
+- **Quieter Security log.** A control panel left open in another tab from before
+  CricketStream restarted retried every few seconds with its old login, filling the log
+  with rejections. It now stops after the first and asks to sign in again, and the
+  Security view groups repeats ("Rejected ×12") and says where they usually come from.
+- **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
+  when its window is behind OBS — click for the window, right-click for the activity log,
+  the control panel or Close. A Windows notification when something needs someone: the
+  scorer's feed gone quiet mid-match (once, and once more when it's back — a tea break is
+  two, not forty), OBS crashing and being reopened, the server restarting, the streaming
+  laptop no longer collecting the score (on the scorer's laptop), a new version. Each goes
+  in the activity log too, and none pops up during Windows' do-not-disturb.
+- **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by
+  the repository's release workflow, each signing approved by hand; the release checks
+  both signatures and runs the signed build before publishing. The README has the code
+  signing policy, a privacy statement (every service the app talks to, and when) and what
+  it changes on the computer and how to remove it.
+- **Security: requests saying `Origin: null` are refused.** The cross-site check let
+  through a request whose Origin or Referer named no host — which is what a sandboxed
+  iframe or a `file://` page sends — so any web page could post to the panel (when no club
+  password is set) or the setup page. Now only this server's own pages and clients that
+  send no Origin at all (curl, scripts on the laptop) get through. The Python edition has
+  the same check.
+- **Pre-releases.** v3 ships as `-beta.N` pre-releases until it has had real matches, so
+  neither edition's update check offers a beta; the update check now knows a release is
+  newer than its own betas (it used to read `3.0.0-beta.1` as 3.0.0.1).
+- **Phones and tablets need a club password** everywhere, not just in the server: setup
+  only records it with one, and the match-day screen explains why it's unavailable.
+
+- **Its own window.** Double-clicked, CricketStream opens a window (no console window, no
+  browser tabs): **which computer is this?** — the streaming laptop or the scorer's laptop
+  — then the setup questions for that one, then its job, without a restart. The streaming
+  laptop gets a match-day screen (who uses the panel today, how the match is scored,
+  **Start match day**), the steps ticking off as they happen, and the control panel in the
+  same window, already logged in, with **Activity** and **Stop** buttons. The scorer's
+  laptop shows whether NV Play is writing, whether the streaming laptop is collecting it,
+  and its own address, with **Browse…** for NV Play's folder. Questions come up in the
+  window, closing it asks before stopping anything, a second double-click brings the open
+  window forward, and everything it does is in **Activity** and `logs/`. The window is
+  titled with the club (or "Scorer's laptop"), opens where it was left, and shows a line
+  with a download link when a newer release is out. On a Mac the same screens open in the
+  browser for now.
+
+- **One download, nothing to install.** `CricketStream.exe` (Windows x64 or Arm),
+  `CricketStream-mac.zip` (one universal binary for Apple Silicon and Intel) or
+  `CricketStream-linux`. No Python, no packages, no installer, no project folder. Every
+  page, font and the NV Play scoreboard template are built in; a file of the same name
+  beside the app overrides the built-in copy, so panel edits still show on refresh.
+- **The same file on every machine.** The scorer's laptop (agent) and the bridge machine
+  run the same download — the separate `CricketStreamScorerAgent.exe` and the copy-a-script
+  setup for the bridge are gone. A folder dropped onto the app starts the agent on it.
+- **Settings page.** Everything setup asked, from the control panel (Setup → Open
+  settings), behind the club password. Saved changes reach the overlay at once.
+- **See your stream before you save.** The setup and settings pages show the real overlay
+  at full size over a drawn ground (or a photo of your ground), in the name, colours and
+  scorebar style being typed, with buttons to play the wicket card, four, six, end of
+  over, fifty and partnership graphics.
+- **Check buttons** try the PlayCricket key and club ID, the AI key and the NV Play folder
+  on the spot. Saved keys show as "Saved" and can be removed.
+- **Practice match** in the control panel: a simulated match through the real overlay,
+  with the score source put back and every trace removed afterwards.
+- **Your files** on the settings page opens the badges, player photos, sponsor logos,
+  match photos and replays folders.
+- **Desktop shortcut** (Windows), offered by setup.
+- **The control panel opens by itself** once match day is up, and double-clicking
+  CricketStream again while it's running brings the panel back instead of starting a
+  second copy.
+- **Setup in the browser.** The first run opens a setup page: what this computer is for,
+  club details with a colour picker, scorebar style with a live preview, PlayCricket, OBS
+  replay folder, stream key, AI key, control-panel password. `cricketstream setup` reopens
+  it with the answers filled in; secrets left blank are kept.
+- **Your data lives beside the app**, so one folder is the whole install and the whole
+  backup.
+- **Every tool is a subcommand:** `server`, `agent`, `bridge`, `simulate`, `obs-setup`,
+  `telemetry`, `camera-encoder`, `refresh-cam`, `quality-test` (`cricketstream help`).
+- **`CRICKETSTREAM_PORT`** moves the server off port 5000 consistently (server, launcher,
+  OBS overlay source, simulator, tools) — for a Mac whose AirPlay Receiver can't be
+  switched off.
+- The Windows app carries the CricketStream icon and version information.
+- Ported tests run on Windows, macOS and Linux in CI (with the race detector on Linux),
+  and differential tests check the port's output against the Python original byte for
+  byte. An opt-in end-to-end test drives a real (portable) OBS.
+
+---
+
 ## v2.12 — 2026-10-02
 
 - **New: automatic match page.** About a minute after the stream ends, CricketStream builds

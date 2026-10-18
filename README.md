@@ -13,13 +13,35 @@
 
 [![CI](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/actions/workflows/ci.yml/badge.svg)](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/actions/workflows/ci.yml)
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)](https://python.org/downloads)
+[![Go](https://img.shields.io/badge/Built%20with-Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-2.12-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.0--beta.1-orange)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
-[![Discord](https://img.shields.io/badge/Discord-join%20the%20chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/2nuBPj9rH7)
 
-**[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
+**[Download →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** &nbsp;·&nbsp; **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
+
+## 🎉 CricketStream 3.0 is here
+
+**The biggest update yet — rewritten from the ground up as a single app.** No Python, no
+installer, no command windows: download one file, double-click it, and it sets itself up.
+
+- **One file, its own window** — asks which computer it's on, sets up with a live preview of
+  your stream, then runs match day and the control panel in the same window.
+- **Seven scorebar styles** — new *Franchise*, *Neon* and *Block* looks inspired by the big T20
+  leagues, with matching wicket cards, over summaries and scorecards.
+- **Pictures, built in** — badges, player photos, sponsor logos and match photos added from the
+  control panel, even from a phone. No folders, no renaming files.
+- **Finds your kit** — discovers the club's IP cameras, installs OBS if it's missing, and pairs
+  the scorer's laptop with a short code.
+- **Keeps an eye out** — a pre-match check of every login and connection, and Windows
+  notifications if the scorer's feed goes quiet or OBS crashes mid-match.
+- **Updates itself** — one click to install a new version; one exported file to move to a new laptop.
+
+**[Download CricketStream 3.0 →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** ·
+[Everything that's new](CHANGELOG.md)
+
+> 3.0 is released as a **beta** while it gets its first real matches. The proven Python
+> edition (v2.12) stays available on the [`python` branch](../../tree/python).
 
 ---
 
@@ -42,6 +64,9 @@
 - [Version history](#version-history)
 - [Contributing](#contributing)
 - [Get help / chat](#get-help--chat)
+- [Code signing policy](#code-signing-policy)
+- [Privacy](#privacy)
+- [What CricketStream changes on your computer](#what-cricketstream-changes-on-your-computer)
 
 ---
 
@@ -61,7 +86,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 
 ### Live graphics
 
-- **Scorebar** — always-on bottom bar showing score, overs, both batters with runs and balls faced, bowler with figures, run rate, and a live ball-by-ball ticker for the current over. Club badges appear next to team names automatically. **Four styles** — *Classic* (light grey panels), *Modern* (dark broadcast slab), *Impact* (bold angled cuts, easiest to read on a phone) and *Minimal* (clean white, best under a bright daytime picture) — all using your club colours. Pick one in the control panel under Graphics, which shows a **live preview** of each; changing it takes effect on the overlay's next poll, mid-match if you like.
+- **Scorebar** — always-on bottom bar showing score, overs, both batters with runs and balls faced, bowler with figures, run rate, and a live ball-by-ball ticker for the current over. Club badges appear next to team names automatically. **Seven styles** — *Classic* (light grey panels), *Modern* (dark broadcast slab), *Impact* (bold angled cuts, easiest to read on a phone), *Minimal* (clean white, best under a bright daytime picture), *Franchise* (royal purple and gold in condensed capitals, the big-league T20 look), *Neon* (a black bar with a glowing score, for evening matches) and *Block* (flat colour blocks and heavy type) — all using your club colours. Pick one in the control panel under Graphics, which shows a **live preview** of each; changing it takes effect on the overlay's next poll, mid-match if you like.
 - **Fall of wicket card** — slides up automatically when a wicket falls, showing the dismissed batter's name, runs, balls faced, and the dismissal **spelled out in full** (e.g. *Caught Jones Bowled Smith*, *LBW Bowled Patel*, *Run Out*, *Stumped Wood Bowled Khan*). The detail fills in automatically as soon as the scorer enters how the batter was out.
 - **Player card** *(new in v2)* — when a new batter comes to the crease, a card slides in with their **photo and season batting average** (innings, average, high score). Stats are aggregated live from PlayCricket for **both your club and the opposition**. When two openers start an innings, **both** cards appear — one on the left, one on the right. The card clears automatically when the batter faces their first ball.
 - **Boundary flash** — FOUR! or SIX! graphic fires on every boundary.
@@ -152,10 +177,12 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   step the stream quality down a ladder when the line is genuinely struggling — manually,
   or automatically with safeguards against flapping. Stepping down also reduces CPU load
   on older laptops.
-- **Match simulator** *(new)* — `python3 simulate_match.py` rehearses the entire broadcast
-  without a scorer: a realistic simulated match (full game, tense chase, century chase, or
-  batting collapse) drives every graphic, replay and database exactly as a real feed would.
-  Perfect for testing your setup the night before a stream.
+- **Practice match** *(new)* — one button in the control panel (Match day → Practice
+  match) rehearses the entire broadcast without a scorer: a realistic simulated match (full
+  game, tense chase, century chase, or batting collapse) drives every graphic and replay
+  exactly as a real feed would, then puts everything back and keeps nothing. Perfect for
+  testing your setup the night before a stream. (`CricketStream simulate` does the same
+  from the command line.)
 
 ---
 
@@ -164,7 +191,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 ```
 Scorer's laptop          Streaming laptop           YouTube
 ────────────────         ──────────────────         ───────
-NV Play / PCS Pro  ───>  server.py (Python)  ───>  OBS Studio  ───>  Live Stream
+NV Play / PCS Pro  ───>  CricketStream       ───>  OBS Studio  ───>  Live Stream
 (scoring software)       reads output file          + Overlay
                          every 2-3 seconds          browser source
 ```
@@ -208,7 +235,7 @@ and start scoring.
   `bind_host = 0.0.0.0` on club Wi-Fi), a volunteer can score from a deckchair while the
   laptop streams. The page is protected by the same club password as the control panel.
 
-On match day, the quickstart launcher asks how the game is being scored — choose **Manual
+On match day, CricketStream asks how the game is being scored — choose **Manual
 scoring** and it prints the link to open. If your scorer does run NV Play, the file feed
 remains the better option (zero extra effort on your side) — but the manual page is also
 a ready-made **plan B if the scorer's feed drops out mid-match**.
@@ -226,9 +253,10 @@ If NV Play has to run inside a Windows VM (common on a Mac), keeping that VM on 
 machine that's also running OBS and the server can push it past its thermal limit — a VM
 crash mid-match takes the scorer's progress with it.
 
-**`nvplay_bridge.py`** lets NV Play run on a second, cheap machine instead (an old laptop, a
-mini PC — anything that can run NV Play). Run it there — first run asks for the NV Play
-output folder and prints a connection token — then paste that machine's URL and token into
+**The bridge** lets NV Play run on a second, cheap machine instead (an old laptop, a
+mini PC — anything that can run NV Play). Run CricketStream there and choose *Scorer's
+machine, elsewhere* on its setup page — it asks for the NV Play output folder and shows a
+connection token — then paste that machine's URL and token into
 the control panel's "NV Play on separate hardware" fields instead of the PCS output folder.
 Works over the same Tailscale connection used for remote access.
 
@@ -240,12 +268,11 @@ Full setup steps, a security rundown, and troubleshooting: **[`BRIDGE.md`](BRIDG
 
 Keep the scorer's laptop scoring and nothing else — the streaming laptop runs OBS, the
 server and the overlay, and can be restarted or fiddled with mid-match without reaching
-across to the scorer. `scorer_agent.py` runs on the scoring laptop and finds the streaming
-laptop on the club wifi automatically (no address to type). This is the option for two
-laptops already on the same local network; use the NV Play bridge above instead if they
-aren't (e.g. reached over Tailscale). On Windows, a standalone `CricketStreamScorerAgent.exe`
-on the [releases page](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
-means the scoring laptop doesn't need Python installed at all.
+across to the scorer. The scoring laptop runs the same CricketStream download, set up as
+*The scorer's laptop*, and the streaming laptop finds it on the club wifi
+automatically (no address to type). This is the option for two laptops already on the
+same local network; use the NV Play bridge above instead if they aren't (e.g. reached
+over Tailscale).
 
 Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md)**.
 
@@ -260,13 +287,14 @@ Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP
 
 **Software (all free):**
 - [OBS Studio](https://obsproject.com) — streaming software
-- [Python 3](https://python.org/downloads) — runs the server (the setup wizard below can install this for you)
+- CricketStream — one file, nothing else to install (see Quick start)
 - [NV Play](https://www.play-cricket.com/website/np_downloads) — scoring software (Windows) or PCS Pro
   *(optional — the [manual scoring page](#no-scoring-software-manual-scoring) replaces it entirely)*
 
 **Optional:**
 - A PlayCricket API key — for automatic match detection
 - An Anthropic API key — for AI over commentary, match reports, and social posts (a few pence per match)
+- [FFmpeg](https://ffmpeg.org/download.html) — only for the highlights reel and social clips
 
 ---
 
@@ -274,43 +302,64 @@ Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP
 
 New to this? Read your platform's quick start first:
 
-- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](Windows/SETUP_GUIDE_WINDOWS.md) — starts with a 2-step fast path, full detail below it
-- **macOS:** [`SETUP_GUIDE_MAC.md`](Mac/SETUP_GUIDE_MAC.md) — starts with a 3-step fast path, full detail below it
+- **Windows:** [`SETUP_GUIDE_WINDOWS.md`](SETUP_GUIDE_WINDOWS.md)
+- **macOS:** [`SETUP_GUIDE_MAC.md`](SETUP_GUIDE_MAC.md)
 - **No coding experience at all?** [`FOR_NON_TECHNICAL_USERS.md`](FOR_NON_TECHNICAL_USERS.md) walks you through every step in plain English.
 
-**One file. You run the same one every time.**
+**One file. You run the same one every time — on every machine.**
 
-1. Download it from the [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, one download covers both Apple Silicon and Intel) — and put it anywhere inside the folder you unzipped.
+1. Download it from the [website](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download) or the [releases page](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases) — `CricketStream.exe` (Windows) or `CricketStream-mac.zip` (Mac, one download covers both Apple Silicon and Intel) — and put it in a folder of its own (say, Documents → CricketStream).
 2. Double-click it. That's the whole job.
 
 It works out for itself what still needs doing:
 
 | | |
 |---|---|
-| **First run** | Installs Python if it's missing · installs the packages · asks your club details · writes `config.ini` · starts the match |
-| **Every run after** | Goes straight to the match — today's fixture, season stats, pre-flight check |
+| **First run** | CricketStream opens in its own window and asks **which computer is this?** — the streaming laptop, or the scorer's laptop — then the setup questions for that one: your club details, a preview of your stream in your colours with every graphic · writes `config.ini` |
+| **Every run after** | Opens on this computer's job — on the streaming laptop the match-day screen (**Start match day**: OBS, today's fixture, season stats, pre-flight check, then the control panel in the same window, logged in); on the scorer's laptop, sharing the score, with a green light when the streaming laptop is collecting it |
 
-No Python to install yourself, no files to edit, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time".
+Nothing to install first, no files to edit, no console window and no browser tabs, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time". Questions it needs answering come up in the window, an **Activity** view shows everything it did (and saves it in `logs/` beside the app), and closing the window asks before it stops anything that's running. Everything setup asked can be changed later from **Settings** in the control panel, live. Everything it keeps — settings, match data, badges, sponsor logos — lives in the folder beside it, so one folder is the whole install (and the whole backup).
 
-> **Two laptops?** The scorer's machine gets its own single download,
-> `CricketStreamScorerAgent.exe` — no Python, no config, no project folder needed there.
-> See [`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md).
-
-Already have Python and prefer running from source? `Windows/setup.bat` / `Mac/setup.sh` once, then `Windows/quickstart.bat` / `Mac/quickstart.sh` each match day — same code, same result.
+> **Two laptops?** The scorer's machine runs the very same file; on its first screen click
+> *The scorer's laptop* (or *Set this computer up as an NV Play bridge* when the scorer is
+> elsewhere). See [`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md).
+>
+> **On a Mac** the same screens open in the browser for now, with a Terminal window behind
+> them; the control panel is a web page on every platform, so phones and tablets can use it.
 
 If anything goes wrong, it tells you what and waits — these windows never close on an error you haven't read.
+
+<details>
+<summary>Every command, for the curious</summary>
+
+Double-clicking runs the job this machine was set up for. From a terminal, each part can
+also be run directly:
+
+```
+CricketStream setup            the setup page again (change the club's details or this machine's role)
+CricketStream start            match day on the streaming laptop (--remote/--local, --manual/--nvplay)
+CricketStream server           just the server: overlay, control panel, scoring page
+CricketStream agent [folder]   scorer's laptop on the same wifi
+CricketStream bridge           scorer's machine elsewhere (token-gated, over Tailscale)
+CricketStream simulate         rehearse with a simulated match (--list for scenarios)
+CricketStream obs-setup        build OBS's scenes and sources (OBS must be open)
+CricketStream telemetry        log bandwidth, drops and match context to diagnostics/
+CricketStream camera-encoder   read a Reolink camera's own encoder settings
+CricketStream refresh-cam      reload the OBS camera source on a timer (RTSP drift)
+CricketStream quality-test     drive the quality ladder down and back while live
+```
+</details>
 
 ---
 
 ## Control panel
 
-Once running, open the control panel in any browser on the same machine
-(`http://localhost:5000/control` on Windows, `http://127.0.0.1:5000/control` on Mac).
+On the streaming laptop the control panel opens in CricketStream's own window when match
+day starts, already signed in. It's also at `http://localhost:5000/control` in any browser.
 
-**Using it from your phone or tablet:** if you set `bind_host = 0.0.0.0` in `config.ini`
-and your phone is on the same Wi-Fi, you can open the panel from any device at
-`http://<laptop-ip>:5000/control` (your laptop's local IP is shown in the terminal when
-the server starts). The panel is fully responsive and designed to work at phone-screen size.
+**Using it from your phone or tablet:** choose **Phones and tablets too** on the match-day
+screen (it needs a club password), then click **This machine** at the top of the panel for
+a QR code to scan. The panel is fully responsive and designed to work at phone-screen size.
 
 **API keys and settings load automatically from `config.ini`** — values you entered in
 `[API]`, `[OBS]`, `[Scoring]`, and `[Stream]` are seeded into the panel on first run.
@@ -333,9 +382,10 @@ It lets you:
 - Cut between camera angles from the pinned bar (or press `C`)
 - Upload a sponsor logo from your phone and make its background transparent
 
-The panel has four tabs, one per moment of the day — **Match day**, **Graphics & sponsor**,
-**After the match** and **Setup** — under a pinned bar with the live status, Save, the
-camera buttons and the match-day checklist.
+The panel has five tabs — **Match day**, **Graphics & sponsor**, **After the match**,
+**Pictures** (badges, player photos, sponsor logos and match photos) and **Setup** — under a
+pinned bar with the live status, Save, the camera buttons and the match-day checklist.
+Drag a tile by the grip in its title to put each tab in your own order.
 
 ---
 
@@ -347,7 +397,7 @@ camera buttons and the match-day checklist.
 | Scorebar with batter/bowler names | NV Play output file *(or manual scoring)* |
 | Ball-by-ball ticker | NV Play output file |
 | Fall-of-wicket card with dismissal detail | NV Play output file |
-| Player card with photo + season stats | NV Play output file + `headshots/` folder + PlayCricket API key |
+| Player card with photo + season stats | NV Play output file + player photos (Pictures tab) + PlayCricket API key |
 | Opposition player stats | PlayCricket API key |
 | Squad roster (resolves brothers / duplicate accounts) | Set in control panel |
 | Over summary / partnership / worm panels | NV Play output file |
@@ -375,7 +425,7 @@ camera buttons and the match-day checklist.
 | Social clips | FFmpeg + tagged replays (Anthropic key optional, for captions) |
 | Match page | Nothing extra (richer with Anthropic, PlayCricket and YouTube) |
 | Pre-match check, checklist, OBS crash recovery | Nothing extra |
-| Club badges in scorebar | PNG/SVG files in `logos/` folder |
+| Club badges in scorebar | Badges added in the control panel's Pictures tab |
 
 ---
 
@@ -383,9 +433,11 @@ camera buttons and the match-day checklist.
 
 Player cards show a circular headshot next to the batter's name and season stats.
 
-**Setup:** create a `headshots/` folder next to `server.py` and add player photos.
-Because NV Play provides surnames only, the overlay tries several filename patterns so
-you don't have to be exact — any of these will match a batter shown as "Smith":
+**Setup:** control panel → **Pictures** → Player photos → **Add photos…**, naming each
+after the player. With the squad roster entered, the tab lists who still needs a photo,
+with an **Add photo…** button beside each. Because NV Play provides surnames only, the
+overlay matches names loosely, so you don't have to be exact — any of these names will
+match a batter shown as "Smith":
 
 ```
 Smith.jpg
@@ -395,10 +447,11 @@ JOHN_SMITH.png
 ```
 
 Square images around 400x400 work best. Supported formats: JPG, PNG, WebP. No restart
-needed — drop a file in and it appears the next time that batter comes in. If no photo
-is found, the card simply shows initials instead.
+needed — add a photo and it appears the next time that batter comes in. If no photo is
+found, the card simply shows initials instead.
 
-A custom folder can be set in the control panel or in `config.ini` under `headshots_folder`.
+The photos are kept in `headshots/` beside CricketStream; a club that keeps them elsewhere
+can point Setup → **Where pictures are kept** at that folder.
 
 For players who share a surname (brothers are common at club level), you can also name a
 photo by **shirt number** — `21.png`, `28.jpg` — and the squad roster (below) will pin it
@@ -446,10 +499,9 @@ those players to the roster) or when someone has a duplicate PlayCricket account
 ## Club badges
 
 Small circular club badges appear next to team names in the scorebar automatically,
-matched by PlayCricket club ID. Create a `logos/` folder next to `server.py` and add
-badge images named by club ID (e.g. `12345.png`). The opposition's club ID and a short
-abbreviation are detected automatically from the day's fixture, so naming their badge
-`<their-club-id>.png` is enough for it to appear. If a badge doesn't match, you can also
+matched by PlayCricket club ID. Add them in the control panel's **Pictures** tab: ours
+once, and the opposition's from the **Today's opposition** button — the club ID and a short
+abbreviation come from the day's fixture, so there's nothing to name or look up. If a badge doesn't match, you can also
 pick either team's badge from a dropdown in the control panel. See [`CLUB_LOGOS.md`](CLUB_LOGOS.md)
 for full instructions, including how to find opposition club IDs.
 
@@ -462,85 +514,70 @@ for full instructions, including how to find opposition club IDs.
 | Full feature set | yes | yes |
 | NV Play native | yes | Via VMware Fusion (free) |
 | OBS streaming | yes | yes |
-| Installer / launcher | `install.bat` + `quickstart.bat` | `install.sh` + `quickstart.sh` |
+| Download | `CricketStream.exe` (x64; `CricketStream-arm64.exe` for Arm) | `CricketStream-mac.zip` (Apple Silicon + Intel) |
 
-For Mac users running NV Play: see [`MAC_VM_SETUP.md`](Mac/MAC_VM_SETUP.md) for running NV Play
+A Linux build (`CricketStream-linux`) is published too, for the scorer agent or bridge on
+a spare machine, or for running the server headless.
+
+For Mac users running NV Play: see [`MAC_VM_SETUP.md`](MAC_VM_SETUP.md) for running NV Play
 inside a free Windows virtual machine while streaming natively from macOS.
 
 ---
 
 ## File structure
 
+What you download is one file. Everything below it is created as you use it, beside the app:
+
 ```
-/
-├── server.py                  Main server — runs everything
-├── overlay.html               OBS browser source overlay (1920x1080)
-├── control.html               Operator control panel (served at /control)
-├── scoring.html               Manual ball-by-ball scoring page (served at /scoring)
-├── scoring_engine.py          The scorer's-book engine behind /scoring and the simulator
-├── simulate_match.py          Match simulator — rehearse the whole broadcast, no scorer needed
-├── setup_wizard.py            First-time setup wizard (installs packages + creates config.ini)
-├── cricketstream.py           The one launcher (shipped as CricketStream.exe): checks, then runs quickstart.py
-├── quickstart.py              Match-day launcher script
-├── obs_prep.py                Switches on OBS's WebSocket + replay buffer, opens OBS
-├── obs_setup.py               OBS auto-configuration
-├── nvplay_bridge.py           Standalone: serve NV Play's output when it's on separate hardware
-├── scorer_agent.py            Standalone: same, for two laptops on the same club wifi (no token)
-├── stream_telemetry.py        Standalone: passive match-day CSV logger + headroom probe
-├── camera_encoder.py          Standalone: read a Reolink camera's own encoder settings
-├── refresh_cam.py             Standalone: periodic OBS camera-source reload (RTSP drift)
-├── stream_quality_test.py     Standalone: automated quality-ladder test against a live stream
-├── result_card.py             Post-match Instagram result card renderer
-├── social_clips.py            Vertical social clips from tagged replays (FFmpeg)
-├── win_predictor.py           Live win probability from this season's scorecards
-├── voice.py                   Spoken commentary with the computer's own voice
-├── match_page.py              The shareable post-match page
-├── logo_bg.py                 Makes a sponsor logo's background transparent
-├── fonts/                     Bundled fonts for the result card (Barlow Condensed, OFL)
-├── graphics/                  OBS-loaded graphic assets (e.g. instant_replay.png)
-├── scripts/                   Checks: compile, panel JS syntax, scorebar screenshots
-├── tests/                     Automated test suite (python3 -m unittest discover -s tests)
-├── requirements.txt           Python package list
-├── config.example.ini         Club configuration template — copy to config.ini and fill in
-├── match_state.example.json   Settings template — copied to match_state.json on first run
-├── scoreboard.template   NV Play output template
-├── Windows/
-│   ├── SETUP_GUIDE_WINDOWS.md Full Windows setup + troubleshooting
-│   ├── setup.bat              First-time setup wizard launcher
-│   ├── install.bat            Package installer (advanced)
-│   ├── quickstart.bat         Match-day launcher
-│   ├── start_server.bat       Server-only launcher
-│   └── start_scorer_agent.bat Launcher for scorer_agent.py, run on the scoring laptop
-├── Mac/
-│   ├── SETUP_GUIDE_MAC.md     Full Mac setup + troubleshooting
-│   ├── MAC_VM_SETUP.md        Mac + VMware Fusion guide
-│   ├── setup.sh               First-time setup wizard launcher
-│   ├── install.sh             Package installer (advanced)
-│   ├── quickstart.sh          Match-day launcher
-│   ├── start_server.sh        Server-only launcher
-│   └── start_scorer_agent.sh  Launcher for scorer_agent.py, run on the scoring laptop
-├── docs/                      GitHub Pages landing page
-├── README.md                  This file
-├── ARCHITECTURE.md            System design with diagrams (for contributors)
-├── CHANGELOG.md               Version history and upgrade notes
-├── BRIDGE.md                  NV Play on separate hardware over Tailscale — setup + security
-├── TWO_LAPTOP_SETUP.md        NV Play on a second laptop on the same wifi — setup
-├── FOR_NON_TECHNICAL_USERS.md Plain-English guide for volunteers
-├── CONTRIBUTING.md            How to contribute
-├── CLUB_LOGOS.md              Club badge guide
-├── SECURITY.md                Security policy
-├── logos/                     Club badge images (named by PlayCricket club ID)
-├── headshots/                 Player photos (named by surname or shirt number)
-├── socials/                   Match photos for social posts
+CricketStream/
+├── CricketStream.exe          The whole app (CricketStream + CricketStream.command on a Mac)
+├── config.ini                 Your setup answers, API keys, OBS password (written by setup)
+├── match_state.json           Control-panel settings (made on first run)
+├── match_data.db              Ball-by-ball database
+├── logos/                     Club badges (added in the Pictures tab)
+├── headshots/                 Player photos (added in the Pictures tab)
+├── socials/                   Match photos for social posts (Pictures tab)
 │   ├── 1st/ 2nd/ 3rd/         Optional per-team photo folders
 │   └── youth/                 Stock photos for youth posts (safeguarding)
-└── sponsors/                  Sponsor logo images
+├── sponsors/                  Sponsor logos (Pictures tab)
+└── diagnostics/               Match-day telemetry CSVs
+```
+
+The overlay, control panel, scoring page, fonts and NV Play's scoreboard template are all
+built into the app. **Put a file of the same name beside it and that copy is used
+instead** — so `overlay.html` or `control.html` can still be edited and picked up with a
+browser refresh, no rebuild and no restart.
+
+The source repository:
+
+```
+/
+├── cmd/cricketstream/         The app's entry point: role dispatch and subcommands
+├── internal/
+│   ├── server/                The stream server: every HTTP route, PCS parsing, OBS ops, the ball DB
+│   ├── launcher/              Match day on the streaming laptop: fixture, OBS, server, pre-flight
+│   ├── setup/                 The first-run setup page
+│   ├── scoring/               The scorer's-book engine behind /scoring and the simulator
+│   ├── simulate/              Match simulator — rehearse the whole broadcast, no scorer needed
+│   ├── obs/ obsws/            OBS prep (config while closed), setup (scenes over WebSocket), the client
+│   ├── agent/ bridge/         The scorer's-laptop agent and the token-gated NV Play bridge
+│   ├── tools/                 Telemetry, camera encoder read-out, camera refresher, quality-ladder test
+│   ├── resultcard/ matchpage/ socialclips/ winpredict/ voice/ logobg/   Post-match and extras
+│   └── …                      Shared helpers (INI, Python-compatible formatting, assets)
+├── overlay.html               OBS browser source overlay (1920x1080), built in
+├── control.html               Operator control panel (served at /control), built in
+├── scoring.html               Manual ball-by-ball scoring page (served at /scoring), built in
+├── scoreboard.template        NV Play output template, built in
+├── fonts/ brand/ graphics/    Built-in fonts, brand assets and OBS graphics
+├── scripts/                   makebrand (brand assets), renderscorebar (scorebar screenshots)
+├── config.example.ini         Every config.ini setting, documented
+├── match_state.example.json   Settings template
+└── docs/                      GitHub Pages landing page
 ```
 
 > **`config.ini` and `match_state.json`** are git-ignored — they hold your API keys and
 > OBS password once configured. The repo ships `config.example.ini` and
-> `match_state.example.json` as safe templates. Copy `config.example.ini` to `config.ini`
-> and fill in your details; the server creates `match_state.json` from defaults on first run.
+> `match_state.example.json` as safe templates; the setup page writes `config.ini` for you.
 
 ---
 
@@ -558,6 +595,15 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 ---
 
 ## Version history
+
+**v3.0.0 (beta)** — the whole app rewritten in Go as a single signed download: no Python,
+no installer, no project folder, and the same file on every machine. It opens in its own
+window: which computer is this, setup with a live preview of your stream, then a match-day
+screen with the control panel in the same window. Behaviour, the overlay and the control
+panel are unchanged; the tests were ported alongside, and parity with the Python original
+is checked in CI. Released as betas until it has been through real matches — the proven
+Python edition stays on the [`python` branch](../../tree/python) and its v2.12 release.
+See [`CHANGELOG.md`](CHANGELOG.md) and [`PORTING.md`](PORTING.md).
 
 **v2.12** — Social clips, an AI camera spotter, a live win predictor, optional spoken
 commentary and an automatic match page, plus fixes from a full code review (a final-ball
@@ -677,6 +723,70 @@ Scoring data via NV Play and the PlayCricket API (ECB).
 AI features powered by Claude (Anthropic).
 Weather data via Open-Meteo.
 Streaming via OBS Studio.
+
+---
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org) — **being set up**: until it is, the Windows
+downloads are unsigned and Windows asks once (More info → Run anyway). Once signed, the
+Windows downloads (`CricketStream.exe`, `CricketStream-arm64.exe`) are signed, so
+Windows shows **SignPath Foundation** as the publisher; the file's own details name
+Bridestowe & Belstone CC. They are built only by this repository's
+[release workflow](.github/workflows/build-executables.yml), on GitHub's own build machines,
+from the source code here — nothing built anywhere else is signed. Every signing request is
+approved by hand by an approver before anything is signed.
+
+| Role | Who |
+|---|---|
+| Committers and reviewers | <!-- SIGNPATH: list GitHub usernames --> *to be filled in before applying* |
+| Approvers | <!-- SIGNPATH: list GitHub usernames --> *to be filled in before applying* |
+
+Changes from anyone not listed as a committer are reviewed by a reviewer before they're
+merged. Everyone listed uses two-factor sign-in for GitHub and SignPath.
+
+## Privacy
+
+CricketStream doesn't collect anything about you or your club, and sends nothing to its
+authors, to SignPath, or to anyone else on its own account: no analytics, no tracking.
+Everything it keeps — settings, match data, photos, logs — stays in the folder beside
+the app (and its window's cache in `%LOCALAPPDATA%\CricketStream`).
+
+It talks to these services, only to do what you've asked it to:
+
+| Service | When | What it sends |
+|---|---|---|
+| PlayCricket (play-cricket.com, resultsvault.co.uk) | Fetching today's match, scorecards, season stats | Your club ID and API key |
+| YouTube (Google) | Only if you sign in to YouTube from the control panel | The stream title and settings you choose |
+| Anthropic (Claude) | Only if you add an AI key and use the AI features | Match facts and figures for commentary and reports; with the camera spotter switched on, camera snapshots |
+| Open-Meteo | The weather graphic | Your ground's location |
+| Cloudflare | The upload speed test; a Cloudflare Tunnel only if you switch one on | Test data; the control panel's traffic through the tunnel |
+| GitHub | Checking for a newer version | Nothing beyond the request itself |
+
+Each service's own privacy policy covers what it does with what it receives.
+
+## What CricketStream changes on your computer
+
+CricketStream is a single file with no installer. Everything it does to the computer is said
+in its window (and the activity log in `logs/`) as it happens:
+
+- **OBS** (on the streaming laptop, when it starts match day): switches on OBS's WebSocket
+  server with a password, the replay buffer and the video settings for your connection;
+  picks a hardware encoder if OBS is using the software one; adds its scenes and sources
+  (Main, Replay, the Overlay); and pauses OBS's update check during match day, switching it
+  back on afterwards. `[OBS] manage_obs = no` in `config.ini` leaves OBS alone.
+- **NV Play**: puts `scoreboard.template` in NV Play's Templates folder (an older copy is
+  kept as `scoreboard.template.old`).
+- **A desktop shortcut**, if you leave that ticked on the first setup.
+- **An icon by the clock** while it's open, and its notifications (Windows keeps its own
+  note of whether you've dragged the icon onto the taskbar).
+- **Windows Firewall**: Windows itself asks whether CricketStream may use the network; you
+  choose.
+
+**Removing it:** close CricketStream, then delete its folder, the desktop shortcut and
+`%LOCALAPPDATA%\CricketStream`. Its OBS scenes stay in OBS until you delete them there, and
+NV Play's template until you delete it from NV Play's Templates folder.
 
 ---
 

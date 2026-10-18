@@ -1,7 +1,0 @@
-websocket-client
-anthropic
-google-api-python-client
-google-auth-oauthlib
-certifi
-Pillow
-qrcode

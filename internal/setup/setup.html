@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CricketStream Setup</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{
+  --bg:#0b1422; --surface:#13203a; --surface-2:#1a2a48; --border:#2a3d63;
+  --text:#e8eef8; --muted:#9fb0cc; --accent:#4c9aff; --accent-strong:#2f7de1;
+  --on-accent:#ffffff; --ok:#3ccf8e; --warn:#f5b942; --bad:#ff6b6b;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:820px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:26px;margin:8px 0 4px}
+h2{font-size:18px;margin:0 0 4px}
+p.lead{color:var(--muted);margin:0 0 20px}
+a{color:var(--accent)}
+section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px;margin:0 0 16px}
+section .hint{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+label{display:block;font-weight:600;margin:12px 0 4px}
+label .opt{font-weight:400;color:var(--muted);font-size:13px}
+input[type=text],input[type=password],input[type=number],select{width:100%;padding:9px 11px;
+  border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>div{flex:1 1 200px}
+.pick{display:flex;gap:8px}
+.pick input[type=color]{flex:0 0 46px;height:40px;padding:2px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface-2);cursor:pointer}
+.roles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.role{display:block;border:1px solid var(--border);border-radius:var(--radius);padding:14px;
+  background:var(--surface-2);cursor:pointer;font-weight:400;margin:0}
+.role input{margin-right:8px}
+.role strong{display:block;margin-bottom:4px}
+.role span{color:var(--muted);font-size:13.5px}
+.role:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.found{border-left:3px solid var(--ok);padding:8px 12px;background:var(--surface-2);
+  border-radius:6px;margin:6px 0 4px;font-size:14px}
+.found code{word-break:break-all}
+.styles{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.style{display:flex;gap:10px;align-items:flex-start;font-weight:400;margin:0;padding:8px 10px;
+  border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer}
+.style:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.style span{color:var(--muted);font-size:13px;display:block}
+/* The stream preview: the real overlay at full 1920x1080, scaled into a 16:9 frame over
+   an illustrated ground (or the club's own photo, which never leaves the browser). */
+.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;
+  border:1px solid var(--border);background:#3d6b3a;margin-top:12px}
+.stage svg.ground,.stage img.photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage iframe{position:absolute;left:0;top:0;border:0;width:1920px;height:1080px;transform-origin:0 0;
+  background:transparent;pointer-events:none}
+.stage:fullscreen{border-radius:0;border:0;background:#000}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font:inherit;font-size:13.5px;font-weight:600;border:1px solid var(--border);border-radius:999px;
+  padding:6px 12px;background:var(--surface-2);color:var(--text);cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--on-accent)}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:13.5px;color:var(--muted)}
+.linkbtn{font:inherit;font-size:13.5px;background:none;border:0;padding:0;color:var(--accent);cursor:pointer;text-decoration:underline}
+.check{display:flex;gap:8px;align-items:center;font-weight:400;margin:12px 0 0}
+.check input{width:18px;height:18px}
+.field-row{display:flex;gap:8px;align-items:stretch}
+.field-row input{flex:1}
+.small{font:inherit;font-size:13.5px;font-weight:600;border:1px solid var(--border);border-radius:8px;
+  padding:0 12px;background:var(--surface-2);color:var(--text);cursor:pointer;white-space:nowrap}
+.result{font-size:13.5px;margin:6px 0 0;padding-left:20px;position:relative;min-height:1em}
+.result:empty{display:none}
+.result::before{position:absolute;left:0}
+.result.ok{color:var(--ok)} .result.ok::before{content:"✓"}
+.result.warn{color:var(--warn)} .result.warn::before{content:"⚠"}
+.result.bad{color:var(--bad)} .result.bad::before{content:"✗"}
+.result.busy{color:var(--muted)} .result.busy::before{content:"…"}
+.saved{font-size:13px;color:var(--ok);margin:4px 0 0}
+.saved.removing{color:var(--warn)}
+button.primary{font:inherit;font-weight:600;border:0;border-radius:8px;padding:12px 22px;cursor:pointer;
+  background:var(--accent-strong);color:var(--on-accent)}
+button:disabled{opacity:.6;cursor:default}
+.actions{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);
+  padding:20px 0 8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#msg{font-size:14px}
+#msg.bad{color:var(--bad)}
+#msg.good{color:var(--ok)}
+.done{border-color:var(--ok)}
+.done h2{color:var(--ok)}
+.token{font:600 16px ui-monospace,Consolas,monospace;background:var(--surface-2);padding:8px 10px;
+  border-radius:6px;word-break:break-all;user-select:all}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--surface-2);border-radius:6px;font-size:14px}
+.hidden{display:none !important}
+@media (max-width:520px){h1{font-size:22px}section{padding:14px}}
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <h1 id="title">Set up CricketStream</h1>
+    <a id="back" class="hidden" href="/control">← Back to the control panel</a>
+  </div>
+  <p class="lead" id="lead">This happens once. Everything here can be changed later — from the
+  control panel's Settings, or in <code id="cfg-path">config.ini</code>.</p>
+
+  <section id="login" class="hidden">
+    <h2>Log in</h2>
+    <p class="hint">Settings are behind the club password, like the control panel.</p>
+    <div class="field-row">
+      <input type="password" id="login_pw" aria-label="Club password" placeholder="Club password">
+      <button type="button" class="small" id="login_go">Log in</button>
+    </div>
+    <p class="result" id="login_msg"></p>
+  </section>
+
+  <form id="form" autocomplete="off" class="hidden">
+  <section>
+    <h2>What is this computer for?</h2>
+    <p class="hint">Pick the job this machine does on match day.</p>
+    <div class="roles">
+      <label class="role"><input type="radio" name="role" value="streaming" checked>
+        <strong>The streaming laptop</strong>
+        <span>Runs OBS, the overlay and the control panel. The usual choice — and the
+        right one if the scorer's software is on this laptop too.</span></label>
+      <label class="role"><input type="radio" name="role" value="scorer">
+        <strong>The scorer's laptop</strong>
+        <span>NV Play runs here; the streaming laptop finds this one on the club's
+        network with a button press.</span></label>
+      <label class="role"><input type="radio" name="role" value="bridge">
+        <strong>An NV Play bridge</strong>
+        <span>The scorer is somewhere else: NV Play runs here and the streaming laptop
+        reaches it over Tailscale, using an address and token shown here.</span></label>
+    </div>
+    <p class="found hidden" id="role_chosen"></p>
+    <p class="note hidden" id="role_note">Changing this takes effect the next time CricketStream starts.</p>
+  </section>
+
+  <div data-for="streaming">
+  <section>
+    <h2>Club details</h2>
+    <p class="hint">These appear on the scorebar and graphics.</p>
+    <label for="name">Club name</label>
+    <input type="text" id="name" required placeholder="e.g. Home and District CC">
+    <div class="row">
+      <div><label for="abbrev">Abbreviation <span class="opt">(max 6 letters)</span></label>
+        <input type="text" id="abbrev" maxlength="6"></div>
+      <div><label for="colour">Home kit colour</label>
+        <div class="pick"><input type="color" id="colour_pick" aria-label="Pick the kit colour">
+          <input type="text" id="colour" placeholder="#1a3a5c"></div></div>
+    </div>
+    <label for="motto">Replay motto <span class="opt">(optional — e.g. your club nickname)</span></label>
+    <input type="text" id="motto">
+  </section>
+
+  <section>
+    <h2>Your stream</h2>
+    <p class="hint">This is what viewers will see — your name and colours, as you type. Pick a
+    scorebar style, then try the graphics that appear during a match.</p>
+    <div class="styles" id="styles"></div>
+    <div class="stage" id="stage">
+      <svg class="ground" id="ground" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#7fb2e5"/><stop offset="1" stop-color="#cfe3f5"/>
+          </linearGradient>
+          <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#5f8f45"/><stop offset="1" stop-color="#3f7a33"/>
+          </linearGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#grass)"/>
+        <rect width="1600" height="330" fill="url(#sky)"/>
+        <path d="M0 330 Q120 270 240 312 T480 300 T760 296 T1040 306 T1320 292 T1600 312 V340 H0Z" fill="#2f5a2a"/>
+        <rect y="330" width="1600" height="14" fill="#e9ecef"/>
+        <g opacity=".12" fill="#fff">
+          <path d="M0 344H1600V420H0Z"/><path d="M0 500H1600V590H0Z"/><path d="M0 690H1600V800H0Z"/>
+        </g>
+        <path d="M712 360 L888 360 L1010 900 L590 900 Z" fill="#c9b27a"/>
+        <path d="M722 392 L878 392" stroke="#fff" stroke-width="3"/>
+        <path d="M630 820 L970 820" stroke="#fff" stroke-width="5"/>
+        <g fill="#f4ecd8"><rect x="790" y="372" width="5" height="22"/><rect x="798" y="372" width="5" height="22"/><rect x="806" y="372" width="5" height="22"/></g>
+        <g fill="#f4ecd8"><rect x="772" y="772" width="10" height="52"/><rect x="795" y="772" width="10" height="52"/><rect x="818" y="772" width="10" height="52"/></g>
+      </svg>
+      <img class="photo hidden" id="photo" alt="">
+      <iframe id="preview" title="Stream preview" tabindex="-1"></iframe>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Show a graphic">
+      <button type="button" class="chip" data-g="" aria-pressed="true">Scorebar</button>
+      <button type="button" class="chip" data-g="wicket" aria-pressed="false">Wicket</button>
+      <button type="button" class="chip" data-g="four" aria-pressed="false">Four</button>
+      <button type="button" class="chip" data-g="six" aria-pressed="false">Six</button>
+      <button type="button" class="chip" data-g="over" aria-pressed="false">End of over</button>
+      <button type="button" class="chip" data-g="fifty" aria-pressed="false">Fifty</button>
+      <button type="button" class="chip" data-g="partnership" aria-pressed="false">Partnership</button>
+    </div>
+    <div class="tools">
+      <label class="linkbtn" style="margin:0;font-weight:400">Use a photo of your ground<input
+        type="file" id="photo_file" accept="image/*" class="hidden"></label>
+      <button type="button" class="linkbtn hidden" id="photo_clear">Back to the drawing</button>
+      <button type="button" class="linkbtn" id="fullscreen">Full screen</button>
+      <span>The photo stays on this computer; it's only for the preview.</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>PlayCricket</h2>
+    <p class="hint">Your club ID is the number in your club's play-cricket.com address.
+    The API key lets CricketStream fetch today's fixture, season stats and result cards.</p>
+    <div class="row">
+      <div><label for="pc_id">PlayCricket club ID</label><input type="text" id="pc_id" inputmode="numeric"></div>
+      <div><label for="pc_key">PlayCricket API key <span class="opt">(optional)</span></label>
+        <div class="field-row"><input type="password" id="pc_key" data-secret>
+          <button type="button" class="small" data-check="playcricket">Check</button></div>
+        <p class="saved hidden" data-saved="pc_key"></p></div>
+    </div>
+    <p class="result" id="result_playcricket" role="status"></p>
+  </section>
+  </div>
+
+  <section data-for="streaming scorer bridge">
+    <h2>Scoring software</h2>
+    <p class="hint" data-for="streaming">The folder where NV Play / PCS Pro writes its scoreboard
+    output. Leave it blank if the scorer is on another laptop (set that up from the control
+    panel later) or if you'll score from a phone at /scoring.</p>
+    <p class="hint" data-for="scorer bridge">The folder where NV Play / PCS Pro writes its
+    scoreboard output on this machine.</p>
+    <div id="found" class="found hidden"></div>
+    <label for="pcs_folder">Scoreboard output folder</label>
+    <div class="field-row"><input type="text" id="pcs_folder">
+      <button type="button" class="small hidden" data-browse="pcs_folder">Browse…</button>
+      <button type="button" class="small" data-check="folder">Check</button></div>
+    <p class="result" id="result_folder" role="status"></p>
+    <div data-for="bridge"><label for="bridge_port">Port to serve on</label>
+      <input type="number" id="bridge_port" min="1024" max="65535"></div>
+  </section>
+
+  <div data-for="streaming">
+  <section>
+    <h2>OBS and replays</h2>
+    <p class="hint">Nothing to set up in OBS — CricketStream switches on its WebSocket server
+    and replay buffer for you on match day. Replay clips are saved here.</p>
+    <label for="replay_folder">Replay folder</label>
+    <div class="field-row"><input type="text" id="replay_folder">
+      <button type="button" class="small hidden" data-browse="replay_folder">Browse…</button></div>
+  </section>
+
+  <section>
+    <h2>Stream</h2>
+    <div class="row">
+      <div><label for="yt_title">YouTube title</label><input type="text" id="yt_title"></div>
+      <div><label for="max_overs">Overs per innings</label><input type="number" id="max_overs" min="1" max="120"></div>
+    </div>
+    <label for="yt_key">YouTube stream key <span class="opt">(recommended)</span></label>
+    <input type="password" id="yt_key" data-secret>
+    <p class="saved hidden" data-saved="yt_key"></p>
+    <p class="hint">YouTube Studio → Go Live → Stream settings. Key-based streaming survives
+    restarts and quality changes; OBS's "connect account" mode ends the whole broadcast if
+    the stream stops. Treat it like a password.</p>
+  </section>
+
+  <section>
+    <h2>AI commentary <span class="opt">(optional)</span></h2>
+    <p class="hint">Powers live over commentary, match reports and social posts. Get a key at
+    console.anthropic.com. A match costs a few pence.</p>
+    <label for="anthropic_key">Anthropic API key</label>
+    <div class="field-row"><input type="password" id="anthropic_key" data-secret>
+      <button type="button" class="small" data-check="anthropic">Check</button></div>
+    <p class="saved hidden" data-saved="anthropic_key"></p>
+    <p class="result" id="result_anthropic" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Control panel access</h2>
+    <p class="hint">The club password is what operators type to unlock the control panel. Left
+    blank, the panel is open to anyone who can reach it.</p>
+    <label for="club_password">Club password</label>
+    <input type="password" id="club_password" data-secret>
+    <p class="saved hidden" data-saved="club_password"></p>
+    <label class="check"><input type="checkbox" id="allow_remote" checked>
+      Allow phones and tablets on the wifi to open the control panel</label>
+    <p class="hint" style="margin-top:6px">Needs a club password — without one, the panel stays on
+    this laptop only.</p>
+  </section>
+  </div>
+
+  <section id="move" class="hidden">
+    <h2>Move to another laptop, or keep a backup</h2>
+    <p class="hint">One file with everything set up here: these answers, the control panel's settings
+    (graphics, sponsors, the squad roster) and every badge, player photo, sponsor logo and match
+    photo. On the other laptop, open CricketStream and choose <b>Import settings</b>. Each laptop
+    keeps its own OBS password and folders.</p>
+    <label class="check" style="margin-top:0"><input type="checkbox" id="move_secrets">
+      Include passwords and API keys — only for a file that stays with you</label>
+    <div class="field-row" style="margin-top:10px">
+      <button type="button" class="small" id="move_export">Export settings…</button>
+      <button type="button" class="small" id="move_import_btn">Import settings…</button>
+      <input type="file" id="move_import" accept=".zip,application/zip" hidden>
+    </div>
+    <p class="result" id="result_move" role="status"></p>
+  </section>
+
+  <section id="files" class="hidden">
+    <h2>Your files</h2>
+    <p class="hint">Club badges, player photos, sponsor logos and match photos are added in the
+    control panel's <a href="/control" onclick="try{localStorage.setItem('cs_panel_tab','pictures')}catch(e){}">Pictures tab</a>
+    — from this laptop or a phone. Replays and everything else CricketStream keeps are in its folder:</p>
+    <div class="chips" id="folder_buttons">
+      <button type="button" class="chip" data-folder="replays">Replays</button>
+      <button type="button" class="chip" data-folder="app">The CricketStream folder</button>
+    </div>
+    <p class="result" id="result_folders" role="status"></p>
+    <p class="hint" id="version_line" style="margin:10px 0 0"></p>
+  </section>
+
+  <label class="check hidden" id="shortcut_row"><input type="checkbox" id="desktop_shortcut" checked>
+    Put a CricketStream shortcut on the desktop</label>
+
+  <div class="actions">
+    <button type="submit" class="primary" id="save">Save and continue</button>
+    <span id="msg" role="status"></span>
+  </div>
+  </form>
+
+  <section id="finished" class="done hidden">
+    <h2>All set</h2>
+    <div id="next"></div>
+  </section>
+</main>
+<script>
+var info = {};
+var MODE = location.pathname.indexOf('/settings') === 0 ? 'settings' : 'setup';
+// In CricketStream's own window (setup?app=1): the role was picked on the welcome screen
+// (&role=), and saving goes back to the app, which carries on with this computer's job.
+var QS = new URLSearchParams(location.search);
+var APP = QS.get('app') === '1';
+var PRESET = APP ? QS.get('role') : null;
+var ROLE_NAMES = {streaming: 'The streaming laptop', scorer: 'The scorer’s laptop', bridge: 'An NV Play bridge (the scorer is elsewhere)'};
+var API = '/' + MODE;
+var clearing = {};          // saved secrets the operator asked to remove
+var graphic = '';           // the demo graphic showing in the preview
+function $(id) { return document.getElementById(id); }
+function role() { return document.querySelector('input[name=role]:checked').value; }
+var FIELDS = ['name','abbrev','colour','motto','pc_id','pc_key','pcs_folder','replay_folder',
+              'yt_title','max_overs','yt_key','anthropic_key','club_password'];
+
+// The control panel's login (same tab, so the same sessionStorage): settings need it.
+function headers(json) {
+  var h = {};
+  if (json) h['Content-Type'] = 'application/json';
+  var t = null;
+  try { t = sessionStorage.getItem('bbcc_token'); } catch (e) {}
+  if (MODE === 'settings' && t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+function api(path, body) {
+  var opts = body === undefined ? {headers: headers(false)} :
+    {method: 'POST', headers: headers(true), body: JSON.stringify(body)};
+  return fetch(API + path, opts).then(function (r) {
+    if (r.status === 401 && MODE === 'settings') { showLogin(); throw new Error('Log in first.'); }
+    return r.json();
+  });
+}
+
+function showLogin() {
+  $('form').classList.add('hidden');
+  $('login').classList.remove('hidden');
+  $('login_pw').focus();
+}
+$('login_go').addEventListener('click', function () {
+  var m = $('login_msg');
+  m.className = 'result busy'; m.textContent = 'Checking…';
+  fetch('/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({password: $('login_pw').value})})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { m.className = 'result bad'; m.textContent = d.error || 'Wrong password'; return; }
+      try { sessionStorage.setItem('bbcc_token', d.session_token || ''); } catch (e) {}
+      $('login').classList.add('hidden');
+      m.textContent = '';
+      load();
+    })
+    .catch(function (e) { m.className = 'result bad'; m.textContent = String(e); });
+});
+$('login_pw').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('login_go').click(); } });
+
+function showForRole() {
+  var r = role();
+  document.querySelectorAll('[data-for]').forEach(function (el) {
+    el.classList.toggle('hidden', el.getAttribute('data-for').split(' ').indexOf(r) < 0);
+  });
+  $('name').required = (r === 'streaming');
+  $('files').classList.toggle('hidden', !(MODE === 'settings' && info.folders && r === 'streaming'));
+  $('move').classList.toggle('hidden', !(APP && MODE === 'setup' && info.have_config && r === 'streaming'));
+  if (MODE === 'settings') {
+    $('save').textContent = 'Save settings';
+    $('role_note').classList.toggle('hidden', !info.existing || info.existing.role === r);
+  } else {
+    $('save').textContent = APP && info.have_config ? 'Save' : APP ? 'Save and continue' : 'Save and start';
+  }
+  if (r === 'streaming') { scalePreview(); }
+}
+
+function abbrevFromName(name) {
+  var stop = {cc:1, cricket:1, club:1, and:1, '&':1, the:1};
+  var words = name.replace(/&/g, 'and').split(/\s+/).filter(function (w) { return w && !stop[w.toLowerCase()]; });
+  return words.length ? words[0].slice(0, 6).toUpperCase() : '';
+}
+
+var abbrevTouched = false;
+function selectedStyle() {
+  var el = document.querySelector('input[name=style]:checked');
+  return el ? el.value : 'classic';
+}
+function currentColour() {
+  var c = ($('colour').value || '#1a3a5c').trim();
+  if (c[0] !== '#') c = '#' + c;
+  return c;
+}
+
+// ── The stream preview ──
+var previewTimer = null;
+function refreshPreview() {
+  var c = currentColour();
+  if (/^#[0-9a-f]{6}$/i.test(c)) $('colour_pick').value = c.toLowerCase();
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(function () {
+    var q = 'preview=1&style=' + encodeURIComponent(selectedStyle()) +
+      '&colour=' + encodeURIComponent(c) +
+      '&name=' + encodeURIComponent($('name').value.trim()) +
+      '&abbrev=' + encodeURIComponent($('abbrev').value.trim() || abbrevFromName($('name').value)) +
+      (graphic ? '&graphic=' + encodeURIComponent(graphic) : '');
+    var src = '/overlay?' + q;
+    if ($('preview').getAttribute('src') !== src) $('preview').setAttribute('src', src);
+  }, 250);
+}
+function scalePreview() {
+  var stage = $('stage'), w = stage.clientWidth;
+  if (!w) return;
+  $('preview').style.transform = 'scale(' + (w / 1920) + ')';
+}
+document.querySelectorAll('#chips .chip').forEach(function (b) {
+  b.addEventListener('click', function () {
+    graphic = b.getAttribute('data-g');
+    document.querySelectorAll('#chips .chip').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+    refreshPreview();
+  });
+});
+function showPhoto(url) {
+  var img = $('photo');
+  if (url) { img.src = url; img.classList.remove('hidden'); $('ground').classList.add('hidden'); }
+  else { img.removeAttribute('src'); img.classList.add('hidden'); $('ground').classList.remove('hidden'); }
+  $('photo_clear').classList.toggle('hidden', !url);
+}
+$('photo_file').addEventListener('change', function () {
+  var f = this.files && this.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function () {
+    showPhoto(rd.result);
+    try { localStorage.setItem('cs_preview_photo', rd.result); } catch (e) {}   // too big: this visit only
+  };
+  rd.readAsDataURL(f);
+});
+$('photo_clear').addEventListener('click', function () {
+  showPhoto('');
+  try { localStorage.removeItem('cs_preview_photo'); } catch (e) {}
+});
+$('fullscreen').addEventListener('click', function () {
+  var s = $('stage');
+  if (s.requestFullscreen) s.requestFullscreen().then(scalePreview).catch(function () {});
+});
+document.addEventListener('fullscreenchange', function () { setTimeout(scalePreview, 50); });
+try { var savedPhoto = localStorage.getItem('cs_preview_photo'); if (savedPhoto) showPhoto(savedPhoto); } catch (e) {}
+
+// ── Check buttons ──
+document.querySelectorAll('[data-check]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var what = b.getAttribute('data-check');
+    var out = $('result_' + what);
+    var req = {what: what};
+    if (what === 'playcricket') { req.key = $('pc_key').value; req.club_id = $('pc_id').value; }
+    if (what === 'anthropic') { req.key = $('anthropic_key').value; }
+    if (what === 'folder') { req.folder = $('pcs_folder').value; }
+    out.className = 'result busy'; out.textContent = 'Checking…';
+    b.disabled = true;
+    api('/check', req)
+      .then(function (d) { out.className = 'result ' + (d.status || 'bad'); out.textContent = d.detail || d.error || '?'; })
+      .catch(function (e) { out.className = 'result bad'; out.textContent = String(e.message || e); })
+      .then(function () { b.disabled = false; });
+  });
+});
+
+// ── Your files (settings page only) ──
+document.querySelectorAll('[data-folder]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var out = $('result_folders');
+    api('/open_folder', {which: b.getAttribute('data-folder')})
+      .then(function (d) {
+        out.className = 'result ' + (d.ok ? 'ok' : 'bad');
+        out.textContent = d.ok ? 'Opened ' + d.folder : (d.error || 'Couldn\'t open it.');
+      })
+      .catch(function (e) { out.className = 'result bad'; out.textContent = String(e.message || e); });
+  });
+});
+
+// ── Saved secrets: say so beside the blank field, and let them be removed ──
+function showSaved() {
+  var set = info.secrets_set || {};
+  document.querySelectorAll('[data-saved]').forEach(function (p) {
+    var field = p.getAttribute('data-saved');
+    p.textContent = '';
+    if (!set[field]) { p.classList.add('hidden'); return; }
+    p.classList.remove('hidden');
+    p.classList.toggle('removing', !!clearing[field]);
+    p.appendChild(document.createTextNode(clearing[field] ? 'Will be removed when you save. ' :
+      'Saved — leave blank to keep it. '));
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkbtn';
+    b.textContent = clearing[field] ? 'Keep it' : 'Remove';
+    b.addEventListener('click', function () {
+      clearing[field] = !clearing[field];
+      if (clearing[field]) $(field).value = '';
+      showSaved();
+    });
+    p.appendChild(b);
+  });
+}
+
+function load() {
+  api('/info').then(function (d) {
+    info = d;
+    $('form').classList.remove('hidden');
+    $('cfg-path').textContent = d.config_file;
+    if (APP && MODE === 'setup') {
+      $('back').href = '/';
+      $('back').textContent = '← Back';
+      $('back').classList.remove('hidden');
+      if (d.have_config) { $('title').textContent = 'Settings'; $('lead').textContent = 'Change anything here — it’s used from the next match day you start.'; }
+    }
+    if (MODE === 'settings') {
+      document.title = 'CricketStream Settings';
+      $('title').textContent = 'Settings';
+      $('lead').textContent = 'Everything setup asked, on one page. Saved changes reach the panel and the overlay straight away.';
+      $('back').classList.remove('hidden');
+    }
+    // First setup only: once set up, it's there (or was deliberately left off).
+    $('shortcut_row').classList.toggle('hidden', !(MODE === 'setup' && d.os === 'windows' && !d.have_config));
+    if (MODE === 'settings' && d.folders) {
+      $('version_line').textContent = 'CricketStream ' + (d.version ? 'v' + d.version : '(development build)') +
+        ' · settings in ' + d.config_file;
+      if (!d.local) {
+        $('folder_buttons').classList.add('hidden');
+        var fo = $('result_folders'); fo.className = 'result warn';
+        fo.textContent = 'Open these from the CricketStream laptop itself — they open there, not on this device.';
+      }
+    }
+    var def = d.defaults || {};
+    $('colour').value = def.colour; $('replay_folder').value = def.replay_folder;
+    $('yt_title').value = def.yt_title; $('max_overs').value = def.max_overs;
+    $('bridge_port').value = def.bridge_port;
+    var styles = $('styles');
+    styles.textContent = '';
+    (d.styles || []).forEach(function (s, i) {
+      var l = document.createElement('label');
+      l.className = 'style';
+      var input = document.createElement('input');
+      input.type = 'radio'; input.name = 'style'; input.value = s.id; input.checked = (i === 0);
+      input.addEventListener('change', refreshPreview);
+      var txt = document.createElement('div');
+      var b = document.createElement('strong'); b.textContent = s.name;
+      var sp = document.createElement('span'); sp.textContent = s.about;
+      txt.appendChild(b); txt.appendChild(sp);
+      l.appendChild(input); l.appendChild(txt);
+      styles.appendChild(l);
+    });
+    if (d.detected && d.detected.folder) {
+      $('pcs_folder').value = d.detected.folder;
+      var f = $('found');
+      f.textContent = '';
+      f.appendChild(document.createTextNode('Found on this computer: '));
+      var code = document.createElement('code'); code.textContent = d.detected.folder;
+      f.appendChild(code);
+      f.appendChild(document.createTextNode(' (' + d.detected.why + ')'));
+      f.classList.remove('hidden');
+    }
+    if (d.have_config && d.existing) {
+      var e = d.existing;
+      var r = document.querySelector('input[name=role][value="' + e.role + '"]');
+      if (r) r.checked = true;
+      ['name','abbrev','colour','motto','pc_id','pcs_folder','replay_folder','yt_title','max_overs'].forEach(function (k) {
+        if (e[k]) $(k).value = e[k];
+      });
+      abbrevTouched = !!e.abbrev;
+      $('allow_remote').checked = !!e.allow_remote;
+      if (e.scorebar_style) {
+        var st = document.querySelector('input[name=style][value="' + e.scorebar_style + '"]');
+        if (st) st.checked = true;
+      }
+      document.querySelectorAll('[data-secret]').forEach(function (el) {
+        el.placeholder = (info.secrets_set || {})[el.id] ? 'Saved — type a new one to change it' : '';
+      });
+    }
+    var preset = PRESET && document.querySelector('input[name=role][value="' + PRESET + '"]');
+    if (preset) {
+      preset.checked = true;
+      showRoleChosen(true);
+      if (PRESET === 'scorer') { $('title').textContent = 'Set up the scorer’s laptop'; $('lead').textContent = 'Just one thing: where NV Play saves its scoreboard. It’s usually found for you.'; }
+      if (PRESET === 'bridge') { $('title').textContent = 'Set up the NV Play bridge'; }
+    }
+    showSaved();
+    showForRole();
+    refreshPreview();
+    scalePreview();
+  }).catch(function (e) {
+    if (MODE === 'settings' && !$('login').classList.contains('hidden')) return;   // asking for the password
+    $('form').classList.remove('hidden');
+    msg('Couldn\'t load: ' + (e.message || e), true);
+  });
+}
+
+// The role picked on the welcome screen, shown as a line rather than the three choices.
+function showRoleChosen(on) {
+  var line = $('role_chosen');
+  document.querySelector('.roles').classList.toggle('hidden', on);
+  line.classList.toggle('hidden', !on);
+  if (!on) return;
+  line.textContent = 'This computer: ' + (ROLE_NAMES[role()] || role()) + '. ';
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'linkbtn'; b.textContent = 'Change';
+  b.addEventListener('click', function () { showRoleChosen(false); });
+  line.appendChild(b);
+}
+
+// Folder fields: Windows' own folder box, in CricketStream's window.
+if (window.csApp && window.csApp.pickFolder) {
+  document.querySelectorAll('[data-browse]').forEach(function (b) {
+    var field = $(b.getAttribute('data-browse'));
+    b.classList.remove('hidden');
+    b.addEventListener('click', function () {
+      var title = field.id === 'pcs_folder' ? 'Choose NV Play’s scoreboard Output folder' : 'Choose where replay clips are saved';
+      window.csApp.pickFolder(title, field.value.trim()).then(function (p) { if (p) { field.value = p; field.dispatchEvent(new Event('input')); } });
+    });
+  });
+}
+
+// ── Move to another laptop (CricketStream's window only) ──
+function moveResult(kind, text) { var r = $('result_move'); r.className = 'result ' + kind; r.textContent = text; }
+$('move_export').addEventListener('click', function () {
+  var secrets = $('move_secrets').checked;
+  moveResult('busy', 'Making the file…');
+  fetch('/setup/export', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({secrets: secrets})})
+    .then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Export failed'); });
+      var club = (r.headers.get('X-Club') || 'club').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return r.blob().then(function (b) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'CricketStream-' + club + '-' + new Date().toISOString().slice(0, 10) + (secrets ? '-with-keys' : '') + '.zip';
+        a.setAttribute('download', a.download);
+        document.body.appendChild(a); a.click(); a.remove();
+        moveResult('ok', 'Saved to your Downloads folder as ' + a.download + (secrets ? ' — it has the passwords and keys in it: keep it safe.' : '.'));
+      });
+    })
+    .catch(function (e) { moveResult('bad', e.message || String(e)); });
+});
+$('move_import_btn').addEventListener('click', function () { $('move_import').click(); });
+$('move_import').addEventListener('change', function () {
+  var f = this.files && this.files[0];
+  this.value = '';
+  if (!f) return;
+  moveResult('busy', 'Importing ' + f.name + '…');
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { moveResult('bad', d.error || 'Import failed'); return; }
+      var n = 0, p = d.summary.pictures || {};
+      Object.keys(p).forEach(function (k) { n += p[k]; });
+      moveResult('ok', 'Imported ' + (d.summary.club || 'the club') + '\'s settings and ' + n + ' pictures. The old settings are kept in ' + d.summary.backup + '.');
+      setTimeout(function () { location.href = d.next || '/'; }, 2500);
+    })
+    .catch(function (e) { moveResult('bad', String(e)); });
+});
+
+function msg(text, kind) { var m = $('msg'); m.textContent = text; m.className = kind === true ? 'bad' : (kind || ''); }
+
+document.querySelectorAll('input[name=role]').forEach(function (el) { el.addEventListener('change', showForRole); });
+$('name').addEventListener('input', function () {
+  if (!abbrevTouched) $('abbrev').value = abbrevFromName($('name').value);
+  refreshPreview();
+});
+$('abbrev').addEventListener('input', function () { abbrevTouched = true; refreshPreview(); });
+$('colour').addEventListener('input', refreshPreview);
+$('colour').addEventListener('change', refreshPreview);
+$('colour_pick').addEventListener('input', function () { $('colour').value = $('colour_pick').value; refreshPreview(); });
+window.addEventListener('resize', scalePreview);
+['pc_key','anthropic_key','yt_key','club_password'].forEach(function (k) {
+  $(k).addEventListener('input', function () { if ($(k).value && clearing[k]) { clearing[k] = false; showSaved(); } });
+});
+
+$('form').addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var v = {role: role(), scorebar_style: selectedStyle(), allow_remote: $('allow_remote').checked,
+           bridge_port: parseInt($('bridge_port').value, 10) || 0,
+           clear: Object.keys(clearing).filter(function (k) { return clearing[k]; }),
+           desktop_shortcut: MODE === 'setup' && info.os === 'windows' && !info.have_config && $('desktop_shortcut').checked};
+  FIELDS.forEach(function (k) { v[k] = $(k).value; });
+  if (v.role === 'streaming' && !v.name.trim()) { msg('The club name is required.', true); $('name').focus(); return; }
+  if (v.role === 'streaming' && !v.pc_id.trim()) { msg('The PlayCricket club ID is required.', true); $('pc_id').focus(); return; }
+  $('save').disabled = true;
+  msg('Saving…');
+  api('/save', v)
+    .then(function (d) {
+      $('save').disabled = false;
+      if (!d.ok) { msg(d.error || 'Couldn\'t save.', true); return; }
+      if (MODE === 'settings') { settingsSaved(d); return; }
+      if (APP && d.next) {
+        msg(d.template ? 'Saved. The scoreboard template is in NV Play’s Templates folder — choose it once in NV Play (Tools → Configuration → Scoreboard → Template File).' : 'Saved.', 'good');
+        setTimeout(function () { location.href = d.next; }, d.template ? 2500 : 400);
+        return;
+      }
+      msg('');
+      $('form').classList.add('hidden');
+      var next = $('next');
+      function p(t) { var el = document.createElement('p'); el.textContent = t; next.appendChild(el); return el; }
+      p('Saved to ' + d.config_file + '.');
+      if (d.shortcut) p('There\'s a CricketStream shortcut on the desktop — double-click it on match day.');
+      if (d.shortcut_pending) p('A CricketStream shortcut is being put on the desktop — double-click it on match day.');
+      if (d.template) p('The scoreboard template is in NV Play\'s Templates folder (' + d.template.folder +
+        '). In NV Play: Tools → Configuration → Scoreboard → Template File → choose scoreboard.template, once.');
+      if (d.role === 'streaming') {
+        p('CricketStream is starting the match now — watch its window for the pre-flight check. ' +
+          'The control panel opens at http://localhost:' + (info.port || 5000) + '/control.');
+      } else if (d.role === 'scorer') {
+        p('This laptop now shares the scorer\'s file on the club wifi. On the streaming laptop: ' +
+          'control panel → Setup → Scoring source → Find scorer laptop.');
+      } else {
+        p('The bridge is starting. On the streaming laptop, set the bridge address to http://<this machine\'s Tailscale IP>:' +
+          d.bridge_port + ' and this token (Setup → Scoring source):');
+        var t = document.createElement('div'); t.className = 'token'; t.textContent = d.bridge_token; next.appendChild(t);
+      }
+      p('You can close this tab.');
+      $('finished').classList.remove('hidden');
+    })
+    .catch(function (e) { $('save').disabled = false; msg('Couldn\'t save: ' + (e.message || e), true); });
+});
+
+function settingsSaved(d) {
+  var parts = ['Saved.'];
+  if (d.applied && d.applied.length) parts.push('Live now.');
+  if (d.restart_needed && d.restart_needed.length) parts.push('After a restart: ' + d.restart_needed.join(', ') + '.');
+  msg(parts.join(' '), 'good');
+  // Fresh copy of what's saved (which secrets are set now, the role).
+  clearing = {};
+  ['pc_key','anthropic_key','yt_key','club_password'].forEach(function (k) { $(k).value = ''; });
+  api('/info').then(function (fresh) { info = fresh; showSaved(); showForRole(); }).catch(function () {});
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,147 +1,53 @@
-# Club Logos Guide
-## CricketStream Overlay
+# Club Badges Guide
+## CricketStream
 
-Club badges appear as small circular icons next to team names in the scorebar.
-They show automatically for any club whose badge you have saved in the `logos/` folder.
-
----
-
-## How it works
-
-When the PlayCricket API fetches today's match, it retrieves the PlayCricket
-club ID for both the home and away teams. The overlay then tries to load:
-
-```
-logos/{club_id}.png
-```
-
-If the file exists, the badge appears. If not, the space is left blank —
-no broken images, no errors.
-
-The opposition's club ID is detected automatically from the day's fixture (along with a
-short abbreviation for their name), so you don't have to enter it by hand — just save their
-badge as `logos/{their_club_id}.png`.
-
-### Picking a badge manually (new in v2)
-
-If a badge won't match automatically — an unusual club name, a missing ID, or a one-off
-opponent — open the control panel and use the **Home badge** / **Away badge** dropdowns to
-pick any image in your `logos/` folder for either team. The choice is saved with the match
-and overrides the automatic match.
+Club badges appear as small circular icons next to the team names on the scorebar. You add
+them in the control panel — no folders, no renaming files.
 
 ---
 
-## Adding your club badge
+## Adding badges
 
-1. Find your **PlayCricket club ID** — it's the number in the URL when
-   you view your club page on play-cricket.com, or it's the `playcricket_id`
-   value in your `config.ini`
+Control panel → **Pictures** → **Club badges**:
 
-2. Save your club badge as:
-   ```
-   logos/{your_club_id}.png
-   ```
-   For example, if your club ID is 12345, that's:
-   ```
-   logos/12345.png
-   ```
+- **Our badge** — press **Upload…** and choose the image. Once is enough; it's used every
+  match from then on.
+- **Today's opposition** — once today's match is fetched (Match day → **Fetch today's
+  match**), the opposition's club is shown here with an **Upload…** button. Choose their
+  badge and it's on the scorebar straight away.
+- **Any other club** — type its PlayCricket club ID (the number in its play-cricket.com
+  address) and press **Add badge…**, e.g. to get your league's badges in before the season.
 
-3. That's it — restart the server and your badge will appear on the left
-   side of the scorebar next to your team name
+Every badge you add stays, so over a season you build up a library and most weeks the
+opposition's badge is already there. **Rename** and **Remove** are under each one.
 
----
+It works from a phone or tablet too (with the panel open there), so a badge saved on your
+phone can go straight up.
 
-## Adding opposition badges
+### When a badge doesn't match on its own
 
-Every club you play against has a PlayCricket club ID. When the API fetches
-today's match, the away club ID is stored automatically.
-
-To add an opposition badge:
-
-1. Run **Fetch today's match** in the control panel → PlayCricket API card
-2. The match details show the opposition club name
-3. Find that club's ID on play-cricket.com (number in their page URL)
-   — or check `http://127.0.0.1:5000/state` after fetching and look for `away_club_id`
-4. Save their badge as `logos/{away_club_id}.png`
-
-Over time your `logos/` folder builds up and you'll have badges for every
-club in your league automatically.
+The scorebar finds a badge by the club's PlayCricket ID, which comes with the day's
+fixture. If it isn't there — a cup match, a friendly, a club without an ID — use **Home
+badge** / **Away badge** in Graphics & sponsor → **Team colours & badges** to pick any badge
+you've added for either side. The choice is saved with the match.
 
 ---
 
-## Supported file formats
+## What works best
 
-The following formats all work — use whichever gives the best quality:
+- **PNG with a transparent background** — it sits cleanly in the round space on the dark
+  scorebar. JPEG and WebP work too.
+- **Square, 200×200 pixels or larger** — it's scaled down to fit.
+- Up to 8 MB per picture.
 
-| Format | Extension | Best for |
-|---|---|---|
-| PNG | `.png` | Badges with transparency (recommended) |
-| SVG | `.svg` | Vector badges (perfect at any size) |
-| WebP | `.webp` | Modern format, small file size |
-| JPEG | `.jpg` or `.jpeg` | Photographs (no transparency) |
-| GIF | `.gif` | Animated badges (rare) |
-
-The overlay checks in that order — PNG first, then SVG, etc. Name the file
-with the correct extension for your format.
+**Where to get them:** the club's page on play-cricket.com (right-click the badge → Save
+image), the club's website or social pages, or ask the club for its badge file.
 
 ---
 
-## Where to get club badges
+## Behind the scenes
 
-**From play-cricket.com:**
-- Go to the club's page on play-cricket.com
-- Right-click their badge/logo → Save image
-- Save it to your `logos/` folder with the club ID as the filename
-
-**From the club directly:**
-- Many clubs have their badge on their website or Facebook page
-- A transparent PNG works best in the circular scorebar display
-
-**Creating your own:**
-- Any image editor works — Canva, Photoshop, GIMP
-- Ideal size: 200×200px or larger (the overlay scales it down to 38px)
-- Transparent background looks best against the dark scorebar
-
----
-
-## Logos folder location
-
-The `logos/` folder sits alongside `server.py`:
-
-```
-CricketStream/
-  server.py
-  overlay.html
-  config.ini
-  logos/          ← add badge files here
-    12345.png     ← your club's badge
-    11441.png     ← opposition club (example)
-    6075.png      ← another opposition club (example)
-```
-
-Create the folder if it doesn't exist — the server creates it automatically
-on first run but it won't break anything if it's missing.
-
----
-
-## Finding club IDs quickly
-
-After fetching today's match in the control panel, open:
-```
-http://127.0.0.1:5000/state
-```
-
-Look for `away_club_id` in the JSON — that's the away club's PlayCricket ID.
-Save their badge as `logos/{that_number}.png` and it appears on the scorebar
-immediately (refresh the overlay in OBS: right-click → Refresh).
-
----
-
-## For non-technical users
-
-You do not need to restart the server to add a new badge. Just:
-
-1. Drop the PNG file into the `logos/` folder
-2. Right-click the Overlay source in OBS → **Refresh**
-3. The badge appears on the next poll (within 3 seconds)
-
+The badges are kept in the `logos` folder beside CricketStream, named by club ID
+(`29434.png`). If your club already keeps badges somewhere else (a shared drive), point
+CricketStream at it in Setup → **Where pictures are kept**. Export/import of the club's
+settings (Settings) carries the badges to another laptop.

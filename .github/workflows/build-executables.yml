@@ -1,25 +1,17 @@
 name: Build executables
 
-# Two downloads, one per machine, and that's the whole product:
+# One download per platform, and that's the whole product:
 #
-#   CricketStream.exe             -> the STREAMING laptop. One file that does everything:
-#                                    checks it's in the project folder, installs Python and
-#                                    the packages if they're missing, runs first-time setup
-#                                    if there's no config.ini, then starts the match. It
-#                                    replaced the old two-exe dance (CricketStreamSetup.exe
-#                                    to configure, then CricketStreamQuickstart.exe on match
-#                                    day, which had to be placed in the right folder by hand
-#                                    and gave no readable error when it wasn't).
-#   CricketStreamScorerAgent.exe  -> the SCORER's laptop. Genuinely standalone: scorer_agent.py
-#                                    is stdlib-only, so this is frozen whole and needs no
-#                                    Python, no project folder and no config on that machine.
+#   CricketStream.exe        -> Windows (any of the club's machines)
+#   CricketStream-mac.zip    -> macOS, one universal binary (Apple silicon + Intel) plus a
+#                               double-clickable .command launcher
+#   CricketStream-linux      -> Linux x86-64
 #
-# CricketStream.exe is a LAUNCHER, not a frozen app: it deliberately does not freeze
-# server.py/quickstart.py, which stay ordinary .py files run by a real interpreter. server.py
-# reads overlay.html/control.html from disk on every request (that's what makes control-panel
-# edits appear on refresh) and resolves config.ini/match_state.json relative to its own folder.
-# An earlier attempt at freezing them needed real surgery on both and was reverted; this
-# approach leaves the entire match-day code path running exactly as it does from source.
+# The same binary is the streaming laptop, the scorer's laptop (agent) and the bridge
+# machine: the first run's setup page asks which this machine is, and config.ini
+# remembers. Every page, font and the NV Play scoreboard template are built in; a file of
+# the same name beside the binary overrides the built-in copy, so editing control.html
+# and refreshing still works without a rebuild.
 
 on:
   workflow_dispatch:
@@ -28,195 +20,297 @@ on:
       - 'v*'
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    # Every leg stamps the same version; the signing job checks the signed build reports it.
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            out: CricketStream.exe
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+            out: CricketStream-arm64.exe
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            out: CricketStream-darwin-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            out: CricketStream-darwin-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            out: CricketStream-linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-go@v6.0.0
         with:
-          python-version: '3.11'
+          go-version-file: go.mod
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Version
+        id: v
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || v="0.0.0-dev"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # Windows wants a dotted four-part number in the file's version resource.
+          num="$(echo "$v" | grep -oE '^[0-9]+(\.[0-9]+){0,3}' || echo 0)"
+          while [[ "$(echo "$num" | tr -cd . | wc -c)" -lt 3 ]]; do num="$num.0"; done
+          echo "winver=$num" >> "$GITHUB_OUTPUT"
 
-      # setup_wizard.py is imported by cricketstream.py (for find_python, install_python,
-      # find_project_root, install_packages, configure, write_config and the die()/pause()
-      # rules), so PyInstaller follows the import and bundles it automatically.
-      - name: Build exe
-        run: pyinstaller --onefile --console --icon brand/icon.ico --name CricketStream cricketstream.py
+      - name: Stamp the version into the Windows resources
+        if: matrix.goos == 'windows'
+        shell: bash
+        working-directory: cmd/cricketstream
+        run: >
+          go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc
+          --arch amd64,arm64 --product-version "${{ steps.v.outputs.version }}"
+          --file-version "${{ steps.v.outputs.winver }}"
 
-      - name: Smoke-test the exe
-        # Run it somewhere that is NOT the project folder: it must exit non-zero with the
-        # "can't find the project files" explanation rather than crashing or hanging. This
-        # is the one check CI can make that the frozen binary actually starts at all —
-        # a broken freeze (missing import, bad bootloader) fails here rather than on a
-        # club's match morning.
-        shell: pwsh
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        # On Windows it's a GUI program: CricketStream opens its own window, with no console
+        # window behind it (run from a terminal, it borrows the terminal's for subcommands).
+        run: |
+          gui=""
+          [[ "$GOOS" != windows ]] || gui="-H windowsgui"
+          go build -trimpath -ldflags "-s -w $gui -X main.version=${{ steps.v.outputs.version }}" -o "dist/${{ matrix.out }}" ./cmd/cricketstream
+
+      - name: Check the Windows build is a GUI program
+        if: matrix.goos == 'windows'
+        shell: bash
+        run: |
+          # The PE optional header's Subsystem: 2 = Windows GUI, 3 = console.
+          python - "dist/${{ matrix.out }}" <<'PY'
+          import struct, sys
+          b = open(sys.argv[1], 'rb').read(4096)
+          pe = struct.unpack_from('<I', b, 0x3C)[0]
+          sub = struct.unpack_from('<H', b, pe + 0x5C)[0]
+          print('subsystem', sub)
+          sys.exit(0 if sub == 2 else 1)
+          PY
+
+      # Run the binary somewhere that is NOT the checkout, so nothing can be read from the
+      # source tree: the app's page and the setup page must come up from the built-in
+      # copies, and the NV Play template must be inside the binary. A broken build fails
+      # here rather than on a club's match morning.
+      - name: Smoke-test the binary
+        # Native builds only (the Windows and macOS runners can't run every architecture).
+        if: matrix.goos == 'linux' || matrix.goos == 'windows' && matrix.goarch == 'amd64' || matrix.goos == 'darwin' && matrix.goarch == 'arm64'
+        shell: bash
         env:
           CRICKETSTREAM_NO_PAUSE: '1'
+          CRICKETSTREAM_NO_BROWSER: '1'
+          CRICKETSTREAM_NO_WINDOW: '1' # serve the window's page, open nothing
         run: |
-          New-Item -ItemType Directory -Force -Path "$env:TEMP\notproject" | Out-Null
-          Copy-Item dist\CricketStream.exe "$env:TEMP\notproject\"
-          Push-Location "$env:TEMP\notproject"
-          $out = & .\CricketStream.exe 2>&1 | Out-String
-          $code = $LASTEXITCODE
-          Pop-Location
-          Write-Host $out
-          if ($out -notmatch "can't find the CricketStream project files") {
-            Write-Error "exe did not produce the expected out-of-project error"
-            exit 1
-          }
-          if ($code -eq 0) {
-            Write-Error "exe exited 0 outside the project folder; expected a non-zero exit"
-            exit 1
-          }
-          # The non-zero exit IS the pass condition. GitHub's pwsh wrapper ends every step
-          # with `exit $LASTEXITCODE`, so without this the expected failure fails the step
-          # (the macOS job's `|| true` is the same fix).
-          exit 0
+          set -e
+          dir="$RUNNER_TEMP/smoke"
+          mkdir -p "$dir"
+          cp "dist/${{ matrix.out }}" "$dir/"
+          cd "$dir"
+          ./${{ matrix.out }} help | grep -q "cricketstream setup"
+          ./${{ matrix.out }} version | tee version.txt
+          [[ "$GITHUB_REF_TYPE" != tag ]] || grep -qF "${{ steps.v.outputs.version }}" version.txt
+          ./${{ matrix.out }} agent --check-template | tee tpl.txt
+          grep -q "bundled: yes" tpl.txt
+          ./${{ matrix.out }} > run.log 2>&1 &
+          pid=$!
+          ok=""
+          # The app prints its page's address (its own port, or any free one).
+          for _ in $(seq 1 30); do
+            base="$(grep -oE 'app page http://127\.0\.0\.1:[0-9]+' run.log | head -1 | cut -d' ' -f3 || true)"
+            if [ -n "$base" ] && curl -fsS "$base/" -o app.html && curl -fsS "$base/setup?app=1" -o setup.html; then ok=1; break; fi
+            sleep 1
+          done
+          kill $pid 2>/dev/null || true
+          cat run.log
+          [ -n "$ok" ] || { echo "the app's page never came up"; exit 1; }
+          grep -q "which computer is this" app.html
+          grep -q "CricketStream Setup" setup.html
+          grep -q "streaming laptop" setup.html
 
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: CricketStream-windows
-          path: dist/CricketStream.exe
+          name: ${{ matrix.out }}
+          path: dist/${{ matrix.out }}
 
-  # PyInstaller's onefile bootloader appends a single archive (the Python runtime + bundled
-  # files) after the Mach-O binary and finds it at runtime via an offset from EOF. Building
-  # arm64 and x86_64 separately and lipo-merging them does NOT work for onefile builds —
-  # the merged binary's bootloader can only ever discover one of the two archives (whichever
-  # occurs last), so it runs fine on one architecture and fails on the other with a
-  # "Failed to load Python shared library ... incompatible architecture" error (confirmed by
-  # actually building and running it). The correct approach is PyInstaller's own
-  # --target-arch universal2, which builds one archive containing both architectures'
-  # native libraries — actions/setup-python installs python.org's own universal2 build for
-  # Python >= 3.11 on macOS, so no extra Python install step is needed.
-  build-macos:
+  # One universal macOS binary. Go builds each architecture natively, so lipo can simply
+  # merge them (unlike a PyInstaller onefile build, whose appended archive broke this).
+  macos-universal:
+    needs: build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/download-artifact@v8.0.1
         with:
-          python-version: '3.11'
+          path: artifacts
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build universal2 binary
-        run: pyinstaller --onefile --target-arch universal2 --name CricketStream cricketstream.py
-
-      # -info alone only prints, so a build that lost one architecture would still publish —
-      # and the smoke test below runs on the runner's own architecture, so it wouldn't
-      # notice either. -verify_arch exits non-zero unless both are there.
-      - name: Verify both architectures are present
+      - name: Merge, verify and package
         run: |
+          mkdir dist
+          lipo -create -output dist/CricketStream \
+            artifacts/CricketStream-darwin-arm64/CricketStream-darwin-arm64 \
+            artifacts/CricketStream-darwin-amd64/CricketStream-darwin-amd64
+          # -info alone only prints; -verify_arch fails unless both are there.
           lipo -info dist/CricketStream
           lipo dist/CricketStream -verify_arch x86_64 arm64
-
-      - name: Smoke-test the binary
-        env:
-          CRICKETSTREAM_NO_PAUSE: '1'
-        run: |
-          mkdir -p /tmp/notproject && cp dist/CricketStream /tmp/notproject/
-          cd /tmp/notproject
-          out="$(./CricketStream 2>&1 || true)"
-          echo "$out"
-          echo "$out" | grep -q "can't find the CricketStream project files"
-
-      - name: Package with a double-clickable launcher
-        # A raw Mach-O binary double-clicked in Finder runs with no visible
-        # window, so an interactive wizard would appear to hang. A .command
-        # file is what Finder opens in Terminal.app automatically.
-        run: |
+          chmod +x dist/CricketStream
+          dist/CricketStream help | head -3
+          # A raw binary double-clicked in Finder runs with no visible window. A .command
+          # file is what Finder opens in Terminal.app automatically.
           cd dist
-          cat > "CricketStream.command" <<'EOF'
-          #!/bin/bash
-          cd "$(dirname "$0")"
-          ./CricketStream
-          EOF
-          chmod +x "CricketStream.command" CricketStream
-          zip CricketStream-mac.zip CricketStream "CricketStream.command"
+          # shellcheck disable=SC2016 # written literally: the .command file expands $0 itself
+          printf '#!/bin/bash\ncd "$(dirname "$0")"\n./CricketStream\n' > CricketStream.command
+          chmod +x CricketStream.command
+          zip CricketStream-mac.zip CricketStream CricketStream.command
 
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: CricketStream-mac
           path: dist/CricketStream-mac.zip
 
-  # scorer_agent.py runs on the SCORING laptop (see TWO_LAPTOP_SETUP.md), which is often a
-  # club's spare/old machine with no Python on it -- same "python is not recognised" failure
-  # mode the host exe exists to avoid. Unlike the host, this one IS fully self-contained:
-  # scorer_agent.py is stdlib-only and reads no project files, so the frozen binary is the
-  # entire install on that machine. Windows-only for now: TWO_LAPTOP_SETUP.md's Mac launcher
-  # (start_scorer_agent.sh) already runs it straight from source, since Macs ship python3;
-  # Windows has no such guarantee.
-  build-scorer-agent-windows:
+  # Code signing for the Windows builds, by SignPath Foundation (free for open-source
+  # projects; see "Code signing policy" in the README). Every signing request waits for a
+  # person on the project's Approvers list to approve it in SignPath — that's the
+  # foundation's rule, and why this job can sit waiting.
+  #
+  # Off until the project is set up there: add the repository VARIABLES
+  # SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG and
+  # the SECRET SIGNPATH_API_TOKEN (Settings → Secrets and variables → Actions). Without
+  # them the release goes out unsigned and says so. Every job before this one runs on
+  # GitHub-hosted runners, which SignPath checks for open-source projects.
+  sign-windows:
+    needs: build
+    if: vars.SIGNPATH_ORGANIZATION_ID != ''
     runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/download-artifact@v8.0.1
         with:
-          python-version: '3.11'
+          pattern: CricketStream*.exe
+          path: unsigned
+          merge-multiple: true
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Upload the unsigned builds for SignPath
+        id: unsigned
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: windows-unsigned
+          path: unsigned/*.exe
 
-      - name: Build exe
-        # --add-data bundles NV Play's scoreboard.template, which the agent installs into
-        # NV Play's Templates folder on start (scorers used to copy it by hand, from a full
-        # project download they otherwise didn't need). ":" works as the separator on every
-        # platform from PyInstaller 6; checked by building it locally with 6.22.3.
-        run: pyinstaller --onefile --console --icon brand/icon.ico --name CricketStreamScorerAgent --add-data "scoreboard.template:." scorer_agent.py
+      - name: Sign (waits for approval in SignPath)
+        uses: signpath/github-action-submit-signing-request@v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          # Checked against each file's own ProductVersion (.signpath/artifact-configuration.xml).
+          parameters: |
+            version: "${{ needs.build.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 86400
+          output-artifact-directory: signed
 
-      - name: Smoke-test the exe
-        # --help exercises the frozen binary's startup and argparse without binding a port
-        # or touching the filesystem, so it's safe on a CI runner and still proves the
-        # freeze produced something that runs.
+      # Proof before anything is published: both files carry a valid signature, and the
+      # signed x64 build still runs (a signature is appended to the file; a broken one
+      # would stop Windows starting it).
+      - name: Verify the signatures and run the signed build
         shell: pwsh
         env:
           CRICKETSTREAM_NO_PAUSE: '1'
+          CRICKETSTREAM_NO_BROWSER: '1'
         run: |
-          $out = & dist\CricketStreamScorerAgent.exe --help 2>&1 | Out-String
-          Write-Host $out
-          if ($out -notmatch "scoreboard") {
-            Write-Error "agent exe did not start"
-            exit 1
+          foreach ($f in 'CricketStream.exe', 'CricketStream-arm64.exe') {
+            $sig = Get-AuthenticodeSignature "signed/$f"
+            "$f : $($sig.Status) — $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { throw "$f is not validly signed" }
+            if ((Get-FileHash "signed/$f").Hash -eq (Get-FileHash "unsigned/$f").Hash) { throw "$f came back unchanged" }
           }
-          # The template has to be INSIDE the exe: the runner's checkout sits next to it,
-          # so run from a different folder to be sure it isn't read from there instead.
-          Push-Location $env:RUNNER_TEMP
-          $tpl = & "$env:GITHUB_WORKSPACE\dist\CricketStreamScorerAgent.exe" --check-template 2>&1 | Out-String
-          $tplCode = $LASTEXITCODE
-          Pop-Location
-          Write-Host $tpl
-          if ($tplCode -ne 0 -or $tpl -notmatch "bundled: yes") {
-            Write-Error "scoreboard.template is not bundled into the agent exe"
-            exit 1
-          }
+          $out = & signed/CricketStream.exe version | Out-String
+          $out
+          if ($out -notmatch '${{ needs.build.outputs.version }}') { throw "signed build reports the wrong version" }
+          (& signed/CricketStream.exe agent --check-template | Out-String) -match 'bundled: yes' | Out-Null
+          if (-not $?) { throw "signed build lost its built-in files" }
 
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: CricketStreamScorerAgent-windows
-          path: dist/CricketStreamScorerAgent.exe
+          name: windows-signed
+          path: signed/*.exe
 
   release:
-    needs: [build-windows, build-macos, build-scorer-agent-windows]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, macos-universal, sign-windows]
+    # Runs unsigned when signing is switched off (sign-windows skipped), never when it failed.
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/') &&
+      needs.build.result == 'success' && needs.macos-universal.result == 'success' &&
+      (needs.sign-windows.result == 'success' || needs.sign-windows.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # The licence and the third-party notices go with every release (they're also built
+      # into the app: `CricketStream licences`).
+      - uses: actions/checkout@v7.0.1
+        with:
+          sparse-checkout: |
+            LICENSE
+            THIRD_PARTY_NOTICES.txt
+            release-notes/
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8.0.1
         with:
           path: artifacts
 
+      - name: Use the signed Windows builds when there are some
+        shell: bash
+        run: |
+          if [ -d artifacts/windows-signed ]; then
+            cp artifacts/windows-signed/CricketStream.exe artifacts/CricketStream.exe/CricketStream.exe
+            cp artifacts/windows-signed/CricketStream-arm64.exe artifacts/CricketStream-arm64.exe/CricketStream-arm64.exe
+            policy="https://github.com/$GITHUB_REPOSITORY#code-signing-policy"
+            privacy="https://github.com/$GITHUB_REPOSITORY#privacy"
+            printf '\n---\nWindows: free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) — see the [code signing policy](%s) and [privacy](%s).\n' "$policy" "$privacy" > notes.md
+          else
+            echo "::warning::Windows builds are UNSIGNED (SignPath isn't set up) — Windows will warn on first run."
+            printf '\n---\nThe Windows builds of this release are not code signed yet: Windows SmartScreen asks once — More info → Run anyway.\n' > notes.md
+          fi
+          # A tag's own notes (release-notes/<tag>.md), when there are some, go first.
+          if [ -f "release-notes/$GITHUB_REF_NAME.md" ]; then
+            cat "release-notes/$GITHUB_REF_NAME.md" notes.md > notes.full && mv notes.full notes.md
+          fi
+
+      # A tag with a hyphen (v3.0.0-beta.1) is a pre-release: GitHub doesn't count it as
+      # "latest", so neither edition's update check offers it to clubs on a proven version.
       - name: Attach binaries to the GitHub release
         uses: softprops/action-gh-release@v3.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          append_body: true
+          body_path: notes.md
           files: |
-            artifacts/CricketStream-windows/CricketStream.exe
+            artifacts/CricketStream.exe/CricketStream.exe
+            artifacts/CricketStream-arm64.exe/CricketStream-arm64.exe
             artifacts/CricketStream-mac/CricketStream-mac.zip
-            artifacts/CricketStreamScorerAgent-windows/CricketStreamScorerAgent.exe
+            artifacts/CricketStream-linux/CricketStream-linux
+            LICENSE
+            THIRD_PARTY_NOTICES.txt

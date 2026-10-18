@@ -9,7 +9,7 @@ keeps the live score in sync between them over the network.
 ## When you'd use this
 
 **The scenario that led to this feature:** a club streamed from a MacBook running OBS, the
-Python server, *and* a Windows VM with NV Play open inside it, all at once. Mid-match the
+stream server, *and* a Windows VM with NV Play open inside it, all at once. Mid-match the
 Mac overheated, the VM crashed, and the scorer lost their progress — on stream, in front of
 people watching live.
 
@@ -32,11 +32,11 @@ to configure. The bridge exists specifically for the split-hardware case.
 
 ## How it works
 
-`nvplay_bridge.py` is a single, dependency-free Python file. Copy it (just that one file —
-not the whole repo) onto the machine that has NV Play, and run it there. It watches NV
+The bridge is CricketStream itself — the same single file as on the streaming machine — set
+up for the job "scorer's machine, elsewhere". On the machine that has NV Play it watches NV
 Play's output folder and serves the latest file over HTTP, gated by a token.
 
-On the streaming machine, `server.py` polls that URL every couple of seconds and mirrors the
+On the streaming machine, the server polls that URL every couple of seconds and mirrors the
 file into a local folder. From that point on it's treated as an ordinary local file — the
 same parser, the same overlay, the same ball database, the same everything. Nothing
 downstream can tell the difference between a local NV Play file and a bridged one.
@@ -44,10 +44,10 @@ downstream can tell the difference between a local NV Play file and a bridged on
 ```
 NV Play machine                          Streaming machine
 ┌─────────────────────┐                  ┌─────────────────────────┐
-│ NV Play writes a     │   HTTP, token-   │ server.py mirrors it    │
+│ NV Play writes a     │   HTTP, token-   │ the server mirrors it   │
 │ JSON file every ball │ ─── gated ────▶  │ locally every ~2s, then │
-│ nvplay_bridge.py     │   (Tailscale)    │ reads it exactly like a │
-│ serves it            │                  │ local PCS file          │
+│ CricketStream        │   (Tailscale)    │ reads it exactly like a │
+│ (bridge) serves it   │                  │ local PCS file          │
 └─────────────────────┘                  └─────────────────────────┘
 ```
 
@@ -57,23 +57,23 @@ NV Play machine                          Streaming machine
 
 ### 1. On the machine with NV Play
 
-You only need one file — you don't need to clone the whole project onto this machine.
+You only need the one CricketStream file on this machine — nothing else to install.
 
-1. Copy `nvplay_bridge.py` from this repo onto the NV Play machine (a USB stick, a cloud
-   drive, however's easiest).
-2. Make sure that machine has Python 3 installed ([python.org/downloads](https://python.org/downloads)
-   — tick "Add to PATH" on the Windows installer). Nothing else needs installing — the
-   bridge uses only Python's standard library.
-3. Open a terminal/command prompt in the folder you put it in and run:
-   ```
-   python nvplay_bridge.py
-   ```
-4. First run asks for the NV Play output folder — the same path you'd otherwise have put in
-   `pcs_output_folder` (find it in NV Play under **Tools → Configuration → Scoreboard**).
-   Press Enter to accept the default port (5050).
-5. It prints a **token** and saves everything to `bridge_config.ini` next to the script, so
-   you won't be asked again — just rerun `python nvplay_bridge.py` on future match days.
-   Keep this window open while streaming.
+1. Download `CricketStream.exe` (or `CricketStream-mac.zip`) from the
+   [latest release](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest)
+   and put it in a folder of its own on the NV Play machine.
+2. Double-click it. The CricketStream window asks which computer this is: click **Set
+   this computer up as an NV Play bridge** (under the two big choices).
+3. Give it the NV Play output folder (find it in NV Play under **Tools → Configuration →
+   Scoreboard**; it's often filled in for you, or press **Browse…**) and keep the
+   suggested port (5050) unless something else uses it. Press **Save and continue**.
+4. The window shows the **bridge address** and **token**, each with a **Copy** button —
+   the streaming machine needs both. They're saved in `bridge_config.ini` next to
+   CricketStream, so you won't be asked again: on future match days just double-click
+   CricketStream and the same window shows them. Keep it open while streaming.
+
+(Running it by hand, or on a machine already set up for something else:
+`CricketStream bridge` asks the same two questions in the window instead.)
 
 ### 2. Connect the two machines
 
@@ -91,11 +91,12 @@ anyway if you're also using remote access for the control panel or scoring page.
 
 ### 3. On the streaming machine
 
-1. Open the control panel → the **Match** card.
+1. Open the control panel → the **Setup** tab → the **Scoring source** card.
 2. Find **"NV Play on separate hardware"**, just below the PCS output folder field.
 3. Leave the PCS output folder field blank, and fill in:
-   - **URL**: `http://<the Tailscale IP from step 2>:5050`
-   - **Token**: exactly what `nvplay_bridge.py` printed
+   - **URL**: `http://<the Tailscale IP from step 2>:5050` — the bridge machine's window shows
+     it as **Bridge address**, with a Copy button
+   - **Token**: the **Bridge token** from the same window
 4. Save.
 
 ### 4. Verify it's working
@@ -104,8 +105,8 @@ anyway if you're also using remote access for the control panel or scoring page.
 - The control panel's health strip gets a live "Feed" indicator — it'll show the age of the
   last received ball once NV Play writes one.
 - **Rehearse this before match day, not during it** — the first run on Windows will trigger
-  a firewall prompt ("allow nvplay_bridge.py to communicate on private networks") that needs
-  clicking through once.
+  a firewall prompt ("allow public and private networks to access this app?") that needs
+  **Allow** clicking once.
 
 ---
 
@@ -116,10 +117,10 @@ anyway if you're also using remote access for the control panel or scoring page.
   else. `/pcs/ping` (just "is this machine up") doesn't need one, since it returns no match
   data.
 - **The bridge refuses to start with a blank token.** If `bridge_config.ini` ever ends up
-  with an empty token — hand-edited, corrupted, whatever — the script won't listen at all,
+  with an empty token — hand-edited, corrupted, whatever — the bridge won't listen at all,
   rather than silently accepting any request. Delete the file and rerun to generate a fresh
   one.
-- **The token is a random 128-bit value** generated with Python's `secrets` module — not
+- **The token is a random 128-bit value** from the operating system's secure random source — not
   guessable, and there's no meaningful way to brute-force it over a network.
 - **Traffic is plain HTTP, not HTTPS** — fine over Tailscale (which is already an encrypted
   tunnel between your two machines) or a trusted home Wi-Fi, but this is **not designed to
@@ -140,9 +141,9 @@ anyway if you're also using remote access for the control panel or scoring page.
   machine. Check it against NV Play's **Tools → Configuration → Scoreboard** setting exactly.
 - **`/health` shows `pcs.bridge.connected: false`** — check `last_error` in the same
   response. Usually either the NV Play machine is unreachable (Tailscale not connected, or
-  the bridge script isn't running) or the token doesn't match what's in the control panel.
+  the bridge isn't running) or the token doesn't match what's in the control panel.
 - **Windows Firewall blocked it** — you likely clicked "Cancel" instead of "Allow" on the
-  first-run prompt. Re-run the script to get the prompt again, or add an exception manually
+  first-run prompt. Add an exception manually
   in Windows Defender Firewall for the port you chose.
 - **Works, but the score looks a few seconds behind** — normal; the bridge polls every ~2
   seconds, on top of whatever poll interval the overlay already uses. Not something to chase
@@ -150,5 +151,5 @@ anyway if you're also using remote access for the control panel or scoring page.
 
 ---
 
-See [`CLAUDE.md`](CLAUDE.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how this fits into
-the rest of the codebase if you're contributing rather than just running it.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how this fits into the rest of the codebase if
+you're contributing rather than just running it.
