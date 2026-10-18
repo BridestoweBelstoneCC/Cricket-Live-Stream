@@ -393,6 +393,13 @@ it. **Activity** (top right of the window, and in the control panel) shows every
 has done; the same lines are saved in `logs\cricketstream-<date>.log` beside the app — the
 file to send with a bug report.
 
+The icon by the clock (behind the **^** arrow until you drag it onto the taskbar) brings
+the window back with a click, and right-click has Activity, the control panel and Close.
+It also shows a Windows notification when something needs someone during the match: the
+scorer's feed gone quiet, OBS crashing (and being reopened), CricketStream restarting its
+server, the streaming laptop no longer collecting the score, a new version. Each says so
+once, and once more when it's put right; Windows' do-not-disturb keeps them quiet.
+
 ### My settings have gone / it's asking the setup questions again
 
 `config.ini` lives next to `CricketStream.exe`. If you downloaded a new copy and ran it

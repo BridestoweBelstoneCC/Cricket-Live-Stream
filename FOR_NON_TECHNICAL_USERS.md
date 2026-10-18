@@ -308,6 +308,12 @@ Whatever goes wrong, CricketStream says so in its window and waits for you to cl
 everything it has done, and it's all saved in the `logs` folder next to `CricketStream.exe`
 too — send that file if you ask for help.
 
+On Windows, CricketStream also has an icon by the clock (it may be hidden behind the
+**^** arrow — drag it onto the taskbar to keep it in sight). Click it to bring the window
+back from behind OBS. It pops up a notification when something needs you — the scorer's
+feed has gone quiet, OBS crashed and was reopened, a new version is out — and another
+when it's sorted.
+
 ### The CricketStream window is blank or doesn't open (Windows)
 
 The window uses Microsoft Edge WebView2, which comes with Windows 10 and 11. If it's

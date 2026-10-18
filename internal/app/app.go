@@ -128,6 +128,12 @@ func Run(o Options) int {
 		console.Die("CricketStream couldn't open its window", err.Error())
 	}
 	a.base = "http://" + ln.Addr().String()
+	// Set before the capture starts: its goroutine calls it.
+	a.log.onLine = func(line string) {
+		if n := logLineNotice(line); n != nil {
+			go a.notify(*n) // not on the log's own goroutine: notify prints to the log
+		}
+	}
 	undo, _ := a.log.capture()
 	defer undo()
 	console.SetUI(a.ask)
@@ -145,11 +151,6 @@ func Run(o Options) int {
 	cleanUpAfterUpdate()
 
 	a.enterRole(setup.Role())
-	a.log.onLine = func(line string) {
-		if n := logLineNotice(line); n != nil {
-			go a.notify(*n) // not on the log's own goroutine: notify prints to the log
-		}
-	}
 	go a.watch(10 * time.Second)
 	if v := os.Getenv(ReleasesEnv); v != "" {
 		releasesAPI = v

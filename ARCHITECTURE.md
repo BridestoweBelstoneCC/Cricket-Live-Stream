@@ -161,6 +161,14 @@ no web view the same pages open in the browser. The control panel stays a web pa
 by the server, because phones and tablets use it too; in the window it's logged in with
 the launcher's session and gains Activity and Stop buttons.
 
+On Windows the window also owns an icon by the clock (`tray_windows.go`, Shell_NotifyIcon
+on the window's own message loop) and its notifications. `alerts.go` decides what is
+worth one, every 10 seconds: `/health` during match day (feed freshness, the OBS guard's
+last event), the agent's own collected-ago on the scorer's laptop, a newer release, and
+the launcher's "server stopped unexpectedly" lines from the log. Each condition notifies
+once and once more when it clears; an OBS event already there when the app first looks is
+the baseline, not news.
+
 Every part is also a subcommand (`server`, `agent`, `bridge`, `simulate`, `obs-setup`,
 `telemetry`, …) for automation and troubleshooting.
 
