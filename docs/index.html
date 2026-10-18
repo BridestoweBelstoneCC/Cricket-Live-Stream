@@ -362,6 +362,7 @@
     <a href="#see-it">See it</a>
     <a href="#features">Features</a>
     <a href="#how-it-works">How it works</a>
+    <a href="#download">Download</a>
     <a href="#get-started">Get started</a>
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="nav-github">GitHub</a>
   </div>
@@ -371,7 +372,7 @@
   <h1>Professional live stream graphics for grassroots cricket</h1>
   <p>Broadcast-quality scorebar, player cards, replays, and AI commentary — free, open source, and built for volunteers.</p>
   <div class="hero-buttons">
-    <a href="#get-started" class="btn btn-primary">Get started</a>
+    <a href="#download" class="btn btn-primary">Download CricketStream</a>
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream" class="btn btn-secondary">View on GitHub</a>
   </div>
   <div class="hero-screenshot">
@@ -427,7 +428,7 @@
           </svg>
         </div>
         <h3>Live scorebar</h3>
-        <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate and a ball-by-ball ticker — updating on every delivery. Four styles, from understated to full TV-sport, all in your club colours.</p>
+        <p>Always-on bottom bar with score, overs, both batters, bowler figures, run rate and a ball-by-ball ticker — updating on every delivery. Seven styles — from understated to big-league T20, neon and bold flat blocks — all in your club colours.</p>
       </div>
 
       <div class="feature-card reveal" style="--i:1">
@@ -546,7 +547,7 @@
         <div class="step-num">4</div>
         <div>
           <h3>Manage everything from the control panel</h3>
-          <p>Open <code>http://localhost:5000/control</code> in any browser — on the streaming laptop or your phone over Wi-Fi — to set opposition details, toggle graphics, and run replays.</p>
+          <p>The control panel opens in CricketStream's own window when match day starts — or on your phone, by scanning its QR code — to set opposition details, toggle graphics, add badges and photos, and run replays.</p>
         </div>
       </div>
     </div>
@@ -586,6 +587,17 @@
   </div>
 </section>
 
+<section class="reqs" id="download">
+  <div class="container" style="text-align:center">
+    <h2>Download</h2>
+    <p class="section-intro" style="margin:0 auto 24px">One file, nothing to install. Put it in a folder of its own and double-click it — it asks which computer this is and sets itself up.</p>
+    <p><a id="dl-main" class="btn" style="background:var(--green);color:#fff" href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases">Download for Windows</a></p>
+    <p id="dl-version" style="margin-top:10px;color:var(--muted);font-size:.9rem">Every version is on the <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases">releases page</a>.</p>
+    <p id="dl-others" style="margin-top:6px;font-size:.9rem"></p>
+    <p style="margin-top:14px;color:var(--muted);font-size:.85rem;max-width:620px;margin-left:auto;margin-right:auto">v3 is in beta. Until code signing is set up, Windows asks once before it runs (More info → Run anyway). The proven Python edition is on the <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/tree/python">python branch</a>.</p>
+  </div>
+</section>
+
 <section class="cta" id="get-started">
   <div class="container">
     <h2>Get started</h2>
@@ -615,7 +627,7 @@
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/LICENSE">GPL-3.0 licence</a>
   </p>
   <p style="margin-top:8px; font-size:.8rem;">Scoring data via NV Play and the PlayCricket API (ECB) &middot; AI features powered by Claude (Anthropic) &middot; Weather via Open-Meteo &middot; Streaming via OBS Studio</p>
-  <p style="margin-top:8px; font-size:.8rem;">Windows downloads: free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a> &middot;
+  <p style="margin-top:8px; font-size:.8rem;">Windows downloads (being set up): free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a> &middot;
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream#code-signing-policy">Code signing policy</a> &middot;
     <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream#privacy">Privacy</a></p>
 </footer>
@@ -639,6 +651,33 @@
   } else {
     revealEls.forEach(function (el) { el.classList.add('is-visible'); });
   }
+
+  // The download button: the newest release that has the files, betas included (GitHub's
+  // "latest" link never points at a pre-release). Falls back to the releases page.
+  fetch('https://api.github.com/repos/BridestoweBelstoneCC/Cricket-Live-Stream/releases?per_page=10')
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (rels) {
+      var rel = (rels || []).find(function (r) {
+        return !r.draft && (r.assets || []).some(function (a) { return a.name === 'CricketStream.exe'; });
+      });
+      if (!rel) return;
+      var asset = function (n) { return (rel.assets || []).find(function (a) { return a.name === n; }); };
+      var mac = /Mac/.test(navigator.platform || navigator.userAgent);
+      var main = mac ? asset('CricketStream-mac.zip') : asset('CricketStream.exe');
+      if (main) {
+        var a = document.getElementById('dl-main');
+        a.href = main.browser_download_url;
+        a.textContent = 'Download for ' + (mac ? 'Mac' : 'Windows') + ' — ' + rel.tag_name;
+      }
+      document.getElementById('dl-version').innerHTML = rel.tag_name + (rel.prerelease ? ' (beta)' : '') +
+        ' · <a href="' + rel.html_url + '">release notes</a>';
+      var links = [['CricketStream.exe', 'Windows'], ['CricketStream-arm64.exe', 'Windows on Arm'],
+                   ['CricketStream-mac.zip', 'Mac'], ['CricketStream-linux', 'Linux']]
+        .filter(function (p) { return asset(p[0]); })
+        .map(function (p) { return '<a href="' + asset(p[0]).browser_download_url + '">' + p[1] + '</a>'; });
+      document.getElementById('dl-others').innerHTML = 'Also: ' + links.join(' · ');
+    })
+    .catch(function () {});
 
   var nav = document.querySelector('nav');
   window.addEventListener('scroll', function () {
