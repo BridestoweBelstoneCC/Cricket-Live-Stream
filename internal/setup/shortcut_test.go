@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fakeShortcut(t *testing.T, where string, err error) *[]string {
@@ -93,4 +94,31 @@ func utf16le(b []byte) string {
 		r = append(r, rune(b[i])|rune(b[i+1])<<8)
 	}
 	return string(r)
+}
+
+// A slow shortcut (PowerShell starting on a cold laptop) doesn't hold up the save: it
+// finishes afterwards and says so in the log.
+func TestASlowShortcutDoesntHoldUpTheSave(t *testing.T) {
+	appDir(t)
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	saved, savedWait := runShortcutScript, shortcutWait
+	runShortcutScript = func(string) (string, error) {
+		<-release
+		defer close(finished)
+		return `C:\Desktop\CricketStream.lnk`, nil
+	}
+	shortcutWait = 50 * time.Millisecond
+	t.Cleanup(func() { runShortcutScript, shortcutWait = saved, savedWait })
+	body, _ := json.Marshal(map[string]any{"role": "scorer", "desktop_shortcut": true})
+	start := time.Now()
+	code, out, res := Save(body)
+	if code != 200 || res == nil || out["shortcut_pending"] != true || out["shortcut"] != nil {
+		t.Fatal(code, out)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("save waited %v", d)
+	}
+	close(release)
+	<-finished
 }

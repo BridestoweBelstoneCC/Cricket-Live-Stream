@@ -287,3 +287,51 @@ func TestSaveInstallsTheTemplateWhenNVPlayIsHere(t *testing.T) {
 		t.Errorf("reply doesn't say so: %v", out["template"])
 	}
 }
+
+// Phones and tablets only with a club password: typed now or already saved. Removing the
+// password takes them away again. (The server refuses without one anyway; this stops the
+// match-day screen offering what it can't have.)
+func TestRemoteAccessNeedsAClubPassword(t *testing.T) {
+	bind := func(v Values, old string) string {
+		var f *ini.File
+		if old != "" {
+			f, _ = ini.Parse([]byte(old))
+		}
+		v.Name, v.PCID = "Test CC", "1"
+		v.Normalise()
+		return v.Merge(f).Get("Network", "bind_host", "")
+	}
+	saved := "[Auth]\nclub_password = oldpw\n"
+	for _, c := range []struct {
+		name string
+		v    Values
+		old  string
+		want string
+	}{
+		{"no password", Values{AllowRemote: true}, "", "127.0.0.1"},
+		{"typed now", Values{AllowRemote: true, ClubPassword: "pw"}, "", "0.0.0.0"},
+		{"saved before", Values{AllowRemote: true}, saved, "0.0.0.0"},
+		{"saved but removed", Values{AllowRemote: true, Clear: []string{"club_password"}}, saved, "127.0.0.1"},
+		{"not wanted", Values{AllowRemote: false, ClubPassword: "pw"}, "", "127.0.0.1"},
+	} {
+		if got := bind(c.v, c.old); got != c.want {
+			t.Errorf("%s: bind_host %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// CricketStream's own folder isn't NV Play's: its newest .json is one of CricketStream's
+// own files, which would read as a live scoreboard.
+func TestTheAppsOwnFolderIsntNVPlays(t *testing.T) {
+	dir := appDir(t)
+	for _, role := range []string{RoleScorer, RoleBridge, RoleStreaming} {
+		v := Values{Role: role, Name: "X", PCID: "1", PCSFolder: dir}
+		if p := v.Problems(); len(p) == 0 || !strings.Contains(p[0], "CricketStream's own folder") {
+			t.Errorf("%s: %v", role, p)
+		}
+	}
+	v := Values{Role: RoleScorer, PCSFolder: filepath.Join(dir, "Output")}
+	if p := v.Problems(); len(p) != 0 {
+		t.Errorf("a folder inside it is fine: %v", p)
+	}
+}

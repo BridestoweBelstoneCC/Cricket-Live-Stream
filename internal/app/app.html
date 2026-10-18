@@ -56,6 +56,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:12px;
   background:var(--surface-2);cursor:pointer}
 .opt:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.opt.off{opacity:.55;cursor:default}
 .opt input{margin:4px 0 0}
 .opt strong{display:block}
 .opt span{color:var(--muted);font-size:13.5px}
@@ -158,8 +159,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
       <div class="choice">
         <label class="opt"><input type="radio" name="remote" value="0" checked><div>
           <strong>Just this laptop</strong><span>The usual choice.</span></div></label>
-        <label class="opt"><input type="radio" name="remote" value="1"><div>
-          <strong>Phones and tablets too</strong><span>Volunteers on the club's wifi or Tailscale can open it.
+        <label class="opt" id="remote_opt"><input type="radio" name="remote" value="1"><div>
+          <strong>Phones and tablets too</strong><span id="remote_why">Volunteers on the club's wifi or Tailscale can open it.
           They'll need the club password.</span></div></label>
       </div>
     </section>
@@ -379,6 +380,13 @@ function renderHome() {
     homeSeen = true;
     document.querySelector('input[name=remote][value="' + (h.remote ? 1 : 0) + '"]').checked = true;
   }
+  // Without a club password anyone on the wifi could run the stream, so it isn't offered.
+  var remote = document.querySelector('input[name=remote][value="1"]');
+  remote.disabled = !h.password;
+  if (!h.password && remote.checked) document.querySelector('input[name=remote][value="0"]').checked = true;
+  $('remote_opt').classList.toggle('off', !h.password);
+  txt('remote_why', h.password ? 'Volunteers on the club\'s wifi or Tailscale can open it. They\'ll need the club password.'
+    : 'Needs a club password first — set one in Settings.');
   $('manual_note').classList.toggle('hidden', !h.manual_session);
 }
 

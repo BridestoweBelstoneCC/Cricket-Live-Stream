@@ -623,7 +623,8 @@ func homeInfo() map[string]any {
 	out := map[string]any{"club": "", "remote": false}
 	if f, err := ini.Load(setup.ConfigFile()); err == nil {
 		out["club"] = f.Get("Club", "name", "")
-		out["remote"] = f.Get("Network", "bind_host", "127.0.0.1") == "0.0.0.0"
+		out["password"] = strings.TrimSpace(f.Get("Auth", "club_password", "")) != ""
+		out["remote"] = f.Get("Network", "bind_host", "127.0.0.1") == "0.0.0.0" && out["password"] == true
 	}
 	_, err := os.Stat(assets.Join("manual_scoring.json"))
 	out["manual_session"] = err == nil

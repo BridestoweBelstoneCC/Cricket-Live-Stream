@@ -85,6 +85,12 @@ func (v Values) Merge(f *ini.File) *ini.File {
 		if obsPW != "" {
 			f.Set("OBS", "obs_password", obsPW)
 		}
+		// Phones and tablets only with a club password — the one typed now or the one
+		// already saved. The server refuses to listen beyond this laptop without one
+		// anyway; saying "remote" here only made the match-day screen offer it.
+		if v.AllowRemote && strings.TrimSpace(f.Get("Auth", "club_password", "")) == "" {
+			f.Set("Network", "bind_host", "127.0.0.1")
+		}
 	}
 	return f
 }
@@ -255,11 +261,32 @@ func Save(body []byte) (int, map[string]any, *Result) {
 		return 500, map[string]any{"ok": false, "error": err.Error()}, nil
 	}
 	if v.DesktopShortcut {
-		// Best-effort: a shortcut that couldn't be made never fails the save.
-		if where, err := DesktopShortcut(); err != nil {
-			out["shortcut_error"] = err.Error()
-		} else {
-			out["shortcut"] = where
+		// Best-effort: a shortcut that couldn't be made never fails the save. Nor does it
+		// hold it up: it's made by PowerShell, which took ten seconds to start on a fresh
+		// Windows 11 (the page sat on "Saving…"). Past shortcutWait it finishes on its own
+		// and says how it went in the log.
+		type made struct {
+			where string
+			err   error
+		}
+		done := make(chan made, 1)
+		go func() { w, err := DesktopShortcut(); done <- made{w, err} }()
+		select {
+		case m := <-done:
+			if m.err != nil {
+				out["shortcut_error"] = m.err.Error()
+			} else {
+				out["shortcut"] = m.where
+			}
+		case <-time.After(shortcutWait):
+			out["shortcut_pending"] = true
+			go func() {
+				if m := <-done; m.err != nil {
+					fmt.Println("  ⚠ Couldn't put a shortcut on the desktop: " + m.err.Error())
+				} else {
+					fmt.Println("  ✓ Put a CricketStream shortcut on the desktop: " + m.where)
+				}
+			}()
 		}
 	}
 	return 200, out, &res
@@ -285,6 +312,9 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.once.Do(func() { close(s.done) })
 }
+
+// shortcutWait is how long a save waits for the desktop shortcut (tests shorten it).
+var shortcutWait = 2 * time.Second
 
 // Apply saves the answers: config.ini (merged over any existing one), the scorer
 // agent's remembered folder or the bridge's own config, and NV Play's template.

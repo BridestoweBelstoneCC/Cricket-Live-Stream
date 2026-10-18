@@ -105,8 +105,8 @@ anyway if you're also using remote access for the control panel or scoring page.
 - The control panel's health strip gets a live "Feed" indicator — it'll show the age of the
   last received ball once NV Play writes one.
 - **Rehearse this before match day, not during it** — the first run on Windows will trigger
-  a firewall prompt ("allow CricketStream to communicate on private networks") that needs
-  clicking through once.
+  a firewall prompt ("allow public and private networks to access this app?") that needs
+  **Allow** clicking once.
 
 ---
 

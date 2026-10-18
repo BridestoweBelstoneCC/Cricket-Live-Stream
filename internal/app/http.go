@@ -198,6 +198,10 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			fail(400, "That folder doesn't exist on this laptop.")
 			return
 		}
+		if setup.IsAppFolder(folder) {
+			fail(400, "That's CricketStream's own folder, not NV Play's — choose the folder NV Play writes its scoreboard to.")
+			return
+		}
 		if a.currentPhase() != phAgent {
 			fail(409, "This laptop isn't set up as the scorer's laptop.")
 			return

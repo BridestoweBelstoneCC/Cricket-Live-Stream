@@ -163,10 +163,18 @@ ported; differential tests then found and fixed three output differences (pyfmt 
 exponent form, pyval JSON floats, UTF-8 replacement in scorerfile.DecodeText).
 
 Still open:
-1. Test on the CS-CleanTest VirtualBox VM (Windows 11, snapshot "02-with-obs" has OBS
-   32.2.2, Guest Additions installed): copy dist/CricketStream.exe in with
-   `VBoxManage guestcontrol ... copyto`, run first-run setup, match day against the VM's
-   OBS. Needs the guest login from the user.
+1. Done 2026-10-18 on the CS-CleanTest VM (Windows 11, OBS 32.2.2, snapshot
+   "02-with-obs"): the -H windowsgui build, copied in through a transient shared folder,
+   ran first-run setup in its window (WebView2 present out of the box), match day against
+   the VM's own OBS (opened, scenes built, replay buffer running, panel in the window),
+   the close question, the report question and the end screen; then Settings → the
+   scorer's laptop with the native Browse… folder box. Found and fixed: setup recorded
+   phone/tablet access with no club password (the server refused it anyway, but the
+   match-day screen offered it and the launcher claimed it), a save stuck ~10 s on
+   PowerShell starting for the desktop shortcut, the shortcut offered again on every
+   Settings save, CricketStream's own folder accepted as NV Play's, and the guides'
+   firewall wording (Windows 11 asks "allow public and private networks", no tick boxes).
+   Not driven: a two-machine agent run against real NV Play.
 2. A real NV Play folder (agent/bridge against live NV Play output).
 3. Code signing (SmartScreen/Gatekeeper prompts) — needs certificates; documented instead.
 4. Unexplained: during the first portable-OBS run on 2026-10-17 23:48 the machine's own

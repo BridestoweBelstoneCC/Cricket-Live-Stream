@@ -728,3 +728,25 @@ func TestWindowTitleSaysWhatThisComputerIs(t *testing.T) {
 		t.Error(got)
 	}
 }
+
+// The match-day screen only offers phones and tablets with a club password.
+func TestHomeOffersPhonesOnlyWithAPassword(t *testing.T) {
+	ta := newTestApp(t)
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242", "allow_remote": true})
+	if h := ta.status()["home"].(M); h["password"] != false || h["remote"] != false {
+		t.Errorf("without a password: %v", h)
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242", "allow_remote": true, "club_password": "pw"})
+	if h := ta.status()["home"].(M); h["password"] != true || h["remote"] != true {
+		t.Errorf("with a password: %v", h)
+	}
+}
+
+func TestScorersLaptopRefusesTheAppsOwnFolder(t *testing.T) {
+	ta := newTestApp(t)
+	ta.saveSetup(M{"role": "scorer", "pcs_folder": ""})
+	r := ta.api("POST", "agent/folder", M{"folder": ta.dir})
+	if r.status != 400 || !strings.Contains(r.body, "CricketStream's own folder") {
+		t.Errorf("%d %s", r.status, r.body)
+	}
+}

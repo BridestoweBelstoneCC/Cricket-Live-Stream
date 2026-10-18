@@ -60,9 +60,9 @@ no address to type, no token to copy.
    `scoreboard.template`**. (CricketStream carries the template inside it — there's
    no separate file to copy.)
 
-   The first time, Windows may ask whether to allow it through the firewall
-   (as **CricketStream**).
-   Say **yes**, and tick **Private networks**. If nobody's looking and it gets
+   The first time, Windows asks whether to allow **CricketStream** through the
+   firewall ("allow public and private networks to access this app?"). Click **Allow**
+   (on older Windows, tick **Private networks** first). If nobody's looking and it gets
    dismissed, see *When it doesn't work* below.
 
    If it can't find the scoreboard folder on its own, the window says so and asks for it

@@ -378,3 +378,31 @@ func TestE2EWithoutAWebViewThePagesOpenInTheBrowser(t *testing.T) {
 		t.Errorf("exit %d", code)
 	}
 }
+
+// "Phones and tablets too" with no club password: match day says it runs on this laptop
+// only, and the panel really isn't reachable beyond it.
+func TestE2ERemoteWithoutAPasswordStaysOnThisLaptop(t *testing.T) {
+	a := newApp(t)
+	a.streamingConfig("")
+	cfg := strings.Replace(a.read("config.ini"), "manage_obs = yes", "manage_obs = no", 1)
+	a.write("config.ini", cfg+"\n[Network]\nbind_host = 0.0.0.0\n") // an older setup wrote this
+	for i, kv := range a.env {
+		if kv == "CRICKETSTREAM_LOOPBACK_ONLY=1" {
+			a.env[i] = "CRICKETSTREAM_LOOPBACK_ONLY=0"
+		}
+	}
+	p, pg := a.openApp()
+	if h := sub(pg.status(), "home"); h["remote"] != false || h["password"] != false {
+		t.Errorf("home offered phones and tablets without a password: %v", h)
+	}
+	pg.api("POST", "start", map[string]any{"remote": true})
+	pg.phase("running", 60*time.Second)
+	mustContain(t, p.output(), "Phones and tablets need a club password", "Local mode")
+	if strings.Contains(p.output(), "Remote access mode") {
+		t.Error("claimed remote access")
+	}
+	pg.api("POST", "stop", map[string]any{})
+	st := pg.until("the report question", 30*time.Second, func(st map[string]any) bool { return st["question"] != nil })
+	pg.api("POST", "answer", map[string]any{"id": sub(st, "question")["id"], "yes": false})
+	pg.phase("stopped", 30*time.Second)
+}

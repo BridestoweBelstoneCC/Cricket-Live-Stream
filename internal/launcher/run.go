@@ -113,6 +113,13 @@ func Run(o Options) int {
 		fmt.Println()
 		remote = ask("  Enter 1 or 2 [1]: ", "1") == "2"
 	}
+	if remote && noClubPassword(cfgPath) {
+		// The server would refuse anyway (no login for the panel = anyone on the wifi can
+		// run the stream); say so here rather than claim remote access.
+		log("Phones and tablets need a club password — running on this laptop only today. "+
+			"Set one in Settings to allow them.", "warn")
+		remote = false
+	}
 	if remote {
 		log("Remote access mode — server will listen on all network interfaces", "ok")
 	} else {
@@ -815,4 +822,10 @@ func checkForUpdates() {
 	} else {
 		log(fmt.Sprintf("Up to date (v%s)", have), "ok")
 	}
+}
+
+// noClubPassword: config.ini has no [Auth] club_password (or can't be read).
+func noClubPassword(cfgPath string) bool {
+	f, err := ini.Load(cfgPath)
+	return err != nil || strings.TrimSpace(f.Get("Auth", "club_password", "")) == ""
 }

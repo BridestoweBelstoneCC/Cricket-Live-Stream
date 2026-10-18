@@ -162,8 +162,11 @@ func (v *Values) Normalise() {
 // questions). Empty means it can be.
 func (v Values) Problems() []string {
 	var out []string
+	if IsAppFolder(v.PCSFolder) {
+		out = append(out, "That's CricketStream's own folder, not NV Play's — choose the folder NV Play writes its scoreboard to (Tools → Configuration → Scoreboard → Output Folder).")
+	}
 	if v.Role != RoleStreaming {
-		return nil
+		return out
 	}
 	if v.Name == "" {
 		out = append(out, "The club name is required.")
@@ -230,4 +233,17 @@ func (v Values) Save(path string) error {
 func InstallNVPlayTemplate(pcsFolder string) (string, string) {
 	defer func() { recover() }()
 	return agent.EnsureTemplate(pcsFolder)
+}
+
+// IsAppFolder: p is the folder CricketStream itself lives in. Chosen as NV Play's output
+// folder, the newest .json there is one of CricketStream's own files (scorer_agent.json),
+// which then reads as a "live" scoreboard — seen on a clean machine.
+func IsAppFolder(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return false
+	}
+	a, err1 := filepath.Abs(p)
+	b, err2 := filepath.Abs(assets.Dir())
+	return err1 == nil && err2 == nil && strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }

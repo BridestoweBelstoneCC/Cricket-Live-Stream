@@ -113,7 +113,9 @@ and move the file (on a Mac, both unzipped files) into it.
 >
 > **The first time on Windows**, a blue "Windows protected your PC" box may appear. Click
 > **More info → Run anyway**. Windows may also ask whether CricketStream can use the
-> network — tick **Private networks** and click **Allow**.
+> network ("Do you want to allow public and private networks to access this app?") — click
+> **Allow**. (Older Windows shows tick boxes instead: tick **Private networks**, then
+> **Allow**.)
 
 > **This is the only file you ever need to run.** It works out for itself what still
 > needs doing: the first time it asks you the setup questions below; every time after that

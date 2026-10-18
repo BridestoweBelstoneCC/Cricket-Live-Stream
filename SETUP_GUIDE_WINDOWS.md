@@ -58,8 +58,11 @@ Double-click `CricketStream.exe`.
 > **"Windows protected your PC"?** The download isn't from the Microsoft Store, so
 > SmartScreen asks once. Click **More info → Run anyway**.
 >
-> **Firewall question?** Tick **Private networks** and click **Allow**. It's needed for
-> the control panel on a phone or tablet, and for a scorer's laptop to be found.
+> **Firewall question?** Click **Allow** (on older Windows, tick **Private networks**
+> first). It's needed for the control panel on a phone or tablet, and for a scorer's
+> laptop to be found. It asks the first time CricketStream listens on the network — on the
+> streaming laptop when phones and tablets are allowed, and on the scorer's laptop when it
+> starts sharing.
 
 The CricketStream window opens and asks **which computer is this?** — click **The
 streaming laptop** (for the scorer's own laptop, see
