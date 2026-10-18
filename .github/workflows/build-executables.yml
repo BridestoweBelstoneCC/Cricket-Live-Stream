@@ -21,6 +21,9 @@ on:
 
 jobs:
   build:
+    # Every leg stamps the same version; the signing job checks the signed build reports it.
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -178,24 +181,130 @@ jobs:
           name: CricketStream-mac
           path: dist/CricketStream-mac.zip
 
+  # Code signing for the Windows builds, by SignPath Foundation (free for open-source
+  # projects; see "Code signing policy" in the README). Every signing request waits for a
+  # person on the project's Approvers list to approve it in SignPath — that's the
+  # foundation's rule, and why this job can sit waiting.
+  #
+  # Off until the project is set up there: add the repository VARIABLES
+  # SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG and
+  # the SECRET SIGNPATH_API_TOKEN (Settings → Secrets and variables → Actions). Without
+  # them the release goes out unsigned and says so. Every job before this one runs on
+  # GitHub-hosted runners, which SignPath checks for open-source projects.
+  sign-windows:
+    needs: build
+    if: vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: CricketStream*.exe
+          path: unsigned
+          merge-multiple: true
+
+      - name: Upload the unsigned builds for SignPath
+        id: unsigned
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: windows-unsigned
+          path: unsigned/*.exe
+
+      - name: Sign (waits for approval in SignPath)
+        uses: signpath/github-action-submit-signing-request@v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          # Checked against each file's own ProductVersion (.signpath/artifact-configuration.xml).
+          parameters: |
+            version: "${{ needs.build.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 86400
+          output-artifact-directory: signed
+
+      # Proof before anything is published: both files carry a valid signature, and the
+      # signed x64 build still runs (a signature is appended to the file; a broken one
+      # would stop Windows starting it).
+      - name: Verify the signatures and run the signed build
+        shell: pwsh
+        env:
+          CRICKETSTREAM_NO_PAUSE: '1'
+          CRICKETSTREAM_NO_BROWSER: '1'
+        run: |
+          foreach ($f in 'CricketStream.exe', 'CricketStream-arm64.exe') {
+            $sig = Get-AuthenticodeSignature "signed/$f"
+            "$f : $($sig.Status) — $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { throw "$f is not validly signed" }
+            if ((Get-FileHash "signed/$f").Hash -eq (Get-FileHash "unsigned/$f").Hash) { throw "$f came back unchanged" }
+          }
+          $out = & signed/CricketStream.exe version | Out-String
+          $out
+          if ($out -notmatch '${{ needs.build.outputs.version }}') { throw "signed build reports the wrong version" }
+          (& signed/CricketStream.exe agent --check-template | Out-String) -match 'bundled: yes' | Out-Null
+          if (-not $?) { throw "signed build lost its built-in files" }
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: windows-signed
+          path: signed/*.exe
+
   release:
-    needs: [build, macos-universal]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, macos-universal, sign-windows]
+    # Runs unsigned when signing is switched off (sign-windows skipped), never when it failed.
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/') &&
+      needs.build.result == 'success' && needs.macos-universal.result == 'success' &&
+      (needs.sign-windows.result == 'success' || needs.sign-windows.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # The licence and the third-party notices go with every release (they're also built
+      # into the app: `CricketStream licences`).
+      - uses: actions/checkout@v7.0.1
+        with:
+          sparse-checkout: |
+            LICENSE
+            THIRD_PARTY_NOTICES.txt
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8.0.1
         with:
           path: artifacts
 
+      - name: Use the signed Windows builds when there are some
+        shell: bash
+        run: |
+          if [ -d artifacts/windows-signed ]; then
+            cp artifacts/windows-signed/CricketStream.exe artifacts/CricketStream.exe/CricketStream.exe
+            cp artifacts/windows-signed/CricketStream-arm64.exe artifacts/CricketStream-arm64.exe/CricketStream-arm64.exe
+            policy="https://github.com/$GITHUB_REPOSITORY#code-signing-policy"
+            privacy="https://github.com/$GITHUB_REPOSITORY#privacy"
+            printf '\n---\nWindows: free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) — see the [code signing policy](%s) and [privacy](%s).\n' "$policy" "$privacy" > notes.md
+          else
+            echo "::warning::Windows builds are UNSIGNED (SignPath isn't set up) — Windows will warn on first run."
+            printf '\n---\nThe Windows builds of this release are not code signed yet: Windows SmartScreen asks once — More info → Run anyway.\n' > notes.md
+          fi
+
+      # A tag with a hyphen (v3.0.0-beta.1) is a pre-release: GitHub doesn't count it as
+      # "latest", so neither edition's update check offers it to clubs on a proven version.
       - name: Attach binaries to the GitHub release
         uses: softprops/action-gh-release@v3.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          append_body: true
+          body_path: notes.md
           files: |
             artifacts/CricketStream.exe/CricketStream.exe
             artifacts/CricketStream-arm64.exe/CricketStream-arm64.exe
             artifacts/CricketStream-mac/CricketStream-mac.zip
             artifacts/CricketStream-linux/CricketStream-linux
+            LICENSE
+            THIRD_PARTY_NOTICES.txt

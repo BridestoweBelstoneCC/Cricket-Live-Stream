@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for CricketStream's Windows release builds.
+  Paste this into the project's artifact configuration on signpath.io (see RELEASING.md).
+
+  The release workflow uploads one ZIP holding the two .exe files and passes the version it
+  built as the "version" parameter. SignPath signs only files whose own details say
+  CricketStream at exactly that version — the metadata restriction SignPath Foundation
+  requires — so nothing else can be pushed through this project.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" default-value="0.0.0" /> <!-- 0.0.0 matches no real build: a request without the version is refused -->
+  </parameters>
+  <zip-file>
+    <pe-file path="CricketStream.exe" product-name="CricketStream" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="CricketStream-arm64.exe" product-name="CricketStream" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

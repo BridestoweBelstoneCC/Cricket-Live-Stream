@@ -4,10 +4,21 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Go edition — unreleased
+## v3.0.0-beta.1 — the Go edition (unreleased)
 
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
 scoring page do is unchanged; what changed is how it's installed and run.
+
+- **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by
+  the repository's release workflow, each signing approved by hand; the release checks
+  both signatures and runs the signed build before publishing. The README has the code
+  signing policy, a privacy statement (every service the app talks to, and when) and what
+  it changes on the computer and how to remove it.
+- **Pre-releases.** v3 ships as `-beta.N` pre-releases until it has had real matches, so
+  neither edition's update check offers a beta; the update check now knows a release is
+  newer than its own betas (it used to read `3.0.0-beta.1` as 3.0.0.1).
+- **Phones and tablets need a club password** everywhere, not just in the server: setup
+  only records it with one, and the match-day screen explains why it's unavailable.
 
 - **Its own window.** Double-clicked, CricketStream opens a window (no console window, no
   browser tabs): **which computer is this?** — the streaming laptop or the scorer's laptop

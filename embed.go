@@ -11,4 +11,5 @@ import "embed"
 //go:embed overlay.html control.html scoring.html scoreboard.template
 //go:embed config.example.ini match_state.example.json
 //go:embed fonts brand graphics
+//go:embed LICENSE THIRD_PARTY_NOTICES.txt
 var Files embed.FS

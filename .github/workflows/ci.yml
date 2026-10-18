@@ -38,6 +38,12 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # The release workflow only runs on a tag; a mistake in it (signing included) would
+      # otherwise first show up on release day.
+      - name: Lint the workflows
+        if: runner.os == 'Linux'
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
       # The JavaScript tests (overlay/panel parsing, classifyBall parity, milestones,
       # auto-cut) run in node, which every hosted runner has; without node they skip.
       - name: Tests

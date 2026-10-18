@@ -441,13 +441,37 @@ func versionTuple(v string) []int {
 }
 
 func versionNewer(a, b string) bool {
-	x, y := versionTuple(a), versionTuple(b)
-	for i := 0; i < len(x) && i < len(y); i++ {
-		if x[i] != y[i] {
-			return x[i] > y[i]
+	// A pre-release ("3.0.0-beta.1") comes BEFORE its release: read as one run of numbers
+	// it was 3.0.0.1, newer than 3.0.0, so a beta tester was never told the release was
+	// out. The Python original never tagged pre-releases, so its tuple compare didn't care.
+	ac, ap, _ := strings.Cut(a, "-")
+	bc, bp, _ := strings.Cut(b, "-")
+	if newer, same := tupleNewer(versionTuple(ac), versionTuple(bc)); !same {
+		return newer
+	}
+	switch {
+	case ap == "" || bp == "":
+		return ap == "" && bp != "" // the release beats its pre-releases
+	}
+	newer, _ := tupleNewer(versionTuple(ap), versionTuple(bp))
+	return newer
+}
+
+// tupleNewer compares number runs; same reports a tie (3.0 and 3.0.0 count as one).
+func tupleNewer(x, y []int) (newer, same bool) {
+	for i := 0; i < len(x) || i < len(y); i++ {
+		var p, q int
+		if i < len(x) {
+			p = x[i]
+		}
+		if i < len(y) {
+			q = y[i]
+		}
+		if p != q {
+			return p > q, false
 		}
 	}
-	return len(x) > len(y)
+	return false, true
 }
 
 // releasesURL is where the newest release is announced.

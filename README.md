@@ -41,6 +41,9 @@
 - [Version history](#version-history)
 - [Contributing](#contributing)
 - [Get help / chat](#get-help--chat)
+- [Code signing policy](#code-signing-policy)
+- [Privacy](#privacy)
+- [What CricketStream changes on your computer](#what-cricketstream-changes-on-your-computer)
 
 ---
 
@@ -568,11 +571,14 @@ The only costs are what you're likely already paying: a camera, a laptop, and a 
 
 ## Version history
 
-**Go edition** — the whole app rewritten in Go as a single download: no Python, no
-installer, no project folder, and the same file on every machine (streaming laptop, scorer
-agent, bridge). First-run setup is a page in the browser. Behaviour, the overlay and the
-control panel are unchanged; the tests were ported alongside, and parity with the Python
-original is checked in CI. See [`PORTING.md`](PORTING.md).
+**v3.0.0 (beta)** — the whole app rewritten in Go as a single signed download: no Python,
+no installer, no project folder, and the same file on every machine. It opens in its own
+window: which computer is this, setup with a live preview of your stream, then a match-day
+screen with the control panel in the same window. Behaviour, the overlay and the control
+panel are unchanged; the tests were ported alongside, and parity with the Python original
+is checked in CI. Released as betas until it has been through real matches — the proven
+Python edition stays on the [`python` branch](../../tree/python) and its v2.12 release.
+See [`CHANGELOG.md`](CHANGELOG.md) and [`PORTING.md`](PORTING.md).
 
 **v2.12** — Social clips, an AI camera spotter, a live win predictor, optional spoken
 commentary and an automatic match page, plus fixes from a full code review (a final-ball
@@ -692,6 +698,68 @@ Scoring data via NV Play and the PlayCricket API (ECB).
 AI features powered by Claude (Anthropic).
 Weather data via Open-Meteo.
 Streaming via OBS Studio.
+
+---
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+The Windows downloads (`CricketStream.exe`, `CricketStream-arm64.exe`) are signed, so
+Windows shows **SignPath Foundation** as the publisher; the file's own details name
+Bridestowe & Belstone CC. They are built only by this repository's
+[release workflow](.github/workflows/build-executables.yml), on GitHub's own build machines,
+from the source code here — nothing built anywhere else is signed. Every signing request is
+approved by hand by an approver before anything is signed.
+
+| Role | Who |
+|---|---|
+| Committers and reviewers | <!-- SIGNPATH: list GitHub usernames --> *to be filled in before applying* |
+| Approvers | <!-- SIGNPATH: list GitHub usernames --> *to be filled in before applying* |
+
+Changes from anyone not listed as a committer are reviewed by a reviewer before they're
+merged. Everyone listed uses two-factor sign-in for GitHub and SignPath.
+
+## Privacy
+
+CricketStream doesn't collect anything about you or your club, and sends nothing to its
+authors, to SignPath, or to anyone else on its own account: no analytics, no tracking.
+Everything it keeps — settings, match data, photos, logs — stays in the folder beside
+the app (and its window's cache in `%LOCALAPPDATA%\CricketStream`).
+
+It talks to these services, only to do what you've asked it to:
+
+| Service | When | What it sends |
+|---|---|---|
+| PlayCricket (play-cricket.com, resultsvault.co.uk) | Fetching today's match, scorecards, season stats | Your club ID and API key |
+| YouTube (Google) | Only if you sign in to YouTube from the control panel | The stream title and settings you choose |
+| Anthropic (Claude) | Only if you add an AI key and use the AI features | Match facts and figures for commentary and reports; with the camera spotter switched on, camera snapshots |
+| Open-Meteo | The weather graphic | Your ground's location |
+| Cloudflare | The upload speed test; a Cloudflare Tunnel only if you switch one on | Test data; the control panel's traffic through the tunnel |
+| GitHub | Checking for a newer version | Nothing beyond the request itself |
+
+Each service's own privacy policy covers what it does with what it receives.
+
+## What CricketStream changes on your computer
+
+CricketStream is a single file with no installer. Everything it does to the computer is said
+in its window (and the activity log in `logs/`) as it happens:
+
+- **OBS** (on the streaming laptop, when it starts match day): switches on OBS's WebSocket
+  server with a password, the replay buffer and the video settings for your connection;
+  picks a hardware encoder if OBS is using the software one; adds its scenes and sources
+  (Main, Replay, the Overlay); and pauses OBS's update check during match day, switching it
+  back on afterwards. `[OBS] manage_obs = no` in `config.ini` leaves OBS alone.
+- **NV Play**: puts `scoreboard.template` in NV Play's Templates folder (an older copy is
+  kept as `scoreboard.template.old`).
+- **A desktop shortcut**, if you leave that ticked on the first setup.
+- **Windows Firewall**: Windows itself asks whether CricketStream may use the network; you
+  choose.
+
+**Removing it:** close CricketStream, then delete its folder, the desktop shortcut and
+`%LOCALAPPDATA%\CricketStream`. Its OBS scenes stay in OBS until you delete them there, and
+NV Play's template until you delete it from NV Play's Templates folder.
 
 ---
 
