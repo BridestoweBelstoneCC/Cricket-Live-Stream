@@ -318,3 +318,51 @@ func TestE2EFolderDroppedOnTheAppStartsTheAgent(t *testing.T) {
 func regexpQuote(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `.`, `\.`, `(`, `\(`, `)`, `\)`).Replace(s)
 }
+
+// Started a second time on match day (the first window got minimised): it says so and
+// points at the running one instead of fighting it for the port.
+func TestE2ESecondCopyPointsAtTheRunningOne(t *testing.T) {
+	a := newApp(t)
+	a.streamingConfig("")
+	first := a.start("server")
+	waitHTTP(t, a.base()+"/health", 20*time.Second)
+	out, code := a.run(20*time.Second, "start", "--local", "--nvplay")
+	if code != 0 {
+		t.Errorf("exit %d", code)
+	}
+	mustContain(t, out, "already running on this laptop")
+	if strings.Contains(out, "restarting") || strings.Contains(out, "keeps crashing") {
+		t.Error("tried to start a second server")
+	}
+	if !first.running() {
+		t.Error("the running copy was disturbed")
+	}
+}
+
+// Settings in the running app: change the club and the overlay's state follows at once.
+func TestE2ESettingsPageChangesTheRunningApp(t *testing.T) {
+	a := newApp(t)
+	a.streamingConfig("")
+	a.start("server")
+	waitHTTP(t, a.base()+"/health", 20*time.Second)
+	if r := get(t, a.base()+"/settings"); r.status != 200 || !strings.Contains(r.body, "What is this computer for?") {
+		t.Fatalf("/settings: %d", r.status)
+	}
+	info := get(t, a.base()+"/settings/info").json(t)
+	if ex, _ := info["existing"].(map[string]any); ex["name"] != "Test Town CC" {
+		t.Fatalf("existing %v", info["existing"])
+	}
+	r := do(t, "POST", a.base()+"/settings/save", map[string]any{"role": "streaming", "name": "Renamed CC",
+		"abbrev": "REN", "colour": "#22aa44", "pc_id": "4242", "scorebar_style": "minimal", "max_overs": "40"},
+		map[string]string{"Origin": a.base()})
+	if r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	st := get(t, a.base()+"/state").json(t)
+	if st["home_team"] != "Renamed CC" || st["home_colour"] != "#22aa44" || st["scorebar_style"] != "minimal" {
+		t.Errorf("state after saving settings: %v %v %v", st["home_team"], st["home_colour"], st["scorebar_style"])
+	}
+	if got := iniValue(a.read("config.ini"), "Club", "name"); got != "Renamed CC" {
+		t.Errorf("config.ini name %q", got)
+	}
+}

@@ -2,12 +2,17 @@
 package browser
 
 import (
+	"os"
 	"os/exec"
 	"runtime"
 )
 
 // Open is swappable for tests (so a test never pops a browser up).
+// CRICKETSTREAM_NO_BROWSER=1 turns it off everywhere (automation, a headless machine).
 var Open = func(url string) error {
+	if os.Getenv("CRICKETSTREAM_NO_BROWSER") == "1" {
+		return nil
+	}
 	switch runtime.GOOS {
 	case "windows":
 		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()

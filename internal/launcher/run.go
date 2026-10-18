@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"cricketstream/internal/assets"
+	"cricketstream/internal/browser"
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obs"
@@ -78,6 +79,17 @@ func Run(o Options) int {
 			"Expected it at:  "+cfgPath, "",
 			"Run CricketStream again with no arguments and the setup page opens,",
 			"or run:  cricketstream setup")
+	}
+
+	// Double-clicked again while it's already running (the window got minimised, or it
+	// was started earlier): a second copy can't have the port, and would only fail and
+	// restart until it gave up. Bring up the control panel instead.
+	if AlreadyRunning() {
+		log("CricketStream is already running on this laptop — opening the control panel.", "ok")
+		openBrowser(base() + "/control")
+		fmt.Println("  (Its own window is the one to keep open; this one can close.)")
+		console.Pause("")
+		return 0
 	}
 
 	checkForUpdates()
@@ -250,6 +262,7 @@ func Run(o Options) int {
 		token = SessionToken(cfg)
 		PullSeasonStats(apiKey, token)
 		SelfTest()
+		openBrowser(base() + "/control") // the match-day checklist is the next thing to look at
 	} else {
 		log("Server didn't respond in time — season stats will load on the first player card", "warn")
 	}
@@ -424,6 +437,25 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 		}
 		p = np
 	}
+}
+
+// openBrowser opens a page in the default browser (swappable for tests).
+var openBrowser = func(url string) { browser.Open(url) }
+
+// AlreadyRunning reports whether a CricketStream server already answers on this
+// laptop's port.
+func AlreadyRunning() bool {
+	resp, err := (&http.Client{Timeout: 1500 * time.Millisecond}).Get(base() + "/health")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var d M
+	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&d) != nil {
+		return false
+	}
+	_, ok := d["pcs"]
+	return ok
 }
 
 // Swappable for tests: the shutdown steps that talk to the real server and OBS.
