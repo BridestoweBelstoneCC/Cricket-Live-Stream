@@ -21,6 +21,8 @@ type Log struct {
 	part  string
 	file  io.WriteCloser
 	echo  io.Writer
+	// onLine, if set, sees each complete line (the alerts watch for a server restart).
+	onLine func(string)
 }
 
 type logLine struct {
@@ -56,6 +58,9 @@ func (l *Log) add(text string) {
 	}
 	l.next++
 	l.lines = append(l.lines, logLine{N: l.next, Text: text})
+	if l.onLine != nil {
+		l.onLine(text)
+	}
 	if len(l.lines) > logKeep {
 		l.lines = append([]logLine(nil), l.lines[len(l.lines)-logKeep:]...)
 	}

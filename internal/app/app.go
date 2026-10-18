@@ -145,6 +145,12 @@ func Run(o Options) int {
 	cleanUpAfterUpdate()
 
 	a.enterRole(setup.Role())
+	a.log.onLine = func(line string) {
+		if n := logLineNotice(line); n != nil {
+			go a.notify(*n) // not on the log's own goroutine: notify prints to the log
+		}
+	}
+	go a.watch(10 * time.Second)
 	if v := os.Getenv(ReleasesEnv); v != "" {
 		releasesAPI = v
 	}
@@ -555,6 +561,7 @@ type window interface {
 	Navigate(url string) // from any goroutine
 	AddScript(js string) // run at the start of every page loaded after this
 	SetTitle(title string)
+	Notify(title, text string, warn bool) // a Windows notification from the icon by the clock
 	Focus()
 	Close()
 	Run() // on the main goroutine, until the window closes

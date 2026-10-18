@@ -32,6 +32,13 @@ scoring page do is unchanged; what changed is how it's installed and run.
   laptop keeps its own OBS password and folders; the old settings are backed up first.
 - **Pre-match check on the match-day screen**, before match day starts: every login and
   connection tried for real, with what to fix.
+- **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
+  when its window is behind OBS — click for the window, right-click for the activity log,
+  the control panel or Close. A Windows notification when something needs someone: the
+  scorer's feed gone quiet mid-match (once, and once more when it's back — a tea break is
+  two, not forty), OBS crashing and being reopened, the server restarting, the streaming
+  laptop no longer collecting the score (on the scorer's laptop), a new version. Each goes
+  in the activity log too, and none pops up during Windows' do-not-disturb.
 - **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by
   the repository's release workflow, each signing approved by hand; the release checks
   both signatures and runs the signed build before publishing. The README has the code
