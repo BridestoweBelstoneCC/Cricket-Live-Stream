@@ -9,11 +9,59 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and
 scoring page do is unchanged; what changed is how it's installed and run.
 
+- **Pictures tab** in the control panel: club badges (ours, today's opposition, any club by
+  ID), player photos (with the squad roster's players who still need one), sponsor logos
+  and match photos (per team) are added, previewed, renamed and removed there — from the
+  laptop or a phone. No folders to find, no files to rename.
+- **Update now** (Windows): when a newer release is out, the window downloads it, checks
+  it — the release's published checksum, Windows' own signature check, signed by the same
+  publisher as the copy running, and the version inside the file — swaps it in and
+  restarts. Settings and pictures stay; anything wrong leaves the old copy as it was.
+- **Find cameras on this network** (Setup → Cameras): IP cameras answer ONVIF discovery;
+  pick one, give its login, and its stream address is asked of the camera itself (or the
+  usual one for its make) and saved — the password never comes back to the browser.
+  `cricketstream cameras` lists them from a terminal.
+- **OBS missing?** The match-day screen says so before match day and installs it with
+  Windows' own installer (winget, OBS's official package), or links to obsproject.com.
+- **Pairing code** on the scorer's laptop (K8Q2-7WMX): typed into the panel, it connects
+  where the automatic search is blocked (guest wifi, some club routers). It's the address
+  in a form that's easy to read out, with a check character that catches any typo.
+- **Move to another laptop / back up:** Settings → Export settings makes one file with the
+  setup answers, the panel's settings, the squad and every picture; Import settings (also
+  on the first screen of a new laptop) applies it. Passwords and keys only if ticked; each
+  laptop keeps its own OBS password and folders; the old settings are backed up first.
+- **Pre-match check on the match-day screen**, before match day starts: every login and
+  connection tried for real, with what to fix.
+- **Three new scorebar styles, with new type.** *Franchise* (royal purple and gold, a
+  gold score plate, condensed capitals — the big-league T20 look), *Neon* (a black bar, a
+  glowing lime score, outlined ball markers that light up for a four, a six or a wicket —
+  for evening matches) and *Block* (flat colour blocks and heavy type; the striker's whole
+  block turns black). Franchise is set in Barlow Condensed, which the app now serves to the
+  overlay itself (`/fonts/`), so it looks the same on every laptop; Neon uses Windows'
+  Bahnschrift and Block Segoe UI Black, each falling back to Barlow Condensed or Arial
+  Black elsewhere. Each is the whole look, not just the bar: the wicket and milestone
+  straps, the over summary, partnership and win predictor, the scorecard, player cards and
+  the boundary flash take on the same type, colours and corners. Pick one under Graphics →
+  Scorebar style (live preview), or in setup. `go run ./scripts/renderscorebar -panels`
+  renders the panels for each style.
+- **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
+  when its window is behind OBS — click for the window, right-click for the activity log,
+  the control panel or Close. A Windows notification when something needs someone: the
+  scorer's feed gone quiet mid-match (once, and once more when it's back — a tea break is
+  two, not forty), OBS crashing and being reopened, the server restarting, the streaming
+  laptop no longer collecting the score (on the scorer's laptop), a new version. Each goes
+  in the activity log too, and none pops up during Windows' do-not-disturb.
 - **Signed Windows builds.** Code signing by SignPath Foundation, built and signed only by
   the repository's release workflow, each signing approved by hand; the release checks
   both signatures and runs the signed build before publishing. The README has the code
   signing policy, a privacy statement (every service the app talks to, and when) and what
   it changes on the computer and how to remove it.
+- **Security: requests saying `Origin: null` are refused.** The cross-site check let
+  through a request whose Origin or Referer named no host — which is what a sandboxed
+  iframe or a `file://` page sends — so any web page could post to the panel (when no club
+  password is set) or the setup page. Now only this server's own pages and clients that
+  send no Origin at all (curl, scripts on the laptop) get through. The Python edition has
+  the same check.
 - **Pre-releases.** v3 ships as `-beta.N` pre-releases until it has had real matches, so
   neither edition's update check offers a beta; the update check now knows a release is
   newer than its own betas (it used to read `3.0.0-beta.1` as 3.0.0.1).

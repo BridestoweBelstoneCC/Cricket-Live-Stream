@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -16,6 +18,7 @@ import (
 	"cricketstream/internal/agent"
 	"cricketstream/internal/assets"
 	"cricketstream/internal/browser"
+	"cricketstream/internal/clubpack"
 	"cricketstream/internal/setup"
 )
 
@@ -49,7 +52,8 @@ func sameOrigin(r *http.Request) bool {
 	for _, h := range []string{"Origin", "Referer"} {
 		if v := r.Header.Get(h); v != "" {
 			u, err := url.Parse(v)
-			if err != nil || (u.Host != "" && u.Host != r.Host) {
+			// "null" (a sandboxed iframe, a file:// page) names no host: refused too.
+			if err != nil || u.Host != r.Host {
 				return false
 			}
 		}
@@ -100,6 +104,9 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case r.Method == "POST" && p == "/setup/save":
 		a.saveSetup(w, r)
+		return
+	case r.Method == "POST" && (p == "/setup/export" || p == "/setup/import"):
+		a.clubFile(w, r)
 		return
 	case r.Method == "GET" && strings.HasPrefix(p, "/brand/") && strings.HasSuffix(p, ".png") && !strings.Contains(p, ".."):
 		if b, err := assets.Read(strings.TrimPrefix(p, "/")); err == nil {
@@ -169,6 +176,24 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 		}
 		if !a.ask.Answer(body.ID, answer{Text: body.Text, Yes: body.Yes, Dismissed: body.Dismissed}) {
 			fail(409, "That question has already been answered.")
+			return
+		}
+		ok(nil)
+	case "POST /api/update":
+		if err := a.startUpdate(); err != nil {
+			fail(409, err.Error())
+			return
+		}
+		ok(nil)
+	case "POST /api/install_obs":
+		if err := a.installOBS(); err != nil {
+			fail(409, err.Error())
+			return
+		}
+		ok(nil)
+	case "POST /api/precheck":
+		if err := a.startPrecheck(); err != nil {
+			fail(409, err.Error())
 			return
 		}
 		ok(nil)
@@ -266,4 +291,66 @@ func (a *App) focus() {
 	case !a.opts.Headless:
 		browser.Open(a.base + "/")
 	}
+}
+
+// clubFile is the settings page's "Move to another laptop": POST /setup/export gives the
+// club file (a ZIP; passwords and keys only with {"secrets": true}), POST /setup/import
+// applies one. In the app's window only, and not while match day is running — the server
+// would be writing the same settings.
+func (a *App) clubFile(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeJSON(w, map[string]any{"ok": false, "error": "Cross-origin request rejected"}, 403)
+		return
+	}
+	switch a.currentPhase() {
+	case phStarting, phRunning:
+		writeJSON(w, map[string]any{"ok": false, "error": "Stop match day first."}, 409)
+		return
+	}
+	if r.URL.Path == "/setup/export" {
+		var body struct{ Secrets bool }
+		readBody(r, &body)
+		var buf bytes.Buffer
+		sum, err := clubpack.Export(&buf, body.Secrets, a.opts.Version)
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error()}, 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Club", sum.Club)
+		w.Write(buf.Bytes())
+		fmt.Printf("  ✓ Exported the club's settings (%d pictures%s)\n", total(sum.Pictures),
+			map[bool]string{true: ", with passwords and keys", false: ""}[body.Secrets])
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, clubpack.MaxFileBytes+1))
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()}, 400)
+		return
+	}
+	sum, err := clubpack.Import(data)
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()}, 400)
+		return
+	}
+	fmt.Printf("  ✓ Imported %s's settings and %d pictures (the old settings are in %s)\n",
+		orStr(sum.Club, "the club"), total(sum.Pictures), sum.Backup)
+	a.enterRole(setup.Role())
+	writeJSON(w, map[string]any{"ok": true, "summary": sum, "next": "/"}, 200)
+}
+
+func total(m map[string]int) int {
+	n := 0
+	for _, v := range m {
+		n += v
+	}
+	return n
+}
+
+func orStr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
 }

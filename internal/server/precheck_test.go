@@ -393,6 +393,28 @@ func TestPrecheckUpdateCheck(t *testing.T) {
 	}
 }
 
+// A beta hears about the next beta (releases/latest never names one); drafts don't count.
+func TestPrecheckUpdateCheckBeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/latest") {
+			json.NewEncoder(w).Encode(M{"tag_name": "v2.12"})
+			return
+		}
+		w.Write([]byte(`[{"tag_name":"v3.0.0-beta.3","draft":true},{"tag_name":"v3.0.0-beta.2"},{"tag_name":"v2.12"}]`))
+	}))
+	t.Cleanup(srv.Close)
+	savedURL, savedV := releasesURL, Version
+	t.Cleanup(func() { releasesURL, Version = savedURL, savedV })
+	releasesURL, Version = srv.URL+"/releases/latest", "3.0.0-beta.1"
+	r := pcUpdate(M{})
+	mustEq(t, r.Status, "warn")
+	if !strings.Contains(r.Detail, "3.0.0-beta.2 is out") {
+		t.Errorf("%+v", r)
+	}
+	Version = "3.0.0-beta.2"
+	mustEq(t, pcUpdate(M{}).Status, "ok")
+}
+
 func TestPrecheckScorerLink(t *testing.T) {
 	sandbox(t, "")
 	mustEq(t, pcScorerLink(M{}).Status, "skip")

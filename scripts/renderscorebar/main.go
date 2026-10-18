@@ -17,6 +17,7 @@
 //	go run ./scripts/renderscorebar                  # all styles -> examples/
 //	go run ./scripts/renderscorebar modern impact    # just these
 //	go run ./scripts/renderscorebar -out-dir /tmp    # somewhere else
+//	go run ./scripts/renderscorebar -panels          # the pop-up panels too, full frame
 //
 // Needs Chrome or Edge installed; no running server.
 package main
@@ -37,7 +38,7 @@ import (
 	"time"
 )
 
-var styles = []string{"classic", "modern", "impact", "minimal"}
+var styles = []string{"classic", "modern", "impact", "minimal", "franchise", "neon", "block"}
 
 var browsers = []string{
 	`C:\Program Files\Google\Chrome\Application\chrome.exe`,
@@ -131,7 +132,43 @@ const stub = `
 </script>
 `
 
-func render(style, outPNG, browser string) bool {
+// panelShots are the pop-up panels -panels renders, each over the same match state: a
+// strap above the bar, a full-screen panel, and the scorecard. Each fills in the panel
+// the way the overlay's own code would and shows it with its transition switched off.
+var panelShots = map[string]string{
+	"strap": `var p = document.getElementById('milestone-panel');
+		document.getElementById('milestone-runs').textContent = '50';
+		document.getElementById('milestone-name').textContent = 'Hatton';
+		document.getElementById('milestone-sub').textContent = '50 off 33 balls · 6 fours, 2 sixes';
+		p.style.display = ''; p.style.transition = 'none'; p.classList.add('show');`,
+	"over": `var p = document.getElementById('over-summary-panel');
+		document.getElementById('over-num').textContent = '15';
+		document.getElementById('over-runs').textContent = '13 runs';
+		document.getElementById('over-bowler').textContent = 'S Ewen 3-0-28-2';
+		document.getElementById('over-balls-row').innerHTML = ['1','4','·','6','W','2'].map(function(b){
+			var c = {'4':'four','6':'six','W':'wicket','·':'dot'}[b] || '';
+			return '<div class="over-ball-dot ' + c + '">' + b + '</div>'; }).join('');
+		p.style.display = ''; p.style.transition = 'none'; p.classList.add('show');`,
+	"scorecard": `var p = document.getElementById('scorecard-panel');
+		document.getElementById('sc-team').textContent = 'Rival CC';
+		document.getElementById('sc-total').textContent = '137-4 (15.3)';
+		var bat = [['J Hatton','not out','48','31',1],['R Gostling','not out','23','19',1],
+			['T Marsh','c Clarke b Ewen','31','22',0],['P Kerr','b Ewen','14','9',0],
+			['D Laine','lbw b Price','9','8',0],['A Yeo','run out','4','5',0]];
+		document.getElementById('sc-bat').innerHTML = bat.map(function(r){
+			return '<div class="sc-row' + (r[4] ? ' notout' : '') + '"><span class="sc-name">' + r[0] +
+				'</span><span class="sc-out">' + r[1] + '</span><span class="sc-runs">' + r[2] +
+				'</span><span class="sc-balls">' + r[3] + '</span></div>'; }).join('');
+		document.getElementById('sc-bwl-rows').innerHTML = [['S Ewen','3.3-0-28-2'],['M Price','4-0-31-1'],
+			['K Clarke','4-0-40-0'],['B Hale','4-0-36-0']].map(function(r){
+			return '<div class="sc-bwl-row"><span class="sc-name">' + r[0] + '</span><span class="sc-figs">' +
+				r[1] + '</span></div>'; }).join('');
+		p.style.display = ''; p.style.transition = 'none'; p.classList.add('show');`,
+}
+
+func render(style, outPNG, browser string) bool { return renderShot(style, "", outPNG, browser) }
+
+func renderShot(style, shot, outPNG, browser string) bool {
 	b, err := os.ReadFile("overlay.html")
 	if err != nil {
 		fmt.Printf("  ✗  %v (run this from the repository root)\n", err)
@@ -149,7 +186,15 @@ func render(style, outPNG, browser string) bool {
 		return false
 	}
 	html = html[:idx] + s + html[idx:]
-	tmp := filepath.Join(os.TempDir(), "_scorebar_render_"+style+".html")
+	if shot != "" {
+		html = strings.Replace(html, "</body>", "<script>window.addEventListener('load', function(){"+
+			"setTimeout(function(){"+panelShots[shot]+"}, 1200); });</script></body>", 1)
+	}
+	// The overlay asks its server for /fonts/; from a file:// page that's the repository's.
+	if wd, err := os.Getwd(); err == nil {
+		html = strings.ReplaceAll(html, "url('/fonts/", "url('file:///"+filepath.ToSlash(wd)+"/fonts/")
+	}
+	tmp := filepath.Join(os.TempDir(), "_scorebar_render_"+style+shot+".html")
 	if err := os.WriteFile(tmp, []byte(html), 0o644); err != nil {
 		fmt.Printf("  ✗  %v\n", err)
 		return false
@@ -192,6 +237,7 @@ func cropToBar(path string) error {
 func main() {
 	outDir := flag.String("out-dir", "examples", "where to write the PNGs")
 	full := flag.Bool("full", false, "keep the whole 1920x1080 frame instead of cropping to the bar")
+	panels := flag.Bool("panels", false, "also render the pop-up panels (strap, over summary, scorecard) per style")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: go run ./scripts/renderscorebar [-out-dir DIR] [-full] [style ...]\n  styles: %s\n", strings.Join(styles, ", "))
 	}
@@ -235,6 +281,17 @@ func main() {
 			}
 		}
 		fmt.Printf("  OK   %s  ->  %s\n", style, out)
+		if *panels {
+			for _, shot := range []string{"strap", "over", "scorecard"} {
+				out := filepath.Join(*outDir, "panel-"+style+"-"+shot+".png")
+				if !renderShot(style, shot, out, browser) {
+					fmt.Printf("  ✗  %s %s: no screenshot produced\n", style, shot)
+					failed++
+					continue
+				}
+				fmt.Printf("  OK   %s %s  ->  %s\n", style, shot, out)
+			}
+		}
 	}
 	if failed > 0 {
 		os.Exit(1)

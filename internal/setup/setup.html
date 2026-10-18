@@ -283,15 +283,28 @@ button:disabled{opacity:.6;cursor:default}
   </section>
   </div>
 
+  <section id="move" class="hidden">
+    <h2>Move to another laptop, or keep a backup</h2>
+    <p class="hint">One file with everything set up here: these answers, the control panel's settings
+    (graphics, sponsors, the squad roster) and every badge, player photo, sponsor logo and match
+    photo. On the other laptop, open CricketStream and choose <b>Import settings</b>. Each laptop
+    keeps its own OBS password and folders.</p>
+    <label class="check" style="margin-top:0"><input type="checkbox" id="move_secrets">
+      Include passwords and API keys — only for a file that stays with you</label>
+    <div class="field-row" style="margin-top:10px">
+      <button type="button" class="small" id="move_export">Export settings…</button>
+      <button type="button" class="small" id="move_import_btn">Import settings…</button>
+      <input type="file" id="move_import" accept=".zip,application/zip" hidden>
+    </div>
+    <p class="result" id="result_move" role="status"></p>
+  </section>
+
   <section id="files" class="hidden">
     <h2>Your files</h2>
-    <p class="hint">Badges, player photos and sponsor logos are files in folders beside
-    CricketStream. These open the folder on this laptop — made for you if it isn't there yet.</p>
+    <p class="hint">Club badges, player photos, sponsor logos and match photos are added in the
+    control panel's <a href="/control" onclick="try{localStorage.setItem('cs_panel_tab','pictures')}catch(e){}">Pictures tab</a>
+    — from this laptop or a phone. Replays and everything else CricketStream keeps are in its folder:</p>
     <div class="chips" id="folder_buttons">
-      <button type="button" class="chip" data-folder="logos">Club badges</button>
-      <button type="button" class="chip" data-folder="headshots">Player photos</button>
-      <button type="button" class="chip" data-folder="sponsors">Sponsor logos</button>
-      <button type="button" class="chip" data-folder="socials">Match photos</button>
       <button type="button" class="chip" data-folder="replays">Replays</button>
       <button type="button" class="chip" data-folder="app">The CricketStream folder</button>
     </div>
@@ -377,6 +390,7 @@ function showForRole() {
   });
   $('name').required = (r === 'streaming');
   $('files').classList.toggle('hidden', !(MODE === 'settings' && info.folders && r === 'streaming'));
+  $('move').classList.toggle('hidden', !(APP && MODE === 'setup' && info.have_config && r === 'streaming'));
   if (MODE === 'settings') {
     $('save').textContent = 'Save settings';
     $('role_note').classList.toggle('hidden', !info.existing || info.existing.role === r);
@@ -628,6 +642,44 @@ if (window.csApp && window.csApp.pickFolder) {
     });
   });
 }
+
+// ── Move to another laptop (CricketStream's window only) ──
+function moveResult(kind, text) { var r = $('result_move'); r.className = 'result ' + kind; r.textContent = text; }
+$('move_export').addEventListener('click', function () {
+  var secrets = $('move_secrets').checked;
+  moveResult('busy', 'Making the file…');
+  fetch('/setup/export', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({secrets: secrets})})
+    .then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Export failed'); });
+      var club = (r.headers.get('X-Club') || 'club').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return r.blob().then(function (b) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'CricketStream-' + club + '-' + new Date().toISOString().slice(0, 10) + (secrets ? '-with-keys' : '') + '.zip';
+        a.setAttribute('download', a.download);
+        document.body.appendChild(a); a.click(); a.remove();
+        moveResult('ok', 'Saved to your Downloads folder as ' + a.download + (secrets ? ' — it has the passwords and keys in it: keep it safe.' : '.'));
+      });
+    })
+    .catch(function (e) { moveResult('bad', e.message || String(e)); });
+});
+$('move_import_btn').addEventListener('click', function () { $('move_import').click(); });
+$('move_import').addEventListener('change', function () {
+  var f = this.files && this.files[0];
+  this.value = '';
+  if (!f) return;
+  moveResult('busy', 'Importing ' + f.name + '…');
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { moveResult('bad', d.error || 'Import failed'); return; }
+      var n = 0, p = d.summary.pictures || {};
+      Object.keys(p).forEach(function (k) { n += p[k]; });
+      moveResult('ok', 'Imported ' + (d.summary.club || 'the club') + '\'s settings and ' + n + ' pictures. The old settings are kept in ' + d.summary.backup + '.');
+      setTimeout(function () { location.href = d.next || '/'; }, 2500);
+    })
+    .catch(function (e) { moveResult('bad', String(e)); });
+});
 
 function msg(text, kind) { var m = $('msg'); m.textContent = text; m.className = kind === true ? 'bad' : (kind || ''); }
 

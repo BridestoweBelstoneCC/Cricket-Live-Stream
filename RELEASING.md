@@ -10,8 +10,10 @@ One repository, two lines. The Python edition moves to a `python` branch — its
 (v2.12 and earlier) stay downloadable and it can still get fixes. The Go edition becomes
 `main` and is released as **pre-releases** (`v3.0.0-beta.1`, `-beta.2`, …) until it has
 been through real matches. GitHub never counts a pre-release as "latest", so neither
-edition's update check offers a beta to anyone. When v3 has proved itself, tag `v3.0.0`:
-it becomes "latest", and the Python edition starts telling its clubs a new version is out.
+edition offers a beta to a club on a release. (Someone already on a beta is offered the
+next beta: the app and the pre-match check read the recent release list too when the
+running copy is itself a beta.) When v3 has proved itself, tag `v3.0.0`: it becomes
+"latest", and the Python edition starts telling its clubs a new version is out.
 
 **Version tags:** `vMAJOR.MINOR.PATCH`, and for pre-releases only `-beta.N`
 (`v3.0.0-beta.1`). The update check compares numbers, and a release beats its own betas,
@@ -113,3 +115,8 @@ publishes the release with the signed files.
 
 When v3 has had its matches: tag `v3.0.0` (no `-beta`). It becomes "latest" — clubs on v2
 are told about it, clubs on a v3 beta too.
+
+**A Python-edition fix after that** (v2.12.1 from the `python` branch) must not become
+"latest", or v3's update check reads v2.12.1 as the newest release and goes quiet until
+the next v3. Publish it with *Set as the latest release* unticked
+(`gh release create v2.12.1 --latest=false`, or `make_latest: false` in its workflow).

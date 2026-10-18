@@ -1,8 +1,10 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -23,6 +25,7 @@ import (
 	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/server"
 )
 
 type M = map[string]any
@@ -191,6 +194,12 @@ func TestPageCarriesItsKeyAndOnlyThePageCanDriveTheApp(t *testing.T) {
 	}
 	if r := ta.do("POST", "/setup/save", M{"role": "scorer"}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
 		t.Errorf("cross-origin setup save: %d", r.status)
+	}
+	// "Origin: null" is a sandboxed iframe or a file:// page — any website can make one.
+	for _, p := range []string{"/setup/save", "/setup/import"} {
+		if r := ta.do("POST", p, M{"role": "scorer"}, map[string]string{"Origin": "null"}); r.status != 403 {
+			t.Errorf("%s from Origin: null: %d", p, r.status)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(ta.dir, "config.ini")); err == nil {
 		t.Error("a refused save wrote config.ini")
@@ -705,7 +714,7 @@ func TestUpdateNotice(t *testing.T) {
 		var got any
 		if st != nil {
 			got = st["latest"]
-			if st["url"] != releasesPage {
+			if st["url"] != strings.TrimSuffix(releasesPage, "/latest")+"/tag/"+c.tag {
 				t.Errorf("url %v", st["url"])
 			}
 		}
@@ -748,5 +757,191 @@ func TestScorersLaptopRefusesTheAppsOwnFolder(t *testing.T) {
 	r := ta.api("POST", "agent/folder", M{"folder": ta.dir})
 	if r.status != 400 || !strings.Contains(r.body, "CricketStream's own folder") {
 		t.Errorf("%d %s", r.status, r.body)
+	}
+}
+
+// The pre-match check runs from the home screen, in the background, and its results come
+// back in the status; once match day is on it's the control panel's, not the home screen's.
+func TestPrecheckFromTheHomeScreen(t *testing.T) {
+	ta := newTestApp(t)
+	saved := runPrecheck
+	t.Cleanup(func() { runPrecheck = saved })
+	release := make(chan struct{})
+	runPrecheck = func() map[string]any {
+		<-release
+		return map[string]any{"ok": false, "ran_at": "2026-10-18T10:00:00", "checks": []any{
+			map[string]any{"id": "playcricket", "name": "PlayCricket", "status": "bad", "detail": "Key refused", "fix": "Check the key"}}}
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	if r := ta.api("POST", "precheck", M{}); r.status != 200 {
+		t.Fatalf("start: %d %s", r.status, r.body)
+	}
+	if p := ta.status()["precheck"].(M); p["running"] != true {
+		t.Errorf("not running: %v", p)
+	}
+	close(release)
+	st := ta.waitFor("the result", func(st M) bool { p, _ := st["precheck"].(M); return p != nil && p["result"] != nil })
+	res := st["precheck"].(M)["result"].(M)
+	if res["ok"] != false || len(res["checks"].([]any)) != 1 {
+		t.Errorf("result %v", res)
+	}
+
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	runLauncher = func(o launcher.Options) int { o.OpenPanel("http://127.0.0.1:5000/control", ""); <-block; return 0 }
+	ta.api("POST", "start", M{})
+	ta.waitFor("running", phaseIs(phRunning))
+	if r := ta.api("POST", "precheck", M{}); r.status != 409 {
+		t.Errorf("precheck during match day: %d", r.status)
+	}
+}
+
+// The check, run the way the home screen runs it, in an app folder of its own, sees
+// config.ini's keys (seeded into the state as match day would) — with a stand-in check
+// in place of the real ones, so no test talks to PlayCricket.
+func TestPrecheckSeesTheConfigsKeys(t *testing.T) {
+	ta := newTestApp(t)
+	server.SetAppDir(ta.dir)
+	t.Cleanup(func() { server.SetAppDir(assets.Dir()) })
+	saved := server.Prechecks
+	t.Cleanup(func() { server.Prechecks = saved })
+	server.Prechecks = []struct {
+		ID, Name string
+		Fn       func(server.M) server.CheckResult
+	}{{"key", "Key", func(st server.M) server.CheckResult {
+		k, _ := st["playcricket_api_key"].(string)
+		return server.CheckResult{Status: "ok", Detail: k}
+	}}}
+	os.WriteFile(filepath.Join(ta.dir, "config.ini"),
+		[]byte("[App]\nrole = streaming\n[Club]\nname = X\nplaycricket_id = 1\n[API]\nplaycricket_key = abc123\n"), 0o644)
+	r := runPrecheck()
+	c := r["checks"].([]any)[0].(server.M)
+	if c["detail"] != "abc123" {
+		t.Errorf("the check saw key %q, not config.ini's", c["detail"])
+	}
+}
+
+// Settings → Export on one laptop, Import on a new one's welcome screen: it moves straight
+// on to the club's match-day screen. Not from another site, not during match day.
+func TestMoveSettingsBetweenLaptops(t *testing.T) {
+	ta := newTestApp(t)
+	server.SetAppDir(ta.dir)
+	t.Cleanup(func() { server.SetAppDir(assets.Dir()) })
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242", "club_password": "pw"})
+	os.MkdirAll(filepath.Join(ta.dir, "logos"), 0o755)
+	os.WriteFile(filepath.Join(ta.dir, "logos", "4242.png"), []byte("\x89PNG\r\n\x1a\nx"), 0o644)
+
+	if r := ta.do("POST", "/setup/export", M{}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
+		t.Errorf("export from another site: %d", r.status)
+	}
+	r := ta.do("POST", "/setup/export", M{"secrets": false}, map[string]string{"Origin": ta.srv.URL})
+	if r.status != 200 || !strings.HasPrefix(r.body, "PK") {
+		t.Fatalf("export: %d %.80q", r.status, r.body)
+	}
+	zr, err := zip.NewReader(strings.NewReader(r.body), int64(len(r.body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		if strings.Contains(string(b), "club_password = pw") {
+			t.Errorf("the password went into a file exported without keys (%s)", f.Name)
+		}
+	}
+	file := []byte(r.body)
+
+	// A brand-new laptop.
+	fresh := newTestApp(t)
+	server.SetAppDir(fresh.dir)
+	fresh.enterRole("")
+	if st := fresh.status(); st["phase"] != phWelcome {
+		t.Fatalf("fresh laptop phase %v", st["phase"])
+	}
+	req, _ := http.NewRequest("POST", fresh.srv.URL+"/setup/import", bytes.NewReader(file))
+	req.Header.Set("Origin", fresh.srv.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d M
+	json.NewDecoder(resp.Body).Decode(&d)
+	resp.Body.Close()
+	if d["ok"] != true || d["summary"].(M)["club"] != "Test Town CC" {
+		t.Fatalf("import: %v", d)
+	}
+	st := fresh.status()
+	if st["phase"] != phHome || st["home"].(M)["club"] != "Test Town CC" {
+		t.Errorf("after import: %v %v", st["phase"], st["home"])
+	}
+	if _, err := os.Stat(filepath.Join(fresh.dir, "logos", "4242.png")); err != nil {
+		t.Error("the badge didn't come across")
+	}
+
+	// Not while match day runs.
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	runLauncher = func(o launcher.Options) int { o.OpenPanel("http://127.0.0.1:5000/control", ""); <-block; return 0 }
+	fresh.api("POST", "start", M{})
+	fresh.waitFor("running", phaseIs(phRunning))
+	if r := fresh.do("POST", "/setup/import", nil, map[string]string{"Origin": fresh.srv.URL}); r.status != 409 {
+		t.Errorf("import during match day: %d", r.status)
+	}
+}
+
+// OBS missing on the streaming laptop: the match-day screen says so, installs it with
+// winget (stubbed here — nothing is installed), and checks again afterwards.
+func TestInstallOBSFromTheMatchDayScreen(t *testing.T) {
+	ta := newTestApp(t)
+	saved := [3]any{obsInstalled, findWinget, runInstall}
+	t.Cleanup(func() {
+		obsInstalled = saved[0].(func() bool)
+		findWinget = saved[1].(func() string)
+		runInstall = saved[2].(func(string, func(string)) error)
+	})
+	installed := false
+	obsInstalled = func() bool { return installed }
+	findWinget = func() string { return `C:\winget.exe` }
+	var gotWinget string
+	runInstall = func(w string, say func(string)) error {
+		gotWinget = w
+		say("Found OBS Studio [OBSProject.OBSStudio]")
+		installed = true
+		return nil
+	}
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	o := ta.status()["obs"].(M)
+	if o["installed"] != false || o["can_install"] != true {
+		t.Fatalf("status %v", o)
+	}
+	if r := ta.api("POST", "install_obs", M{}); r.status != 200 {
+		t.Fatalf("install: %d %s", r.status, r.body)
+	}
+	st := ta.waitFor("installed", func(st M) bool { o, _ := st["obs"].(M); return o["result"] == "installed" })
+	if gotWinget != `C:\winget.exe` || st["obs"].(M)["installed"] != true {
+		t.Errorf("winget %q, status %v", gotWinget, st["obs"])
+	}
+	if r := ta.api("POST", "install_obs", M{}); r.status != 409 {
+		t.Errorf("install when already installed: %d", r.status)
+	}
+
+	// The installer fails (permission refused): it says what to do, and stays offered.
+	installed = false
+	runInstall = func(string, func(string)) error { return errors.New("exit status 0x8a150056") }
+	ta.api("POST", "install_obs", M{})
+	st = ta.waitFor("the failure", func(st M) bool {
+		o, _ := st["obs"].(M)
+		r, _ := o["result"].(string)
+		return strings.Contains(r, "didn't install")
+	})
+	if o := st["obs"].(M); o["installing"] != false || o["can_install"] != true {
+		t.Errorf("after a failure: %v", o)
+	}
+
+	// No winget (an old Windows, a Mac): the download link instead.
+	findWinget = func() string { return "" }
+	if r := ta.api("POST", "install_obs", M{}); r.status != 409 || !strings.Contains(r.body, "obsproject.com") {
+		t.Errorf("without winget: %d %s", r.status, r.body)
 	}
 }

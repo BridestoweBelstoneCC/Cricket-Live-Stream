@@ -497,8 +497,10 @@ func TestDarkStylesOverrideInlineBowlerColour(t *testing.T) {
 	// applyColours() sets #bowler-name's colour inline to #fff; a style that puts the
 	// bowler on a light background must win that with !important or the name vanishes.
 	overlay, _, _, _ := scorebarStyles(t)
-	if !regexp.MustCompile(`body\.style-minimal #bowler-name \{[^}]*color:[^;]*!important`).MatchString(overlay) {
-		t.Fatal("Minimal must force #bowler-name's colour over applyColours' inline #fff")
+	for _, s := range []string{"minimal", "block"} { // the two with a light bowler block
+		if !regexp.MustCompile(`body\.style-` + s + ` #bowler-name \{[^}]*color:[^;]*!important`).MatchString(overlay) {
+			t.Errorf("%s: #bowler-name's colour must be !important", s)
+		}
 	}
 }
 

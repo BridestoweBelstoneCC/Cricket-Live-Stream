@@ -63,7 +63,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 
 ### Live graphics
 
-- **Scorebar** — always-on bottom bar showing score, overs, both batters with runs and balls faced, bowler with figures, run rate, and a live ball-by-ball ticker for the current over. Club badges appear next to team names automatically. **Four styles** — *Classic* (light grey panels), *Modern* (dark broadcast slab), *Impact* (bold angled cuts, easiest to read on a phone) and *Minimal* (clean white, best under a bright daytime picture) — all using your club colours. Pick one in the control panel under Graphics, which shows a **live preview** of each; changing it takes effect on the overlay's next poll, mid-match if you like.
+- **Scorebar** — always-on bottom bar showing score, overs, both batters with runs and balls faced, bowler with figures, run rate, and a live ball-by-ball ticker for the current over. Club badges appear next to team names automatically. **Seven styles** — *Classic* (light grey panels), *Modern* (dark broadcast slab), *Impact* (bold angled cuts, easiest to read on a phone), *Minimal* (clean white, best under a bright daytime picture), *Franchise* (royal purple and gold in condensed capitals, the big-league T20 look), *Neon* (a black bar with a glowing score, for evening matches) and *Block* (flat colour blocks and heavy type) — all using your club colours. Pick one in the control panel under Graphics, which shows a **live preview** of each; changing it takes effect on the overlay's next poll, mid-match if you like.
 - **Fall of wicket card** — slides up automatically when a wicket falls, showing the dismissed batter's name, runs, balls faced, and the dismissal **spelled out in full** (e.g. *Caught Jones Bowled Smith*, *LBW Bowled Patel*, *Run Out*, *Stumped Wood Bowled Khan*). The detail fills in automatically as soon as the scorer enters how the batter was out.
 - **Player card** *(new in v2)* — when a new batter comes to the crease, a card slides in with their **photo and season batting average** (innings, average, high score). Stats are aggregated live from PlayCricket for **both your club and the opposition**. When two openers start an innings, **both** cards appear — one on the left, one on the right. The card clears automatically when the batter faces their first ball.
 - **Boundary flash** — FOUR! or SIX! graphic fires on every boundary.
@@ -374,7 +374,7 @@ camera buttons and the match-day checklist.
 | Scorebar with batter/bowler names | NV Play output file *(or manual scoring)* |
 | Ball-by-ball ticker | NV Play output file |
 | Fall-of-wicket card with dismissal detail | NV Play output file |
-| Player card with photo + season stats | NV Play output file + `headshots/` folder + PlayCricket API key |
+| Player card with photo + season stats | NV Play output file + player photos (Pictures tab) + PlayCricket API key |
 | Opposition player stats | PlayCricket API key |
 | Squad roster (resolves brothers / duplicate accounts) | Set in control panel |
 | Over summary / partnership / worm panels | NV Play output file |
@@ -402,7 +402,7 @@ camera buttons and the match-day checklist.
 | Social clips | FFmpeg + tagged replays (Anthropic key optional, for captions) |
 | Match page | Nothing extra (richer with Anthropic, PlayCricket and YouTube) |
 | Pre-match check, checklist, OBS crash recovery | Nothing extra |
-| Club badges in scorebar | PNG/SVG files in `logos/` folder |
+| Club badges in scorebar | Badges added in the control panel's Pictures tab |
 
 ---
 
@@ -410,9 +410,11 @@ camera buttons and the match-day checklist.
 
 Player cards show a circular headshot next to the batter's name and season stats.
 
-**Setup:** create a `headshots/` folder next to CricketStream and add player photos.
-Because NV Play provides surnames only, the overlay tries several filename patterns so
-you don't have to be exact — any of these will match a batter shown as "Smith":
+**Setup:** control panel → **Pictures** → Player photos → **Add photos…**, naming each
+after the player. With the squad roster entered, the tab lists who still needs a photo,
+with an **Add photo…** button beside each. Because NV Play provides surnames only, the
+overlay matches names loosely, so you don't have to be exact — any of these names will
+match a batter shown as "Smith":
 
 ```
 Smith.jpg
@@ -422,10 +424,11 @@ JOHN_SMITH.png
 ```
 
 Square images around 400x400 work best. Supported formats: JPG, PNG, WebP. No restart
-needed — drop a file in and it appears the next time that batter comes in. If no photo
-is found, the card simply shows initials instead.
+needed — add a photo and it appears the next time that batter comes in. If no photo is
+found, the card simply shows initials instead.
 
-A custom folder can be set in the control panel or in `config.ini` under `headshots_folder`.
+The photos are kept in `headshots/` beside CricketStream; a club that keeps them elsewhere
+can point Setup → **Where pictures are kept** at that folder.
 
 For players who share a surname (brothers are common at club level), you can also name a
 photo by **shirt number** — `21.png`, `28.jpg` — and the squad roster (below) will pin it
@@ -473,10 +476,9 @@ those players to the roster) or when someone has a duplicate PlayCricket account
 ## Club badges
 
 Small circular club badges appear next to team names in the scorebar automatically,
-matched by PlayCricket club ID. Create a `logos/` folder next to CricketStream and add
-badge images named by club ID (e.g. `12345.png`). The opposition's club ID and a short
-abbreviation are detected automatically from the day's fixture, so naming their badge
-`<their-club-id>.png` is enough for it to appear. If a badge doesn't match, you can also
+matched by PlayCricket club ID. Add them in the control panel's **Pictures** tab: ours
+once, and the opposition's from the **Today's opposition** button — the club ID and a short
+abbreviation come from the day's fixture, so there's nothing to name or look up. If a badge doesn't match, you can also
 pick either team's badge from a dropdown in the control panel. See [`CLUB_LOGOS.md`](CLUB_LOGOS.md)
 for full instructions, including how to find opposition club IDs.
 
@@ -509,12 +511,12 @@ CricketStream/
 ├── config.ini                 Your setup answers, API keys, OBS password (written by setup)
 ├── match_state.json           Control-panel settings (made on first run)
 ├── match_data.db              Ball-by-ball database
-├── logos/                     Club badge images (named by PlayCricket club ID)
-├── headshots/                 Player photos (named by surname or shirt number)
-├── socials/                   Match photos for social posts
+├── logos/                     Club badges (added in the Pictures tab)
+├── headshots/                 Player photos (added in the Pictures tab)
+├── socials/                   Match photos for social posts (Pictures tab)
 │   ├── 1st/ 2nd/ 3rd/         Optional per-team photo folders
 │   └── youth/                 Stock photos for youth posts (safeguarding)
-├── sponsors/                  Sponsor logo images
+├── sponsors/                  Sponsor logos (Pictures tab)
 └── diagnostics/               Match-day telemetry CSVs
 ```
 
@@ -754,6 +756,8 @@ in its window (and the activity log in `logs/`) as it happens:
 - **NV Play**: puts `scoreboard.template` in NV Play's Templates folder (an older copy is
   kept as `scoreboard.template.old`).
 - **A desktop shortcut**, if you leave that ticked on the first setup.
+- **An icon by the clock** while it's open, and its notifications (Windows keeps its own
+  note of whether you've dragged the icon onto the taskbar).
 - **Windows Firewall**: Windows itself asks whether CricketStream may use the network; you
   choose.
 

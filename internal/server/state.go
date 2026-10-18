@@ -54,7 +54,7 @@ func DefaultState() M {
 		"graphics_runrate_trend":       true,
 		"graphics_league_table":        true, // /league/table context panel
 		"graphics_player_card":         false,
-		// "classic" | "modern" | "impact" | "minimal" — overlay.html's body.style-* CSS
+		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
 		// blocks and its SCOREBAR_STYLES list. "classic" is the base stylesheet, so an
 		// unknown value renders as classic rather than breaking the bar.
 		"scorebar_style":   "classic",

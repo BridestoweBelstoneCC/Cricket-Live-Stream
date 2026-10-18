@@ -21,6 +21,8 @@ type Log struct {
 	part  string
 	file  io.WriteCloser
 	echo  io.Writer
+	// onLine, if set, sees each complete line (the alerts watch for a server restart).
+	onLine func(string)
 }
 
 type logLine struct {
@@ -56,6 +58,9 @@ func (l *Log) add(text string) {
 	}
 	l.next++
 	l.lines = append(l.lines, logLine{N: l.next, Text: text})
+	if l.onLine != nil {
+		l.onLine(text)
+	}
 	if len(l.lines) > logKeep {
 		l.lines = append([]logLine(nil), l.lines[len(l.lines)-logKeep:]...)
 	}
@@ -86,6 +91,10 @@ func (l *Log) capture() (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(LogFile()), 0o755); err == nil {
 		if f, err := os.OpenFile(LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			l.file = f
+			if st, err := f.Stat(); err == nil && st.Size() == 0 {
+				// A new file: the UTF-8 mark, or Windows PowerShell shows ✓ and — as mojibake.
+				f.Write([]byte{0xEF, 0xBB, 0xBF})
+			}
 			f.WriteString("\n──── " + time.Now().Format("2006-01-02 15:04:05") + " ────\n")
 		}
 	}

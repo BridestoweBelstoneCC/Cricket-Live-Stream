@@ -60,3 +60,7 @@ func Run(name string, args []string, o Options) (Result, error) {
 	}
 	return res, err
 }
+
+// Hide runs cmd without a console window of its own (Windows), for a command whose
+// output is read as it runs rather than through Run.
+func Hide(cmd *exec.Cmd) { configure(cmd, Options{}) }

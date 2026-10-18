@@ -39,6 +39,7 @@ import (
 	"cricketstream/internal/port"
 	"cricketstream/internal/proc"
 	"cricketstream/internal/scorerfile"
+	"cricketstream/internal/server"
 	"cricketstream/internal/setup"
 )
 
@@ -99,6 +100,11 @@ type App struct {
 	bridgeRun *bridge.Running
 	bridgeErr string
 
+	precheckRunning bool
+	precheckResult  map[string]any
+
+	obsInst obsInstall
+
 	done     chan struct{}
 	doneOnce sync.Once
 }
@@ -122,6 +128,12 @@ func Run(o Options) int {
 		console.Die("CricketStream couldn't open its window", err.Error())
 	}
 	a.base = "http://" + ln.Addr().String()
+	// Set before the capture starts: its goroutine calls it.
+	a.log.onLine = func(line string) {
+		if n := logLineNotice(line); n != nil {
+			go a.notify(*n) // not on the log's own goroutine: notify prints to the log
+		}
+	}
 	undo, _ := a.log.capture()
 	defer undo()
 	console.SetUI(a.ask)
@@ -132,8 +144,17 @@ func Run(o Options) int {
 	go srv.Serve(ln)
 	defer srv.Close()
 	fmt.Printf("  CricketStream %s — app page %s/\n", versionText(o.Version), a.base)
+	if os.Getenv(UpdatedEnv) == "1" {
+		fmt.Printf("  ✓ Updated to %s\n", versionText(o.Version))
+		os.Unsetenv(UpdatedEnv) // not passed on to match day's server
+	}
+	cleanUpAfterUpdate()
 
 	a.enterRole(setup.Role())
+	go a.watch(10 * time.Second)
+	if v := os.Getenv(ReleasesEnv); v != "" {
+		releasesAPI = v
+	}
 	go a.upd.check(o.Version)
 
 	// Ctrl+C at a terminal (a Mac's, where the pages are in the browser): the same clean
@@ -221,6 +242,16 @@ func listen() (net.Listener, error) {
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
 	if err == nil || p == 0 {
 		return ln, err
+	}
+	// Just updated: the copy being replaced is still letting go of the port.
+	if os.Getenv(UpdatedEnv) == "1" {
+		for i := 0; i < 30 && err != nil; i++ {
+			time.Sleep(500 * time.Millisecond)
+			ln, err = net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
+		}
+		if err == nil {
+			return ln, nil
+		}
 	}
 	if pingRunningCopy(p) {
 		return nil, errAlreadyOpen
@@ -531,6 +562,7 @@ type window interface {
 	Navigate(url string) // from any goroutine
 	AddScript(js string) // run at the start of every page loaded after this
 	SetTitle(title string)
+	Notify(title, text string, warn bool) // a Windows notification from the icon by the clock
 	Focus()
 	Close()
 	Run() // on the main goroutine, until the window closes
@@ -589,6 +621,47 @@ func panelLoginScript(panelURL, token string) string {
 		`sessionStorage.setItem('bbcc_token',` + string(t) + `);}catch(e){}})();`
 }
 
+// ── The pre-match check, from the home screen ──
+
+// runPrecheck is the control panel's pre-match check, run before match day starts: every
+// login and connection tried for real, so a wrong key or a missing camera shows up days
+// before the match. The server's state takes config.ini's keys as match day would.
+// Swappable for tests.
+var runPrecheck = func() map[string]any {
+	server.LoadAuthConfig()
+	if _, err := os.Stat(server.StateFile); err != nil {
+		server.SaveState(server.DefaultState())
+	}
+	server.SeedStateFromConfig()
+	return server.RunPrecheck()
+}
+
+func (a *App) startPrecheck() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.phase != phHome && a.phase != phStopped {
+		return errors.New("The pre-match check runs from the match-day screen (once match day is on, it's in the control panel's Setup tab).")
+	}
+	if a.precheckRunning {
+		return nil
+	}
+	a.precheckRunning = true
+	go func() {
+		defer crashed()
+		fmt.Println("  Running the pre-match check...")
+		r := runPrecheck()
+		a.mu.Lock()
+		a.precheckRunning, a.precheckResult = false, r
+		a.mu.Unlock()
+		if ok, _ := r["ok"].(bool); ok {
+			fmt.Println("  ✓ Pre-match check: nothing wrong")
+		} else {
+			fmt.Println("  ⚠ Pre-match check: something needs fixing — see the match-day screen")
+		}
+	}()
+	return nil
+}
+
 // ── Status for the page ──
 
 func (a *App) status(since int) map[string]any {
@@ -611,6 +684,12 @@ func (a *App) status(since int) map[string]any {
 	switch phase {
 	case phHome, phStarting, phStopped, phRunning, phAlready, phWelcome:
 		out["home"] = homeInfo()
+		if phase == phHome || phase == phStopped || phase == phWelcome {
+			out["obs"] = a.obsStatus()
+		}
+		a.mu.Lock()
+		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}
+		a.mu.Unlock()
 	case phAgent:
 		out["agent"] = agentInfo(agentRun, folder, how, agentErr)
 	case phBridge:
@@ -659,8 +738,9 @@ func baseName(p string) string {
 }
 
 func agentInfo(r *agent.Running, folder, how, errText string) map[string]any {
+	ip := agent.LocalIP()
 	out := map[string]any{"folder": folder, "how": how, "error": errText, "running": r != nil,
-		"ip": agent.LocalIP(), "port": agentPort(), "need_folder": folder == ""}
+		"ip": ip, "port": agentPort(), "need_folder": folder == "", "pairing": agent.PairingCode(ip, agentPort())}
 	if folder != "" {
 		for k, v := range feedHealth(folder) {
 			out[k] = v

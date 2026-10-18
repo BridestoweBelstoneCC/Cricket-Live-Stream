@@ -50,11 +50,12 @@ const (
 )
 
 type nativeWindow struct {
-	wv      webview2.WebView
-	hwnd    uintptr
-	orig    uintptr
-	closing atomic.Bool
-	a       *App
+	wv        webview2.WebView
+	hwnd      uintptr
+	smallIcon uintptr
+	orig      uintptr
+	closing   atomic.Bool
+	a         *App
 }
 
 // openWindow opens CricketStream's window on url. It must run on the main goroutine (the
@@ -77,6 +78,7 @@ func openWindow(a *App, start string) (window, error) {
 	nw := &nativeWindow{wv: wv, hwnd: uintptr(wv.Window()), a: a}
 	nw.setIcon()
 	nw.restorePlacement()
+	nw.addTray("CricketStream")
 	// The close button asks first when something's running: catch WM_CLOSE before the
 	// web view's own window procedure destroys the window.
 	nw.orig, _, _ = procSetWindowLongPtrW.Call(nw.hwnd, gwlpWndProc, windows.NewCallback(nw.wndproc))
@@ -132,6 +134,10 @@ func jsQuote(s string) string {
 }
 
 func (nw *nativeWindow) wndproc(hwnd, msg, wp, lp uintptr) uintptr {
+	if msg == trayMsg {
+		nw.trayEvent(lp)
+		return 0
+	}
 	if msg == wmClose && !nw.closing.Load() {
 		// Decided off the window's thread: the answer may need the page.
 		go func() {
@@ -153,10 +159,11 @@ func (nw *nativeWindow) AddScript(js string) {
 }
 func (nw *nativeWindow) Run() { nw.wv.Run() }
 func (nw *nativeWindow) SetTitle(t string) {
-	nw.wv.Dispatch(func() { nw.wv.SetTitle(t) })
+	nw.wv.Dispatch(func() { nw.wv.SetTitle(t); nw.setTip(t) })
 }
 
 func (nw *nativeWindow) Close() {
+	nw.removeTray()
 	nw.savePlacement()
 	nw.closing.Store(true)
 	nw.wv.Destroy()
@@ -183,6 +190,9 @@ func (nw *nativeWindow) setIcon() {
 		icon, _, _ := procLoadImageW.Call(uintptr(h), uintptr(unsafe.Pointer(name)), imageIcon, size, size, lrShared)
 		if icon != 0 {
 			procSendMessageW.Call(nw.hwnd, wmSetIcon, which.kind, icon)
+			if which.kind == 0 {
+				nw.smallIcon = icon // the icon by the clock too
+			}
 		}
 	}
 }

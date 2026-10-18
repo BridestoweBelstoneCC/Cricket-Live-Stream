@@ -147,6 +147,11 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <p class="hint" style="margin-top:16px">The scorer is somewhere else, not on the same wifi?
       <button class="btn quiet" type="button" data-role="bridge" style="padding:0;text-decoration:underline">Set this computer up as an NV Play bridge</button>
       (it's reached over Tailscale).</p>
+    <p class="hint">Moving from another laptop?
+      <button class="btn quiet" type="button" id="import_btn" style="padding:0;text-decoration:underline">Import its settings</button>
+      (a file made on that laptop with Settings → Export settings).
+      <input type="file" id="import_file" accept=".zip,application/zip" hidden></p>
+    <p class="note hidden" id="import_msg"></p>
   </div>
 
   <!-- The streaming laptop, before match day. -->
@@ -154,6 +159,15 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <h1 id="home_title">Match day</h1>
     <p class="lead">Start match day when you're at the ground. CricketStream opens OBS, sets up its scenes,
       fetches today's match from PlayCricket and starts the graphics, then shows the control panel here.</p>
+    <section id="obs_card" class="hidden" style="border-color:var(--warn)">
+      <div class="status" style="margin:0 0 6px"><span class="light warn" id="obs_light"></span><h2 style="margin:0" id="obs_title">OBS isn't installed on this laptop</h2></div>
+      <p class="hint" id="obs_how">CricketStream streams through OBS Studio, which is free. Install it now and match day sets it up for you.</p>
+      <div class="actions" style="margin-top:6px">
+        <button class="btn primary" type="button" id="obs_install">Install OBS</button>
+        <a class="btn" id="obs_dl" href="https://obsproject.com/download" target="_blank" rel="noopener">Download it from obsproject.com</a>
+      </div>
+      <p class="hint" id="obs_result" style="margin-top:8px"></p>
+    </section>
     <section>
       <h2>Who uses the control panel today?</h2>
       <div class="choice">
@@ -182,6 +196,17 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     </div>
     <p class="hint" style="margin-top:14px">To rehearse without a scorer, start match day and use
       <strong>Match day → Practice match</strong> in the control panel.</p>
+
+    <section style="margin-top:22px">
+      <div class="status" style="margin:0 0 6px"><span class="light" id="pc_light"></span><h2 style="margin:0">Pre-match check</h2></div>
+      <p class="hint">A few days before the match: tries every login and connection for real — PlayCricket,
+        YouTube, the AI key, OBS, the cameras, the scorer's feed, upload speed — and says what needs fixing.</p>
+      <ul class="steps" id="pc_list"></ul>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn" type="button" id="pc_run">Run the pre-match check</button>
+        <span class="hint" id="pc_when" style="margin:0"></span>
+      </div>
+    </section>
   </div>
 
   <!-- Getting ready, and match day running. -->
@@ -233,7 +258,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <div class="facts" id="agent_facts">
       <div class="fact"><div class="k">NV Play's scoreboard</div><div class="v" id="a_file">—</div><div class="s" id="a_file_s"></div></div>
       <div class="fact"><div class="k">Streaming laptop</div><div class="v" id="a_client">Not connected yet</div><div class="s" id="a_client_s"></div></div>
-      <div class="fact"><div class="k">This laptop's address</div><div class="v mono" id="a_addr">—</div><div class="s">The streaming laptop finds it with "Find scorer laptop".</div></div>
+      <div class="fact"><div class="k">Pairing code</div><div class="v mono" id="a_code" style="font-size:22px;letter-spacing:.06em">—</div>
+        <div class="s">If "Find scorer laptop" doesn't find this one, type this code on the streaming laptop. (Address: <span class="mono" id="a_addr">—</span>)</div></div>
     </div>
     <section id="agent_folder_box">
       <h2>Watching</h2>
@@ -245,7 +271,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <section>
       <h2>On the streaming laptop</h2>
       <p class="hint" style="margin:0">Control panel → <strong>Setup</strong> → Scoring source: switch on
-        <strong>Run the stream from a second laptop</strong>, then press <strong>Find scorer laptop</strong>. Keep this window open for the whole match — minimise it if it's in the way.</p>
+        <strong>Run the stream from a second laptop</strong>, then press <strong>Find scorer laptop</strong> — or type the pairing code into <strong>Pairing code</strong> there. Keep this window open for the whole match — minimise it if it's in the way.</p>
     </section>
     <div class="actions">
       <a class="btn" href="/setup?app=1">Change setup</a>
@@ -363,13 +389,37 @@ function render() {
 function renderUpdate() {
   var u = S.update, el = $('update');
   el.classList.toggle('hidden', !u);
-  if (!u || el.getAttribute('data-v') === u.latest) return;
-  el.setAttribute('data-v', u.latest);
-  el.textContent = 'CricketStream v' + u.latest + ' is available (this is v' + String(S.version).replace(/^v/, '') + '). ';
-  var a = document.createElement('a');
-  a.href = u.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Download it';
-  el.appendChild(a);
-  el.appendChild(document.createTextNode(' and put it in place of CricketStream.exe in the same folder — your settings stay.'));
+  if (!u) return;
+  var key = u.latest + '|' + u.state + '|' + Math.round((u.progress || 0) * 20) + '|' + u.error;
+  if (el.getAttribute('data-k') === key) return;
+  el.setAttribute('data-k', key);
+  el.textContent = '';
+  var busy = u.state === 'downloading' || u.state === 'checking' || u.state === 'restarting';
+  var words = u.state === 'downloading' ? 'Downloading CricketStream v' + u.latest + '… ' + Math.round((u.progress || 0) * 100) + '%'
+    : u.state === 'checking' ? 'Checking the download (signature and checksum)…'
+    : u.state === 'restarting' ? 'Restarting as v' + u.latest + '…'
+    : 'CricketStream v' + u.latest + ' is available (this is v' + String(S.version).replace(/^v/, '') + '). ';
+  el.appendChild(document.createTextNode(words));
+  if (busy) return;
+  if (u.can_update) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn primary'; b.style.marginLeft = '6px'; b.textContent = 'Update now';
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      api('update', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
+    });
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' Your settings and pictures stay; it restarts in a few seconds.'));
+  } else {
+    var a = document.createElement('a');
+    a.href = u.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Download it';
+    el.appendChild(a);
+    el.appendChild(document.createTextNode(' and put it in place of CricketStream in the same folder — your settings stay.'));
+  }
+  if (u.error) {
+    var e = document.createElement('div'); e.className = 'bad-t'; e.style.marginTop = '4px'; e.textContent = u.error;
+    el.appendChild(e);
+  }
 }
 
 var homeSeen = false;
@@ -388,6 +438,54 @@ function renderHome() {
   txt('remote_why', h.password ? 'Volunteers on the club\'s wifi or Tailscale can open it. They\'ll need the club password.'
     : 'Needs a club password first — set one in Settings.');
   $('manual_note').classList.toggle('hidden', !h.manual_session);
+  renderPrecheck();
+  renderOBS();
+}
+
+// OBS missing: offer to install it (Windows' own installer) or link to the download.
+function renderOBS() {
+  var o = S.obs;
+  $('obs_card').classList.toggle('hidden', !o || (o.installed && !o.installing && o.result !== 'installed'));
+  if (!o) return;
+  if (o.installed) {
+    $('obs_light').className = 'light ok'; txt('obs_title', 'OBS is installed'); txt('obs_how', 'Ready — Start match day opens and sets it up.');
+    $('obs_install').classList.add('hidden'); $('obs_dl').classList.add('hidden'); txt('obs_result', '');
+    return;
+  }
+  $('obs_install').classList.toggle('hidden', !o.can_install);
+  $('obs_install').disabled = !!o.installing;
+  $('obs_install').textContent = o.installing ? 'Installing… (Windows may ask you to allow it)' : 'Install OBS';
+  $('obs_light').className = 'light ' + (o.installing ? 'busy' : 'warn');
+  txt('obs_how', o.can_install ? 'CricketStream streams through OBS Studio, which is free. Install it now (about 150 MB, a few minutes) and match day sets it up for you. Installing accepts the OBS licence (GPL-2.0).'
+    : 'CricketStream streams through OBS Studio, which is free. Download it from obsproject.com, install it, then come back here.');
+  txt('obs_result', o.result && o.result !== 'installed' ? o.result : '');
+}
+
+// The pre-match check: each check's light, what it found, and what to do about it.
+var pcShown = '';
+function renderPrecheck() {
+  var p = S.precheck || {}, r = p.result;
+  $('pc_run').disabled = !!p.running;
+  $('pc_run').textContent = p.running ? 'Checking… (up to 20 seconds)' : (r ? 'Run it again' : 'Run the pre-match check');
+  $('pc_light').className = 'light ' + (p.running ? 'busy' : !r ? '' : r.ok ? 'ok' : 'bad');
+  txt('pc_when', r && r.ran_at ? 'Last run ' + String(r.ran_at).replace('T', ' ').slice(0, 16) : '');
+  var key = JSON.stringify(r || null);
+  if (key === pcShown) return;
+  pcShown = key;
+  var ul = $('pc_list');
+  ul.textContent = '';
+  ((r && r.checks) || []).forEach(function (c) {
+    var li = document.createElement('li');
+    li.className = {ok: 'ok', warn: 'warn', bad: 'bad'}[c.status] || 'plain';
+    var b = document.createElement('strong'); b.textContent = c.name + ': ';
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(c.detail || ''));
+    if (c.fix && c.status !== 'ok') {
+      var f = document.createElement('div'); f.className = 'hint'; f.style.margin = '2px 0 0'; f.textContent = c.fix;
+      li.appendChild(f);
+    }
+    ul.appendChild(li);
+  });
 }
 
 // The launcher's lines since "Start match day", as a checklist.
@@ -459,6 +557,7 @@ function renderAgent() {
   $('a_client').className = 'v ' + (a.collected && a.collected_ago < 30 ? 'ok-t' : '');
   txt('a_client_s', a.collected ? 'Collected ' + ago(a.collected_ago) + (a.client ? ' by ' + a.client : '') : 'It connects when the streaming laptop presses "Find scorer laptop".');
   txt('a_addr', a.ip ? a.ip + ':' + a.port : '—');
+  txt('a_code', a.pairing || '—');
   var t = {installed: 'Put the CricketStream scoreboard template in NV Play\'s Templates folder. In NV Play: Tools → Configuration → Scoreboard → Template File → scoreboard.template (once).',
     updated: 'Updated the CricketStream scoreboard template in NV Play\'s Templates folder (the old one is kept as scoreboard.template.old).',
     current: 'NV Play\'s Templates folder has the CricketStream scoreboard template.'}[a.template] || '';
@@ -588,6 +687,30 @@ $('start').addEventListener('click', function () {
 });
 $('start_again').addEventListener('click', function () { homeAgain = true; homeSeen = false; render(); });
 $('back_panel').addEventListener('click', function () { api('panel', {}); });
+$('import_btn').addEventListener('click', function () { $('import_file').click(); });
+$('import_file').addEventListener('change', function () {
+  var f = this.files && this.files[0], m = $('import_msg');
+  this.value = '';
+  if (!f) return;
+  m.classList.remove('hidden'); m.classList.remove('good'); m.textContent = 'Importing ' + f.name + '…';
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { m.textContent = d.error || 'Import failed'; return; }
+      m.classList.add('good');
+      m.textContent = 'Imported ' + (d.summary.club || 'the club') + '\'s settings.';
+      poll();
+    })
+    .catch(function (e) { m.textContent = String(e); });
+});
+$('obs_install').addEventListener('click', function () {
+  $('obs_install').disabled = true;
+  api('install_obs', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
+});
+$('pc_run').addEventListener('click', function () {
+  $('pc_run').disabled = true;
+  api('precheck', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
+});
 $('to_panel').addEventListener('click', function () { api('panel', {}); });
 $('open_existing').addEventListener('click', function () { api('panel', {}); });
 $('stop_match').addEventListener('click', function () { location.hash = 'close'; render(); });

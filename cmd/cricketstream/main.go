@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"cricketstream/internal/agent"
 	csapp "cricketstream/internal/app"
@@ -24,6 +25,7 @@ import (
 	"cricketstream/internal/console"
 	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
+	"cricketstream/internal/onvif"
 	"cricketstream/internal/server"
 	"cricketstream/internal/setup"
 	"cricketstream/internal/simulate"
@@ -56,6 +58,7 @@ Match-day diagnostics:
         --interval S          seconds between samples (default 10)
         --probe-every S       seconds between headroom probes, 0 = off (default 300)
         --summary CSV         summarise a telemetry CSV and exit
+  cricketstream cameras         list the IP cameras on this network (ONVIF)
   cricketstream camera-encoder  read the Reolink camera's own encoder settings
         --source Cam / --host IP --user NAME / --channel N
   cricketstream refresh-cam     reload the OBS camera source on a timer (RTSP drift)
@@ -164,6 +167,25 @@ func run(cmd string, args []string) int {
 		fs.Float64Var(&o.ProbeEvery, "probe-every", 300, "seconds between headroom probes; 0 disables")
 		fs.Parse(args)
 		return tools.Telemetry(o)
+	case "cameras":
+		fmt.Println("\n  Looking for IP cameras on this network (ONVIF)...")
+		cams, err := onvif.Discover(3 * time.Second)
+		if err != nil {
+			fmt.Println("  " + err.Error())
+			return 1
+		}
+		if len(cams) == 0 {
+			fmt.Println("  None answered. Is ONVIF switched on in the camera's own settings, and is it on this network?")
+			return 0
+		}
+		for _, c := range cams {
+			maker := ""
+			if c.Make != "" && !strings.Contains(c.Name, c.Make) {
+				maker = "  (" + c.Make + ")"
+			}
+			fmt.Printf("  %-15s  %s%s\n", c.Address, c.Name, maker)
+		}
+		return 0
 	case "camera-encoder":
 		fs := flag.NewFlagSet("camera-encoder", flag.ExitOnError)
 		o := tools.CameraOptions{}

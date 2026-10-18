@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"cricketstream/internal/agent"
 	"cricketstream/internal/logobg"
 	"cricketstream/internal/obsws"
 	"cricketstream/internal/pyval"
@@ -111,6 +112,41 @@ func (c *ctx) sponsorUpload() {
 	c.json(M{"ok": true, "sponsor_id": result, "plain_background": plain})
 }
 
+// libraryUpload is POST /library/upload?kind=&name=: a picture for the Pictures tab, as
+// the raw image (like /sponsor/upload: logged in before megabytes are read).
+func (c *ctx) libraryUpload() {
+	if !c.originOK() {
+		c.json(M{"ok": false, "error": "Cross-origin request rejected"}, 403)
+		return
+	}
+	if !c.checkToken() {
+		return
+	}
+	n := c.r.ContentLength
+	if n <= 0 || n > SponsorUploadMaxBytes {
+		c.json(M{"ok": false, "error": fmt.Sprintf("Pictures must be under %d MB.", SponsorUploadMaxBytes/(1024*1024))}, 413)
+		return
+	}
+	data := make([]byte, n)
+	if _, err := io.ReadFull(c.r.Body, data); err != nil {
+		c.json(M{"ok": false, "error": "Upload interrupted: " + err.Error()}, 400)
+		return
+	}
+	file, err := LibrarySave(c.q("kind"), c.q("name"), data)
+	if err != nil {
+		c.json(M{"ok": false, "error": capitalise(err.Error())}, 400)
+		return
+	}
+	c.json(M{"ok": true, "file": file})
+}
+
+func capitalise(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 func (c *ctx) handleLogin(body []byte) {
 	if ClubPassword == "" {
 		// Auth disabled — issue a token so the browser can proceed normally
@@ -186,6 +222,10 @@ func (c *ctx) doPOST() {
 		c.sponsorUpload()
 		return
 	}
+	if path == "/library/upload" {
+		c.libraryUpload()
+		return
+	}
 	body, ok := c.readBody()
 	if !ok {
 		return
@@ -233,6 +273,44 @@ func (c *ctx) doPOST() {
 		out := RehearsalStatus()
 		out["ok"] = true
 		c.json(out)
+
+	case path == "/cameras/use":
+		out, status := CamerasUse(jsonObject(body))
+		c.json(out, status)
+
+	case path == "/agent/pair":
+		// The scorer's laptop's pairing code (shown in its window), for wifi where "Find
+		// scorer laptop" finds nothing. Saved only once the laptop answers.
+		addr, err := agent.ParsePairingCode(str(jsonObject(body), "code", ""))
+		if err != nil {
+			c.json(M{"ok": false, "error": capitalise(err.Error())}, 400)
+			return
+		}
+		info, why := AgentPing(addr, 4*time.Second)
+		if info == nil {
+			c.json(M{"ok": false, "error": why + " — is CricketStream open on the scorer's laptop, on the same network?"}, 200)
+			return
+		}
+		UpdateState(func(st M) { st["agent_host"], st["pcs_source"] = addr, "agent" })
+		ResetAgentClient()
+		c.json(M{"ok": true, "address": addr, "hostname": valOr(info, "hostname", ""), "file": info["file"]})
+
+	case path == "/library/delete":
+		d := jsonObject(body)
+		if err := LibraryDelete(str(d, "kind", ""), str(d, "file", "")); err != nil {
+			c.json(M{"ok": false, "error": capitalise(err.Error())}, 400)
+			return
+		}
+		c.json(M{"ok": true})
+
+	case path == "/library/rename":
+		d := jsonObject(body)
+		file, err := LibraryRename(str(d, "kind", ""), str(d, "file", ""), str(d, "name", ""))
+		if err != nil {
+			c.json(M{"ok": false, "error": capitalise(err.Error())}, 400)
+			return
+		}
+		c.json(M{"ok": true, "file": file})
 
 	case path == "/sponsor/remove_background":
 		d := jsonObject(body)
