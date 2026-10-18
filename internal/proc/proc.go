@@ -26,6 +26,7 @@ type Options struct {
 	Timeout     time.Duration
 	BelowNormal bool // Windows BELOW_NORMAL_PRIORITY_CLASS; nice 10 elsewhere
 	Dir         string
+	Env         []string // the whole environment; nil = this process's
 }
 
 // Runner is swappable so tests can fake external programs.
@@ -42,6 +43,7 @@ func Run(name string, args []string, o Options) (Result, error) {
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = o.Dir
+	cmd.Env = o.Env
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	configure(cmd, o)

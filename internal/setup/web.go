@@ -254,6 +254,14 @@ func Save(body []byte) (int, map[string]any, *Result) {
 	if err != nil {
 		return 500, map[string]any{"ok": false, "error": err.Error()}, nil
 	}
+	if v.DesktopShortcut {
+		// Best-effort: a shortcut that couldn't be made never fails the save.
+		if where, err := DesktopShortcut(); err != nil {
+			out["shortcut_error"] = err.Error()
+		} else {
+			out["shortcut"] = where
+		}
+	}
 	return 200, out, &res
 }
 

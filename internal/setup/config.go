@@ -72,6 +72,8 @@ type Values struct {
 	// Secrets to remove (form names, e.g. "club_password"): a blank secret field means
 	// "keep the saved one", so removing one has to be said out loud.
 	Clear []string `json:"clear,omitempty"`
+	// Put a CricketStream shortcut on the desktop (Windows; first-run setup offers it).
+	DesktopShortcut bool `json:"desktop_shortcut,omitempty"`
 }
 
 // AbbrevFromName is the wizard's default abbreviation: the first word that isn't "CC",

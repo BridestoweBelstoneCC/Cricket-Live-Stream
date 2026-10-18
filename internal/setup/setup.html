@@ -280,6 +280,9 @@ button:disabled{opacity:.6;cursor:default}
   </section>
   </div>
 
+  <label class="check hidden" id="shortcut_row"><input type="checkbox" id="desktop_shortcut" checked>
+    Put a CricketStream shortcut on the desktop</label>
+
   <div class="actions">
     <button type="submit" class="primary" id="save">Save and continue</button>
     <span id="msg" role="status"></span>
@@ -481,6 +484,7 @@ function load() {
       $('lead').textContent = 'Everything setup asked, on one page. Saved changes reach the panel and the overlay straight away.';
       $('back').classList.remove('hidden');
     }
+    $('shortcut_row').classList.toggle('hidden', !(MODE === 'setup' && d.os === 'windows'));
     var def = d.defaults || {};
     $('colour').value = def.colour; $('replay_folder').value = def.replay_folder;
     $('yt_title').value = def.yt_title; $('max_overs').value = def.max_overs;
@@ -558,7 +562,8 @@ $('form').addEventListener('submit', function (ev) {
   ev.preventDefault();
   var v = {role: role(), scorebar_style: selectedStyle(), allow_remote: $('allow_remote').checked,
            bridge_port: parseInt($('bridge_port').value, 10) || 0,
-           clear: Object.keys(clearing).filter(function (k) { return clearing[k]; })};
+           clear: Object.keys(clearing).filter(function (k) { return clearing[k]; }),
+           desktop_shortcut: MODE === 'setup' && info.os === 'windows' && $('desktop_shortcut').checked};
   FIELDS.forEach(function (k) { v[k] = $(k).value; });
   if (v.role === 'streaming' && !v.name.trim()) { msg('The club name is required.', true); $('name').focus(); return; }
   if (v.role === 'streaming' && !v.pc_id.trim()) { msg('The PlayCricket club ID is required.', true); $('pc_id').focus(); return; }
@@ -574,6 +579,7 @@ $('form').addEventListener('submit', function (ev) {
       var next = $('next');
       function p(t) { var el = document.createElement('p'); el.textContent = t; next.appendChild(el); return el; }
       p('Saved to ' + d.config_file + '.');
+      if (d.shortcut) p('There\'s a CricketStream shortcut on the desktop — double-click it on match day.');
       if (d.template) p('The scoreboard template is in NV Play\'s Templates folder (' + d.template.folder +
         '). In NV Play: Tools → Configuration → Scoreboard → Template File → choose scoreboard.template, once.');
       if (d.role === 'streaming') {
