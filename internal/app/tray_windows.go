@@ -108,9 +108,11 @@ func (nw *nativeWindow) Notify(title, text string, warn bool) {
 	nw.wv.Dispatch(func() {
 		d := nw.trayData()
 		d.Flags = nifInfo
+		// Quiet time holds notifications back for a new Windows account's first hour —
+		// fine for "a new version", not for "the feed's gone quiet" on a new club laptop.
 		d.InfoFlags = niifInfo | niifRespectQuietTime
 		if warn {
-			d.InfoFlags = niifWarning | niifRespectQuietTime
+			d.InfoFlags = niifWarning
 		}
 		copyUTF16(d.InfoTitle[:], title)
 		copyUTF16(d.Info[:], text)

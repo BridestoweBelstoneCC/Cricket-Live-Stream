@@ -91,6 +91,10 @@ func (l *Log) capture() (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(LogFile()), 0o755); err == nil {
 		if f, err := os.OpenFile(LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			l.file = f
+			if st, err := f.Stat(); err == nil && st.Size() == 0 {
+				// A new file: the UTF-8 mark, or Windows PowerShell shows ✓ and — as mojibake.
+				f.Write([]byte{0xEF, 0xBB, 0xBF})
+			}
 			f.WriteString("\n──── " + time.Now().Format("2006-01-02 15:04:05") + " ────\n")
 		}
 	}
