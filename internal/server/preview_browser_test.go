@@ -71,8 +71,11 @@ func renderInBrowser(t *testing.T, path string, budget time.Duration) (string, [
 	profile := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	// --use-mock-keychain / --password-store=basic: headless Chrome on macOS (and some
+	// Linux desktops) otherwise waits on the system keychain and never loads the page —
+	// seen on GitHub's macOS runners, where every browser test sat out its 90 seconds.
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run",
-		"--no-default-browser-check", "--user-data-dir="+profile, "--window-size=1920,1080",
+		"--no-default-browser-check", "--use-mock-keychain", "--password-store=basic", "--user-data-dir="+profile, "--window-size=1920,1080",
 		"--virtual-time-budget="+strconv.Itoa(int(budget/time.Millisecond)), "--dump-dom", srv.URL+path)
 	out, err := cmd.Output()
 	if err != nil && len(out) == 0 {

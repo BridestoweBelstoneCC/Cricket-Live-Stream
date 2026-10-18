@@ -131,7 +131,7 @@ jobs:
           pid=$!
           ok=""
           # The app prints its page's address (its own port, or any free one).
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             base="$(grep -oE 'app page http://127\.0\.0\.1:[0-9]+' run.log | head -1 | cut -d' ' -f3 || true)"
             if [ -n "$base" ] && curl -fsS "$base/" -o app.html && curl -fsS "$base/setup?app=1" -o setup.html; then ok=1; break; fi
             sleep 1
@@ -172,6 +172,7 @@ jobs:
           # A raw binary double-clicked in Finder runs with no visible window. A .command
           # file is what Finder opens in Terminal.app automatically.
           cd dist
+          # shellcheck disable=SC2016 # written literally: the .command file expands $0 itself
           printf '#!/bin/bash\ncd "$(dirname "$0")"\n./CricketStream\n' > CricketStream.command
           chmod +x CricketStream.command
           zip CricketStream-mac.zip CricketStream CricketStream.command
