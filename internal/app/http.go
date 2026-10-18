@@ -334,8 +334,11 @@ func (a *App) clubFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": false, "error": err.Error()}, 400)
 		return
 	}
-	fmt.Printf("  ✓ Imported %s's settings and %d pictures (the old settings are in %s)\n",
-		orStr(sum.Club, "the club"), total(sum.Pictures), sum.Backup)
+	kept := "" // a new laptop has no old settings to keep
+	if sum.Backup != "" {
+		kept = " (the old settings are in " + sum.Backup + ")"
+	}
+	fmt.Printf("  ✓ Imported %s's settings and %d pictures%s\n", orStr(sum.Club, "the club"), total(sum.Pictures), kept)
 	a.enterRole(setup.Role())
 	writeJSON(w, map[string]any{"ok": true, "summary": sum, "next": "/"}, 200)
 }

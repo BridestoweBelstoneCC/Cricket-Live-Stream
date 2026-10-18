@@ -118,8 +118,11 @@ func TestUpdateReplacesTheAppAndRestarts(t *testing.T) {
 	if b, _ := os.ReadFile(exe + ".old"); string(b) != "SIGNED:SignPath Foundation|v=3.0.0" {
 		t.Errorf("old copy not kept aside: %q", b)
 	}
-	if len(*relaunched) != 1 || (*relaunched)[0] != exe {
-		t.Errorf("relaunched %v", *relaunched)
+	// The update relaunches the resolved path: a runner's temp folder can be an 8.3 name
+	// (RUNNER~1) that resolves to the long one.
+	long, _ := filepath.EvalSymlinks(exe)
+	if len(*relaunched) != 1 || ((*relaunched)[0] != exe && (*relaunched)[0] != long) {
+		t.Errorf("relaunched %v, want %s", *relaunched, exe)
 	}
 	select {
 	case <-ta.done:

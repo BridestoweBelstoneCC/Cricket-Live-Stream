@@ -417,12 +417,19 @@ func TestMatchDayInTheWindow(t *testing.T) {
 	if r := ta.api("POST", "answer", M{"id": q["id"], "yes": true}); r.status != 409 {
 		t.Errorf("answered twice: %d", r.status)
 	}
-	st = ta.waitFor("match day over", phaseIs(phStopped))
-	var lines []string
-	for _, l := range st["log"].([]any) {
-		lines = append(lines, l.(M)["t"].(string))
+	// Printed lines reach the log through a pipe: on a slow machine the phase can change
+	// a moment before the last of them arrive, so wait for those too.
+	logText := func(st M) string {
+		var lines []string
+		for _, l := range st["log"].([]any) {
+			lines = append(lines, l.(M)["t"].(string))
+		}
+		return strings.Join(lines, "\n")
 	}
-	all := strings.Join(lines, "\n")
+	st = ta.waitFor("match day over", func(st M) bool {
+		return phaseIs(phStopped)(st) && strings.Contains(logText(st), "Match day is over")
+	})
+	all := logText(st)
 	for _, want := range []string{"Club: Test Town CC", "Saved to: match_report_today.txt", "Match day is over"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("log missing %q:\n%s", want, all)
