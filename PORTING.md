@@ -145,7 +145,11 @@ filtered to the portable copy; obsws.Guard; CRICKETSTREAM_OBS_WS_PORT) came out 
 manual test that reached the maintainer's open OBS — see CLAUDE.md. After it, all three
 portable-OBS integration tests passed again (prep/setup/replay/tools, the whole launcher,
 crash recovery; 2026-10-18 09:35-09:38) with no file in the machine's own OBS folder
-created or modified.
+created or modified. Then match day from the window against the portable OBS: OBS opened
+and configured from Start match day, the control panel in the window showed OBS and the
+replay buffer ready, a practice match drove the scorebar inside OBS (a six, its instant
+replay, saved as a real .mp4), and Stop put the score source back — the server's clean
+stdin stop, where Windows used to kill it.
 
 Tests beyond the original's: binary end-to-end (cmd/cricketstream/e2e_*: every role,
 setup -> match day -> Ctrl+C, agent and bridge feeding a server), portable-OBS
