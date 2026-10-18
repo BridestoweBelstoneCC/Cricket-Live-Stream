@@ -30,7 +30,9 @@ var rehearsalBallSec = 2.5
 
 var (
 	rehearsalMu sync.Mutex
-	rehearsal   struct {
+	// dbLogMu: /live's loggers hold it shared; the end of a practice holds it alone.
+	dbLogMu   sync.RWMutex
+	rehearsal struct {
 		running  bool
 		stop     chan struct{}
 		done     chan struct{}
@@ -176,16 +178,18 @@ func StopRehearsal() bool {
 
 // endRehearsal puts the score source back and removes every trace of the practice.
 func endRehearsal() {
+	restoreAfterRehearsal()
+	// The practice id off and its rows gone in one step that no overlay poll straddles: a
+	// poll that read the id just before would otherwise write rows back after the delete.
+	dbLogMu.Lock()
 	rehearsalMu.Lock()
 	mid := rehearsal.matchID
+	rehearsal.running, rehearsal.matchID = false, ""
 	rehearsalMu.Unlock()
-	restoreAfterRehearsal()
 	if mid != "" {
 		deleteMatchRows(mid)
 	}
-	rehearsalMu.Lock()
-	rehearsal.running, rehearsal.matchID = false, ""
-	rehearsalMu.Unlock()
+	dbLogMu.Unlock()
 	resetFeedPipeline()
 	say("  ■  Practice match over — the score source is back as it was")
 }
