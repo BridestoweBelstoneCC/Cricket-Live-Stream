@@ -327,7 +327,7 @@ func GenerateOverCommentary(overNum int, overRuns int, bowler, figs, ballsStr st
 // silently steals replay/scorecard commands from the real one.
 var (
 	commands = M{"show_weather": false, "hide_weather": false, "show_scorecard": false,
-		"show_player_cards": false}
+		"show_player_cards": false, "test_replay": false}
 	commandsMu sync.Mutex
 )
 

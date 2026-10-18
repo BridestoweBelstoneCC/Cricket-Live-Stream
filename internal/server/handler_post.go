@@ -457,6 +457,17 @@ func (c *ctx) doPOST() {
 		}
 		c.json(ReconcileMatch(mid))
 
+	case path == "/replay/test":
+		// The panel's "Test replay now": through the overlay, so it's what a real one looks
+		// like — the REPLAY screen with the club's motto, then the cut. POSTing /replay
+		// straight from the panel cut to the replay with no intro.
+		if !pyval.Truthy(LoadState()["replay_enabled"]) {
+			c.json(M{"ok": false, "error": "Replay disabled in control panel"})
+			return
+		}
+		setCommand("test_replay", true)
+		c.json(M{"ok": true})
+
 	case path == "/scorecard/show":
 		setCommand("show_scorecard", true)
 		c.json(M{"ok": true})

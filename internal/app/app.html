@@ -119,6 +119,11 @@ body.logopen main{padding-bottom:48vh}
 .hidden{display:none !important}
 footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
 @media (max-width:560px){h1{font-size:22px}main{padding:18px 14px}}
+/* The close screen's "Close OBS too". */
+.tick { display: flex; align-items: center; gap: 9px; margin: 16px 0 2px; cursor: pointer; }
+.tick input { width: 17px; height: 17px; accent-color: var(--accent); }
+.tick .muted { color: var(--muted); }
+.tick.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -307,6 +312,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
   <div id="v-close" class="view hidden">
     <h1 id="close_title">Stop CricketStream?</h1>
     <p class="lead" id="close_lead"></p>
+    <label class="tick hidden" id="close_obs_row"><input type="checkbox" id="close_obs">
+      Close OBS too <span class="muted">— only if it isn't streaming or recording</span></label>
     <div class="actions">
       <button class="btn danger big" type="button" id="close_yes">Stop and close</button>
       <button class="btn" type="button" id="close_no">Keep it running</button>
@@ -334,7 +341,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
 <script>
 var KEY = document.querySelector('meta[name=app-key]').content;
 var S = {phase: '', log: []};      // the last status
-var since = 0, logLines = [], shownQ = 0, closeWanted = false, homeAgain = false;
+var since = 0, logLines = [], shownQ = 0, homeAgain = false;
 function $(id) { return document.getElementById(id); }
 function api(path, body) {
   var o = {headers: {'X-App-Key': KEY}};
@@ -359,7 +366,7 @@ function kind(line) {
 // ── Views ──
 function view() {
   var h = location.hash.replace('#', '');
-  if (h === 'close' && ['starting', 'running', 'agent', 'bridge'].indexOf(S.phase) >= 0) return 'close';
+  if ((h === 'close' || h === 'stop') && ['starting', 'running', 'agent', 'bridge'].indexOf(S.phase) >= 0) return 'close';
   var p = S.phase;
   if (p === 'running') return 'starting';
   if (p === 'stopped' && homeAgain) return 'home';
@@ -590,15 +597,23 @@ function renderBridge() {
   var err = $('bridge_err'); err.classList.toggle('hidden', !b.error); txt('bridge_err', b.error || '');
 }
 
+// The X and the tray's Close come here as #close; the Stop buttons as #stop (stop only).
+function closeMode() { return location.hash !== '#stop'; }
 function renderClose() {
   var p = S.phase;
   if (p === 'agent' || p === 'bridge') {
     txt('close_title', p === 'agent' ? 'Stop sharing the score?' : 'Stop the bridge?');
     txt('close_lead', 'The streaming laptop stops getting the score from NV Play until CricketStream is opened here again.');
   } else {
-    txt('close_title', 'Stop match day?');
-    txt('close_lead', 'The graphics stop on the stream, and the control panel closes. OBS keeps running — stop the stream in OBS (or the control panel) first if you\'re finished.');
+    var closing = closeMode();
+    txt('close_title', closing ? 'Stop match day and close?' : 'Stop match day?');
+    txt('close_lead', 'The graphics stop on the stream and the control panel closes' +
+      (closing ? ', and so does CricketStream' : '') + '. You\'ll be asked about the match report first. ' +
+      'If you\'re finished, stop the stream in OBS (or the control panel) before you do this.');
   }
+  txt('close_yes', closeMode() ? 'Stop and close' : 'Stop match day');
+  // OBS is CricketStream's to close too, if you want — but it never closes while on air.
+  $('close_obs_row').classList.toggle('hidden', !(p === 'running' && S.obs_open));
 }
 
 // ── The log ──
@@ -713,18 +728,19 @@ $('pc_run').addEventListener('click', function () {
 });
 $('to_panel').addEventListener('click', function () { api('panel', {}); });
 $('open_existing').addEventListener('click', function () { api('panel', {}); });
-$('stop_match').addEventListener('click', function () { location.hash = 'close'; render(); });
+$('stop_match').addEventListener('click', function () { location.hash = 'stop'; render(); });
 document.querySelectorAll('[data-askclose]').forEach(function (b) { b.addEventListener('click', function () { location.hash = 'close'; render(); }); });
 $('close_no').addEventListener('click', function () {
   location.hash = '';
   if (S.phase === 'running') api('panel', {}); else render();
 });
 $('close_yes').addEventListener('click', function () {
-  closeWanted = S.phase === 'agent' || S.phase === 'bridge';
+  // One request: stop, then (once match day has ended) OBS if ticked, then CricketStream.
+  var closeOBS = !$('close_obs_row').classList.contains('hidden') && $('close_obs').checked;
+  var closing = closeMode();
   $('close_yes').disabled = true;
   location.hash = '';
-  api('stop', {}).then(function () {
-    if (closeWanted) api('close', {});
+  api('stop', {close: closing, close_obs: closeOBS}).then(function () {
     $('close_yes').disabled = false;
     poll();
   });

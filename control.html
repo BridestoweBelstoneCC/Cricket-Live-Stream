@@ -185,6 +185,38 @@
   h1{font-size:18px;letter-spacing:.2px}
   h1 span{color:var(--text-2)}
   .badge{background:var(--accent-strong);border-color:var(--accent);color:var(--on-accent)}
+  /* The header: the club first — its badge and name — on a panel washed with its colour,
+     with CricketStream as the small line above. */
+  header{background:var(--surface);
+         background:linear-gradient(100deg, color-mix(in srgb, var(--accent-strong) 30%, var(--surface)) 0%,
+                    var(--surface) 55%, var(--surface-2) 100%);
+         border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px;
+         box-shadow:var(--shadow)}
+  .crest{width:54px;height:54px;flex-shrink:0;position:relative}
+  .crest .badge{width:54px;height:54px;font-size:18px}
+  .crest [hidden]{display:none !important}
+  /* Tiles in your own order: a grip in each tile's title, seen on hover (see the script at
+     the end). Not on touch screens, which can't drag. */
+  .card h2{position:relative}
+  .tile-grip{position:absolute;right:-6px;top:50%;transform:translateY(-50%);cursor:grab;
+             color:var(--muted);font-size:13px;letter-spacing:-3px;padding:2px 6px;border-radius:4px;
+             opacity:0;transition:opacity .15s;user-select:none}
+  .card:hover .tile-grip{opacity:.7}
+  .tile-grip:hover{opacity:1 !important;background:var(--surface-3);color:var(--text)}
+  .tile-grip:active{cursor:grabbing}
+  .tile-dragging{opacity:.45;outline:2px dashed var(--accent);outline-offset:2px}
+  @media(hover:none){.tile-grip{display:none}}
+  button.linkish{background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;
+                 text-decoration:underline;padding:0}
+  .crest img{width:54px;height:54px;border-radius:50%;object-fit:contain;background:#fff;padding:4px;
+             box-shadow:0 0 0 2px var(--accent-strong),0 4px 12px rgba(0,0,0,.35)}
+  .titles{min-width:0}
+  .eyebrow{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:1.6px;
+           text-transform:uppercase;color:var(--text-2)}
+  .eyebrow img{width:16px;height:16px;border-radius:3px}
+  .eyebrow span{color:var(--muted);font-weight:500;letter-spacing:1px}
+  header h1{font-size:24px;font-weight:800;color:var(--text);letter-spacing:.2px;line-height:1.15;margin-top:3px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card{background:linear-gradient(180deg,var(--surface),var(--surface-2));
         border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
   .card h2{font-size:11px;letter-spacing:1.6px;color:var(--text-2);margin-bottom:14px;
@@ -254,7 +286,11 @@
   @media(max-width:600px){
     .long{display:none}
     header{flex-wrap:wrap;gap:10px;margin-bottom:14px}
-    header h1{flex:1 1 auto;min-width:0;font-size:15px}
+    header{padding:10px 12px}
+    header .titles{flex:1 1 auto}
+    header h1{font-size:18px}
+    .crest,.crest .badge,.crest img{width:40px;height:40px}
+    .eyebrow span{display:none}
     #remote-pill{margin-left:0}
     #topbar{padding:8px 0}
     #topbar #live-status{padding:8px 12px !important;gap:8px !important}
@@ -299,8 +335,15 @@
 </div>
 
 <header>
-  <div class="badge" id="panel-club-badge">CC</div>
-  <h1>Stream Control Panel<span id="panel-club-name">Your Club</span></h1>
+  <!-- The club's own badge (the one the scorebar uses); its initials until there is one. -->
+  <div class="crest">
+    <img id="panel-club-logo" alt="" hidden>
+    <div class="badge" id="panel-club-badge">CC</div>
+  </div>
+  <div class="titles">
+    <div class="eyebrow"><img src="/favicon.png" alt="">CricketStream<span>&middot; Match-day control</span></div>
+    <h1 id="panel-club-name">Your Club</h1>
+  </div>
   <div id="remote-pill" onclick="showRemoteOverlay()" title="Click for a QR code to open this panel on another device">
     <span class="dot"></span><span id="remote-pill-label">This machine</span>
   </div>
@@ -316,7 +359,7 @@
     <button type="button" onclick="csApp.go('log')" title="What CricketStream did to get ready, and everything since"
       style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
              cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Activity</button>
-    <button type="button" onclick="csApp.go('close')" title="Stop match day and close CricketStream"
+    <button type="button" onclick="csApp.go('stop')" title="Stop match day (CricketStream stays open)"
       style="background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
              cursor:pointer;font-size:11px;color:var(--text-2);white-space:nowrap;font-family:inherit">Stop</button>
   </div>
@@ -1128,7 +1171,7 @@
     <div class="pic-grid" id="pics-badges-grid"></div>
     <div class="pic-row">
       <input type="text" id="pics-badge-id" placeholder="Another club's PlayCricket ID (the number in its play-cricket.com address)">
-      <label class="pic-add" style="margin:0;white-space:nowrap"><button type="button" onclick="this.nextElementSibling.click()">Add badge…</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="addBadgeByID(this)"></label>
+      <label class="pic-add" style="margin:0;white-space:nowrap"><button type="button" onclick="pickBadgeFile(this)">Add badge…</button><input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="addBadgeByID(this)"></label>
     </div>
     <div class="pic-msg" id="pics-badges-msg"></div>
   </div>
@@ -1282,15 +1325,15 @@ function renderBadgeQuick(d) {
     var t = document.createElement('div'); t.style.fontWeight = '600'; t.textContent = pair[1];
     var s = document.createElement('div'); s.className = 'hint';
     box.appendChild(t); box.appendChild(s);
-    if (!side.id) {
-      s.textContent = pair[0] === 'home' ? 'Set the club\'s PlayCricket ID in Setup first.' : 'No opposition club ID yet — Fetch today\'s match (Match day), or add it below by ID.';
+    if (!side.key) {
+      s.textContent = pair[0] === 'home' ? 'Set the club\'s name or PlayCricket ID in Setup first.' : 'No opposition yet — Fetch today\'s match (Match day) or type their name there, then upload their badge here.';
     } else {
-      s.textContent = (side.team ? side.team + ' · ' : '') + 'club ID ' + side.id + (side.has ? ' · ✓ uploaded' : ' · no badge yet');
+      s.textContent = (side.team ? side.team + ' · ' : '') + (side.id ? 'club ID ' + side.id : 'by name — no club ID') + (side.has ? ' · ✓ uploaded' : ' · no badge yet');
       var lab = document.createElement('label'); lab.style.display = 'inline-block'; lab.style.marginTop = '6px';
       var b = document.createElement('button'); b.type = 'button'; b.textContent = side.has ? 'Replace…' : 'Upload…';
       var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp'; f.hidden = true;
       b.onclick = function () { f.click(); };
-      f.onchange = function () { addBadge(f, side.id); };
+      f.onchange = function () { addBadge(f, side.key); };
       lab.appendChild(b); lab.appendChild(f); box.appendChild(lab);
     }
     q.appendChild(box);
@@ -1303,10 +1346,19 @@ async function addBadge(input, id) {
   picMsg('badges', 'Uploading…');
   try {
     await uploadPicture('badges', file, id);
-    picMsg('badges', 'Badge saved for club ' + id + ' — on the scorebar straight away.');
+    picMsg('badges', 'Badge saved for ' + (/^\d+$/.test(id) ? 'club ' + id : id) + ' — on the scorebar straight away.');
   } catch (e) { picMsg('badges', e.message, true); }
   loadPictures('badges');
   refreshBadgeStatus();
+}
+// Ask for the ID before the file, not after the picker has been and gone.
+function pickBadgeFile(btn) {
+  if (!(document.getElementById('pics-badge-id').value || '').trim()) {
+    picMsg('badges', 'Type the club\'s PlayCricket ID first (the number in its play-cricket.com address).', true);
+    document.getElementById('pics-badge-id').focus();
+    return;
+  }
+  btn.nextElementSibling.click();
 }
 function addBadgeByID(input) {
   var id = (document.getElementById('pics-badge-id').value || '').trim();
@@ -1698,13 +1750,26 @@ const PRESETS = /*__KIT_PRESETS__*/[];
 // value = token to send as Authorization: Bearer
 function getToken() { return sessionStorage.getItem('bbcc_token'); }
 
+// A refused session stays refused until someone signs in again, so after the first 401
+// the panel stops asking: a panel left open in another tab or browser with an old login
+// (a server restart makes every old login invalid) used to retry its background checks
+// every few seconds and fill the Security log with rejections.
+let _sessionRefused = false;
 async function apiFetch(url, opts) {
+  if (_sessionRefused) {
+    return new Response('{"ok":false,"error":"Unauthorized"}',
+      {status: 401, headers: {'Content-Type': 'application/json'}});
+  }
   const t = getToken();
   const baseHeaders = (opts && opts.headers) ? opts.headers : {'Content-Type':'application/json'};
   const h = Object.assign({}, baseHeaders);
   if (t) h['Authorization'] = 'Bearer ' + t;
   const r = await fetch(url, Object.assign({}, opts, {headers: h}));
-  if (r.status === 401) showLoginOverlay('Session expired — log in again');
+  if (r.status === 401) {
+    _sessionRefused = true;
+    sessionStorage.removeItem('bbcc_token');
+    showLoginOverlay('Session expired — log in again');
+  }
   return r;
 }
 
@@ -1731,6 +1796,7 @@ async function doLogin() {
     const d = await res.json();
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
+      _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
@@ -1757,6 +1823,7 @@ async function doSkip() {
     const d = await res.json();
     if (d.ok) {
       sessionStorage.setItem('bbcc_token', d.session_token || '');
+      _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
       refreshChecklist();        // same: /checklist is token-gated
@@ -2427,6 +2494,18 @@ const AUTH_EVENT_LABEL = {
   '401': 'Rejected (no/invalid session)'
 };
 
+// Repeats in a row (same event, same address) as one line with a count: a stale panel
+// tab's retries are one thing that happened, not fifty.
+function groupAuthEntries(entries) {
+  const out = [];
+  entries.forEach(function (e) {
+    const last = out[out.length - 1];
+    if (last && last.event === e.event && last.ip === e.ip) { last.count++; last.first = e.time; }
+    else out.push({event: e.event, ip: e.ip, time: e.time, first: e.time, count: 1});
+  });
+  return out;
+}
+
 async function showSecurityOverlay() {
   const ov   = document.getElementById('security-overlay');
   const body = document.getElementById('security-modal-body');
@@ -2446,8 +2525,9 @@ async function showSecurityOverlay() {
     body.innerHTML = '<p style="font-size:11px;color:var(--accent);text-transform:uppercase;' +
       'letter-spacing:1px;margin-bottom:8px;">Recent activity</p>' +
       '<div style="max-height:220px;overflow-y:auto;">' +
-      d.entries.map(function(e) {
-        const label = AUTH_EVENT_LABEL[e.event] || e.event;
+      groupAuthEntries(d.entries).map(function(e) {
+        let label = AUTH_EVENT_LABEL[e.event] || e.event;
+        if (e.count > 1) label += ' \u00d7' + e.count;
         const color = (e.event === 'login_ok') ? 'var(--ok)' :
                       (e.event === 'logout_all') ? 'var(--accent)' : 'var(--bad)';
         return '<div style="display:flex;justify-content:space-between;gap:10px;' +
@@ -2455,7 +2535,13 @@ async function showSecurityOverlay() {
           '<span style="color:' + color + '">' + label + '</span>' +
           '<span style="color:var(--muted);">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
           '</div>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' +
+      (d.entries.some(function (e) { return e.event === '401'; })
+        ? '<p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">Rejections from ' +
+          '127.0.0.1 are this laptop: usually a control panel left open in another tab or browser ' +
+          'from before CricketStream last started (an old login stops working when it restarts). ' +
+          'Close that tab, or sign in there again.</p>'
+        : '');
   } catch (err) {
     body.innerHTML = '<p style="font-size:12px;color:var(--bad);">Could not reach server</p>';
   }
@@ -2761,6 +2847,14 @@ async function loadState() {
   const clubNameEl  = document.getElementById('panel-club-name');
   if (clubBadgeEl) clubBadgeEl.textContent = (s.home_abbrev || clubName || 'CC').slice(0,2).toUpperCase();
   if (clubNameEl)  clubNameEl.textContent  = clubName;
+  // The club's badge, as the scorebar finds it (club ID, or the name with no ID yet).
+  const logoEl = document.getElementById('panel-club-logo');
+  const logoKey = s.home_club_id || (s.home_team && s.home_team !== 'Home CC' ? s.home_team : '');
+  if (logoEl && logoKey) {
+    logoEl.onload  = function () { logoEl.hidden = false; if (clubBadgeEl) clubBadgeEl.hidden = true; };
+    logoEl.onerror = function () { logoEl.hidden = true;  if (clubBadgeEl) clubBadgeEl.hidden = false; };
+    logoEl.src = '/logo/' + encodeURIComponent(logoKey) + '?t=' + Date.now();
+  }
   document.title = 'Stream Control — ' + clubName;
 }
 
@@ -2946,9 +3040,10 @@ async function useCamera(cam, user, pass, slot, msg, btn) {
 async function testReplay() {
   showStatus('Triggering test replay...','ok');
   try {
-    const res = await apiFetch('/replay', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Test'})});
+    // Through the overlay (it shows the REPLAY screen, then cuts), so OBS must be showing it.
+    const res = await apiFetch('/replay/test', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d = await res.json();
-    showStatus(d.ok ? 'Replay triggered — check OBS' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
+    showStatus(d.ok ? 'Replay sent to the overlay — watch OBS (the overlay must be on screen)' : ('Error: '+(d.error||'unknown'))  , d.ok?'ok':'err');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 
@@ -3887,6 +3982,106 @@ async function pollHealth() {
 }
 pollHealth();
 setInterval(pollHealth, 10000);
+</script>
+<script>
+// ── Tiles in your own order ──
+// Each tab's tiles can be dragged into the order this operator prefers, by the grip in a
+// tile's title (only the grip: clicking, typing and selecting work as before). The order is
+// kept in this browser only, per tab; "Reset tile layout" (bottom of Setup) puts it back.
+// Touch screens don't drag, so a phone keeps the standard layout.
+(function () {
+  var KEY = 'cs_panel_layout_v1';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function save(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
+  function cardKey(card) {
+    var h = card.querySelector('h2');
+    // The title's own words, not the grip this script adds to it.
+    return h ? h.textContent.replace(/⠇/g, '').replace(/\s+/g, ' ').trim().toLowerCase() : '';
+  }
+  function grids() {
+    // Named by tab and by the grid's place within that tab.
+    return Array.prototype.slice.call(document.querySelectorAll('.tab-panel > .grid')).map(function (g) {
+      var i = Array.prototype.indexOf.call(g.parentNode.querySelectorAll(':scope > .grid'), g);
+      return {el: g, key: (g.parentNode.id || 'tab') + ':' + i};
+    });
+  }
+  function cardsOf(g) {
+    return Array.prototype.filter.call(g.children, function (c) { return c.classList.contains('card') && cardKey(c); });
+  }
+  // Put a grid's tiles in the saved order; tiles the saved order doesn't know (added in a
+  // newer version) keep their place after the known ones.
+  function restore() {
+    var saved = load();
+    grids().forEach(function (g) {
+      var order = saved[g.key];
+      if (!order || !order.length) return;
+      var byKey = {};
+      cardsOf(g.el).forEach(function (c) { byKey[cardKey(c)] = c; });
+      order.forEach(function (k) { if (byKey[k]) { g.el.appendChild(byKey[k]); delete byKey[k]; } });
+      Object.keys(byKey).forEach(function (k) { g.el.appendChild(byKey[k]); });
+    });
+  }
+  function remember(g) {
+    var saved = load();
+    saved[g.key] = cardsOf(g.el).map(cardKey);
+    save(saved);
+    showReset();
+  }
+  var dragging = null;
+  function wire(g) {
+    cardsOf(g.el).forEach(function (card) {
+      var h = card.querySelector('h2');
+      var grip = document.createElement('span');
+      grip.className = 'tile-grip'; grip.textContent = '⠇⠇';
+      grip.title = 'Drag to move this tile';
+      grip.setAttribute('draggable', 'true');
+      h.appendChild(grip);
+      grip.addEventListener('dragstart', function (e) {
+        dragging = {card: card, grid: g};
+        card.classList.add('tile-dragging');
+        try { e.dataTransfer.setData('text/plain', cardKey(card)); e.dataTransfer.setDragImage(card, 20, 20); } catch (x) {}
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      grip.addEventListener('dragend', function () {
+        card.classList.remove('tile-dragging');
+        document.querySelectorAll('.tile-over').forEach(function (c) { c.classList.remove('tile-over'); });
+        if (dragging) remember(dragging.grid);
+        dragging = null;
+      });
+      card.addEventListener('dragover', function (e) {
+        if (!dragging || dragging.grid.el !== g.el || dragging.card === card) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var r = card.getBoundingClientRect();
+        // Before this tile if the pointer is in its first half (reading order), after if not.
+        var before = (e.clientY - r.top) < r.height / 2 && (e.clientX - r.left) < r.width;
+        g.el.insertBefore(dragging.card, before ? card : card.nextSibling);
+      });
+      card.addEventListener('drop', function (e) { if (dragging) e.preventDefault(); });
+    });
+  }
+  function showReset() {
+    var el = document.getElementById('tile-reset');
+    if (el) el.hidden = !Object.keys(load()).length;
+  }
+  function addReset() {
+    var setup = document.getElementById('tab-setup');
+    if (!setup) return;
+    var p = document.createElement('p');
+    p.id = 'tile-reset'; p.className = 'hint'; p.style.textAlign = 'center'; p.style.margin = '6px 0 18px';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkish'; b.textContent = 'Reset tile layout';
+    b.title = 'Put every tab’s tiles back in the standard order (on this computer)';
+    b.addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+    p.appendChild(document.createTextNode('Tiles are in your own order on this computer. '));
+    p.appendChild(b);
+    setup.appendChild(p);
+    showReset();
+  }
+  restore();
+  grids().forEach(wire);
+  addReset();
+})();
 </script>
 </body>
 </html>

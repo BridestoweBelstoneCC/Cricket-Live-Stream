@@ -215,3 +215,35 @@ func TestPicturesTabTeamPhotos(t *testing.T) {
 		}
 	}
 }
+
+// No fixture fetched, so the opposition has no club ID: its badge is saved under its
+// name, the Pictures tab knows it's theirs, and the overlay's /logo/<name> finds it —
+// including a name the upload had to clean ("B&B CC" is kept as "BB CC").
+func TestBadgeByTeamNameWithoutAClubID(t *testing.T) {
+	s := newTestServer(t, "")
+	setState(t, M{"home_club_id": "29434", "away_club_id": "", "home_team": "Home Town", "away_team": "B&B CC"})
+	pic := tinyPNG(t)
+	_, list := s.getJSON("/library?kind=badges")
+	away := list["away"].(M)
+	if away["key"] != "BB CC" || away["has"] != false {
+		t.Fatalf("away side %v", away)
+	}
+	if st, d := s.addPicture("badges", "BB CC", pic, nil); st != 200 || d["file"] != "BB CC.png" {
+		t.Fatalf("upload: %d %v", st, d)
+	}
+	for _, p := range []string{"/logo/B%26B%20CC", "/logo/BB%20CC"} {
+		if r := s.get(p); r.status != 200 || !bytes.Equal(r.body, pic) {
+			t.Errorf("%s: %d", p, r.status)
+		}
+	}
+	_, list = s.getJSON("/library?kind=badges")
+	if list["away"].(M)["has"] != true {
+		t.Errorf("not marked uploaded: %v", list["away"])
+	}
+	// The placeholder name is nobody's team.
+	setState(t, M{"away_club_id": "", "away_team": "Opposition CC"})
+	_, list = s.getJSON("/library?kind=badges")
+	if list["away"].(M)["key"] != "" {
+		t.Errorf("placeholder got a key: %v", list["away"])
+	}
+}

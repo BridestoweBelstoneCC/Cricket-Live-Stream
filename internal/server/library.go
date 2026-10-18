@@ -114,11 +114,22 @@ func LibraryList(kind string) (M, error) {
 	out := M{"kind": kind, "items": items}
 	switch kind {
 	case "badges":
-		home, away := trim(gs(st, "home_club_id", "")), trim(gs(st, "away_club_id", ""))
-		out["home"] = M{"id": home, "team": gs(st, "home_team", ""), "has": home != "" && badgeFile(dir, home) != ""}
-		out["away"] = M{"id": away, "team": gs(st, "away_team", ""), "has": away != "" && badgeFile(dir, away) != ""}
+		// A side is known by its club ID, or — no ID yet (no fixture fetched) — by its
+		// name, which is what the badge is then saved as and what the overlay asks for.
+		side := func(idKey, teamKey string) (M, string) {
+			id, team := trim(gs(st, idKey, "")), trim(gs(st, teamKey, ""))
+			key := id
+			if key == "" && team != "" && team != DefaultState()[teamKey] {
+				key = libraryName(team)
+			}
+			return M{"id": id, "team": team, "key": key, "has": key != "" && badgeFile(dir, key) != ""}, key
+		}
+		var home, away string
+		out["home"], home = side("home_club_id", "home_team")
+		out["away"], away = side("away_club_id", "away_team")
 		for _, it := range items {
 			switch gs(it, "name", "") {
+			case "":
 			case home:
 				it["who"] = "home"
 			case away:
