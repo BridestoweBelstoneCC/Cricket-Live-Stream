@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,10 @@ type fakeCamera struct {
 	udp  *net.UDPConn
 	pass string
 	got  []string
+	// clock is how far the camera's clock is from the real time (a ground with no
+	// internet: never set). It refuses a login signed more than 5 seconds off it, as
+	// real cameras do.
+	clock time.Duration
 }
 
 var reTag = func(tag string) *regexp.Regexp {
@@ -32,6 +37,22 @@ func newFakeCamera(t *testing.T, pass string) *fakeCamera {
 	f.http = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		s := string(b)
+		now := time.Now().Add(f.clock).UTC()
+		if strings.Contains(s, "GetSystemDateAndTime") { // no login needed
+			io.WriteString(w, `<s:Envelope><s:Body><tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime>`+
+				`<tt:DateTimeType>NTP</tt:DateTimeType><tt:UTCDateTime><tt:Time><tt:Hour>`+itoa(now.Hour())+`</tt:Hour>`+
+				`<tt:Minute>`+itoa(now.Minute())+`</tt:Minute><tt:Second>`+itoa(now.Second())+`</tt:Second></tt:Time>`+
+				`<tt:Date><tt:Year>`+itoa(now.Year())+`</tt:Year><tt:Month>`+itoa(int(now.Month()))+`</tt:Month>`+
+				`<tt:Day>`+itoa(now.Day())+`</tt:Day></tt:Date></tt:UTCDateTime></tds:SystemDateAndTime>`+
+				`</tds:GetSystemDateAndTimeResponse></s:Body></s:Envelope>`)
+			return
+		}
+		created, _ := time.Parse("2006-01-02T15:04:05.000Z", firstOf(reTag("Created"), s))
+		if d := created.Sub(now); d > 5*time.Second || d < -5*time.Second {
+			w.WriteHeader(400)
+			io.WriteString(w, `<s:Envelope><s:Body><s:Fault><s:Code><s:Subcode><s:Value>ter:NotAuthorized</s:Value></s:Subcode></s:Code></s:Fault></s:Body></s:Envelope>`)
+			return
+		}
 		// The digest: SHA1(nonce + created + password).
 		user := firstOf(reTag("Username"), s)
 		digest := firstOf(reTag("Password"), s)
@@ -49,14 +70,14 @@ func newFakeCamera(t *testing.T, pass string) *fakeCamera {
 		case strings.Contains(s, "GetCapabilities"):
 			f.got = append(f.got, "caps")
 			io.WriteString(w, `<s:Envelope><s:Body><tds:GetCapabilitiesResponse><tds:Capabilities><tt:Media><tt:XAddr>`+
-				f.http.URL+`/onvif/media_service</tt:XAddr></tt:Media></tds:Capabilities></tds:GetCapabilitiesResponse></s:Body></s:Envelope>`)
+				strings.Replace(f.http.URL, "127.0.0.1", "192.168.1.64", 1)+`/onvif/media_service</tt:XAddr></tt:Media></tds:Capabilities></tds:GetCapabilitiesResponse></s:Body></s:Envelope>`)
 		case strings.Contains(s, "GetProfiles") && r.URL.Path == "/onvif/media_service":
 			f.got = append(f.got, "profiles")
 			io.WriteString(w, `<s:Envelope><s:Body><trt:GetProfilesResponse><trt:Profiles token="000" fixed="true"><tt:Name>mainStream</tt:Name></trt:Profiles>`+
 				`<trt:Profiles token="001"><tt:Name>subStream</tt:Name></trt:Profiles></trt:GetProfilesResponse></s:Body></s:Envelope>`)
 		case strings.Contains(s, "GetStreamUri") && strings.Contains(s, ">000<"):
 			f.got = append(f.got, "uri")
-			io.WriteString(w, `<s:Envelope><s:Body><trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>rtsp://127.0.0.1:554/h264Preview_01_main?a=1&amp;b=2</tt:Uri>`+
+			io.WriteString(w, `<s:Envelope><s:Body><trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>rtsp://192.168.1.64:554/h264Preview_01_main?a=1&amp;b=2</tt:Uri>`+
 				`</trt:MediaUri></trt:GetStreamUriResponse></s:Body></s:Envelope>`)
 		default:
 			w.WriteHeader(400)
@@ -88,6 +109,8 @@ func newFakeCamera(t *testing.T, pass string) *fakeCamera {
 	}()
 	return f
 }
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 func firstOf(re *regexp.Regexp, s string) string {
 	if m := re.FindStringSubmatch(s); m != nil {
@@ -122,6 +145,13 @@ func TestFindsACameraAndItsStream(t *testing.T) {
 	if strings.Join(f.got, ",") != "caps,profiles,uri" {
 		t.Errorf("calls %v", f.got)
 	}
+	// A camera whose clock is an hour and a half out (never set) still takes the right
+	// password: the login is signed with its time, not the laptop's.
+	f.clock = -90 * time.Minute
+	f.got = nil
+	if u2, err := StreamURL(c.XAddr, "admin", "s3cret&<pass>"); err != nil || u2 != want {
+		t.Errorf("camera with a wrong clock: %q, %v", u2, err)
+	}
 	if _, err := StreamURL(c.XAddr, "admin", "wrong"); err != ErrLogin {
 		t.Errorf("wrong password: %v", err)
 	}
@@ -152,5 +182,26 @@ func TestProbeAnswersThatArentCameras(t *testing.T) {
 		if c := parseProbeMatch([]byte(junk), "1.2.3.4"); c != nil {
 			t.Errorf("%q read as a camera: %+v", junk, c)
 		}
+	}
+}
+
+// The service address is the one on the IP that answered — not one that merely starts
+// with it (.1 vs .10) — and a camera listing only its other network card's address is
+// asked on the one that answered.
+func TestProbeMatchPicksTheAnsweringAddress(t *testing.T) {
+	ans := func(xaddrs string) []byte {
+		return []byte(`<d:ProbeMatch><d:XAddrs>` + xaddrs + `</d:XAddrs></d:ProbeMatch>`)
+	}
+	c := parseProbeMatch(ans("http://192.168.1.10/onvif/device_service http://192.168.1.1/onvif/device_service"), "192.168.1.1")
+	if c == nil || c.XAddr != "http://192.168.1.1/onvif/device_service" {
+		t.Fatalf("%+v", c)
+	}
+	c = parseProbeMatch(ans("http://192.168.1.10:8000/onvif/device_service"), "192.168.1.1")
+	if c == nil || c.XAddr != "http://192.168.1.1:8000/onvif/device_service" {
+		t.Fatalf("other card: %+v", c)
+	}
+	c = parseProbeMatch(ans("http://10.0.0.5/onvif/device_service"), "fe80::1")
+	if c == nil || c.XAddr != "http://[fe80::1]/onvif/device_service" {
+		t.Fatalf("IPv6: %+v", c)
 	}
 }

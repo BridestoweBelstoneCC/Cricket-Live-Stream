@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -74,15 +75,34 @@ func parseProbeMatch(b []byte, from string) *Camera {
 		return nil
 	}
 	c := &Camera{Address: from}
+	// The service address on the IP that answered; a camera with two network cards may
+	// list only its other one, so failing that, its first address moved onto this IP
+	// (the one we know reaches it — and the only one the panel will ask).
+	var first *url.URL
 	for _, x := range strings.Fields(string(m[1])) {
 		if u, err := url.Parse(x); err == nil && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https") {
-			if c.XAddr == "" || strings.HasPrefix(u.Hostname(), from) {
+			if u.Hostname() == from {
 				c.XAddr = x
+				break
+			}
+			if first == nil {
+				first = u
 			}
 		}
 	}
 	if c.XAddr == "" {
-		return nil
+		if first == nil {
+			return nil
+		}
+		host := from
+		if strings.Contains(from, ":") {
+			host = "[" + from + "]"
+		}
+		if p := first.Port(); p != "" {
+			host += ":" + p
+		}
+		first.Host = host
+		c.XAddr = first.String()
 	}
 	if s := reScopes.FindSubmatch(b); s != nil {
 		for _, sc := range strings.Fields(string(s[1])) {
@@ -201,13 +221,13 @@ var client = &http.Client{Timeout: 6 * time.Second}
 
 // security is the WS-Security UsernameToken header ONVIF uses: the password never
 // travels, only SHA1(nonce + created + password).
-func security(user, pass string) string {
+func security(user, pass string, skew time.Duration) string {
 	if user == "" {
 		return ""
 	}
 	nonce := make([]byte, 16)
 	rand.Read(nonce)
-	created := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	created := time.Now().Add(skew).UTC().Format("2006-01-02T15:04:05.000Z")
 	h := sha1.New()
 	h.Write(nonce)
 	h.Write([]byte(created))
@@ -246,10 +266,10 @@ func xmlEscape(s string) string {
 // ErrLogin is the camera refusing the username and password.
 var ErrLogin = errors.New("the camera didn't accept that username and password")
 
-func call(endpoint, user, pass, body string) (string, error) {
+func call(endpoint, user, pass, body string, skew time.Duration) (string, error) {
 	env := `<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" ` +
 		`xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl" ` +
-		`xmlns:tt="http://www.onvif.org/ver10/schema">` + security(user, pass) + `<s:Body>` + body + `</s:Body></s:Envelope>`
+		`xmlns:tt="http://www.onvif.org/ver10/schema">` + security(user, pass, skew) + `<s:Body>` + body + `</s:Body></s:Envelope>`
 	resp, err := client.Post(endpoint, "application/soap+xml; charset=utf-8", strings.NewReader(env))
 	if err != nil {
 		return "", err
@@ -282,7 +302,8 @@ var (
 // StreamURL asks the camera (its ONVIF device service, xaddr) for its main stream's RTSP
 // address, with user and pass put into it as OBS needs.
 func StreamURL(xaddr, user, pass string) (string, error) {
-	caps, err := call(xaddr, user, pass, `<tds:GetCapabilities><tds:Category>Media</tds:Category></tds:GetCapabilities>`)
+	skew := clockSkew(xaddr)
+	caps, err := call(xaddr, user, pass, `<tds:GetCapabilities><tds:Category>Media</tds:Category></tds:GetCapabilities>`, skew)
 	if err != nil {
 		return "", err
 	}
@@ -290,7 +311,8 @@ func StreamURL(xaddr, user, pass string) (string, error) {
 	if media == "" {
 		media = xaddr
 	}
-	profiles, err := call(media, user, pass, `<trt:GetProfiles/>`)
+	media = onHostOf(media, xaddr)
+	profiles, err := call(media, user, pass, `<trt:GetProfiles/>`, skew)
 	if err != nil {
 		return "", err
 	}
@@ -300,7 +322,7 @@ func StreamURL(xaddr, user, pass string) (string, error) {
 	}
 	su, err := call(media, user, pass, `<trt:GetStreamUri><trt:StreamSetup><tt:Stream>RTP-Unicast</tt:Stream>`+
 		`<tt:Transport><tt:Protocol>RTSP</tt:Protocol></tt:Transport></trt:StreamSetup>`+
-		`<trt:ProfileToken>`+xmlEscape(token)+`</trt:ProfileToken></trt:GetStreamUri>`)
+		`<trt:ProfileToken>`+xmlEscape(token)+`</trt:ProfileToken></trt:GetStreamUri>`, skew)
 	if err != nil {
 		return "", err
 	}
@@ -308,7 +330,56 @@ func StreamURL(xaddr, user, pass string) (string, error) {
 	if !strings.HasPrefix(strings.ToLower(uri), "rtsp://") {
 		return "", errors.New("the camera didn't give an RTSP address")
 	}
-	return WithLogin(uri, user, pass), nil
+	return WithLogin(onHostOf(uri, xaddr), user, pass), nil
+}
+
+// onHostOf moves an address the camera gave onto the host we reached it at, keeping its
+// own port and path. Cameras often report a stale or internal IP — the factory default,
+// another network card — in their media and stream addresses.
+func onHostOf(addr, reached string) string {
+	u, err := url.Parse(addr)
+	r, err2 := url.Parse(reached)
+	if err != nil || err2 != nil || u.Hostname() == r.Hostname() {
+		return addr
+	}
+	host := r.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if p := u.Port(); p != "" {
+		host += ":" + p
+	}
+	u.Host = host
+	return u.String()
+}
+
+var reUTCDateTime = regexp.MustCompile(`(?s)UTCDateTime>(.*?)</(?:[A-Za-z0-9]+:)?UTCDateTime>`)
+
+// clockSkew is how far the camera's clock is from this laptop's. The login is signed
+// with a time, and most cameras refuse one more than a few seconds off theirs — at a
+// ground with no internet the camera's clock is usually wrong, and the right password
+// would read as the wrong one. Asking the time needs no login. 0 if it won't say.
+func clockSkew(xaddr string) time.Duration {
+	s, err := call(xaddr, "", "", `<tds:GetSystemDateAndTime/>`, 0)
+	if err != nil {
+		return 0
+	}
+	block := first(reUTCDateTime, s)
+	if block == "" {
+		return 0
+	}
+	// Each field on its own: cameras don't all put Date and Time in the same order.
+	n := map[string]int{}
+	for _, f := range []string{"Year", "Month", "Day", "Hour", "Minute", "Second"} {
+		re := regexp.MustCompile(`<(?:[A-Za-z0-9]+:)?` + f + `>\s*(\d+)\s*<`)
+		v := first(re, block)
+		if v == "" {
+			return 0
+		}
+		n[f], _ = strconv.Atoi(v)
+	}
+	cam := time.Date(n["Year"], time.Month(n["Month"]), n["Day"], n["Hour"], n["Minute"], n["Second"], 0, time.UTC)
+	return time.Until(cam).Round(time.Second)
 }
 
 // WithLogin puts the camera's username and password into an RTSP address.
