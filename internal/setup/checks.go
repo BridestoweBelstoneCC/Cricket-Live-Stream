@@ -119,11 +119,13 @@ func CheckFolder(folder string) Check {
 	if !st.IsDir() {
 		return Check{"bad", "That's a file, not a folder — use the folder it's in."}
 	}
-	if f := scorerfile.Find(folder, 2*time.Minute); f != "" {
-		return Check{"ok", fmt.Sprintf("NV Play is writing to it right now (%s).", filepath.Base(f))}
-	}
+	// Find doesn't age-check NV Play's own filenames, so look at the file's age here.
 	if f := scorerfile.Find(folder, -1); f != "" {
-		when := time.Unix(int64(scorerfile.MTime(f)), 0).Format("2 Jan 2006")
+		mt := time.Unix(int64(scorerfile.MTime(f)), 0)
+		if time.Since(mt) < 2*time.Minute {
+			return Check{"ok", fmt.Sprintf("NV Play is writing to it right now (%s).", filepath.Base(f))}
+		}
+		when := mt.Format("2 Jan 2006")
 		return Check{"ok", fmt.Sprintf("Found a scoreboard file from %s (%s) — the right place.", when, filepath.Base(f))}
 	}
 	return Check{"warn", "The folder exists but has no scoreboard file yet — fine before the first match, once NV Play's scoreboard output is switched on."}

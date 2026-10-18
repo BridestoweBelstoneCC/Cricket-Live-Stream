@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"cricketstream/internal/assets"
 	"cricketstream/internal/obs"
 )
 
@@ -49,6 +50,9 @@ func sandbox(t *testing.T, password string) string {
 	// Nothing a test does may reach this machine's own OBS settings or home folder: the
 	// OBS guard writes OBS's global.ini on a normal close, and defaults (the replay
 	// folder) come from the home folder.
+	savedAssets := assets.Dir()
+	assets.SetDir(dir) // the setup package (settings page) finds config.ini through it
+	t.Cleanup(func() { assets.SetDir(savedAssets) })
 	savedCfg, savedFind := obs.ConfigDir, obs.FindOBS
 	obs.ConfigDir = func() string { return filepath.Join(dir, "obs-config") }
 	obs.FindOBS = func() string { return "" }
