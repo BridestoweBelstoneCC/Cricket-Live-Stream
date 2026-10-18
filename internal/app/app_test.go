@@ -714,7 +714,7 @@ func TestUpdateNotice(t *testing.T) {
 		var got any
 		if st != nil {
 			got = st["latest"]
-			if st["url"] != releasesPage {
+			if st["url"] != strings.TrimSuffix(releasesPage, "/latest")+"/tag/"+c.tag {
 				t.Errorf("url %v", st["url"])
 			}
 		}

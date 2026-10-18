@@ -214,3 +214,41 @@ func TestNoUpdateDuringMatchDay(t *testing.T) {
 		t.Errorf("%d %s", r.status, r.body)
 	}
 }
+
+// releases/latest is never a pre-release: a beta finds the next beta in the list, a
+// release never offers one, and drafts are never offered.
+func TestBetaIsOfferedTheNextBeta(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/latest") {
+			fmt.Fprint(w, `{"tag_name":"v2.12","assets":[]}`)
+			return
+		}
+		fmt.Fprint(w, `[{"tag_name":"v3.0.0-beta.3","draft":true,"assets":[]},`+
+			`{"tag_name":"v3.0.0-beta.2","assets":[{"name":"CricketStream.exe","browser_download_url":"https://example.invalid/x"}]},`+
+			`{"tag_name":"v3.0.0-beta.1","assets":[]},{"tag_name":"v2.12","assets":[]}]`)
+	}))
+	t.Cleanup(srv.Close)
+	saved, savedT := releasesAPI, updateHTTP
+	releasesAPI, updateHTTP = srv.URL+"/repos/x/y/releases/latest", srv.Client().Transport
+	t.Cleanup(func() { releasesAPI, updateHTTP = saved, savedT })
+
+	var u updateInfo
+	u.check("3.0.0-beta.1")
+	st := u.status()
+	if st == nil || st["latest"] != "3.0.0-beta.2" {
+		t.Fatalf("beta.1 was offered %v", st)
+	}
+	if !strings.HasSuffix(st["url"].(string), "/releases/tag/v3.0.0-beta.2") {
+		t.Errorf("page %v", st["url"])
+	}
+	var rel updateInfo
+	rel.check("2.11.0")
+	if st := rel.status(); st == nil || st["latest"] != "2.12" {
+		t.Errorf("a release was offered %v", st)
+	}
+	var cur updateInfo
+	cur.check("3.0.0-beta.2")
+	if st := cur.status(); st != nil {
+		t.Errorf("the newest beta was offered %v", st)
+	}
+}

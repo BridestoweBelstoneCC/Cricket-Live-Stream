@@ -66,6 +66,7 @@ type releaseAsset struct {
 type updateInfo struct {
 	mu       sync.Mutex
 	latest   string
+	tag      string // its release page is releases/tag/<tag>
 	asset    *releaseAsset
 	state    string // "", "downloading", "checking", "restarting", "failed"
 	progress float64
@@ -96,34 +97,55 @@ func assetName() string {
 	return ""
 }
 
+type ghRelease struct {
+	Tag    string         `json:"tag_name"`
+	Draft  bool           `json:"draft"`
+	Assets []releaseAsset `json:"assets"`
+}
+
+func getRelease(u string, v any) bool {
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("User-Agent", "CricketStream-app")
+	resp, err := (&http.Client{Timeout: 8 * time.Second, Transport: updateHTTP}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200 && json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(v) == nil
+}
+
 func (u *updateInfo) check(have string) {
 	have = strings.TrimPrefix(have, "v")
 	if have == "" {
 		return
 	}
-	req, _ := http.NewRequest("GET", releasesAPI, nil)
-	req.Header.Set("User-Agent", "CricketStream-app")
-	resp, err := (&http.Client{Timeout: 8 * time.Second, Transport: updateHTTP}).Do(req)
-	if err != nil {
-		return
+	// releases/latest is never a pre-release, so a beta asks the recent list too: someone
+	// on beta.1 is offered beta.2 (and then the release). A release is only ever offered
+	// releases.
+	var rels []ghRelease
+	if strings.Contains(have, "-") {
+		getRelease(strings.TrimSuffix(releasesAPI, "/latest")+"?per_page=20", &rels)
 	}
-	defer resp.Body.Close()
-	var d struct {
-		Tag    string         `json:"tag_name"`
-		Assets []releaseAsset `json:"assets"`
+	var latest ghRelease
+	if getRelease(releasesAPI, &latest) {
+		rels = append(rels, latest)
 	}
-	if resp.StatusCode != 200 || json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&d) != nil {
-		return
+	var best *ghRelease
+	bestV := have
+	for i := range rels {
+		v := strings.TrimPrefix(rels[i].Tag, "v")
+		if !rels[i].Draft && v != "" && server.VersionNewer(v, bestV) {
+			best, bestV = &rels[i], v
+		}
 	}
-	latest := strings.TrimPrefix(d.Tag, "v")
-	if latest == "" || !server.VersionNewer(latest, have) {
+	if best == nil {
 		return
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	u.latest = latest
-	for i := range d.Assets {
-		if a := d.Assets[i]; a.Name == assetName() && (strings.HasPrefix(a.URL, "https://") || loopbackURL(a.URL)) {
+	u.latest, u.tag = bestV, best.Tag
+	for i := range best.Assets {
+		if a := best.Assets[i]; a.Name == assetName() && (strings.HasPrefix(a.URL, "https://") || loopbackURL(a.URL)) {
 			u.asset = &a
 		}
 	}
@@ -136,7 +158,11 @@ func (u *updateInfo) status() map[string]any {
 	if u.latest == "" {
 		return nil
 	}
-	return map[string]any{"latest": u.latest, "url": releasesPage, "can_update": u.asset != nil,
+	page := releasesPage
+	if u.tag != "" {
+		page = strings.TrimSuffix(releasesPage, "/latest") + "/tag/" + url.PathEscape(u.tag)
+	}
+	return map[string]any{"latest": u.latest, "url": page, "can_update": u.asset != nil,
 		"state": u.state, "progress": u.progress, "error": u.err}
 }
 

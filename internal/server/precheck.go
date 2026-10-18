@@ -10,8 +10,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -487,11 +489,44 @@ func pcUpdate(st M) CheckResult {
 		panic(err)
 	}
 	latest := strings.TrimPrefix(gs(d, "tag_name", ""), "v")
+	if strings.Contains(have, "-") {
+		// A beta: releases/latest is never a pre-release, so the next beta is in the list.
+		latest = newestListed(have, latest)
+	}
 	if latest != "" && versionNewer(latest, have) {
 		return chk("warn", fmt.Sprintf("Version %s is out — this laptop has %s.", latest, have),
-			"Download it from the GitHub Releases page.")
+			"Press Update now in the CricketStream window (Windows), or download it from the GitHub Releases page.")
 	}
 	return chk("ok", fmt.Sprintf("Up to date (v%s).", have), "")
+}
+
+// newestListed is the newest of the recent releases (betas included, drafts not) and
+// latest, as long as it's newer than have.
+func newestListed(have, latest string) string {
+	req, _ := http.NewRequest("GET", strings.TrimSuffix(releasesURL, "/latest")+"?per_page=20", nil)
+	req.Header.Set("User-Agent", "CricketStream-precheck")
+	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+	if err != nil {
+		return latest
+	}
+	defer resp.Body.Close()
+	var rels []struct {
+		Tag   string `json:"tag_name"`
+		Draft bool   `json:"draft"`
+	}
+	if resp.StatusCode != 200 || json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rels) != nil {
+		return latest
+	}
+	best := latest
+	if best == "" || !versionNewer(best, have) {
+		best = have
+	}
+	for _, r := range rels {
+		if v := strings.TrimPrefix(r.Tag, "v"); !r.Draft && v != "" && versionNewer(v, best) {
+			best = v
+		}
+	}
+	return best
 }
 
 // pcScorerLink: two-laptop setups — is the scorer's machine reachable?
