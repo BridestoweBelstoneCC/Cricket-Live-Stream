@@ -130,9 +130,15 @@ Upstream line ranges refer to the pinned commit.
 
 The port is complete: every module, script and test, CI, docs. Beyond the original:
 settings page (/settings), full stream preview with demo graphics on the setup/settings
-page, Check buttons, desktop shortcut (Windows), auto-opening control panel, second-start
-detection, panic guard, binary end-to-end tests (cmd/cricketstream/e2e_*), a portable-OBS
-integration test (internal/integration), headless-browser preview test.
+page, Check buttons, "Your files" folder buttons, desktop shortcut (Windows), practice
+match from the control panel (internal/server/rehearsal.go), auto-opening control panel,
+second-start detection, panic guard, `cricketstream version`.
+
+Tests beyond the original's: binary end-to-end (cmd/cricketstream/e2e_*: every role,
+setup -> match day -> Ctrl+C, agent and bridge feeding a server), portable-OBS
+integration (internal/integration: prep/setup/replay/tools, the whole launcher, crash
+recovery), headless-Chrome preview test (no mutating requests), Python differentials for
+the helper packages. 734 tests pass on Windows; the suite is clean under -race on Linux.
 
 Test audit (2026-10-18): every upstream test was matched to a Go test (or found to be
 Python-packaging-only: find_python, .bat/.sh launchers, PyInstaller). Missing ones were
