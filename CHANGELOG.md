@@ -18,8 +18,10 @@ scoring page do is unchanged; what changed is how it's installed and run.
   laptop shows whether NV Play is writing, whether the streaming laptop is collecting it,
   and its own address, with **Browse…** for NV Play's folder. Questions come up in the
   window, closing it asks before stopping anything, a second double-click brings the open
-  window forward, and everything it does is in **Activity** and `logs/`. On a Mac the same
-  screens open in the browser for now.
+  window forward, and everything it does is in **Activity** and `logs/`. The window is
+  titled with the club (or "Scorer's laptop"), opens where it was left, and shows a line
+  with a download link when a newer release is out. On a Mac the same screens open in the
+  browser for now.
 
 - **One download, nothing to install.** `CricketStream.exe` (Windows x64 or Arm),
   `CricketStream-mac.zip` (one universal binary for Apple Silicon and Intel) or
