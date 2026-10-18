@@ -5,6 +5,7 @@ package obs
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cricketstream/internal/obsws"
 )
 
 const (
@@ -130,6 +133,9 @@ var FindOBS = func() string {
 // can't tell, because the cost of a wrong false is writing config files OBS will then
 // overwrite on exit. Swappable.
 var Running = func() bool {
+	if runtime.GOOS == "windows" && sandboxed() {
+		return len(PIDs()) > 0 // only the portable OBS counts
+	}
 	if runtime.GOOS == "windows" {
 		out, err := hiddenCommand("tasklist", "/FI", "IMAGENAME eq obs64.exe", "/NH").Output()
 		if err != nil {
@@ -145,8 +151,85 @@ var Running = func() bool {
 	return true // running, or couldn't tell
 }
 
-// PIDs lists running OBS processes (Windows only; nil elsewhere or on error).
+// PIDs lists running OBS processes (Windows only; nil elsewhere or on error). With
+// PortableEnv set, only the portable copy's: everything that closes, kills or waits on OBS
+// goes through here, and the OBS installed on the machine is never a sandbox's to touch.
 func PIDs() []int {
+	all := allPIDs()
+	if !sandboxed() {
+		return all
+	}
+	var ours []int
+	for _, pid := range all {
+		if insidePortable(processPath(pid)) {
+			ours = append(ours, pid)
+		}
+	}
+	return ours
+}
+
+// sandboxed: PortableEnv is set, so the only OBS this program may see is the portable one.
+func sandboxed() bool { return os.Getenv(PortableEnv) != "" }
+
+// insidePortable: exe belongs to the portable copy ("" — unreadable — never does).
+func insidePortable(exe string) bool {
+	root, err := portableRoot()
+	if err != nil || root == "" || exe == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(exe))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// foreignOBS lists the OBS processes running that aren't the portable copy, while
+// sandboxed (nil otherwise): their exe paths, or a description where it can't be read.
+// Swappable for tests.
+var foreignOBS = func() []string {
+	if !sandboxed() {
+		return nil
+	}
+	if runtime.GOOS != "windows" {
+		if err := exec.Command("pgrep", "-x", "-i", "obs").Run(); err == nil {
+			return []string{"an OBS (not a portable copy)"}
+		}
+		return nil
+	}
+	var out []string
+	for _, pid := range allPIDs() {
+		if exe := processPath(pid); !insidePortable(exe) {
+			if exe == "" {
+				exe = fmt.Sprintf("obs64.exe (process %d)", pid)
+			}
+			out = append(out, exe)
+		}
+	}
+	return out
+}
+
+// sandboxGuard is obsws's check before every connection: while sandboxed, never to an
+// OBS on this machine that isn't the portable copy. OBS listens on the same port wherever
+// it was installed, so the port alone can't tell them apart — the guard exists because a
+// sandboxed copy once connected to the maintainer's own OBS and re-ran its setup.
+func sandboxGuard(t obsws.Target) error {
+	// OBS's own port: the only one CricketStream reaches a real OBS on (a test's fake OBS
+	// listens on a port of its own).
+	if !sandboxed() || t.Port != WSPort {
+		return nil
+	}
+	switch strings.ToLower(t.Host) {
+	case "", "localhost", "127.0.0.1", "::1":
+	default:
+		return nil
+	}
+	if f := foreignOBS(); len(f) > 0 {
+		return fmt.Errorf("refusing to connect: %s is set, but the OBS running is %s — not the portable copy", PortableEnv, f[0])
+	}
+	return nil
+}
+
+func init() { obsws.Guard = sandboxGuard }
+
+func allPIDs() []int {
 	if runtime.GOOS != "windows" {
 		return nil
 	}

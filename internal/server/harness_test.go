@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/browser"
 	"cricketstream/internal/obs"
+	"cricketstream/internal/obsws"
 )
 
 func TestMain(m *testing.M) {
@@ -43,6 +45,17 @@ type testServer struct {
 
 // sandbox points the package at a fresh temp dir and resets every cache. password
 // sets ClubPassword explicitly: never inherit whatever a real config.ini says.
+// closedPort is a local port nothing listens on.
+func closedPort(t *testing.T) int {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return p
+}
+
 func sandbox(t *testing.T, password string) string {
 	t.Helper()
 	// A job the last test started (a season-stats build, a replay) may still be running
@@ -68,6 +81,9 @@ func sandbox(t *testing.T, password string) string {
 	t.Cleanup(func() { browser.Open, browser.OpenFolder = savedOpen, savedFolder })
 	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
 	t.Setenv("HOME", filepath.Join(dir, "home"))
+	// Nor this machine's OBS itself: a test that forgets to stub obsCall dials a port
+	// nothing listens on, never the real OBS's 4455.
+	t.Setenv(obsws.WSPortEnv, strconv.Itoa(closedPort(t)))
 	ClubPassword, ControlToken = password, strings.Repeat("cd", 32)
 	stateCacheMu.Lock()
 	stateCache, lastGoodState = nil, nil

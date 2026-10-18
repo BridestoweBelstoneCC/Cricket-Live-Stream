@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -41,17 +42,32 @@ type Target struct {
 	Password string
 }
 
-func (t Target) url() string {
-	host := t.Host
-	if host == "" {
-		host = "localhost"
+// Resolved is the address actually dialled: the defaults filled in, and OBS's usual
+// port moved if a sandbox asked (WSPortEnv).
+func (t Target) Resolved() Target {
+	if t.Host == "" {
+		t.Host = "localhost"
 	}
-	port := t.Port
-	if port == 0 {
-		port = 4455
+	if t.Port == 0 {
+		t.Port = 4455
 	}
-	return "ws://" + net.JoinHostPort(host, strconv.Itoa(port))
+	if t.Port == 4455 {
+		if p, err := strconv.Atoi(os.Getenv(WSPortEnv)); err == nil && p > 0 {
+			t.Port = p
+		}
+	}
+	return t
 }
+
+func (t Target) url() string {
+	r := t.Resolved()
+	return "ws://" + net.JoinHostPort(r.Host, strconv.Itoa(r.Port))
+}
+
+// WSPortEnv moves OBS's usual WebSocket port (4455) somewhere else, for everything that
+// talks to OBS. It's how a sandbox (the end-to-end tests, a trial copy) makes sure it can
+// never reach the OBS installed on the machine, which listens on 4455 whenever it's open.
+const WSPortEnv = "CRICKETSTREAM_OBS_WS_PORT"
 
 // AuthResponse computes OBS's authentication string.
 func AuthResponse(password, salt, challenge string) string {
@@ -84,8 +100,17 @@ type Conn struct {
 // ErrUnreachable means OBS couldn't be reached or wouldn't identify us.
 var ErrUnreachable = errors.New("OBS not reachable")
 
+// Guard, when set, may refuse a connection before it's made (the obs package refuses any
+// OBS but the portable copy while sandboxed).
+var Guard func(Target) error
+
 // Dial connects and identifies.
 func Dial(t Target, timeout time.Duration) (*Conn, error) {
+	if Guard != nil {
+		if err := Guard(t.Resolved()); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+		}
+	}
 	d := websocket.Dialer{HandshakeTimeout: timeout}
 	ws, _, err := d.Dial(t.url(), nil)
 	if err != nil {

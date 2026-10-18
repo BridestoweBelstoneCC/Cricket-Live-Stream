@@ -149,3 +149,18 @@ func Close(timeout time.Duration) bool {
 	}
 	return false
 }
+
+// processPath is the program a process is running ("" if it can't be read).
+func processPath(pid int) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n := uint32(len(buf))
+	if windows.QueryFullProcessImageName(h, 0, &buf[0], &n) != nil {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n])
+}

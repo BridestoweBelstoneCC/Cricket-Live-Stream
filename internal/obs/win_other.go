@@ -37,3 +37,6 @@ func Close(timeout time.Duration) bool {
 	}
 	return false
 }
+
+// processPath: only Windows has portable OBS (and lists OBS processes by PID).
+func processPath(pid int) string { return "" }

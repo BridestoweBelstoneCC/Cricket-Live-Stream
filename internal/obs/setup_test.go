@@ -301,3 +301,86 @@ func TestBlankBitrateUsesTheRecommendationButManualOptsOut(t *testing.T) {
 }
 
 func targetNowhere() obsws.Target { return obsws.Target{Host: "127.0.0.1", Port: 1} }
+
+func TestInsidePortable(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "obs_portable_mode.txt"), nil, 0o644)
+	t.Setenv(PortableEnv, root)
+	for exe, want := range map[string]bool{
+		filepath.Join(root, "bin", "64bit", "obs64.exe"):                true,
+		filepath.Join(root+"-other", "bin", "obs64.exe"):                false, // a sibling with the same prefix
+		filepath.Join(filepath.Dir(root), "obs64.exe"):                  false,
+		filepath.Join(root, "..", filepath.Base(root)+"x", "obs64.exe"): false,
+		`C:\Program Files\obs-studio\bin\64bit\obs64.exe`:               false,
+		"": false, // unreadable
+	} {
+		if got := insidePortable(exe); got != want {
+			t.Errorf("insidePortable(%q) = %v, want %v", exe, got, want)
+		}
+	}
+}
+
+// While sandboxed, a connection to OBS's own port is refused whenever an OBS other than
+// the portable copy is running — before anything is sent. A test's fake OBS on a port of
+// its own, or a run that isn't sandboxed, is untouched.
+func TestSandboxRefusesTheInstalledOBS(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "obs_portable_mode.txt"), nil, 0o644)
+	saved := foreignOBS
+	t.Cleanup(func() { foreignOBS = saved })
+	foreignOBS = func() []string { return []string{`C:\Program Files\obs-studio\bin\64bit\obs64.exe`} }
+
+	t.Setenv(PortableEnv, root)
+	t.Setenv(obsws.WSPortEnv, "")
+	for _, target := range []obsws.Target{{}, {Host: "127.0.0.1", Port: 4455}, {Host: "localhost"}} {
+		err := sandboxGuard(target.Resolved())
+		if err == nil || !strings.Contains(err.Error(), "Program Files") {
+			t.Errorf("%+v: %v", target, err)
+		}
+		if _, err := obsws.Dial(target, time.Second); err == nil || !strings.Contains(err.Error(), "refusing to connect") {
+			t.Errorf("Dial %+v: %v", target, err)
+		}
+	}
+	// A fake OBS on its own port still answers.
+	f := newFake(t, &fakeState{})
+	if r := obsws.Call(f.Target(), []obsws.Req{{Type: "GetSceneList"}}, 3*time.Second); r == nil {
+		t.Error("fake OBS refused")
+	}
+	// Moved off 4455 (the sandbox's redirect): not OBS's port any more.
+	t.Setenv(obsws.WSPortEnv, "45999")
+	if err := sandboxGuard((obsws.Target{}).Resolved()); err != nil {
+		t.Errorf("redirected: %v", err)
+	}
+	// Not sandboxed: nothing is refused.
+	t.Setenv(PortableEnv, "")
+	t.Setenv(obsws.WSPortEnv, "")
+	if err := sandboxGuard((obsws.Target{}).Resolved()); err != nil {
+		t.Errorf("not sandboxed: %v", err)
+	}
+}
+
+// With an OBS installed and open on this machine (only reads the process list): a
+// sandbox doesn't see it, so it can't close, kill, wait on or connect to it.
+func TestSandboxDoesntSeeTheOBSThatsOpen(t *testing.T) {
+	if len(allPIDs()) == 0 {
+		t.Skip("no OBS open on this machine")
+	}
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "obs_portable_mode.txt"), nil, 0o644)
+	t.Setenv(PortableEnv, root)
+	t.Setenv(obsws.WSPortEnv, "")
+	if p := PIDs(); len(p) != 0 {
+		t.Errorf("sandbox sees OBS processes %v", p)
+	}
+	if Running() {
+		t.Error("sandbox thinks OBS is running")
+	}
+	f := foreignOBS()
+	if len(f) == 0 {
+		t.Fatal("the open OBS isn't reported as foreign")
+	}
+	t.Logf("foreign: %v", f)
+	if err := sandboxGuard((obsws.Target{}).Resolved()); err == nil {
+		t.Error("guard let a sandbox connect to the open OBS")
+	}
+}

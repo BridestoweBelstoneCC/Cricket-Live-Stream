@@ -95,3 +95,25 @@ func TestFastIdleSocketNotTrustedIndefinitely(t *testing.T) {
 		t.Fatal(fastDefaultIdle)
 	}
 }
+
+// A sandbox moves OBS's usual port, so nothing in it can reach the OBS installed on the
+// machine; any other port (a test's fake OBS) is left alone.
+func TestSandboxMovesOnlyTheUsualPort(t *testing.T) {
+	t.Setenv(WSPortEnv, "")
+	if u := (Target{}).url(); u != "ws://localhost:4455" {
+		t.Fatal(u)
+	}
+	t.Setenv(WSPortEnv, "45999")
+	for _, c := range []struct {
+		t    Target
+		want string
+	}{
+		{Target{}, "ws://localhost:45999"},
+		{Target{Host: "127.0.0.1", Port: 4455}, "ws://127.0.0.1:45999"},
+		{Target{Port: 61234}, "ws://localhost:61234"},
+	} {
+		if u := c.t.url(); u != c.want {
+			t.Errorf("%+v: %s, want %s", c.t, u, c.want)
+		}
+	}
+}
