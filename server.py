@@ -7657,7 +7657,9 @@ class Handler(BaseHTTPRequestHandler):
     def _origin_ok(self):
         """True unless Origin/Referer is present and points at a different host — defense in
         depth against CSRF-style cross-site requests. Absent headers pass (curl, some
-        embedded-browser fetches don't send them); only a *mismatched* one is rejected."""
+        embedded-browser fetches don't send them); only a *mismatched* one is rejected. So is
+        one naming no host at all: "Origin: null" is what a sandboxed iframe or a file://
+        page sends, and letting it through let any web page post to the panel."""
         host = self.headers.get("Host", "")
         for hdr in ("Origin", "Referer"):
             val = self.headers.get(hdr, "")
@@ -7667,7 +7669,7 @@ class Handler(BaseHTTPRequestHandler):
                 netloc = urlparse(val).netloc
             except Exception:
                 return False
-            if netloc and netloc != host:
+            if netloc != host:
                 return False
         return True
 
