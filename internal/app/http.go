@@ -178,6 +178,12 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok(nil)
+	case "POST /api/update":
+		if err := a.startUpdate(); err != nil {
+			fail(409, err.Error())
+			return
+		}
+		ok(nil)
 	case "POST /api/install_obs":
 		if err := a.installOBS(); err != nil {
 			fail(409, err.Error())

@@ -138,8 +138,16 @@ func Run(o Options) int {
 	go srv.Serve(ln)
 	defer srv.Close()
 	fmt.Printf("  CricketStream %s — app page %s/\n", versionText(o.Version), a.base)
+	if os.Getenv(UpdatedEnv) == "1" {
+		fmt.Printf("  ✓ Updated to %s\n", versionText(o.Version))
+		os.Unsetenv(UpdatedEnv) // not passed on to match day's server
+	}
+	cleanUpAfterUpdate()
 
 	a.enterRole(setup.Role())
+	if v := os.Getenv(ReleasesEnv); v != "" {
+		releasesAPI = v
+	}
 	go a.upd.check(o.Version)
 
 	// Ctrl+C at a terminal (a Mac's, where the pages are in the browser): the same clean
@@ -227,6 +235,16 @@ func listen() (net.Listener, error) {
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
 	if err == nil || p == 0 {
 		return ln, err
+	}
+	// Just updated: the copy being replaced is still letting go of the port.
+	if os.Getenv(UpdatedEnv) == "1" {
+		for i := 0; i < 30 && err != nil; i++ {
+			time.Sleep(500 * time.Millisecond)
+			ln, err = net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
+		}
+		if err == nil {
+			return ln, nil
+		}
 	}
 	if pingRunningCopy(p) {
 		return nil, errAlreadyOpen

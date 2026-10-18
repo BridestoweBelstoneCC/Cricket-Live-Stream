@@ -13,6 +13,10 @@ scoring page do is unchanged; what changed is how it's installed and run.
   ID), player photos (with the squad roster's players who still need one), sponsor logos
   and match photos (per team) are added, previewed, renamed and removed there — from the
   laptop or a phone. No folders to find, no files to rename.
+- **Update now** (Windows): when a newer release is out, the window downloads it, checks
+  it — the release's published checksum, Windows' own signature check, signed by the same
+  publisher as the copy running, and the version inside the file — swaps it in and
+  restarts. Settings and pictures stay; anything wrong leaves the old copy as it was.
 - **Find cameras on this network** (Setup → Cameras): IP cameras answer ONVIF discovery;
   pick one, give its login, and its stream address is asked of the camera itself (or the
   usual one for its make) and saved — the password never comes back to the browser.

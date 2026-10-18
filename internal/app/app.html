@@ -389,13 +389,37 @@ function render() {
 function renderUpdate() {
   var u = S.update, el = $('update');
   el.classList.toggle('hidden', !u);
-  if (!u || el.getAttribute('data-v') === u.latest) return;
-  el.setAttribute('data-v', u.latest);
-  el.textContent = 'CricketStream v' + u.latest + ' is available (this is v' + String(S.version).replace(/^v/, '') + '). ';
-  var a = document.createElement('a');
-  a.href = u.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Download it';
-  el.appendChild(a);
-  el.appendChild(document.createTextNode(' and put it in place of CricketStream.exe in the same folder — your settings stay.'));
+  if (!u) return;
+  var key = u.latest + '|' + u.state + '|' + Math.round((u.progress || 0) * 20) + '|' + u.error;
+  if (el.getAttribute('data-k') === key) return;
+  el.setAttribute('data-k', key);
+  el.textContent = '';
+  var busy = u.state === 'downloading' || u.state === 'checking' || u.state === 'restarting';
+  var words = u.state === 'downloading' ? 'Downloading CricketStream v' + u.latest + '… ' + Math.round((u.progress || 0) * 100) + '%'
+    : u.state === 'checking' ? 'Checking the download (signature and checksum)…'
+    : u.state === 'restarting' ? 'Restarting as v' + u.latest + '…'
+    : 'CricketStream v' + u.latest + ' is available (this is v' + String(S.version).replace(/^v/, '') + '). ';
+  el.appendChild(document.createTextNode(words));
+  if (busy) return;
+  if (u.can_update) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn primary'; b.style.marginLeft = '6px'; b.textContent = 'Update now';
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      api('update', {}).then(function (d) { if (!d.ok) alertNote(d.error); poll(); });
+    });
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' Your settings and pictures stay; it restarts in a few seconds.'));
+  } else {
+    var a = document.createElement('a');
+    a.href = u.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Download it';
+    el.appendChild(a);
+    el.appendChild(document.createTextNode(' and put it in place of CricketStream in the same folder — your settings stay.'));
+  }
+  if (u.error) {
+    var e = document.createElement('div'); e.className = 'bad-t'; e.style.marginTop = '4px'; e.textContent = u.error;
+    el.appendChild(e);
+  }
 }
 
 var homeSeen = false;
