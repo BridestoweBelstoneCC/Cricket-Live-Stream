@@ -707,8 +707,9 @@ func baseName(p string) string {
 }
 
 func agentInfo(r *agent.Running, folder, how, errText string) map[string]any {
+	ip := agent.LocalIP()
 	out := map[string]any{"folder": folder, "how": how, "error": errText, "running": r != nil,
-		"ip": agent.LocalIP(), "port": agentPort(), "need_folder": folder == ""}
+		"ip": ip, "port": agentPort(), "need_folder": folder == "", "pairing": agent.PairingCode(ip, agentPort())}
 	if folder != "" {
 		for k, v := range feedHealth(folder) {
 			out[k] = v

@@ -117,9 +117,11 @@ Work down this list; it's nearly always one of the first two.
 4. **Guest wifi.** Some routers isolate guest devices from each other on purpose,
    so the two laptops can't see each other no matter what. Put both on the main
    network, or use a phone hotspot for the pair of them.
-5. **Type the address by hand.** The scoring laptop's window shows its address under
-   **This laptop's address** (`192.168.1.40:8788`). Put that in the *Scorer laptop
-   address* box and save.
+5. **Use the pairing code.** The scoring laptop's window shows a **Pairing code** (like
+   `K8Q2-7WMX`). Type it into **Pairing code** under *Find scorer laptop* on the streaming
+   laptop and press **Connect** — it works where the automatic search is blocked, and a
+   mistyped code is caught rather than connecting somewhere else. (The address itself is
+   shown under the code too, for the *Scorer laptop address* box.)
    This skips discovery entirely and is worth doing if your club network is
    awkward — it only breaks when the address changes.
 

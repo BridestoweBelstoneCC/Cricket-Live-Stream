@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"cricketstream/internal/agent"
 	"cricketstream/internal/logobg"
 	"cricketstream/internal/obsws"
 	"cricketstream/internal/pyval"
@@ -272,6 +273,23 @@ func (c *ctx) doPOST() {
 		out := RehearsalStatus()
 		out["ok"] = true
 		c.json(out)
+
+	case path == "/agent/pair":
+		// The scorer's laptop's pairing code (shown in its window), for wifi where "Find
+		// scorer laptop" finds nothing. Saved only once the laptop answers.
+		addr, err := agent.ParsePairingCode(str(jsonObject(body), "code", ""))
+		if err != nil {
+			c.json(M{"ok": false, "error": capitalise(err.Error())}, 400)
+			return
+		}
+		info, why := AgentPing(addr, 4*time.Second)
+		if info == nil {
+			c.json(M{"ok": false, "error": why + " — is CricketStream open on the scorer's laptop, on the same network?"}, 200)
+			return
+		}
+		UpdateState(func(st M) { st["agent_host"], st["pcs_source"] = addr, "agent" })
+		ResetAgentClient()
+		c.json(M{"ok": true, "address": addr, "hostname": valOr(info, "hostname", ""), "file": info["file"]})
 
 	case path == "/library/delete":
 		d := jsonObject(body)

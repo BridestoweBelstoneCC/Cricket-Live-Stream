@@ -249,7 +249,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <div class="facts" id="agent_facts">
       <div class="fact"><div class="k">NV Play's scoreboard</div><div class="v" id="a_file">—</div><div class="s" id="a_file_s"></div></div>
       <div class="fact"><div class="k">Streaming laptop</div><div class="v" id="a_client">Not connected yet</div><div class="s" id="a_client_s"></div></div>
-      <div class="fact"><div class="k">This laptop's address</div><div class="v mono" id="a_addr">—</div><div class="s">The streaming laptop finds it with "Find scorer laptop".</div></div>
+      <div class="fact"><div class="k">Pairing code</div><div class="v mono" id="a_code" style="font-size:22px;letter-spacing:.06em">—</div>
+        <div class="s">If "Find scorer laptop" doesn't find this one, type this code on the streaming laptop. (Address: <span class="mono" id="a_addr">—</span>)</div></div>
     </div>
     <section id="agent_folder_box">
       <h2>Watching</h2>
@@ -261,7 +262,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
     <section>
       <h2>On the streaming laptop</h2>
       <p class="hint" style="margin:0">Control panel → <strong>Setup</strong> → Scoring source: switch on
-        <strong>Run the stream from a second laptop</strong>, then press <strong>Find scorer laptop</strong>. Keep this window open for the whole match — minimise it if it's in the way.</p>
+        <strong>Run the stream from a second laptop</strong>, then press <strong>Find scorer laptop</strong> — or type the pairing code into <strong>Pairing code</strong> there. Keep this window open for the whole match — minimise it if it's in the way.</p>
     </section>
     <div class="actions">
       <a class="btn" href="/setup?app=1">Change setup</a>
@@ -503,6 +504,7 @@ function renderAgent() {
   $('a_client').className = 'v ' + (a.collected && a.collected_ago < 30 ? 'ok-t' : '');
   txt('a_client_s', a.collected ? 'Collected ' + ago(a.collected_ago) + (a.client ? ' by ' + a.client : '') : 'It connects when the streaming laptop presses "Find scorer laptop".');
   txt('a_addr', a.ip ? a.ip + ':' + a.port : '—');
+  txt('a_code', a.pairing || '—');
   var t = {installed: 'Put the CricketStream scoreboard template in NV Play\'s Templates folder. In NV Play: Tools → Configuration → Scoreboard → Template File → scoreboard.template (once).',
     updated: 'Updated the CricketStream scoreboard template in NV Play\'s Templates folder (the old one is kept as scoreboard.template.old).',
     current: 'NV Play\'s Templates folder has the CricketStream scoreboard template.'}[a.template] || '';

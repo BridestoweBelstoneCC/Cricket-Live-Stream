@@ -1524,6 +1524,14 @@ async function useSponsor(id) {
           </div>
           <button type="button" onclick="discoverAgent()" style="white-space:nowrap;">Find scorer laptop</button>
         </div>
+        <div style="display:flex;gap:6px;align-items:flex-end;margin-top:8px;">
+          <div style="flex:1;">
+            <label>Pairing code <span style="color:var(--muted);font-weight:400;">— shown in CricketStream on the scorer's laptop, if Find doesn't find it</span></label>
+            <input type="text" id="agent_code" placeholder="e.g. K8Q2-7WMX" autocomplete="off" spellcheck="false"
+                   style="text-transform:uppercase;letter-spacing:.06em" onkeydown="if(event.key==='Enter'){event.preventDefault();pairAgent();}">
+          </div>
+          <button type="button" onclick="pairAgent()" style="white-space:nowrap;">Connect</button>
+        </div>
         <div id="agent-status" class="hint" style="margin-top:8px;padding:8px;border-radius:4px;background:#150f03;border:1px solid #3a2c00;color:#8a6a20;">
           Checking&hellip;
         </div>
@@ -2836,6 +2844,25 @@ async function refreshAgentStatus() {
     }
   } catch(e) {
     setAgentStatus('Could not ask the server about the connection: ' + e.message, 'err');
+  }
+}
+
+// The scorer's laptop's pairing code: its address, typed instead of found — for wifi that
+// blocks the automatic search. Saved by the server only once that laptop answers.
+async function pairAgent() {
+  const code = (document.getElementById('agent_code').value || '').trim();
+  if (!code) { setAgentStatus('Type the pairing code shown on the scorer\'s laptop.', 'warn'); return; }
+  setAgentStatus('Connecting&hellip;', '');
+  try {
+    const d = await (await apiFetch('/agent/pair', {method: 'POST', body: JSON.stringify({code: code})})).json();
+    if (!d.ok) { setAgentStatus(escapeAgentText(d.error || 'That did not work.'), 'err'); return; }
+    document.getElementById('agent_host').value = d.address;
+    document.getElementById('agent_code').value = '';
+    const tog = document.getElementById('pcs_source_agent');
+    if (tog && !tog.checked) { tog.checked = true; if (typeof onAgentToggle === 'function') onAgentToggle(); }
+    await refreshAgentStatus();
+  } catch (e) {
+    setAgentStatus('Could not connect: ' + e.message, 'err');
   }
 }
 
