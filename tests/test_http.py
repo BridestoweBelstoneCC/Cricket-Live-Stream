@@ -225,6 +225,12 @@ class TestRoutesOpen(HttpTestBase):
         status, _ = self.post_json("/state", {"home_team": "evil"},
                                    headers={"Referer": "http://evil.example/page"})
         self.assertEqual(status, 403)
+        # "Origin: null" (a sandboxed iframe, a file:// page) names no host: refused too
+        status, _ = self.post_json("/state", {"home_team": "evil"}, headers={"Origin": "null"})
+        self.assertEqual(status, 403)
+        status, _ = self.post_json("/state", {"home_team": "evil"},
+                                   headers={"Referer": "file:///C:/page.html"})
+        self.assertEqual(status, 403)
         self.assertNotEqual(server.load_state()["home_team"], "evil")
         # Matching origin passes
         status, _ = self.post_json("/state", {"home_team": "Fine CC"},
