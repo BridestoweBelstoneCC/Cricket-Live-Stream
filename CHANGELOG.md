@@ -32,6 +32,14 @@ scoring page do is unchanged; what changed is how it's installed and run.
   laptop keeps its own OBS password and folders; the old settings are backed up first.
 - **Pre-match check on the match-day screen**, before match day starts: every login and
   connection tried for real, with what to fix.
+- **Three new scorebar styles, with new type.** *Franchise* (royal purple and gold, a
+  gold score plate, condensed capitals — the big-league T20 look), *Neon* (a black bar, a
+  glowing lime score, outlined ball markers that light up for a four, a six or a wicket —
+  for evening matches) and *Block* (flat colour blocks and heavy type; the striker's whole
+  block turns black). Franchise is set in Barlow Condensed, which the app now serves to the
+  overlay itself (`/fonts/`), so it looks the same on every laptop; Neon uses Windows'
+  Bahnschrift and Block Segoe UI Black, each falling back to Barlow Condensed or Arial
+  Black elsewhere. Pick one under Graphics → Scorebar style (live preview), or in setup.
 - **An icon by the clock, and notifications** (Windows): CricketStream stays reachable
   when its window is behind OBS — click for the window, right-click for the activity log,
   the control panel or Close. A Windows notification when something needs someone: the

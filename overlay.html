@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <title>CricketStream Overlay</title>
 <style>
+/* The app's own fonts (fonts/, OFL), served by the server so a scorebar style looks the
+   same on every laptop. "CS " so a copy installed on the laptop can't stand in for it. */
+@font-face { font-family: 'CS Barlow Condensed'; src: url('/fonts/BarlowCondensed-Medium.ttf') format('truetype'); font-weight: 500; }
+@font-face { font-family: 'CS Barlow Condensed'; src: url('/fonts/BarlowCondensed-SemiBold.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'CS Barlow Condensed'; src: url('/fonts/BarlowCondensed-Bold.ttf') format('truetype'); font-weight: 700; }
+@font-face { font-family: 'CS Barlow Condensed'; src: url('/fonts/BarlowCondensed-ExtraBold.ttf') format('truetype'); font-weight: 800; }
+@font-face { font-family: 'CS Barlow Condensed'; src: url('/fonts/BarlowCondensed-Black.ttf') format('truetype'); font-weight: 900; }
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body {
   background: transparent;
@@ -339,6 +346,231 @@ body.style-minimal #bowler-figures { font-size: 14px; color: #7b8698; }
 body.style-minimal #seg-target { border-left: none; box-shadow: inset 0 -4px 0 #c0392b; }
 body.style-minimal #target-need   { color: #c0392b !important; font-size: 15px !important; }
 body.style-minimal #target-detail { color: #7b8698 !important; font-size: 11px !important; }
+
+/* ── Franchise: the big-league T20 look — royal gradient, gold, condensed capitals ───
+   Night-match franchise cricket: a deep purple-to-midnight bar, a gold score plate cut at
+   the same angle as the team blocks, and everything set in condensed capitals (Barlow
+   Condensed, served by the app, so it's the same on every laptop). Gold does the work the
+   team colour rule does elsewhere; the team colours stay on the two end blocks, with a
+   sheen across them so a flat club colour reads as part of the same object. */
+body.style-franchise #scorebar {
+  font-family: 'CS Barlow Condensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  background: linear-gradient(180deg, #2a1668 0%, #170c44 55%, #0c0729 100%);
+  box-shadow: 0 -4px 24px rgba(10,4,40,0.6);
+}
+body.style-franchise #scorebar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 3;
+  background: linear-gradient(90deg, rgba(247,201,72,0) 0%, #f7c948 18%, #fff1b8 50%, #f7c948 82%, rgba(247,201,72,0) 100%);
+}
+body.style-franchise .seg-light { background: transparent; border-right: 1px solid rgba(247,201,72,0.13); }
+body.style-franchise #seg-spacer { background: transparent; border-right: 1px solid rgba(247,201,72,0.13); }
+body.style-franchise #seg-batting-team,
+body.style-franchise #seg-bowling-team { position: relative; }
+body.style-franchise #seg-batting-team::after,
+body.style-franchise #seg-bowling-team::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 42%, rgba(0,0,0,0.18) 100%);
+}
+body.style-franchise #batting-team-name, body.style-franchise #bowling-team-name,
+body.style-franchise .team-badge { position: relative; z-index: 1; }
+body.style-franchise #seg-batting-team {
+  min-width: 172px; padding-left: 24px; padding-right: 42px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+}
+body.style-franchise #batting-team-name { font-size: 30px; font-weight: 800; letter-spacing: 1.5px; }
+body.style-franchise #seg-score {
+  background: linear-gradient(180deg, #ffe98f 0%, #f7c948 55%, #e0a91c 100%);
+  min-width: 172px; margin-left: -22px; padding: 0 30px;
+  clip-path: polygon(22px 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+  border-right: none;
+}
+body.style-franchise #score-total {
+  color: #1a0e3d; font-size: 48px; font-weight: 900; letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+body.style-franchise #seg-innings { margin-left: -18px; padding-left: 26px; min-width: 58px; }
+body.style-franchise #innings-badge {
+  background: transparent; color: #f7c948; border: 1.5px solid #f7c948;
+  border-radius: 3px; font-size: 15px; font-weight: 800; letter-spacing: 1px;
+}
+body.style-franchise #overs-display { color: #fff; font-size: 28px; font-weight: 700; }
+body.style-franchise #overs-display .muted { color: rgba(220,210,255,0.5); font-weight: 600; }
+body.style-franchise #status-text {
+  color: #dcd2ff; font-size: 19px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+}
+body.style-franchise .seg-over-label { color: rgba(247,201,72,0.65); font-size: 13px; letter-spacing: 1.6px; }
+body.style-franchise #seg-this-over { border-right: 1px solid rgba(247,201,72,0.13); gap: 8px; }
+body.style-franchise .seg-ball {
+  width: 26px; height: 30px; border-radius: 3px; transform: skewX(-10deg);
+  font-size: 16px; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 5px rgba(0,0,0,0.45);
+}
+body.style-franchise .seg-ball.four   { background: #1e88e5; }
+body.style-franchise .seg-ball.six    { background: #f7c948; color: #1a0e3d; }
+body.style-franchise .seg-ball.wicket { background: #e53935; }
+body.style-franchise .seg-ball.dot    { background: #3b2f78; }
+body.style-franchise .seg-ball.empty  { background: rgba(255,255,255,0.06); box-shadow: none; }
+body.style-franchise .seg-batter { min-width: 196px; gap: 7px; }
+body.style-franchise .batter-name  { color: #fff !important; font-size: 23px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+body.style-franchise .batter-runs  { color: #f7c948 !important; font-size: 25px; font-weight: 900; }
+body.style-franchise .batter-balls { color: rgba(220,210,255,0.55); font-size: 16px; font-weight: 600; }
+body.style-franchise .seg-batter.striker {
+  background: linear-gradient(180deg, rgba(247,201,72,0.16), rgba(247,201,72,0.03));
+  box-shadow: inset 0 -4px 0 #f7c948;
+}
+body.style-franchise .batter-icon { display: none; }
+body.style-franchise #seg-bowling-team {
+  min-width: 130px; padding-left: 34px; padding-right: 22px; margin-left: -18px;
+  clip-path: polygon(22px 0, 100% 0, 100% 100%, 0 100%);
+}
+body.style-franchise #bowling-team-name { font-size: 24px; font-weight: 800; letter-spacing: 1.5px; }
+body.style-franchise #seg-bowler {
+  border-left: none; min-width: 210px;
+  background: rgba(8,4,28,0.55) !important;
+  box-shadow: inset 0 3px 0 var(--bowl-lift, #7b2d2d);
+}
+body.style-franchise #bowler-name { font-size: 23px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; }
+body.style-franchise #bowler-figures { font-size: 17px; font-weight: 700; color: #f7c948; }
+body.style-franchise #seg-target { border-left: none; box-shadow: inset 0 3px 0 #f7c948; }
+body.style-franchise #target-need   { color: #ffd54f !important; font-size: 19px !important; font-weight: 800 !important; text-transform: uppercase; }
+body.style-franchise #target-detail { color: #cfc6f5 !important; font-size: 14px !important; }
+
+/* ── Neon: the night-match look — black bar, electric accents, a glowing score ──────
+   Under lights: near-black, a magenta-to-cyan neon rule along the top, the score in
+   electric lime with a soft glow, and the ball markers as outlined rings that light up in
+   their colour (a four glows cyan, a six magenta). Bahnschrift, Windows' own DIN-style
+   face, with the app's Barlow Condensed where there's no Bahnschrift (a Mac). Team colours
+   stay on the end blocks, darkened a touch so the neon reads as the brightest thing. */
+body.style-neon #scorebar {
+  font-family: 'Bahnschrift', 'CS Barlow Condensed', 'Segoe UI', sans-serif;
+  background: linear-gradient(180deg, #0d0d16 0%, #050509 100%);
+  box-shadow: 0 -4px 26px rgba(0,0,0,0.7);
+}
+body.style-neon #scorebar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 3;
+  background: linear-gradient(90deg, #ff2bd6 0%, #7a5cff 50%, #00e5ff 100%);
+  box-shadow: 0 0 10px rgba(255,43,214,0.7), 0 0 18px rgba(0,229,255,0.45);
+}
+body.style-neon .seg-light { background: transparent; border-right: 1px solid rgba(255,255,255,0.06); }
+body.style-neon #seg-spacer { background: transparent; border-right: 1px solid rgba(255,255,255,0.06); }
+body.style-neon #seg-batting-team,
+body.style-neon #seg-bowling-team { position: relative; }
+body.style-neon #seg-batting-team::after,
+body.style-neon #seg-bowling-team::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.38) 100%);
+}
+body.style-neon #batting-team-name, body.style-neon #bowling-team-name,
+body.style-neon .team-badge { position: relative; z-index: 1; }
+body.style-neon #seg-batting-team { min-width: 150px; padding: 0 24px; }
+body.style-neon #batting-team-name { font-size: 25px; font-weight: 700; letter-spacing: 3px; }
+body.style-neon #seg-score { min-width: 160px; }
+body.style-neon #score-total {
+  color: #d4ff00; font-size: 44px; font-weight: 700; letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(212,255,0,0.55), 0 0 24px rgba(212,255,0,0.25);
+}
+body.style-neon #seg-innings { min-width: 54px; padding: 0 10px; }
+body.style-neon #innings-badge {
+  background: transparent; color: #00e5ff; border: 1.5px solid #00e5ff; border-radius: 12px;
+  font-size: 13px; font-weight: 700; padding: 3px 9px;
+  box-shadow: 0 0 8px rgba(0,229,255,0.4), inset 0 0 6px rgba(0,229,255,0.2);
+}
+body.style-neon #overs-display { color: #fff; font-size: 24px; font-weight: 600; }
+body.style-neon #overs-display .muted { color: rgba(255,255,255,0.38); font-weight: 400; }
+body.style-neon #status-text { color: #9aa6bd; font-size: 17px; font-weight: 600; letter-spacing: 0.5px; }
+body.style-neon .seg-over-label { color: rgba(0,229,255,0.6); letter-spacing: 1.8px; }
+body.style-neon #seg-this-over { border-right: 1px solid rgba(255,255,255,0.06); gap: 8px; }
+body.style-neon .seg-ball {
+  width: 28px; height: 28px; border-radius: 50%; font-size: 13px; font-weight: 700;
+  background: transparent; border: 2px solid #8a94a6; color: #fff;
+}
+body.style-neon .seg-ball.dot    { background: transparent; border-color: #353c4c; color: #7c8699; }
+body.style-neon .seg-ball.four   { background: rgba(0,229,255,0.12); border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 9px rgba(0,229,255,0.65); }
+body.style-neon .seg-ball.six    { background: rgba(255,43,214,0.14); border-color: #ff2bd6; color: #ff6be3; box-shadow: 0 0 9px rgba(255,43,214,0.7); }
+body.style-neon .seg-ball.wicket { background: #ff2d55; border-color: #ff2d55; color: #fff; box-shadow: 0 0 10px rgba(255,45,85,0.8); }
+body.style-neon .seg-ball.wide,
+body.style-neon .seg-ball.noball { background: transparent; border-color: #ffb300; color: #ffcf4d; }
+body.style-neon .seg-ball.bye,
+body.style-neon .seg-ball.legbye { background: transparent; border-color: #6bd68f; color: #8ff0ae; }
+body.style-neon .seg-ball.empty  { background: transparent; border: 2px dashed rgba(255,255,255,0.1); }
+body.style-neon .seg-batter { min-width: 190px; gap: 7px; }
+body.style-neon .batter-name  { color: #fff !important; font-size: 21px; font-weight: 600; }
+body.style-neon .batter-runs  { color: #d4ff00 !important; font-size: 22px; font-weight: 700; }
+body.style-neon .batter-balls { color: rgba(255,255,255,0.4); font-size: 14px; }
+body.style-neon .seg-batter.striker {
+  background: linear-gradient(180deg, rgba(212,255,0,0.1), rgba(212,255,0,0));
+  box-shadow: inset 0 -3px 0 #d4ff00, inset 0 -8px 12px -8px rgba(212,255,0,0.6);
+}
+body.style-neon .batter-icon { display: none; }
+body.style-neon #seg-bowling-team { min-width: 116px; padding: 0 20px; }
+body.style-neon #bowling-team-name { font-size: 20px; font-weight: 700; letter-spacing: 2.5px; }
+body.style-neon #seg-bowler {
+  border-left: none; min-width: 205px;
+  background: rgba(255,255,255,0.035) !important;
+  box-shadow: inset 3px 0 0 var(--bowl-lift, #7b2d2d);
+}
+body.style-neon #bowler-name { font-size: 21px; font-weight: 600; color: #fff; }
+body.style-neon #bowler-figures { font-size: 15px; font-weight: 600; color: #00e5ff; }
+body.style-neon #seg-target { border-left: none; box-shadow: inset 0 3px 0 #ff2bd6; }
+body.style-neon #target-need   { color: #ff6be3 !important; font-size: 17px !important; font-weight: 700 !important; text-shadow: 0 0 8px rgba(255,43,214,0.6); }
+body.style-neon #target-detail { color: rgba(255,255,255,0.55) !important; font-size: 13px !important; }
+
+/* ── Block: flat colour and heavy type, the new-format look ─────────────────────────
+   No gradients, no glow: a white bar, flat team-colour slabs, a black score plate, and
+   the heaviest weight Windows has (Segoe UI Black; Arial Black elsewhere). The striker
+   isn't underlined — their whole block turns black, the way new-format graphics flip a
+   tile. Reads from across a room, and under a bright daytime picture. */
+body.style-block #scorebar {
+  font-family: 'Segoe UI Black', 'Segoe UI', 'Arial Black', Arial, sans-serif;
+  background: #fff;
+  box-shadow: 0 -3px 0 #111, 0 -6px 20px rgba(0,0,0,0.25);
+}
+body.style-block .seg-light { background: #fff; border-right: 2px solid #111; }
+body.style-block #seg-spacer { background: #fff; border-right: 2px solid #111; }
+body.style-block #seg-batting-team { min-width: 150px; padding: 0 24px; border-right: 2px solid #111; }
+body.style-block #batting-team-name { font-size: 24px; font-weight: 900; letter-spacing: 0.5px; }
+body.style-block .team-badge { background: #fff; border: 2px solid #111; }
+body.style-block #seg-score { background: #111; min-width: 160px; }
+body.style-block #score-total {
+  color: #fff; font-size: 40px; font-weight: 900; letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+body.style-block #seg-innings { min-width: 54px; padding: 0 10px; }
+body.style-block #innings-badge {
+  background: var(--bat, #111); color: #fff; border-radius: 0; font-size: 14px; font-weight: 900;
+  padding: 5px 8px;
+}
+body.style-block #overs-display { color: #111; font-size: 24px; font-weight: 900; }
+body.style-block #overs-display .muted { color: #9097a3; font-weight: 700; }
+body.style-block #status-text { color: #111; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+body.style-block .seg-over-label { color: #111; font-weight: 900; letter-spacing: 1px; }
+body.style-block #seg-this-over { border-right: 2px solid #111; gap: 8px; }
+body.style-block .seg-ball {
+  width: 28px; height: 28px; border-radius: 0; font-size: 13px; font-weight: 900;
+}
+body.style-block .seg-ball.dot    { background: #e3e6ea; color: #111; }
+body.style-block .seg-ball.four   { background: #0057ff; }
+body.style-block .seg-ball.six    { background: #111; color: #ffde00; }
+body.style-block .seg-ball.wicket { background: #ff2a1f; }
+body.style-block .seg-ball.empty  { background: #f1f2f4; }
+body.style-block .seg-batter { min-width: 196px; gap: 7px; }
+body.style-block .batter-name  { color: #111 !important; font-size: 20px; font-weight: 900; text-transform: uppercase; }
+body.style-block .batter-runs  { color: #111 !important; font-size: 22px; font-weight: 900; }
+body.style-block .batter-balls { color: #6b7280; font-size: 14px; font-weight: 700; }
+body.style-block .seg-batter.striker { background: #111; }
+body.style-block .seg-batter.striker .batter-name,
+body.style-block .seg-batter.striker .batter-runs { color: #fff !important; }
+body.style-block .seg-batter.striker .batter-balls { color: #ffde00; }
+body.style-block .batter-icon { display: none; }
+body.style-block #seg-bowling-team { min-width: 120px; padding: 0 20px; border-right: 2px solid #111; }
+body.style-block #bowling-team-name { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; }
+body.style-block #seg-bowler { border-left: none; min-width: 210px; background: #fff !important; }
+body.style-block #bowler-name { font-size: 20px; font-weight: 900; color: #111 !important; text-transform: uppercase; }
+body.style-block #bowler-figures { font-size: 15px; font-weight: 800; color: var(--bowl, #7b2d2d); }
+body.style-block #seg-target { border-left: none; background: #ffde00; }
+body.style-block #target-need   { color: #111 !important; font-size: 17px !important; font-weight: 900 !important; text-transform: uppercase; }
+body.style-block #target-detail { color: #333 !important; font-size: 13px !important; font-weight: 700; }
 
 /* ═══════════════════════════
    GRAPHIC PANELS — slide up
@@ -1194,7 +1426,7 @@ let cfg = {};
 // Scorebar styles that have a body.style-* CSS block below. "classic" is deliberately NOT
 // here — it's the base stylesheet, so it's what you get with no style class applied. Keep
 // this in step with the control panel's picker and DEFAULT_STATE's scorebar_style comment.
-const SCOREBAR_STYLES = ['modern', 'impact', 'minimal'];
+const SCOREBAR_STYLES = ['modern', 'impact', 'minimal', 'franchise', 'neon', 'block'];
 
 // ── State tracking ────────────────────────────────────────
 let prev = {

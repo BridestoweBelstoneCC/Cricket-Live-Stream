@@ -241,7 +241,7 @@ func TestPageOffersEveryScorebarStyleTheOverlayHas(t *testing.T) {
 			t.Errorf("setup offers %q but the overlay has no such style", s.ID)
 		}
 	}
-	if len(ScorebarStyles) != 4 {
+	if len(ScorebarStyles) != 7 {
 		t.Fatal(len(ScorebarStyles))
 	}
 }

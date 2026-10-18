@@ -282,6 +282,9 @@ the difference is the styling.
 | **Modern** | Dark broadcast slab, team-colour rule along the top | A more "TV" feel without shouting |
 | **Impact** | Bold angled cuts, white score plate, heavy type | The easiest to read on a phone |
 | **Minimal** | Clean white with lots of space | Bright, sunny daytime pictures |
+| **Franchise** | Royal purple and gold, angled cuts, condensed capitals | The big-league T20 feel; reads well on a phone |
+| **Neon** | Black bar, glowing lime score, neon rule along the top | Evening matches and floodlights |
+| **Block** | Flat colour blocks and heavy type; the striker's block turns black | Bold and clear, in daylight too |
 
 Open the control panel (`http://localhost:5000/control`), find the **Graphics** card, and
 use **Scorebar style**. It shows a **live preview** right there using your own team names

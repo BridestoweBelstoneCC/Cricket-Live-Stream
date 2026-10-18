@@ -458,6 +458,15 @@ func (c *ctx) doGET() {
 	case path == "/commentary/over":
 		c.json(getOverCommentary())
 
+	case strings.HasPrefix(path, "/fonts/"):
+		// The built-in fonts (OFL), for the overlay's scorebar styles: the same type on
+		// every laptop, whatever fonts it has.
+		if name := basenameOf(path[len("/fonts/"):]); strings.HasSuffix(name, ".ttf") && !strings.HasPrefix(name, ".") {
+			c.asset("fonts/"+name, "font/ttf", false)
+		} else {
+			c.notFoundEmpty()
+		}
+
 	case strings.HasPrefix(path, "/voice/"):
 		// The overlay's spoken commentary (loopback OBS source; same exposure as the
 		// commentary text it reads aloud).

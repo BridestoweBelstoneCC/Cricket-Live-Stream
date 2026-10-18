@@ -30,6 +30,9 @@ var ScorebarStyles = []struct{ ID, Name, About string }{
 	{"modern", "Modern", "Dark broadcast slab with a team-colour rule along the top."},
 	{"impact", "Impact", "Bold angled cuts and a white score plate, TV-sport styling. The easiest to read on a phone."},
 	{"minimal", "Minimal", "Clean white, lots of space. Sits best under a bright daytime picture."},
+	{"franchise", "Franchise", "Royal purple and gold with condensed capitals: the big-league T20 look."},
+	{"neon", "Neon", "A black bar with an electric glow on the score. Made for evening matches."},
+	{"block", "Block", "Flat colour blocks and heavy type; the striker's block turns black."},
 }
 
 // ConfigFile is config.ini in the app folder.

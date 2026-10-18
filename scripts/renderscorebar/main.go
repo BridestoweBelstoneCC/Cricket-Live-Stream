@@ -37,7 +37,7 @@ import (
 	"time"
 )
 
-var styles = []string{"classic", "modern", "impact", "minimal"}
+var styles = []string{"classic", "modern", "impact", "minimal", "franchise", "neon", "block"}
 
 var browsers = []string{
 	`C:\Program Files\Google\Chrome\Application\chrome.exe`,
