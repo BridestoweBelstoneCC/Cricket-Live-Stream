@@ -20,8 +20,27 @@
 
 **[Download →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** &nbsp;·&nbsp; **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**
 
-> **v3 is in beta.** It's the whole app rewritten as one download with its own window. It
-> has been tested end to end but not yet through a full season, so the proven Python
+## 🎉 CricketStream 3.0 is here
+
+**The biggest update yet — rewritten from the ground up as a single app.** No Python, no
+installer, no command windows: download one file, double-click it, and it sets itself up.
+
+- **One file, its own window** — asks which computer it's on, sets up with a live preview of
+  your stream, then runs match day and the control panel in the same window.
+- **Seven scorebar styles** — new *Franchise*, *Neon* and *Block* looks inspired by the big T20
+  leagues, with matching wicket cards, over summaries and scorecards.
+- **Pictures, built in** — badges, player photos, sponsor logos and match photos added from the
+  control panel, even from a phone. No folders, no renaming files.
+- **Finds your kit** — discovers the club's IP cameras, installs OBS if it's missing, and pairs
+  the scorer's laptop with a short code.
+- **Keeps an eye out** — a pre-match check of every login and connection, and Windows
+  notifications if the scorer's feed goes quiet or OBS crashes mid-match.
+- **Updates itself** — one click to install a new version; one exported file to move to a new laptop.
+
+**[Download CricketStream 3.0 →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** ·
+[Everything that's new](CHANGELOG.md)
+
+> 3.0 is released as a **beta** while it gets its first real matches. The proven Python
 > edition (v2.12) stays available on the [`python` branch](../../tree/python).
 
 ---

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CricketStream Overlay — Free live stream graphics for grassroots cricket</title>
+  <title>CricketStream 3.0 — Free live stream graphics for grassroots cricket</title>
   <meta name="description" content="Professional live stream overlays for grassroots cricket clubs. Free, open source, and built for volunteers. Works with OBS, NV Play, and YouTube.">
   <meta property="og:title" content="CricketStream Overlay">
   <meta property="og:description" content="Professional live stream graphics for grassroots cricket. Free and open source.">
@@ -293,6 +293,27 @@
     .platform-link:hover { background: rgba(255,255,255,.2); text-decoration: none; }
     .platform-label { font-size: .75rem; opacity: .7; display: block; margin-top: 2px; font-weight: 400; }
 
+    /* ── 3.0 ── */
+    .new-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.35);
+      color: #fff; border-radius: 30px; padding: 6px 16px 6px 6px;
+      font-size: .88rem; font-weight: 600; margin-bottom: 22px;
+    }
+    .new-pill b { background: #f7c948; color: #1d1d1d; border-radius: 20px; padding: 2px 10px; font-size: .78rem; letter-spacing: .5px; }
+    .new-pill:hover { background: rgba(255,255,255,.22); text-decoration: none; }
+    .v3 { background: linear-gradient(160deg, #10203a 0%, #1d5230 100%); color: #fff; }
+    .v3 h2 { color: #fff; font-size: clamp(1.7rem, 4vw, 2.5rem); }
+    .v3 .section-intro { color: rgba(255,255,255,.8); }
+    .v3-tag { display: inline-block; background: #f7c948; color: #1d1d1d; font-weight: 800; letter-spacing: 1px;
+              font-size: .78rem; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px; }
+    .v3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+    .v3-card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius); padding: 20px; }
+    .v3-card h3 { font-size: 1rem; margin-bottom: 6px; color: #fff; }
+    .v3-card p { font-size: .9rem; color: rgba(255,255,255,.75); }
+    .v3-cta { margin-top: 32px; text-align: center; }
+    .v3-cta .btn-primary { background: #f7c948; color: #1d1d1d; }
+
     /* ── Footer ── */
     footer {
       background: #111;
@@ -369,6 +390,7 @@
 </nav>
 
 <div class="hero">
+  <a class="new-pill" href="#v3"><b>NEW</b> CricketStream 3.0 is here — one download, its own window &rarr;</a>
   <h1>Professional live stream graphics for grassroots cricket</h1>
   <p>Broadcast-quality scorebar, player cards, replays, and AI commentary — free, open source, and built for volunteers.</p>
   <div class="hero-buttons">
@@ -380,6 +402,28 @@
     <img src="https://github.com/user-attachments/assets/9477ebc9-37aa-4f9f-ac28-f6baab3fd130" alt="CricketStream Overlay showing scorebar, player cards and over summary">
   </div>
 </div>
+
+<section class="v3" id="v3">
+  <div class="container">
+    <span class="v3-tag">CRICKETSTREAM 3.0</span>
+    <h2>The biggest update yet</h2>
+    <p class="section-intro">Rewritten from the ground up as a single app. No Python, no installer, no command windows &mdash;
+      download one file, double-click it, and it sets itself up. Everything the graphics did before, plus a lot more.</p>
+    <div class="v3-grid">
+      <div class="v3-card reveal" style="--i:0"><h3>One file, its own window</h3><p>Asks which computer it's on, walks you through setup with a live preview of your stream, then runs match day and the control panel in one window.</p></div>
+      <div class="v3-card reveal" style="--i:1"><h3>Seven scorebar styles</h3><p>New Franchise, Neon and Block looks inspired by the big T20 leagues &mdash; with matching wicket cards, over summaries and scorecards.</p></div>
+      <div class="v3-card reveal" style="--i:2"><h3>Pictures, built in</h3><p>Badges, player photos, sponsor logos and match photos are added from the control panel &mdash; even from a phone. No folders, no renaming files.</p></div>
+      <div class="v3-card reveal" style="--i:3"><h3>Finds your kit</h3><p>Finds the club's IP cameras on the network, installs OBS if it's missing, and pairs the scorer's laptop with a short code.</p></div>
+      <div class="v3-card reveal" style="--i:4"><h3>Keeps an eye out</h3><p>A pre-match check of every login and connection, and Windows notifications if the scorer's feed goes quiet or OBS crashes mid-match.</p></div>
+      <div class="v3-card reveal" style="--i:5"><h3>Updates itself</h3><p>When a new version is out, one click downloads it, checks it and restarts &mdash; settings and pictures untouched. Move to a new laptop with one exported file.</p></div>
+    </div>
+    <div class="v3-cta">
+      <a href="#download" class="btn btn-primary">Download CricketStream 3.0</a>
+      <p style="margin-top:12px;font-size:.85rem;color:rgba(255,255,255,.6)">Released as a beta while it gets its first matches &mdash; the proven v2.12 stays available.
+        <a style="color:#f7c948" href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/CHANGELOG.md">Everything that's new &rarr;</a></p>
+    </div>
+  </div>
+</section>
 
 <section class="trailer" id="see-it">
   <div class="container">
