@@ -287,10 +287,10 @@ It works out for itself what still needs doing:
 
 | | |
 |---|---|
-| **First run** | Opens a setup page in your browser: what this computer is for, your club details · writes `config.ini` · starts the match |
+| **First run** | Opens a setup page in your browser: what this computer is for, your club details, a preview of your stream in your colours with every graphic · writes `config.ini` · starts the match |
 | **Every run after** | Goes straight to the job — on the streaming laptop: OBS, today's fixture, season stats, pre-flight check |
 
-Nothing to install first, no files to edit, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time". Everything it keeps — settings, match data, badges, sponsor logos — lives in the folder beside it, so one folder is the whole install (and the whole backup).
+Nothing to install first, no files to edit, and nothing to remember on a Saturday morning beyond "double-click the thing I double-clicked last time". Everything setup asked can be changed later from **Settings** in the control panel, live. Everything it keeps — settings, match data, badges, sponsor logos — lives in the folder beside it, so one folder is the whole install (and the whole backup).
 
 > **Two laptops?** The scorer's machine runs the very same file; on its setup page pick
 > *Scorer's laptop, same wifi* (or *Scorer's machine, elsewhere* for the bridge).

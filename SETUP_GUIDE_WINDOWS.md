@@ -62,8 +62,13 @@ Double-click `CricketStream.exe`.
 A black window opens and your browser shows the setup page. The first question is **What
 is this computer for?** — choose **Streaming laptop** (for the scorer's own laptop, see
 [TWO_LAPTOP_SETUP.md](TWO_LAPTOP_SETUP.md)). Then your club name, kit colour (there's a
-colour picker), PlayCricket ID, scorebar style (with a live preview), and any API keys you
-have. Anything you don't have yet can be left blank and added later in the control panel.
+colour picker), PlayCricket ID, and any API keys you have. **Your stream** shows exactly
+what viewers will see — your name and colours on each of the four scorebar styles, over a
+drawn ground or a photo of your own, with buttons to play the wicket card, boundaries, the
+end-of-over summary and more. The **Check** buttons try the PlayCricket key, the
+scoreboard folder and the AI key on the spot. Anything you don't have yet can be left
+blank and added later. Leave **Put a CricketStream shortcut on the desktop** ticked for an
+icon to double-click on match day.
 
 Press **Save and start**. `config.ini` is written next to CricketStream, NV Play's
 scoreboard template is installed if NV Play is on this laptop, and the black window goes
@@ -78,14 +83,14 @@ If the page doesn't open by itself, the black window prints its address (usually
 
 The setup page wrote `config.ini` for you — you can skip straight to Step 4.
 
-To change the setup answers later, run the setup page again: open Command Prompt in the
-CricketStream folder (in File Explorer, type `cmd` in the address bar and press Enter),
-then:
-```
-CricketStream setup
-```
-It opens with your answers filled in. Secret fields (API keys, passwords) show blank; leave
-them blank to keep what you have.
+To change the setup answers later: control panel → **Setup** tab → **Open settings**. It's
+the same page with your answers filled in, and saved changes reach the overlay straight
+away (only "what this computer is for" and phone/tablet access wait for a restart).
+Secret fields (API keys, passwords) show blank with "Saved" beside them; leave them blank
+to keep what you have, or press **Remove**.
+
+(With CricketStream not running, `CricketStream setup` in a Command Prompt in the
+CricketStream folder opens the same page.)
 
 Or open `config.ini` in Notepad (right-click → Open with → Notepad). The main settings are:
 
@@ -244,7 +249,9 @@ scored, then you will see something like:
   Overlay:       http://localhost:5000/overlay
 ```
 
-Open `http://localhost:5000/control` in your browser. You should see the control panel with today's match already filled in.
+The control panel opens in your browser by itself, with today's match already filled in.
+(Double-clicking CricketStream again while it's running just brings the control panel
+back up.)
 
 > **Rehearse first.** With CricketStream running, open a second Command Prompt in the
 > CricketStream folder and run `CricketStream simulate --configure`: it plays a whole
@@ -520,7 +527,7 @@ See [CLUB_LOGOS.md](CLUB_LOGOS.md) for full instructions and tips on finding clu
 | Command (in the CricketStream folder) | What it does |
 |---|---|
 | `CricketStream` | Same as double-clicking |
-| `CricketStream setup` | The setup page again |
+| `CricketStream setup` | The setup page again (when CricketStream isn't running; otherwise use Settings in the control panel) |
 | `CricketStream simulate --configure` | Rehearse with a simulated match |
 | `CricketStream help` | Every command |
 

@@ -138,12 +138,18 @@ Then:
 - **Scoreboard output folder** — where NV Play saves the live score. If NV Play is on this
   laptop it's usually found for you; otherwise your scorer can see it in NV Play under
   Tools → Configuration → Scoreboard
-- **Scorebar style** — four looks, with a live preview in your colours
+- **Your stream** — pick one of four scorebar looks and see your stream as viewers will:
+  your name and colours over a drawing of a ground (or a photo of yours), with buttons to
+  try the wicket card, a four, a six, the end-of-over summary and more
 - **Replay folder** — where replay clips are saved; the suggested one is fine
 - **YouTube stream key**, **AI commentary key**, **club password** — all optional
 
-For anything you don't have yet, leave it blank — you can fill it in later from the control
-panel. Click **Save and start** and the black window carries straight on into starting the
+For anything you don't have yet, leave it blank — you can fill it in later. The **Check**
+buttons next to the PlayCricket key, the scoreboard folder and the AI key try them there
+and then, so a typo shows up now rather than on match morning. On Windows, leave **Put a
+CricketStream shortcut on the desktop** ticked and you'll have an icon to double-click.
+
+Click **Save and start** and the black window carries straight on into starting the
 match (you can close it if today isn't a match day).
 
 > If anything goes wrong, see the Troubleshooting section at the bottom.
@@ -186,12 +192,13 @@ when something needs changing, and OBS can only have its settings changed while 
    anything with it.
 
    > Want to change the setup answers later — a new club password, say, or a different
-   > scorebar style? Most of it is in the control panel. For the rest, open a Command
-   > Prompt (Terminal on a Mac) in the CricketStream folder and run `CricketStream setup`
-   > (`./CricketStream setup` on a Mac): the same page opens with your answers filled in.
+   > scorebar style? In the control panel, open the **Setup** tab and press **Open
+   > settings**: the same page, with your answers filled in, and the changes show on the
+   > stream straight away.
 
 2. A window appears showing the software starting up. You should see your club name, today's opposition, and the umpires' names appear automatically.
-3. Open your browser and go to **http://127.0.0.1:5000/control**
+3. Your web browser opens the control panel by itself (it lives at
+   **http://127.0.0.1:5000/control** if you ever need to type it in).
    This is your control panel. The **Match-day checklist** at the top ticks itself as
    things become ready, and anything not ready has a button next to it that does it —
    **Start OBS**, **Start replay buffer**, **Fetch today's match**, and **Go live** when

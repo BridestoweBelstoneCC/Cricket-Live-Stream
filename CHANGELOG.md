@@ -17,6 +17,18 @@ scoring page do is unchanged; what changed is how it's installed and run.
 - **The same file on every machine.** The scorer's laptop (agent) and the bridge machine
   run the same download — the separate `CricketStreamScorerAgent.exe` and the copy-a-script
   setup for the bridge are gone. A folder dropped onto the app starts the agent on it.
+- **Settings page.** Everything setup asked, from the control panel (Setup → Open
+  settings), behind the club password. Saved changes reach the overlay at once.
+- **See your stream before you save.** The setup and settings pages show the real overlay
+  at full size over a drawn ground (or a photo of your ground), in the name, colours and
+  scorebar style being typed, with buttons to play the wicket card, four, six, end of
+  over, fifty and partnership graphics.
+- **Check buttons** try the PlayCricket key and club ID, the AI key and the NV Play folder
+  on the spot. Saved keys show as "Saved" and can be removed.
+- **Desktop shortcut** (Windows), offered by setup.
+- **The control panel opens by itself** once match day is up, and double-clicking
+  CricketStream again while it's running brings the panel back instead of starting a
+  second copy.
 - **Setup in the browser.** The first run opens a setup page: what this computer is for,
   club details with a colour picker, scorebar style with a live preview, PlayCricket, OBS
   replay folder, stream key, AI key, control-panel password. `cricketstream setup` reopens

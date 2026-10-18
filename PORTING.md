@@ -68,9 +68,10 @@ the machine, which is handy for differential tests against the original (`py -3 
 | server.py | 9347 | internal/server | **done** (`cricketstream server`); all server tests ported (JS tests run in node) |
 | setup_wizard.py / quickstart.py / cricketstream.py | 1767 | internal/setup + internal/launcher | **done** (web `/setup`, role dispatch, `start`) |
 | stream_telemetry / camera_encoder / refresh_cam / stream_quality_test | 1092 | internal/tools | **done** (`telemetry`, `camera-encoder`, `refresh-cam`, `quality-test`) |
-| scripts/*.py | ~550 | scripts → Go tests / tools | todo |
-| tests/*.py (~670 tests) | 8575 | `_test.go` beside each package | ported per package |
-| CI + build-executables workflows | | .github/workflows | todo (go test, go build, one artifact) |
+| scripts/*.py | ~550 | scripts/makebrand, scripts/renderscorebar; compile/JS checks are go vet + page tests | **done** |
+| tests/*.py (~670 tests) | 8575 | `_test.go` beside each package | **done** — audited test by test (see below) |
+| CI + build-executables workflows | | .github/workflows | **done** (3-OS tests, -race, differential job, release builds + smoke tests) |
+| docs | | README, guides, ARCHITECTURE, CLAUDE.md, CHANGELOG | **done** for the Go app |
 
 ## Shared helpers already built
 
@@ -127,23 +128,28 @@ Upstream line ranges refer to the pinned commit.
 
 ## Next session: start here
 
-`internal/server` compiles, vets and passes its tests (http, auth, parsing, scoring HTTP,
-sponsor upload/airtime, checklist, stream quality, OBS guard, precheck, YouTube, season,
-league, match report, highlights, spotter, soak, camera layout). Test seams are package
-vars (obsCall, guard*, precheck*, checklist*, ytAPI, loginSleep...). Harness:
-`harness_test.go` (sandbox/newTestServer/serve/raw requests).
+The port is complete: every module, script and test, CI, docs. Beyond the original:
+settings page (/settings), full stream preview with demo graphics on the setup/settings
+page, Check buttons, desktop shortcut (Windows), auto-opening control panel, second-start
+detection, panic guard, binary end-to-end tests (cmd/cricketstream/e2e_*), a portable-OBS
+integration test (internal/integration), headless-browser preview test.
 
-Remaining, in order:
-1. Server parts of tests: test_result_card, test_match_page, test_social_clips, test_voice,
-   test_pcs_detect (template install + setup question), JS tests (test_js_parity,
-   test_bowler_milestones, test_camera_autocut, test_scorebar_styles, test_panel_layout —
-   run JS via node if present, skip otherwise).
-2. Launcher (cricketstream.py + quickstart.py): default command = role dispatch from
-   config.ini; streaming role = obs prep → server (with restart loop) → obs setup →
-   telemetry → shutdown report/airtime. Web `/setup` (setup_wizard.py interview) on first run.
-3. Tools: stream_telemetry, camera_encoder, refresh_cam, stream_quality_test.
-4. scripts/, CI (.github/workflows: go vet, go test, -race on Linux, build matrix), README.
-5. Verify against a PORTABLE OBS (CRICKETSTREAM_OBS_PORTABLE) and a real NV Play folder.
+Test audit (2026-10-18): every upstream test was matched to a Go test (or found to be
+Python-packaging-only: find_python, .bat/.sh launchers, PyInstaller). Missing ones were
+ported; differential tests then found and fixed three output differences (pyfmt str(float)
+exponent form, pyval JSON floats, UTF-8 replacement in scorerfile.DecodeText).
+
+Still open:
+1. Test on the CS-CleanTest VirtualBox VM (Windows 11, snapshot "02-with-obs" has OBS
+   32.2.2, Guest Additions installed): copy dist/CricketStream.exe in with
+   `VBoxManage guestcontrol ... copyto`, run first-run setup, match day against the VM's
+   OBS. Needs the guest login from the user.
+2. A real NV Play folder (agent/bridge against live NV Play output).
+3. Code signing (SmartScreen/Gatekeeper prompts) — needs certificates; documented instead.
+4. Unexplained: during the first portable-OBS run on 2026-10-17 23:48 the machine's own
+   OBS basic.ini mtime changed; two exact re-runs didn't reproduce it, and the
+   integration test now fails if the real OBS folder changes. Backup of the file after the
+   event is in the session scratchpad (real-obs-backup/).
 
 ## Porting rules
 
