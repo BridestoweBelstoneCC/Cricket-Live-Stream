@@ -756,6 +756,8 @@ in its window (and the activity log in `logs/`) as it happens:
 - **NV Play**: puts `scoreboard.template` in NV Play's Templates folder (an older copy is
   kept as `scoreboard.template.old`).
 - **A desktop shortcut**, if you leave that ticked on the first setup.
+- **An icon by the clock** while it's open, and its notifications (Windows keeps its own
+  note of whether you've dragged the icon onto the taskbar).
 - **Windows Firewall**: Windows itself asks whether CricketStream may use the network; you
   choose.
 
