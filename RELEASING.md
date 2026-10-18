@@ -106,7 +106,9 @@ publishes the release with the signed files.
 
 ## 5. Each release after that
 
-1. `go test ./...` green, `CHANGELOG.md` has the version's section.
+1. `go test ./...` green, `CHANGELOG.md` has the version's section. For a release worth
+   announcing, write `release-notes/<tag>.md` (e.g. `release-notes/v3.0.0-beta.1.md`): the
+   workflow puts it at the top of that release's notes.
 2. Rehearse: a practice match on a real streaming laptop with OBS.
 3. `git tag v3.0.0-beta.N && git push origin v3.0.0-beta.N`, approve the signing request.
 4. Download the Windows build from the release, double-click it on a clean machine: the
