@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -975,9 +976,12 @@ func TestStopAndCloseClosesOBSThenTheApp(t *testing.T) {
 			so, sf := obsOpen, finishOBS
 			t.Cleanup(func() { obsOpen, finishOBS = so, sf })
 			obsOpen = func() bool { return true }
-			finished := false
+			var finishedAt atomic.Bool // set on the app's goroutine, read here
+			finishedAll := make(chan struct{})
+			stopThenCloseDone = func() { close(finishedAll) }
+			t.Cleanup(func() { stopThenCloseDone = nil })
 			finishOBS = func() (bool, string) {
-				finished = true
+				finishedAt.Store(true)
 				if c.obsCloses {
 					return true, ""
 				}
@@ -997,18 +1001,22 @@ func TestStopAndCloseClosesOBSThenTheApp(t *testing.T) {
 			}
 			ta.api("POST", "stop", M{"close": c.closeApp, "close_obs": c.closeOBS})
 			q := ta.waitFor("the report question", func(st M) bool { return st["question"] != nil })["question"].(M)
-			if finished {
+			if finishedAt.Load() {
 				t.Error("OBS was closed before match day had finished")
 			}
 			ta.api("POST", "answer", M{"id": q["id"], "yes": false})
-			ta.waitFor("stopped", phaseIs(phStopped))
+			select {
+			case <-finishedAll:
+			case <-time.After(10 * time.Second):
+				t.Fatal("Stop and close never finished")
+			}
 			quit := false
 			select {
 			case <-ta.done:
 				quit = true
-			case <-time.After(2 * time.Second):
+			default:
 			}
-			if finished != c.wantOBS || quit != c.wantQuit {
+			if finished := finishedAt.Load(); finished != c.wantOBS || quit != c.wantQuit {
 				t.Errorf("OBS closed %v (want %v), app closed %v (want %v)", finished, c.wantOBS, quit, c.wantQuit)
 			}
 		})
