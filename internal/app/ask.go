@@ -82,8 +82,11 @@ func (a *asker) Answer(id int, ans answer) bool {
 	if a.current == nil || a.current.ID != id {
 		return false
 	}
+	// Taken down here, under the lock, not when ask wakes: until then the channel's one
+	// slot may already be emptied by ask, and a second answer would be accepted too.
 	select {
 	case a.current.answer <- ans:
+		a.current = nil
 		return true
 	default:
 		return false
