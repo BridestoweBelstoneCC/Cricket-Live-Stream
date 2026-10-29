@@ -24,6 +24,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - New server routes for it, login-gated: `GET /preview.jpg` (what's on air, small, at most
   one OBS screenshot every 1.5s however many ask), `GET /youtube/live` (the live
   broadcast's video id, cached), and the checklist action `stop_stream`.
+- **The pre-match check says whether the clubhouse screen can switch the laptop on**:
+  a network cable in, Windows letting the port wake it, Fast Startup off, automatic
+  sign-in, CricketStream opening at sign-in — and when the screen last did it, and how
+  long the laptop took to answer (the screen reports each wake that works). ⚠ until it
+  has worked once; never ✗, since a laptop on wifi at home days before isn't wrong.
+- Fixed: a VirtualBox (or other virtual) network adapter counted as the laptop's network
+  cable — Windows calls VirtualBox's "Ethernet 3" — so the Clubhouse card said a cable was
+  in when it wasn't, and pairing gave the screen a card no wake can reach. Windows'
+  adapter description is checked too, and a card with a made-up address is never counted
+  as wired.
 
 ---
 

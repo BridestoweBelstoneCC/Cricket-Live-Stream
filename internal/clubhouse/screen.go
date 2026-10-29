@@ -271,6 +271,12 @@ func (s *Screen) pollOnce() {
 			s.lastErr = "The laptop doesn't accept this screen's pairing key any more — pair again with the key on its match-day screen."
 		}
 	default:
+		if !s.wakingSince.IsZero() {
+			// Woken by this screen, and now answering: tell the laptop, so its pre-match
+			// check can say a wake has worked (and how long it takes).
+			after, _ := json.Marshal(map[string]int{"after": int(time.Since(s.wakingSince).Seconds())})
+			go s.toLaptop(s.client, "POST", "/clubhouse/woke", after)
+		}
 		s.reachable, s.laptop, s.lastOK, s.lastErr = true, st, time.Now(), ""
 		s.wakingSince = time.Time{}
 		if club, _ := st["club"].(string); club != "" && club != s.cfg.Club {

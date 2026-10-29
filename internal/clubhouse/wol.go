@@ -155,8 +155,8 @@ type WakeableNIC struct {
 }
 
 // LocalNICs is every up, non-loopback card with an IPv4 address and a 6-byte address,
-// the one carrying preferIP first. "Wired" is a guess from the name (Windows calls them
-// "Ethernet", Linux eth*/en*); a wifi card is still listed — it's what's there.
+// the one carrying preferIP first, leaving out virtual ones (classifyNIC). A wifi card is
+// still listed — it's what's there.
 func LocalNICs(preferIP string) []WakeableNIC {
 	var out []WakeableNIC
 	ifs, _ := net.Interfaces()
@@ -172,10 +172,14 @@ func LocalNICs(preferIP string) []WakeableNIC {
 				break
 			}
 		}
-		if ip == "" || isVirtual(ifc.Name) {
+		if ip == "" {
 			continue
 		}
-		nic := WakeableNIC{Name: ifc.Name, MAC: ifc.HardwareAddr.String(), IP: ip, Wired: looksWired(ifc.Name)}
+		virtual, wired := classifyNIC(ifc.Name, adapterDescription(ifc.Name), ifc.HardwareAddr)
+		if virtual {
+			continue
+		}
+		nic := WakeableNIC{Name: ifc.Name, MAC: ifc.HardwareAddr.String(), IP: ip, Wired: wired}
 		if ip == preferIP {
 			out = append([]WakeableNIC{nic}, out...)
 		} else {
@@ -184,6 +188,21 @@ func LocalNICs(preferIP string) []WakeableNIC {
 	}
 	return out
 }
+
+// classifyNIC: is this card virtual (no wake can reach it), and if not, is it a wired
+// one? Windows names VirtualBox's host-only adapter "Ethernet 3", so the name alone
+// passed it as the laptop's network cable — the description (Windows only; "" elsewhere)
+// says what it really is. And a card that made its own address up (the "locally
+// administered" bit: VirtualBox's 0a:00:27:…, a VM's, a phone tether's) is never the
+// laptop's own port: real ones have the maker's address burned in.
+func classifyNIC(name, desc string, mac net.HardwareAddr) (virtual, wired bool) {
+	if isVirtual(name) || isVirtual(desc) {
+		return true, false
+	}
+	return false, looksWired(name) && !locallyAdministered(mac)
+}
+
+func locallyAdministered(mac net.HardwareAddr) bool { return len(mac) > 0 && mac[0]&0x02 != 0 }
 
 func looksWired(name string) bool {
 	n := strings.ToLower(name)
@@ -197,8 +216,8 @@ func looksWired(name string) bool {
 // isVirtual: adapters no wake can reach — VPNs, Hyper-V/WSL/Docker switches, VirtualBox.
 func isVirtual(name string) bool {
 	n := strings.ToLower(name)
-	for _, s := range []string{"tailscale", "vethernet", "virtualbox", "vmware", "docker", "wsl", "hyper-v",
-		"loopback", "zerotier", "utun", "tun", "tap", "bridge", "br-", "virbr"} {
+	for _, s := range []string{"tailscale", "vethernet", "virtualbox", "vbox", "vmware", "docker", "wsl", "hyper-v",
+		"loopback", "zerotier", "utun", "tun", "tap", "bridge", "br-", "virbr", "host-only", "openvpn", "bluetooth"} {
 		if strings.Contains(n, s) {
 			return true
 		}
