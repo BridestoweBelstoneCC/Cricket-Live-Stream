@@ -23,6 +23,7 @@ import (
 
 	"cricketstream/internal/ai"
 	"cricketstream/internal/assets"
+	"cricketstream/internal/clubhouse"
 	"cricketstream/internal/obsws"
 )
 
@@ -472,5 +473,33 @@ func TestPanelHasPrecheckButton(t *testing.T) {
 		if !strings.Contains(string(b), want) {
 			t.Fatal(want)
 		}
+	}
+}
+
+// The clubhouse screen's line: skipped unless the screen is switched on; then the
+// clubhouse package's advice, never ✗ (it runs every six hours, days before the match).
+func TestPrecheckClubhouse(t *testing.T) {
+	sandbox(t, "")
+	if r := pcClubhouse(M{}); r.Status != "skip" {
+		t.Fatalf("no config.ini: %+v", r)
+	}
+	os.WriteFile(ConfigFile, []byte("[Clubhouse]\nenabled = no\n"), 0o600)
+	if r := pcClubhouse(M{}); r.Status != "skip" {
+		t.Fatalf("switched off: %+v", r)
+	}
+	os.WriteFile(ConfigFile, []byte("[Clubhouse]\nenabled = yes\nkey = K8Q27WMX\n"), 0o600)
+	saved := clubhouse.CheckWake
+	t.Cleanup(func() { clubhouse.CheckWake = saved })
+	clubhouse.CheckWake = func() clubhouse.WakeCheck { return clubhouse.WakeCheck{Platform: true} }
+	r := pcClubhouse(M{})
+	if r.Status != "warn" || !strings.Contains(r.Fix, "no network port") {
+		t.Fatalf("no port: %+v", r)
+	}
+	found := false
+	for _, c := range Prechecks {
+		found = found || c.ID == "clubhouse"
+	}
+	if !found {
+		t.Fatal("not in the pre-match check's list")
 	}
 }

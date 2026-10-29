@@ -395,7 +395,9 @@ problem + what to do + pause) or print and `console.Pause()`.
   closed; the target is `targetBitrate()` — config.ini's rule, same as OBS setup), upload
   speed, cameras (TCP to the RTSP port; never echo the URL — it holds the password),
   surname clashes vs the roster, today's fixture, opposition badge, newer release,
-  scorer's laptop/bridge. Read-only. Add new external dependencies to `Prechecks`; a check
+  scorer's laptop/bridge, and (with the clubhouse screen on) whether the screen can switch
+  the laptop on (`clubhouse.CheckWake`/`WakeAdvice`: cable, wake-armed port, Fast Startup,
+  auto sign-in, start at login, and the last wake the screen reported — ⚠ at worst). Read-only. Add new external dependencies to `Prechecks`; a check
   returns (ok|warn|bad|skip, detail, fix) and may raise — that's reported as `bad`, never a
   crash. Keep ✗ for things that are wrong NOW: the server re-runs it every 6 hours and a ✗
   puts a red badge in the panel's pinned bar, so "expected days before" states (cameras
