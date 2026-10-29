@@ -51,6 +51,7 @@ installer, no command windows: download one file, double-click it, and it sets i
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
 - [No scoring software? Manual scoring](#no-scoring-software-manual-scoring)
+- [A touch screen in the clubhouse](#a-touch-screen-in-the-clubhouse-optional)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Control panel](#control-panel)
@@ -275,6 +276,21 @@ same local network; use the NV Play bridge above instead if they aren't (e.g. re
 over Tailscale).
 
 Full setup steps and troubleshooting: **[`TWO_LAPTOP_SETUP.md`](TWO_LAPTOP_SETUP.md)**.
+
+---
+
+## A touch screen in the clubhouse *(optional)*
+
+A Raspberry Pi with a touch screen, on the clubhouse wall, can run the whole stream: **Start
+the stream** switches the streaming laptop on (Wake-on-LAN), opens OBS and gets match day
+ready; the match-day checklist, **Go live**, the YouTube title and the cameras are big
+buttons; the score fills the screen for the bar, with a picture of the stream in the
+corner that goes full screen when tapped; and **Finish** ends the stream and switches the
+laptop off again. A PIN keeps the controls to the people who should have them.
+
+It's off unless you switch it on (the streaming laptop's match-day screen → *Clubhouse
+screen*), and nothing about it is specific to one club. Setup, including the laptop's
+Wake-on-LAN: **[`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md)**.
 
 ---
 
@@ -783,6 +799,9 @@ in its window (and the activity log in `logs/`) as it happens:
   note of whether you've dragged the icon onto the taskbar).
 - **Windows Firewall**: Windows itself asks whether CricketStream may use the network; you
   choose.
+- **Only if you switch on the clubhouse screen**: it listens for the screen on port 5096,
+  and *Open CricketStream when Windows starts* adds it to Windows' startup apps (Settings →
+  Apps → Startup lists it; untick the box to remove it).
 
 **Removing it:** close CricketStream, then delete its folder, the desktop shortcut and
 `%LOCALAPPDATA%\CricketStream`. Its OBS scenes stay in OBS until you delete them there, and

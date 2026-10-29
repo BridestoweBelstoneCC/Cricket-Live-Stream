@@ -991,6 +991,26 @@ func (c *ctx) doGET() {
 		// Live congestion/quality picture for the panel (no secrets — open)
 		c.json(streamMonitorStatus())
 
+	case path == "/preview.jpg":
+		// What's on air, small — the clubhouse screen's corner picture. Behind the
+		// login: it's the camera picture, before the stream's own delay.
+		if !c.checkToken() {
+			return
+		}
+		jpeg := ProgramPreview()
+		if jpeg == nil {
+			c.json(M{"ok": false, "error": "No picture — is OBS open?"}, 503)
+			return
+		}
+		c.bytes(jpeg, "image/jpeg")
+
+	case path == "/youtube/live":
+		// The live broadcast's video id, for the clubhouse screen to play full size.
+		if !c.checkToken() {
+			return
+		}
+		c.json(LiveVideo(c.truthyFlag("force")))
+
 	case path == "/remote/info":
 		// Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that URL
 		// is only reachable by a device already on the right network/tunnel anyway.

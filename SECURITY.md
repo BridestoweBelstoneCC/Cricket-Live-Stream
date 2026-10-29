@@ -24,6 +24,10 @@ disclosure.
 
 - **Do not expose port 5000 to the internet.** Local network (Wi-Fi) access for phone
   operators is supported and fine; public internet exposure is not.
+- **The clubhouse screen's port (5096) is for the club network only, too.** It's open only
+  when the screen is switched on, needs the pairing key (wrong guesses are locked out), and
+  reaches only the match-day buttons, never settings or keys. Make a new key on the
+  match-day screen if you think someone else has it.
 - **Plain HTTP on local Wi-Fi** means the session token is visible to anyone monitoring
   the same network. This is an acceptable trade-off for a trusted home or club network;
   use a password on your Wi-Fi and don't run match-day ops from a public hotspot.

@@ -53,6 +53,7 @@ works with no rebuild. Everything the app writes lives beside the binary too
 | `internal/scoring` | the scorer's-book engine + event-sourced session | `scoring_engine.py` |
 | `internal/obs`, `internal/obsws` | OBS prep (closed) + setup (WebSocket); the WebSocket client and a fake OBS | `obs_prep.py`, `obs_setup.py` |
 | `internal/agent`, `internal/bridge`, `internal/scorerfile` | scorer's-laptop roles; finding NV Play's output | `scorer_agent.py`, `nvplay_bridge.py` |
+| `internal/clubhouse` | the optional clubhouse touch screen: the laptop's link (`link.go`, run by `internal/app`), the Pi's `cricketstream clubhouse` (`screen.go`, `clubhouse.html`), Wake-on-LAN, power-off — see CLUBHOUSE_SCREEN.md | — (Go edition only) |
 | `internal/simulate` | match simulator | `simulate_match.py` |
 | `internal/tools` | telemetry, camera encoder, refresh-cam, quality-ladder test | the four standalone tools |
 | `internal/resultcard`, `matchpage`, `socialclips`, `winpredict`, `voice`, `logobg` | post-match products and extras | same-named `.py` files |
@@ -106,7 +107,7 @@ go build -o dist/ ./cmd/cricketstream
   (0 = any), `CRICKETSTREAM_NO_WEBVIEW=1` (the browser instead of the window — the
   no-WebView2 fallback, by choice), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`, `CRICKETSTREAM_OBS_PORTABLE`,
   `CRICKETSTREAM_OBS_WS_PORT`, `CRICKETSTREAM_DEVTOOLS=1` (right-click → Inspect in the
-  window). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
+  window), `CRICKETSTREAM_CLUBHOUSE_PORT` (the clubhouse screen's link, default 5096). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
   script drive the real window over CDP.
 
 **No path may exit without pausing first.** A double-clicked exe owns its console window,
@@ -311,6 +312,32 @@ problem + what to do + pause) or print and `console.Pause()`.
   Simple-mode x264 (or unset) onto the best hardware H.264 encoder; never touches a
   hardware choice or Advanced mode; `[Stream] encoder = manual` opts out. Verified by
   OBS's log naming the encoder it actually ran, before and after.
+- **The clubhouse screen's link lives in the WINDOW (`internal/app`), not the server.** It
+  must answer before match day starts (to start it) and after it ends (to switch the
+  laptop off), so it can't be a server route. Its rules, each with a test:
+  - Everything but `/clubhouse/hello` needs the pairing key (`X-Clubhouse-Key`, constant
+    time, a per-address and a global lockout). A request with an `Origin` header is
+    refused outright: the screen is a program, so an Origin means a web page.
+  - The server is reached only through `/clubhouse/server/...` on `proxyGET`/`proxyPOST`
+    in `link.go`. **That allowlist is the security boundary** — the Pi's PIN is a UI lock.
+    Never add `/live` (mutating) or `/commands` (pops the overlay's queue), settings,
+    `/state` POST, the export, or anything that returns a secret. The proxy adds the
+    window's own Bearer token and **`X-Forwarded-For`**, so the server's
+    `trustedLoopback()` carve-outs (no login for the overlay's routes; a YouTube sign-in
+    window popping up on the laptop) never apply to the clubhouse.
+  - **Never stop match day from the screen while it's `starting`**: `App.stop()` in that
+    phase QUITS the window (the launcher isn't listening yet). `chHost.StopMatchDay`
+    refuses it.
+  - Power-off goes through `chHost.ReadyToPowerOff` (match day over, no question waiting,
+    OBS closed via `finishOBS`, which refuses while streaming/recording) and only if
+    `[Clubhouse] allow_power_off`. Tests swap `clubhouse.runCmd` — **never** let a test
+    reach the real `shutdown`/`systemctl poweroff`.
+  - `[Clubhouse] key` is per-laptop: it's in `clubpack.configMachine`, so "Move to another
+    laptop" never copies it (a laptop that arrives enabled without a key makes its own).
+  - The Pi page must be served by the Pi (the laptop is off when it's first touched); it
+    talks only to its own `/api/` with a page key, never to the laptop directly. Its
+    corner picture is `/preview.jpg` (cached 1.5s server-side, only fetched while shown)
+    — deliberately not a second video encode on the streaming laptop.
 - **Scene stacking: move cameras DOWN, never lift graphics UP.** `obs.CoveringPictures()`
   lists the picture sources (cameras, video, screen capture — `obs.PictureKinds`) above a
   graphic; OBS setup moves each, lowest first, to just beneath it, which keeps two cameras'

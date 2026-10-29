@@ -212,6 +212,29 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
         <span class="hint" id="pc_when" style="margin:0"></span>
       </div>
     </section>
+
+    <!-- The optional clubhouse screen (CLUBHOUSE_SCREEN.md): a touch screen that switches
+         this laptop on, runs match day, and switches it off again. -->
+    <section id="ch_card" class="hidden">
+      <div class="status" style="margin:0 0 6px"><span class="light" id="ch_light"></span><h2 style="margin:0">Clubhouse screen</h2></div>
+      <p class="hint">Optional. A touch screen in the clubhouse (a Raspberry Pi) can switch this laptop on, start
+        match day, show the score and the stream, and switch the laptop off afterwards.
+        <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/CLUBHOUSE_SCREEN.md" target="_blank" rel="noopener">How to set it up</a></p>
+      <label class="tick"><input type="checkbox" id="ch_enabled"><span>Let a clubhouse screen run match day on this laptop</span></label>
+      <div id="ch_on" class="hidden">
+        <p class="hint" style="margin:12px 0 4px">Type this pairing key on the clubhouse screen:</p>
+        <div class="copyrow"><span class="token" id="ch_key"></span>
+          <button class="btn" type="button" data-copy="ch_key">Copy</button>
+          <button class="btn quiet" type="button" id="ch_newkey" title="The old key stops working">New key</button></div>
+        <p class="hint" id="ch_seen"></p>
+        <label class="tick"><input type="checkbox" id="ch_poweroff"><span>The screen may switch this laptop off when match day is over
+          <span class="muted">(never while it's streaming or recording)</span></span></label>
+        <label class="tick hidden" id="ch_login_row"><input type="checkbox" id="ch_login"><span>Open CricketStream when Windows starts
+          <span class="muted">— needed for the screen to switch the laptop on</span></span></label>
+        <p class="note hidden" id="ch_nowire"></p>
+      </div>
+      <p class="note hidden" id="ch_error"></p>
+    </section>
   </div>
 
   <!-- Getting ready, and match day running. -->
@@ -447,7 +470,46 @@ function renderHome() {
   $('manual_note').classList.toggle('hidden', !h.manual_session);
   renderPrecheck();
   renderOBS();
+  renderClubhouse();
 }
+
+// The clubhouse screen's card: off by default; on, it shows the pairing key and whether a
+// screen has been in touch, and says plainly when the laptop has no network cable (a
+// wake-up almost never reaches a laptop over wifi).
+var chBusy = false;
+function renderClubhouse() {
+  var c = S.clubhouse;
+  $('ch_card').classList.toggle('hidden', !c);
+  if (!c || chBusy) return;
+  $('ch_enabled').checked = !!c.enabled;
+  $('ch_on').classList.toggle('hidden', !c.enabled);
+  txt('ch_key', c.key || '');
+  $('ch_poweroff').checked = !!c.allow_power_off;
+  $('ch_login_row').classList.toggle('hidden', !c.login_supported);
+  $('ch_login').checked = !!c.start_at_login;
+  var seen = c.seen_ago != null ? 'A screen was in touch ' + ago(c.seen_ago) + ' (from ' + c.seen_from + ').'
+    : 'No screen has connected yet. This laptop is at ' + c.ip + ' if the screen asks for its address.';
+  txt('ch_seen', c.enabled ? seen : '');
+  $('ch_light').className = 'light' + (!c.enabled ? '' : c.error ? ' bad' : c.seen_ago != null && c.seen_ago < 30 ? ' ok' : ' warn');
+  var noWire = c.enabled && !c.wired;
+  $('ch_nowire').classList.toggle('hidden', !noWire);
+  if (noWire) txt('ch_nowire', 'No network cable found — the screen can still run match day, but switching this laptop ON ' +
+    'needs it plugged into the club network by cable (and Wake-on-LAN switched on: see How to set it up).');
+  $('ch_error').classList.toggle('hidden', !c.error);
+  txt('ch_error', c.error || '');
+}
+function setClubhouse(body) {
+  chBusy = true;
+  api('clubhouse', body).then(function (d) {
+    chBusy = false;
+    if (!d.ok) alertNote(d.error); else S.clubhouse = d.clubhouse;
+    renderClubhouse();
+  }, function () { chBusy = false; });
+}
+$('ch_enabled').addEventListener('change', function () { setClubhouse({enabled: this.checked}); });
+$('ch_poweroff').addEventListener('change', function () { setClubhouse({allow_power_off: this.checked}); });
+$('ch_login').addEventListener('change', function () { setClubhouse({start_at_login: this.checked}); });
+$('ch_newkey').addEventListener('click', function () { setClubhouse({new_key: true}); });
 
 // OBS missing: offer to install it (Windows' own installer) or link to the download.
 function renderOBS() {
