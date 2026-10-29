@@ -48,6 +48,8 @@ bridge_config.ini*
 # it keeps for when the laptop is off, and its kiosk browser's own profile.
 clubhouse.ini*
 clubhouse_badge.img
+# The laptop's record of the last time the clubhouse screen switched it on (pre-match check).
+clubhouse_wake.json*
 clubhouse-browser/
 # Scorer agent's remembered folder (a machine-specific path), written beside the script.
 scorer_agent.json*

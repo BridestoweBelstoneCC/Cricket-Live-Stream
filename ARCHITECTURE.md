@@ -403,7 +403,7 @@ from a panic and carries on:
 
 | Loop | Cadence | Does | If it fails |
 |---|---|---|---|
-| Watchdog | 90 s | Unsticks the season-stats build, restarts a dead Cloudflare tunnel, trims rate-limit state, logs feed staleness and Mac thermal throttling | Logs, retries next tick |
+| Watchdog | 90 s | Unsticks the season-stats build, restarts a dead Cloudflare tunnel, trims rate-limit state, logs feed staleness and CPU throttling (Mac and Windows) | Logs, retries next tick |
 | Stream monitor | 15 s | OBS stream status, congestion samples, quality-ladder decision, stream-end trigger for the match page | Marks OBS unreachable |
 | OBS crash recovery (`obsGuardTick`) | 5 s | OBS crash (sentinel present) → reopen, scene, restart stream if it was live; freeze (window hung 60 s **and** bytes not moving) → kill → reopen | Capped at 3 reopens / 30 min, then a human |
 | Viewer sampler | 60 s, live only | YouTube concurrent viewers for sponsor viewer-minutes | Count goes stale (>3 min) and is not used |

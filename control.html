@@ -659,7 +659,7 @@
     <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
-    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
+    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>CPU: <b id="hl-thermal-t">—</b></span>
     <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
   </div>
   <style>
@@ -3985,11 +3985,13 @@ async function pollHealth() {
     hlSet('hl-badges', h.match.badges ? 'hl-ok' : 'hl-warn', h.match.badges ? 'both set' : 'incomplete');
     // AI key
     hlSet('hl-ai', h.keys.anthropic ? 'hl-ok' : 'hl-warn', h.keys.anthropic ? 'key set' : 'no key');
-    // Thermal (macOS only — hidden entirely on other platforms, nothing to show)
+    // Thermal (Mac and Windows — hidden where the OS has nothing to show). Windows' limit
+    // counts power too, so a laptop off its charger shows here as well.
     var thermItem = document.getElementById('hl-thermal-item');
     if (h.thermal && h.thermal.available) {
       thermItem.style.display = '';
-      if (h.thermal.throttled) hlSet('hl-thermal','hl-bad', 'throttled (' + h.thermal.speed_limit_pct + '%) — cool it down');
+      if (h.thermal.throttled) hlSet('hl-thermal','hl-bad', 'slowed to ' + h.thermal.speed_limit_pct + '% — ' +
+        (h.thermal.platform === 'windows' ? 'charger in? then give it air' : 'cool it down'));
       else hlSet('hl-thermal','hl-ok','ok');
     } else {
       thermItem.style.display = 'none';

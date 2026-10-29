@@ -83,11 +83,15 @@ func loadAvg1() any {
 	return pyfmt.Round(f, 2)
 }
 
-// thermalState is the macOS thermal-pressure snapshot via `pmset -g therm` (no sudo).
-// macOS doesn't expose a real temperature without extra tooling, but CPU_Speed_Limit /
-// CPU_Scheduler_Limit drop below 100 the moment the OS throttles for heat — the signal
-// that matters, well before a crash. {"available": false} anywhere else. Never fails.
+// thermalState is whether the CPU is being held back — on a Mac `pmset -g therm` (no
+// sudo), on Windows the "% Performance Limit" counter (thermal_windows.go). Neither OS
+// gives a real temperature without extra tooling or admin rights, but both limits drop
+// below 100 the moment the machine throttles — the signal that matters, well before a
+// crash. {"available": false} anywhere else (Linux). Never fails.
 var thermalState = func() M {
+	if runtime.GOOS == "windows" {
+		return windowsThermal()
+	}
 	if runtime.GOOS != "darwin" {
 		return M{"available": false}
 	}
@@ -117,8 +121,23 @@ var thermalState = func() M {
 	if v, ok := vals["CPU_Available_CPUs"]; ok {
 		cpus = v
 	}
-	return M{"available": true, "speed_limit_pct": speed, "scheduler_limit_pct": sched,
+	return M{"available": true, "platform": "mac", "speed_limit_pct": speed, "scheduler_limit_pct": sched,
 		"available_cpus": cpus, "throttled": speed < 100 || sched < 100}
+}
+
+// winThrottledBelow: the performance limit dips a point or two in ordinary power
+// management on some laptops; a real hold-back for heat or a battery is far below that.
+// (A red badge in the panel all match for nothing would teach people to ignore it.)
+const winThrottledBelow = 95
+
+func windowsThermal() M {
+	pct, ok := readPerfLimit()
+	if !ok {
+		return M{"available": false}
+	}
+	limit := int(pct + 0.5)
+	return M{"available": true, "platform": "windows", "speed_limit_pct": limit,
+		"throttled": limit < winThrottledBelow}
 }
 
 // ── Self-healing watchdog ──────────────────────────────────────
@@ -217,7 +236,12 @@ func watchdogTick() {
 	watchdogMu.Lock()
 	wasT := watchdogStatus["was_throttled"]
 	if throttled == true && wasT != true {
-		say("  ⚠  Watchdog: Mac is thermally throttled (CPU speed limit %v%%) — reduce load or improve cooling now", therm["speed_limit_pct"])
+		if therm["platform"] == "windows" {
+			// Windows' limit counts power too: a laptop that's come off its charger looks the same.
+			say("  ⚠  Watchdog: this laptop is slowing its CPU down (performance limit %v%%) — check it's on its charger, then give it air or reduce load", therm["speed_limit_pct"])
+		} else {
+			say("  ⚠  Watchdog: Mac is thermally throttled (CPU speed limit %v%%) — reduce load or improve cooling now", therm["speed_limit_pct"])
+		}
 	} else if wasT == true && throttled != true {
 		say("  ✓  Watchdog: thermal throttling has cleared")
 	}

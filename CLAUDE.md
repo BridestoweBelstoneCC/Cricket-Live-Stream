@@ -159,9 +159,12 @@ problem + what to do + pause) or print and `console.Pause()`.
   for ~2s, because Windows refuses to replace a file another thread has open for reading.
   internal/server/sponsor_test.go reproduces both (and fails with the lock removed). That
   lock does NOT make load-modify-save atomic — for that use `UpdateState(change)`, which
-  holds `stateRMWMu` across load→change→save. POST /state, logo uploads and the
-  checklist's password sync use it; older call sites still do bare load/modify/save and
-  can lose a concurrent change — convert them as you touch them.
+  holds `stateRMWMu` across load→change→save. Every load-then-save holds it now:
+  `UpdateState` for a change, `ReplaceState(build)` for the launcher's whole-file write,
+  and `SeedStateFromConfig` takes it itself (it saves only when it seeded something).
+  `SaveState` on its own is only for writing defaults into a missing file. A new writer
+  that loads, changes and calls `SaveState` can lose a concurrent change —
+  internal/server/state_rmw_test.go shows both ways it did (and fails with the lock removed).
 - **Route handling checks specific paths before prefixes.** When adding endpoints, put exact
   matches (`path == "/data/status"`) before `startswith` checks so a prefix doesn't swallow a
   more specific route.
@@ -204,8 +207,12 @@ problem + what to do + pause) or print and `console.Pause()`.
   actually matters: it fires the moment the OS starts throttling for heat, which is well
   before a crash. Built after a streaming Mac overheated running a scorer's VM alongside
   OBS — moving NV Play off that machine (see the bridge (`cricketstream bridge`) above) is the real fix;
-  this is early warning, not a cooling system. Returns `{"available": false}` on non-macOS
-  by design (Windows/Linux thermal signals weren't scoped).
+  this is early warning, not a cooling system. On **Windows** it's the "% Performance
+  Limit" counter (`thermal_windows.go`, read through pdh.dll — never by starting
+  PowerShell, /health is polled every 10s), red below 95; it also drops when a laptop is
+  off its charger, so the warning names the charger first. A real temperature needs admin
+  rights on Windows (the ACPI thermal zone), so it isn't used. `{"available": false}` on
+  Linux.
 - **No hardcoded club identity in defaults.** `DefaultState()`, `config.example.ini`, and
   `match_state.example.json` must stay club-agnostic (e.g. `"Home CC"`, blank `ground_filter`/
   `home_club_id`) — this project is used by clubs other than the original maintainer's.
@@ -392,13 +399,15 @@ problem + what to do + pause) or print and `console.Pause()`.
   closed; the target is `targetBitrate()` — config.ini's rule, same as OBS setup), upload
   speed, cameras (TCP to the RTSP port; never echo the URL — it holds the password),
   surname clashes vs the roster, today's fixture, opposition badge, newer release,
-  scorer's laptop/bridge. Read-only. Add new external dependencies to `Prechecks`; a check
+  scorer's laptop/bridge, and (with the clubhouse screen on) whether the screen can switch
+  the laptop on (`clubhouse.CheckWake`/`WakeAdvice`: cable, wake-armed port, Fast Startup,
+  auto sign-in, start at login, and the last wake the screen reported — ⚠ at worst). Read-only. Add new external dependencies to `Prechecks`; a check
   returns (ok|warn|bad|skip, detail, fix) and may raise — that's reported as `bad`, never a
   crash. Keep ✗ for things that are wrong NOW: the server re-runs it every 6 hours and a ✗
   puts a red badge in the panel's pinned bar, so "expected days before" states (cameras
   away from the ground, OBS closed) must be ⚠ or the badge is red all week.
 - `http://localhost:5000/health` — feed freshness, photos, badges, AI key status, NV Play
-  bridge connectivity (`pcs.bridge`), Mac thermal-throttle state (`thermal`), and a
+  bridge connectivity (`pcs.bridge`), Mac/Windows CPU throttle state (`thermal`), and a
   pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a
   previous match before the operator goes live — see `obsBitrateSanityCheck()` — and
   OBS crash recovery (`obs_recovery`: watching, recent reopens, last event).

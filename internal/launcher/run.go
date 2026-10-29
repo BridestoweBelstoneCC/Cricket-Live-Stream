@@ -209,9 +209,8 @@ func Run(o Options) int {
 	}
 
 	// ── match_state.json ──
-	exist := server.LoadExistingState()
-	state := BuildState(cfg, match, exist)
-	if err := server.SaveState(state); err != nil {
+	var state M
+	if err := server.ReplaceState(func(exist M) M { state = BuildState(cfg, match, exist); return state }); err != nil {
 		console.Die("Couldn't write match_state.json", err.Error())
 	}
 	log("match_state.json written", "ok")
