@@ -32,6 +32,7 @@ func newTestScreen(t *testing.T) *testScreen {
 	srv := httptest.NewServer(s)
 	s.base = srv.URL
 	t.Cleanup(srv.Close)
+	t.Cleanup(s.bg.Wait) // runs first: nothing of this test's lands in the next one's folder
 	return &testScreen{Screen: s, t: t, srv: srv}
 }
 
@@ -65,6 +66,10 @@ func (ts *testScreen) do(method, path string, body any, headers map[string]strin
 func (ts *testScreen) api(method, path string, body any) (int, map[string]any) {
 	ts.t.Helper()
 	code, out, _ := ts.do(method, "/api/"+path, body, map[string]string{"X-Screen-Key": ts.key, "Origin": ts.srv.URL})
+	if path == "pair" {
+		// Pairing polls the laptop in the background; a test's own poll mustn't race it.
+		ts.bg.Wait()
+	}
 	return code, out
 }
 
