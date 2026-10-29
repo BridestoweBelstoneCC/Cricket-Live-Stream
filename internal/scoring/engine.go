@@ -223,11 +223,6 @@ func (e *Innings) SetBowler(name string) {
 	e.BowlerSchedule[e.CurrentOverNo()] = e.GetBowler(name)
 }
 
-// SetBowlerFor pins who bowls a given over.
-func (e *Innings) SetBowlerFor(name string, overNo int) {
-	e.BowlerSchedule[overNo] = e.GetBowler(name)
-}
-
 // ── State queries ─────────────────────────────────────────
 
 func (e *Innings) CurrentOverNo() int { return e.LegalBalls / 6 }
