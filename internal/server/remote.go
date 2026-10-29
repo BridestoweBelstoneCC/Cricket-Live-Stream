@@ -115,12 +115,6 @@ func stopCloudflareTunnel() {
 	}
 }
 
-func cloudflareAlive() bool {
-	cfMu.Lock()
-	defer cfMu.Unlock()
-	return cfProcess != nil && cfProcess.ProcessState == nil
-}
-
 // remoteTargets lists ways to reach the control panel from another device, in priority
 // order — tailscale (private), cloudflare (public, opt-in), lan (same network). Empty if
 // bound to localhost only and no tunnel is running.

@@ -115,13 +115,6 @@ func (s *Server) Target() obsws.Target {
 	return obsws.Target{Host: host, Port: p, Password: s.Password}
 }
 
-// SetHandler swaps the request handler.
-func (s *Server) SetHandler(h Handler) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.handler = h
-}
-
 // Types lists the request types received so far.
 func (s *Server) Types() []string {
 	s.mu.Lock()

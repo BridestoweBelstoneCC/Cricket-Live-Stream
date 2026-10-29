@@ -32,22 +32,6 @@ func firstSentence(t string) string {
 	return t
 }
 
-// pyNum renders a JSON number the way Python's f-string would show the value it held.
-func pyNum(v any) string {
-	switch x := v.(type) {
-	case float64:
-		if x == float64(int64(x)) {
-			// The state carries overs as a float (5.0) but scores as ints; callers pass
-			// the right one. A float that happens to be whole renders like Python's float.
-			return pyfmt.Float(x)
-		}
-		return pyfmt.Float(x)
-	case int:
-		return strconv.Itoa(x)
-	}
-	return pyval.Str(v)
-}
-
 // ── AI commentary: the panel's test button ────────────────────
 // The live AI commentary is the end-of-over panel (/commentary/over/generate, fired by
 // the overlay). This one-line generator only backs "Generate test commentary".

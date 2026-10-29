@@ -300,15 +300,3 @@ func StartStreamMonitor() {
 		}
 	})
 }
-
-func streamMonCopy() M {
-	streamMonMu.Lock()
-	defer streamMonMu.Unlock()
-	out := shallow(streamMon)
-	samples := []any{}
-	for _, s := range streamSamples {
-		samples = append(samples, M{"t": s.T, "congestion": s.Congestion, "dropped": s.Dropped, "total": s.Total})
-	}
-	out["samples"] = samples
-	return out
-}
