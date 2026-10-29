@@ -1573,6 +1573,7 @@ func (c *ctx) health() {
 		"thermal":      thermalState(),
 		"obs_bitrate":  obsBitrateSanityCheck(s),
 		"obs_recovery": obsGuardStatus(),
+		"overlay":      overlayWatchStatus(),
 		"errors":       recentServerErrors(0),
 	})
 }
@@ -1598,6 +1599,7 @@ func (c *ctx) live(mutate bool) {
 	// unpin) is a side effect, so it belongs to the overlay's /live only — a panel poll
 	// observing a cleared match_url must not drop the overlay's cached widget state.
 	if mutate {
+		overlayPolled()
 		pcFromURL := 0
 		if mu := trim(gs(s, "match_url", "")); mu != "" {
 			pcFromURL, _ = strconv.Atoi(extractPCMatchID(mu))
