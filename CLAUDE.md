@@ -159,9 +159,12 @@ problem + what to do + pause) or print and `console.Pause()`.
   for ~2s, because Windows refuses to replace a file another thread has open for reading.
   internal/server/sponsor_test.go reproduces both (and fails with the lock removed). That
   lock does NOT make load-modify-save atomic — for that use `UpdateState(change)`, which
-  holds `stateRMWMu` across load→change→save. POST /state, logo uploads and the
-  checklist's password sync use it; older call sites still do bare load/modify/save and
-  can lose a concurrent change — convert them as you touch them.
+  holds `stateRMWMu` across load→change→save. Every load-then-save holds it now:
+  `UpdateState` for a change, `ReplaceState(build)` for the launcher's whole-file write,
+  and `SeedStateFromConfig` takes it itself (it saves only when it seeded something).
+  `SaveState` on its own is only for writing defaults into a missing file. A new writer
+  that loads, changes and calls `SaveState` can lose a concurrent change —
+  internal/server/state_rmw_test.go shows both ways it did (and fails with the lock removed).
 - **Route handling checks specific paths before prefixes.** When adding endpoints, put exact
   matches (`path == "/data/status"`) before `startswith` checks so a prefix doesn't swallow a
   more specific route.
