@@ -2430,7 +2430,8 @@ function _fillWinPredictor() {
 // Opt-in (graphics_camera_auto_cut, default off) and a no-op unless a second camera is
 // configured (camera2_configured, from /state -- the overlay never sees the real RTSP URL).
 // UNTESTED against real two-camera hardware, same as the backend it drives (obs_add_camera)
-// -- watch the first live over closely. See TODO.md.
+// -- rehearse it with the control panel's "Test the camera cut" (internal/server/cuttest.go),
+// which cuts through the same /camera/scene path and watches both pictures.
 var _cameraAutoCutTimer = null;
 function autoCutCameraForOver() {
   if (!cfg.graphics_camera_auto_cut || !cfg.camera2_configured) return;

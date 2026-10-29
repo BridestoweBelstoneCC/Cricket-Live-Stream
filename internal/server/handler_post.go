@@ -317,6 +317,12 @@ func (c *ctx) doPOST() {
 		ok, out := saveTransparentSponsor(str(d, "id", ""), str(d, "mode", ""))
 		c.json(out, statusFor(ok))
 
+	case path == "/camera/cut_test":
+		// The panel's "Test the camera cut". Never the overlay's loopback carve-out: it
+		// cuts the picture.
+		status, out := StartCutTest()
+		c.json(out, status)
+
 	case path == "/checklist/action":
 		status, out := ChecklistAction(str(jsonObject(body), "action", ""))
 		c.json(out, status)
@@ -433,16 +439,7 @@ func (c *ctx) doPOST() {
 			c.json(M{"ok": false, "error": "No scene given"}, 400)
 			return
 		}
-		cfg := LoadState()
-		// Fast path first: a held-open socket makes repeat cuts ~4x quicker, the difference
-		// between flicking between angles and waiting for each one. Falls back to the
-		// connection-per-call path if the socket can't be established at all.
-		data := M{"sceneName": scene}
-		ok, reached := obsFastCall(cfg, "SetCurrentProgramScene", data, 3*time.Second)
-		if !reached {
-			r := obsCall(cfg, []obsws.Req{{Type: "SetCurrentProgramScene", Data: data}}, 6*time.Second)
-			ok = len(r) > 0 && r[0] != nil
-		}
+		ok := cutToScene(LoadState(), scene)
 		msg := "Switched to " + scene
 		if !ok {
 			msg = fmt.Sprintf("Could not switch OBS to '%s' — check it exists and OBS is reachable", scene)

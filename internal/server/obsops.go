@@ -37,6 +37,21 @@ var obsCall = func(state M, reqs []obsws.Req, timeout time.Duration) []map[strin
 // obsFast keeps one socket open for camera cuts only (measured 4x quicker).
 var obsFast = &obsws.Fast{}
 
+// cutToScene is a camera cut: /camera/scene (the panel's buttons, the overlay's auto-cut)
+// and the cut test both go through it, so the test cuts exactly as a match does. Fast path
+// first: a held-open socket makes repeat cuts ~4x quicker, the difference between
+// flicking between angles and waiting for each one. Falls back to the connection-per-call
+// path if the socket can't be established at all.
+func cutToScene(st M, scene string) bool {
+	data := M{"sceneName": scene}
+	ok, reached := obsFastCall(st, "SetCurrentProgramScene", data, 3*time.Second)
+	if !reached {
+		r := obsCall(st, []obsws.Req{{Type: "SetCurrentProgramScene", Data: data}}, 6*time.Second)
+		ok = len(r) > 0 && r[0] != nil
+	}
+	return ok
+}
+
 // obsFastCall runs one request over the held socket: (ok, reached). Swappable.
 var obsFastCall = func(state M, requestType string, data any, timeout time.Duration) (bool, bool) {
 	return obsFast.Call(obsTarget(state), requestType, data, timeout)

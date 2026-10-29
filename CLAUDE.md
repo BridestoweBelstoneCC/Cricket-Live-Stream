@@ -287,7 +287,11 @@ problem + what to do + pause) or print and `console.Pause()`.
   real OBS 32.1.1 using two VIDEO FILES as the cameras (screenshots confirmed each scene
   shows its own camera) — still not with two real RTSP cameras, so reconnect/drift
   behaviour with a second live feed is unverified. Manual cut is `/camera/scene`; the
-  opt-in automatic cut at the over boundary is `graphics_camera_auto_cut`.
+  opt-in automatic cut at the over boundary is `graphics_camera_auto_cut`. Both go through
+  `cutToScene()` (the one fast-path call site), and so does the panel's **Test the camera
+  cut** (`cuttest.go`, POST/GET `/camera/cut_test`, login-gated, refuses while live): every
+  camera in every scene incl. Replay, the cut and the 8s hold and back, both pictures still
+  "playing" throughout, and OBS always put back on the scene it was on.
 - **The control panel's Match-day checklist** (`ChecklistStatus()` / `ChecklistAction()`,
   `GET /checklist`, `POST /checklist/action`, both token-gated — they start OBS and go live,
   so NEVER the overlay's loopback carve-out). Every item is detected, none ticked by hand
