@@ -165,6 +165,12 @@ func TestScreenPINLocksControlsButNotTheScore(t *testing.T) {
 	if code, _ := ts.api("GET", "server/live/view", nil); code != 200 {
 		t.Errorf("a locked screen must still show the score: %d", code)
 	}
+	// ...the scorecard, the overs and the league table are public like the score...
+	for _, p := range []string{"server/match/scorecard", "server/league/table"} {
+		if code, _ := ts.api("GET", p, nil); code != 200 {
+			t.Errorf("a locked screen must still show %s: %d", p, code)
+		}
+	}
 	// ...but nothing that changes anything reaches the laptop.
 	before := len(proxied)
 	for _, p := range []string{"laptop/start", "laptop/stop", "laptop/poweroff", "wake", "server/checklist/action", "pin", "forget", "pair"} {

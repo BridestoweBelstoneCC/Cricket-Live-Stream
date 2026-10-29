@@ -154,7 +154,8 @@ func TestLooksWired(t *testing.T) {
 
 func TestProxyAllowlist(t *testing.T) {
 	allowed := [][2]string{{"GET", "/live/view"}, {"GET", "/state"}, {"GET", "/preview.jpg"},
-		{"GET", "/logo/29434"}, {"POST", "/checklist/action"}, {"POST", "/youtube/update"}}
+		{"GET", "/logo/29434"}, {"POST", "/checklist/action"}, {"POST", "/youtube/update"},
+		{"GET", "/match/scorecard"}, {"GET", "/league/table"}}
 	for _, c := range allowed {
 		if !ProxyAllowed(c[0], c[1]) {
 			t.Errorf("%s %s should be allowed", c[0], c[1])
@@ -165,7 +166,7 @@ func TestProxyAllowlist(t *testing.T) {
 	refused := [][2]string{{"GET", "/live"}, {"GET", "/commands"}, {"POST", "/state"}, {"POST", "/settings/save"},
 		{"GET", "/settings/info"}, {"POST", "/login"}, {"GET", "/logo/"}, {"GET", "/logo/../state"},
 		{"POST", "/live/view"}, {"GET", "/checklist/action"}, {"DELETE", "/state"}, {"GET", "//live/view"},
-		{"POST", "/rehearsal"}, {"GET", "/control"}}
+		{"POST", "/rehearsal"}, {"GET", "/control"}, {"POST", "/match/scorecard"}, {"GET", "/match/page"}}
 	for _, c := range refused {
 		if ProxyAllowed(c[0], c[1]) {
 			t.Errorf("%s %s must be refused", c[0], c[1])

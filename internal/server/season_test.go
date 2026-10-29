@@ -277,3 +277,25 @@ func TestLeagueCachedSameDaySameCompetitionSkipsNetwork(t *testing.T) {
 	r := FetchLeagueTable(false)
 	eqv(t, gl(r, "rows")[0].(M)["team"], "X")
 }
+
+// The route gives the whole table and where the club is in it (the clubhouse screen's
+// Table view), alongside the row/row_above the overlay uses.
+func TestLeagueTableRouteGivesTheWholeTable(t *testing.T) {
+	ts := newTestServer(t, "")
+	setState(t, M{"home_team": "Bridestowe and Belstone CC", "competition_id": "123"})
+	tbl := leagueTbl([4]any{4, "Hatherleigh CC", "40", "10"},
+		[4]any{5, "Bridestowe and Belstone CC", "36", "10"}, [4]any{6, "Rival CC", "30", "10"})
+	tbl["date"] = today()
+	leagueTableMu.Lock()
+	saved := leagueTable
+	leagueTable = tbl
+	leagueTableMu.Unlock()
+	t.Cleanup(func() { leagueTableMu.Lock(); leagueTable = saved; leagueTableMu.Unlock() })
+	_, out := ts.getJSON("/league/table")
+	if out["usable"] != true || len(gl(out, "rows")) != 3 || gi(out, "home_index", -1) != 1 {
+		t.Fatalf("whole table: %v", out)
+	}
+	if gm(out, "row")["team"] != "Bridestowe and Belstone CC" || gm(out, "row_above")["team"] != "Hatherleigh CC" {
+		t.Fatalf("the overlay's fields changed: %v", out)
+	}
+}

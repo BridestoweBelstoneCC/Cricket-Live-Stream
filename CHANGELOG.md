@@ -24,6 +24,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - New server routes for it, login-gated: `GET /preview.jpg` (what's on air, small, at most
   one OBS screenshot every 1.5s however many ask), `GET /youtube/live` (the live
   broadcast's video id, cached), and the checklist action `stop_stream`.
+- **Scorecard, Overs and Table on the clubhouse screen.** Beside the big score: both
+  innings' batters, bowlers and fall of wickets (the scorer's own figures, the same the
+  result card uses), the last six overs ball by ball, and the league table with the club's
+  row picked out. Public like the score — no PIN — and back to the score after a minute and
+  a half untouched. New read-only route `GET /match/scorecard`; `/league/table` also gives
+  the whole table (`rows`, `home_index`) alongside what the overlay uses.
 
 ---
 

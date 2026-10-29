@@ -292,7 +292,7 @@ logic can be tested without a server, OBS or a network.
 | `overlay.html?preview=1` | iframe in the panel | one `/state` read, then never again | None |
 | `control.html` | `/control` | `/live/view`, `/health` (10 s), checklist, stream monitor (10 s), spotter (60 s)… | Operator POSTs only |
 | `scoring.html` | `/scoring` | `/scoring/state` (5 s) | Ball events |
-| `clubhouse.html` (the Pi) | the Pi's own loopback, through the window's link | `/live/view`, checklist (3 s), `/preview.jpg` (2 s, only while shown) | Operator POSTs on the link's allowlist only |
+| `clubhouse.html` (the Pi) | the Pi's own loopback, through the window's link | `/live/view`, checklist (3 s), `/preview.jpg` (2 s, only while shown), `/match/scorecard` (10 s, only while shown), `/league/table` | Operator POSTs on the link's allowlist only |
 
 The overlay's graphics are one DOM with a queue (`queueGraphic` → `nextGraphic`). Panels
 show one at a time, and every stage is wrapped so one failing graphic can't stall the

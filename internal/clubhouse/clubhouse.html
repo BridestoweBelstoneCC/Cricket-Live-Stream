@@ -73,6 +73,33 @@ p{margin:0 0 14px;max-width:62ch}
 .who.strike{box-shadow:inset 4px 0 0 var(--club)}
 .who .role{font:15px system-ui,sans-serif;color:var(--sage);margin-left:8px}
 
+/* The score view's own views: score, scorecard, overs, table. */
+.seg{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap}
+.seg button{border:2px solid var(--edge);background:var(--board);border-radius:999px;padding:8px 18px;min-height:48px;
+  font:600 22px Board,sans-serif;color:var(--sage)}
+.seg button[aria-pressed=true]{background:var(--club);border-color:var(--club);color:var(--on-club)}
+.inn{margin:0 0 22px;max-width:980px}
+.inn h2{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.inn h2 .t{font-variant-numeric:tabular-nums;color:var(--club)}
+.sheet{width:100%;border-collapse:collapse;font:600 24px Board,sans-serif;margin:0 0 10px}
+.sheet th{font:600 16px system-ui,sans-serif;color:var(--sage);text-align:right;padding:4px 10px;border-bottom:2px solid var(--edge)}
+.sheet td{padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--board-2)}
+.sheet th:first-child,.sheet td:first-child{text-align:left}
+.sheet td.out{color:var(--sage)}
+.sheet tr.home td{background:var(--board-2)}
+.sheet tr.home td:first-child{box-shadow:inset 4px 0 0 var(--club)}
+.sheet.league th:nth-child(2),.sheet.league td:nth-child(2){text-align:left;width:100%}
+.sheet.league td:first-child{min-width:56px}
+.fow{color:var(--sage);font-size:17px;margin:0 0 6px}
+.overs{list-style:none;margin:0;padding:0;max-width:980px}
+.overs li{display:flex;align-items:center;gap:16px;background:var(--board);border-radius:10px;padding:10px 16px;margin-bottom:8px}
+.overs .n{font:800 26px Board,sans-serif;min-width:110px}
+.overs .bs{flex:1;display:flex;gap:8px;flex-wrap:wrap}
+.overs .b{min-width:46px;height:46px;border-radius:50%;background:var(--board-2);display:flex;align-items:center;justify-content:center;
+  font:800 22px Board,sans-serif;padding:0 8px}
+.overs .b.w{background:var(--live);color:#fff} .overs .b.four,.overs .b.six{background:var(--club);color:var(--on-club)}
+.overs .sum{font:600 22px Board,sans-serif;color:var(--sage);font-variant-numeric:tabular-nums;text-align:right}
+
 /* The picture of the stream: small in the corner, the whole screen when tapped. */
 #pv{position:absolute;right:20px;bottom:20px;width:min(30vw,384px);aspect-ratio:16/9;border-radius:10px;overflow:hidden;
   border:3px solid var(--board-2);background:#000;padding:0;box-shadow:0 10px 30px rgba(0,0,0,.45)}
@@ -237,6 +264,13 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
 
     <!-- Match day running: the tabs. -->
     <section id="v-score" class="view tab hidden">
+      <div class="seg" id="sv_pick" role="tablist">
+        <button type="button" data-sv="score">Score</button>
+        <button type="button" data-sv="card">Scorecard</button>
+        <button type="button" data-sv="overs">Overs</button>
+        <button type="button" data-sv="table" class="hidden">Table</button>
+      </div>
+      <div id="sv-score">
       <div id="score_wait" class="center"><h1>Waiting for the first ball</h1>
         <p class="muted" id="score_wait_why">The score appears here as soon as the scorer starts.</p></div>
       <div id="score" class="hidden">
@@ -249,6 +283,12 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
         <div class="chase" id="sc_chase"></div>
         <div class="people" id="sc_people"></div>
       </div>
+      </div>
+      <!-- The rest of the match: the scorer's own figures (GET /match/scorecard), and the
+           league table. Public like the score: nothing here changes anything. -->
+      <div id="sv-card" class="hidden"><p class="muted" id="card_wait">Waiting for the first ball.</p><div id="card"></div></div>
+      <div id="sv-overs" class="hidden"><p class="muted" id="overs_wait">Waiting for the first over.</p><ul class="overs" id="overs"></ul></div>
+      <div id="sv-table" class="hidden"><h2 id="table_name"></h2><table class="sheet league" id="table"></table></div>
     </section>
 
     <section id="v-get" class="view tab hidden">
@@ -519,7 +559,7 @@ function render() {
   if (v === 'poweroff') txt('off_count', mins(Math.max(0, L.power_off_in)));
   if (v === 'note-already') { txt('note_title', 'Match day is open in another window'); txt('note_text', 'CricketStream on the laptop is already running match day from another copy. Use the laptop to carry on.'); }
   if (v === 'note-setup') { txt('note_title', 'The laptop isn\'t set up yet'); txt('note_text', 'Run CricketStream\'s setup on the laptop first.'); }
-  if (v === 'score') renderScore();
+  if (v === 'score') { renderScore(); renderSV(); }
   renderQuestion();
   // Started from the "off" screen: carry on to match day once the laptop is ready.
   if (pendingStart && S.reachable && L.phase === 'home' && !L.question) {
@@ -708,6 +748,105 @@ function who(name, n, role, strike) {
   if (role) { var r = document.createElement('span'); r.className = 'role'; r.textContent = role; a.appendChild(r); }
   var b = document.createElement('span'); b.className = 'n'; b.textContent = n;
   d.appendChild(a); d.appendChild(b); return d;
+}
+
+// ── The rest of the match: scorecard, overs, league table (public, like the score) ──
+// Read only while shown, and back to the big score after a minute and a half untouched —
+// it's on a wall in a bar, and the score is what people look up for.
+var sv = 'score', cardData = null, cardAt = 0, tableData = null, tableAt = 0;
+document.querySelectorAll('#sv_pick button').forEach(function (b) {
+  b.addEventListener('click', function () { sv = b.getAttribute('data-sv'); renderSV(); loadSV(true); });
+});
+function renderSV() {
+  if (sv !== 'score' && Date.now() - lastTouch > 90000) sv = 'score';
+  if (sv === 'table' && !(tableData && tableData.usable)) sv = 'score';
+  ['score', 'card', 'overs', 'table'].forEach(function (k) { show('sv-' + k, k === sv); });
+  document.querySelectorAll('#sv_pick button').forEach(function (b) {
+    b.setAttribute('aria-pressed', b.getAttribute('data-sv') === sv ? 'true' : 'false');
+    if (b.getAttribute('data-sv') === 'table') b.classList.toggle('hidden', !(tableData && tableData.usable));
+  });
+}
+function loadSV(force) {
+  if ((sv === 'card' || sv === 'overs') && (force || Date.now() - cardAt > 10000)) {
+    cardAt = Date.now();
+    api('server/match/scorecard').then(function (d) { if (d.ok) { cardData = d; renderCard(); renderOvers(); } });
+  }
+  loadTable();
+}
+function loadTable() {
+  // The table changes once a match at most; the server fetches it lazily (ready: false).
+  if (Date.now() - tableAt < (tableData && tableData.ready ? 600000 : 30000)) return;
+  tableAt = Date.now();
+  api('server/league/table').then(function (d) {
+    if (d.ready !== undefined) { tableData = d; renderTable(); renderSV(); }
+  });
+}
+function make(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function sheet(heads, rows, cls) {
+  var t = make('table', 'sheet' + (cls ? ' ' + cls : '')), hr = make('tr');
+  heads.forEach(function (h) { hr.appendChild(make('th', '', h)); });
+  t.appendChild(hr);
+  rows.forEach(function (r) {
+    var tr = make('tr', r.cls || '');
+    r.cells.forEach(function (c, i) { tr.appendChild(make('td', i === 0 && r.dim ? 'out' : '', c)); });
+    t.appendChild(tr);
+  });
+  return t;
+}
+function renderCard() {
+  var c = $('card'), inns = (cardData && cardData.innings) || [];
+  c.textContent = '';
+  show('card_wait', !inns.length);
+  inns.slice().reverse().forEach(function (inn) { // the innings under way first
+    var d = make('div', 'inn'), h = make('h2', '', inn.batting_team || 'Innings ' + inn.innings);
+    h.appendChild(make('span', 't', inn.score + '/' + inn.wickets + '  (' + inn.overs + ' ov)'));
+    d.appendChild(h);
+    if (inn.batters.length) {
+      d.appendChild(sheet(['Batter', 'R', 'B'], inn.batters.map(function (b) {
+        return {cells: [b.name + (b.out ? '' : ' *'), b.runs, b.balls], dim: b.out};
+      })));
+    }
+    if (inn.bowlers.length) {
+      d.appendChild(sheet(['Bowler', 'O', 'R', 'W'], inn.bowlers.map(function (b) { return {cells: [b.name, b.o, b.r, b.w]}; })));
+    }
+    if (inn.fall_of_wickets.length) {
+      d.appendChild(make('p', 'fow', 'Fall of wickets: ' + inn.fall_of_wickets.map(function (f) {
+        return f.score + ' (' + f.batter + ')';
+      }).join(', ')));
+    }
+    c.appendChild(d);
+  });
+}
+function renderOvers() {
+  var ul = $('overs'), overs = (cardData && cardData.recent_overs) || [];
+  ul.textContent = '';
+  show('overs_wait', !overs.length);
+  overs.forEach(function (o) {
+    var li = make('li'), bs = make('div', 'bs');
+    li.appendChild(make('span', 'n', 'Over ' + o.over));
+    o.balls.forEach(function (b) {
+      bs.appendChild(make('span', 'b' + (b === 'W' ? ' w' : b === '4' ? ' four' : b === '6' ? ' six' : ''), b));
+    });
+    li.appendChild(bs);
+    li.appendChild(make('span', 'sum', o.runs + (o.runs === 1 ? ' run' : ' runs') +
+      (o.wickets ? ' · ' + o.wickets + (o.wickets === 1 ? ' wkt' : ' wkts') : '')));
+    ul.appendChild(li);
+  });
+}
+function renderTable() {
+  var t = $('table');
+  t.textContent = '';
+  if (!tableData || !tableData.usable) return;
+  txt('table_name', tableData.name || 'League table');
+  var full = sheet(['', 'Team', 'P', 'Pts'], (tableData.rows || []).map(function (r, i) {
+    return {cells: [r.position, r.team, r.played, r.points], cls: i === tableData.home_index ? 'home' : ''};
+  }), 'league');
+  while (full.firstChild) t.appendChild(full.firstChild);
 }
 
 // Get ready: the control panel's own match-day checklist, with its buttons.
@@ -1000,6 +1139,7 @@ setInterval(function () {
   var L = laptop();
   if (!(S && S.reachable && L.phase === 'running' && L.server_ready)) return;
   loadScore(); loadChecklist(); // the checklist also says whether it's on air
+  if (tab === 'score') loadSV(false);
 }, 3000);
 setInterval(function () { loadPreview(false); }, 2000);
 </script>

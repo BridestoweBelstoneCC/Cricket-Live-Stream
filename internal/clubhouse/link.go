@@ -60,7 +60,7 @@ type Config struct {
 var proxyGET = map[string]bool{
 	"/live/view": true, "/state": true, "/checklist": true, "/precheck/last": true,
 	"/stream/monitor": true, "/health": true, "/preview.jpg": true, "/youtube/live": true,
-	"/cameras/discover": true,
+	"/cameras/discover": true, "/match/scorecard": true, "/league/table": true,
 }
 
 var proxyPOST = map[string]bool{

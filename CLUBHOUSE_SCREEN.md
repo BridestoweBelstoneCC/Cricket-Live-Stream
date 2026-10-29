@@ -11,6 +11,10 @@ An **optional** touch screen in the clubhouse that runs the stream for you:
   bowler's-end cameras if you have two.
 - **The score** — big enough to read across the bar — and a small picture of the stream in
   the corner. Tap it and the stream fills the screen (YouTube's own player, with sound).
+  Beside it, **Scorecard** (both innings: batters, bowlers, fall of wickets — the scorer's
+  own figures), **Overs** (the last six, ball by ball) and the league **Table** (with the
+  club's row picked out; shown when today's match is in a league). Anyone can look; after
+  a minute and a half untouched the screen goes back to the score.
 - **Finish** ends the stream, ends match day, closes OBS and offers to switch the laptop off.
 
 Anyone can see the score and the stream. Everything that changes anything needs the
