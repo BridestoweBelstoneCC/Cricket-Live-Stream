@@ -228,7 +228,7 @@ flowchart LR
 
     subgraph CTRL["Control plane"]
         routes["HTTP routes<br/>auth · origin · rate limits"]
-        svc["Background services<br/>watchdog · stream monitor · OBS guard<br/>viewers · pre-match · spotter · bridge"]
+        svc["Background services<br/>watchdog · stream monitor · OBS guard · overlay watch<br/>viewers · pre-match · spotter · bridge"]
         obsio["OBS adapters<br/>obsCall · obsFastCall<br/>obs prep · obs setup"]
     end
 
@@ -406,6 +406,7 @@ from a panic and carries on:
 | Watchdog | 90 s | Unsticks the season-stats build, restarts a dead Cloudflare tunnel, trims rate-limit state, logs feed staleness and CPU throttling (Mac and Windows) | Logs, retries next tick |
 | Stream monitor | 15 s | OBS stream status, congestion samples, quality-ladder decision, stream-end trigger for the match page | Marks OBS unreachable |
 | OBS crash recovery (`obsGuardTick`) | 5 s | OBS crash (sentinel present) → reopen, scene, restart stream if it was live; freeze (window hung 60 s **and** bytes not moving) → kill → reopen | Capped at 3 reopens / 30 min, then a human |
+| Overlay watch (`overlayWatchTick`) | 10 s | OBS local and reachable but no overlay `/live` poll for 30 s (its first load beat the server) → reload the Overlay source | 3 reloads between polls, then says to check its URL |
 | Viewer sampler | 60 s, live only | YouTube concurrent viewers for sponsor viewer-minutes | Count goes stale (>3 min) and is not used |
 | Pre-match check | 30 s after start, then 6 h | All pre-match checks in parallel, 20 s budget | A check that errors is reported ✗, never raised |
 | Camera spotter | 60 s tick, check every N min, live only | Camera screenshots → frozen check → Claude Haiku | "Couldn't check", never a false camera problem |
@@ -559,6 +560,7 @@ id changes mid-innings.
 | Scorer feed stops | watchdog, `/health` | Overlay keeps the last score | "feed stale" in the health strip |
 | Scorer's laptop (agent) unreachable | `ReadAgentFile` | Last score for 120 s, then rediscover every 15 s | Agent status + checklist button |
 | OBS crashes | OBS guard: port down + crash sentinel | Clear sentinel, reopen past Safe Mode, Main scene, restart stream **only if it was live** | Event in `/health` → `obs_recovery` |
+| Overlay never loaded (OBS opened before the server) | overlay watch: no `/live` for 30 s | Reload the Overlay source (`refreshnocache`), up to 3 times | `/health` → `overlay`; watchdog log |
 | OBS freezes | Window hung 60 s **and** stream bytes not moving | Force-close → treated as a crash | Same |
 | OBS frozen but still streaming | Bytes moving | **Left alone** (killing it would cause the outage) | Warning |
 | Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down (never up on its own) | Monitor card, step history |
