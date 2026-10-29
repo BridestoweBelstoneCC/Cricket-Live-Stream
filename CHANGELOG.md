@@ -24,6 +24,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - New server routes for it, login-gated: `GET /preview.jpg` (what's on air, small, at most
   one OBS screenshot every 1.5s however many ask), `GET /youtube/live` (the live
   broadcast's video id, cached), and the checklist action `stop_stream`.
+- **Test the camera cut** (control panel, next to *Automatic cut at over boundary*): before
+  a match with two cameras, it checks both are in every scene (Main, the bowler's end,
+  Replay — a camera missing from one reconnects at each cut and drifts behind the score),
+  cuts to the bowler's end and back exactly as the automatic cut does, and watches both
+  pictures the whole way. It won't run while the stream is live, and always puts OBS back
+  on the scene it was showing.
 
 ---
 

@@ -979,6 +979,13 @@ func (c *ctx) doGET() {
 		// OBS itself reports it can use, while OBS is closed.
 		c.json(out)
 
+	case path == "/camera/cut_test":
+		// The camera cut test's steps so far (the panel polls while it runs).
+		if !c.checkToken() {
+			return
+		}
+		c.json(CutTestStatus())
+
 	case path == "/checklist":
 		// Auth-gated like the rest of the operator's controls: it's the read side of
 		// buttons that start OBS and go live.
