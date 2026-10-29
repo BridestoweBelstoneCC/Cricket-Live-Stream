@@ -433,7 +433,8 @@ func (s *Screen) touch() {
 
 // publicReads: what a locked screen may show — the match and the stream.
 var publicReads = map[string]bool{"/live/view": true, "/state": true, "/preview.jpg": true,
-	"/youtube/live": true, "/checklist": true, "/stream/monitor": true, "/health": true}
+	"/youtube/live": true, "/checklist": true, "/stream/monitor": true, "/health": true,
+	"/match/scorecard": true, "/league/table": true}
 
 func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/api")

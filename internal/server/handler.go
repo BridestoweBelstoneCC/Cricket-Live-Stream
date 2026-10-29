@@ -840,6 +840,11 @@ func (c *ctx) doGET() {
 		}
 		c.json(M{"ready": true, "scorers": scorers, "bowlers": bowlers})
 
+	case path == "/match/scorecard":
+		// The match so far for the clubhouse screen (scorecard.go). Read-only and open,
+		// like /live/view: the score is what the stream shows anyway.
+		c.json(MatchScorecard())
+
 	case path == "/league/table":
 		// Pre-game / between-innings "context" panel: where this result leaves the home
 		// club in the table. Same lazy-build pattern — never blocks the overlay's poll.
@@ -860,8 +865,11 @@ func (c *ctx) doGET() {
 				c.json(M{"ready": true, "usable": false, "error": "Home club not found in this table — " +
 					"probably a cup/friendly competition_id, not the league"})
 			} else {
+				// rows/home_index: the whole table, for the clubhouse screen; the overlay
+				// uses row/row_above.
 				c.json(M{"ready": true, "usable": true, "name": valOr(lt, "name", ""), "row": home["row"],
-					"row_above": home["row_above"], "total_teams": len(gl(lt, "rows"))})
+					"row_above": home["row_above"], "total_teams": len(gl(lt, "rows")),
+					"rows": gl(lt, "rows"), "home_index": home["index"]})
 			}
 		}
 
