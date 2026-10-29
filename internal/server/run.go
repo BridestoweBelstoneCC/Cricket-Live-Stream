@@ -43,6 +43,7 @@ func Start() {
 	StartPrecheckLoop()
 	StartCameraSpotter()
 	StartOBSGuard()
+	StartOverlayWatch()
 	StartPCSBridgeSync()
 	if CloudflareTunnel {
 		if ClubPassword == "" {

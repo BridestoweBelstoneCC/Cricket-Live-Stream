@@ -168,6 +168,8 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **OBS crash recovery** — if OBS crashes or freezes mid-match, the server reopens it past
   the "Safe Mode?" prompt, puts the main scene back, and restarts the stream if it was
   live. Closing OBS normally after the match leaves it closed.
+  If OBS's scorebar page didn't load (OBS opened before the server was ready), the server
+  notices it isn't asking for the score and reloads it.
 - **AI camera spotter** *(new, optional)* — while live, Claude looks at each camera every
   few minutes and warns about a fogged or wet lens, a knocked camera, glare or a blocked
   view; a frozen picture is caught without AI. About 10–15p for a long match.

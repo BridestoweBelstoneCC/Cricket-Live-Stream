@@ -129,6 +129,14 @@ problem + what to do + pause) or print and `console.Pause()`.
   open mid-match would eat the overlay's events and commands. internal/server/js_test.go
   guards both short-circuits. It takes one `/state` read for the club's real colours and
   nothing else, ever.
+- **OBS loads the overlay ONCE, and match day opens OBS before the server.** A browser
+  source whose first load finds nothing listening shows an error page and never retries,
+  so on a fresh start the scorebar was missing and nothing reached the ball DB, scorecard
+  or report (found on a VM end to end, 2026-10-29; the Python edition had it too). A page
+  that did load survives a server restart by itself. `overlaywatch.go` reloads the
+  `Overlay` source (`refreshnocache`) when OBS is local and reachable but no `/live` poll
+  has come for 30s — at most 3 times between polls. `/live/view` doesn't count as the
+  overlay; keep it that way.
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
 - **A match keeps one id when it changes mid-innings.** `CurrentMatchID()` is the
@@ -410,7 +418,8 @@ problem + what to do + pause) or print and `console.Pause()`.
   bridge connectivity (`pcs.bridge`), Mac/Windows CPU throttle state (`thermal`), and a
   pre-flight OBS bitrate sanity check (`obs_bitrate`) that flags a leftover downshift from a
   previous match before the operator goes live — see `obsBitrateSanityCheck()` — and
-  OBS crash recovery (`obs_recovery`: watching, recent reopens, last event).
+  OBS crash recovery (`obs_recovery`: watching, recent reopens, last event), and whether
+  OBS's overlay is polling (`overlay`: seconds since its last `/live`, reloads).
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
 - `http://localhost:5000/league/table` — today's competition's table (home club's row +
   the row above), backend for the overlay's `#league-table-panel` (`graphics_league_table`);

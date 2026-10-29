@@ -6,6 +6,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- Fixed: **no scorebar on air after a fresh match-day start.** The launcher opens OBS
+  before the server, so OBS's Overlay source loaded while nothing was listening, showed an
+  error page and never tried again — no graphics, and nothing reached the ball database,
+  the scorecard or the match report (the Python edition did the same). The server now
+  notices when OBS is open but the overlay hasn't asked for the score in 30 seconds and
+  reloads it (at most three times; then it says to check the Overlay's URL). `/health`
+  shows it under `overlay`. Found end to end on a fresh Windows VM.
 - **Clubhouse screen (optional).** A touch screen in the clubhouse — a Raspberry Pi running
   `cricketstream clubhouse` — that switches the streaming laptop on with Wake-on-LAN,
   starts match day, shows the match-day checklist with **Go live**, sets the YouTube title
