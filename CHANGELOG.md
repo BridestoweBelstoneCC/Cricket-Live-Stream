@@ -34,6 +34,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   in when it wasn't, and pairing gave the screen a card no wake can reach. Windows'
   adapter description is checked too, and a card with a made-up address is never counted
   as wired.
+- **The CPU warning works on Windows.** The control panel's health bar (now **CPU**, was
+  *Mac*) and the watchdog say when Windows is holding the laptop's CPU back — its
+  "% Performance Limit" below 95% — which happens when it's too hot, and also when it's
+  come off its charger, so the warning says to check the charger first. Read straight from
+  Windows' performance counters every few seconds at most; no admin rights needed.
 
 ---
 
