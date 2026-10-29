@@ -560,8 +560,13 @@
     <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div class="toggle-row" style="margin-top:10px">
       <div><div class="toggle-label">Automatic cut at over boundary</div>
-           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera is set up (Setup → Cameras). <strong>New, unverified against real hardware</strong> — watch the first live over closely.</div></div>
+           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera is set up (Setup → Cameras). Not yet proven with two real cameras — run <strong>Test the camera cut</strong> before your first match with it.</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn btn-test" id="cut-test-btn" onclick="runCutTest()">&#9654; Test the camera cut</button>
+      <span class="hint" style="margin-left:8px">Before going live: checks both cameras are in every scene, cuts to the bowler's end and back as a match does, and watches both pictures.</span>
+      <ul id="cut-test-steps" style="margin:8px 0 0;padding-left:0;list-style:none;font-size:13px"></ul>
     </div>
     <div class="toggle-row">
       <div><div class="toggle-label">AI camera spotter</div>
@@ -654,7 +659,7 @@
     <span class="hl-item"><span class="hl-dot" id="hl-photos"></span>Photos: <b id="hl-photos-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-badges"></span>Badges: <b id="hl-badges-t">—</b></span>
     <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
-    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>Mac: <b id="hl-thermal-t">—</b></span>
+    <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>CPU: <b id="hl-thermal-t">—</b></span>
     <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
   </div>
   <style>
@@ -3047,6 +3052,37 @@ async function testReplay() {
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 
+// The camera cut test (POST/GET /camera/cut_test): runs on the server, steps polled here.
+async function runCutTest() {
+  const btn = document.getElementById('cut-test-btn'), ul = document.getElementById('cut-test-steps');
+  ul.textContent = '';
+  try {
+    const d = await (await apiFetch('/camera/cut_test', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if (!d.ok) { showCutTestSteps([{ok: false, text: d.error || 'The test did not start.'}]); return; }
+  } catch (e) { showCutTestSteps([{ok: false, text: 'Could not reach server'}]); return; }
+  btn.disabled = true;
+  const poll = async function () {
+    try {
+      const s = await (await apiFetch('/camera/cut_test')).json();
+      showCutTestSteps(s.steps || [], s.running);
+      if (s.running) { setTimeout(poll, 1000); return; }
+    } catch (e) { setTimeout(poll, 2000); return; }
+    btn.disabled = false;
+  };
+  poll();
+}
+function showCutTestSteps(steps, running) {
+  const ul = document.getElementById('cut-test-steps');
+  ul.textContent = '';
+  steps.forEach(function (s) {
+    const li = document.createElement('li');
+    li.textContent = (s.ok ? '✓ ' : '✗ ') + s.text;
+    li.style.color = s.ok ? 'var(--ok)' : 'var(--bad)';
+    ul.appendChild(li);
+  });
+  if (running) { const li = document.createElement('li'); li.textContent = '… testing'; li.style.color = 'var(--muted)'; ul.appendChild(li); }
+}
+
 function showStatus(msg, cls) {
   const el = document.getElementById('status');
   el.textContent=msg; el.className='status '+cls;
@@ -3949,11 +3985,13 @@ async function pollHealth() {
     hlSet('hl-badges', h.match.badges ? 'hl-ok' : 'hl-warn', h.match.badges ? 'both set' : 'incomplete');
     // AI key
     hlSet('hl-ai', h.keys.anthropic ? 'hl-ok' : 'hl-warn', h.keys.anthropic ? 'key set' : 'no key');
-    // Thermal (macOS only — hidden entirely on other platforms, nothing to show)
+    // Thermal (Mac and Windows — hidden where the OS has nothing to show). Windows' limit
+    // counts power too, so a laptop off its charger shows here as well.
     var thermItem = document.getElementById('hl-thermal-item');
     if (h.thermal && h.thermal.available) {
       thermItem.style.display = '';
-      if (h.thermal.throttled) hlSet('hl-thermal','hl-bad', 'throttled (' + h.thermal.speed_limit_pct + '%) — cool it down');
+      if (h.thermal.throttled) hlSet('hl-thermal','hl-bad', 'slowed to ' + h.thermal.speed_limit_pct + '% — ' +
+        (h.thermal.platform === 'windows' ? 'charger in? then give it air' : 'cool it down'));
       else hlSet('hl-thermal','hl-ok','ok');
     } else {
       thermItem.style.display = 'none';

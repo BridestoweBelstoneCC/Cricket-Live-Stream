@@ -129,6 +129,8 @@ type Screen struct {
 	client *http.Client // status polls: short
 	slow   *http.Client // everything else: a pre-match check takes ~25s
 
+	bg sync.WaitGroup // background(): tests wait for these so one can't land in the next
+
 	mu          sync.Mutex
 	cfg         screenConfig
 	laptop      map[string]any
@@ -243,6 +245,14 @@ func (s *Screen) pollLaptop(every time.Duration) {
 	}
 }
 
+func (s *Screen) background(f func()) {
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		f()
+	}()
+}
+
 func (s *Screen) pollOnce() {
 	s.mu.Lock()
 	paired := s.cfg.paired()
@@ -271,6 +281,12 @@ func (s *Screen) pollOnce() {
 			s.lastErr = "The laptop doesn't accept this screen's pairing key any more — pair again with the key on its match-day screen."
 		}
 	default:
+		if !s.wakingSince.IsZero() {
+			// Woken by this screen, and now answering: tell the laptop, so its pre-match
+			// check can say a wake has worked (and how long it takes).
+			after, _ := json.Marshal(map[string]int{"after": int(time.Since(s.wakingSince).Seconds())})
+			s.background(func() { s.toLaptop(s.client, "POST", "/clubhouse/woke", after) })
+		}
 		s.reachable, s.laptop, s.lastOK, s.lastErr = true, st, time.Now(), ""
 		s.wakingSince = time.Time{}
 		if club, _ := st["club"].(string); club != "" && club != s.cfg.Club {
@@ -785,7 +801,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 			return nil, fmt.Errorf("Paired, but couldn't save it: %v", err)
 		}
 		fmt.Printf("  ✓ Paired with %s (%s)\n", orDefault(d.Club, d.Host), host)
-		go s.pollOnce()
+		s.background(s.pollOnce)
 		out := map[string]any{"ok": true, "club": d.Club, "host": d.Host, "address": host, "nics": d.NICs,
 			"allow_power_off": d.AllowPowerOff}
 		if !wired {

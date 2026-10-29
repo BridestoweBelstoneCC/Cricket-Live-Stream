@@ -75,6 +75,12 @@ This is what lets the screen switch the laptop on. Three places, once:
    With it on, "shut down" is really a half-hibernation that many network adapters won't
    wake from.
 
+**The pre-match check checks all of this for you** (control panel → Setup → Run pre-match
+check, or the match-day screen's own): the cable, whether Windows lets the network port
+wake the laptop, Fast Startup, automatic sign-in, *Open CricketStream when Windows
+starts* — and when the screen last switched the laptop on, and how long it took. It
+shows ⚠ until the screen has woken the laptop once.
+
 Then test it: shut the laptop down, and press **Start the stream** on the screen. If it
 doesn't wake, check each step above; a few laptops (some ultrabooks, most USB network
 adapters) can't wake from off at all — those can still be switched on by hand and the

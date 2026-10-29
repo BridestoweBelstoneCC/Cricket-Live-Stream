@@ -365,6 +365,22 @@ func (l *Link) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Printf("  Clubhouse screen (%s): switching this computer off in %ds\n", remoteIP(r), int(delay.Seconds()))
 		writeJSON(w, map[string]any{"ok": true, "power_off_in": int(time.Until(PowerOffAt()).Seconds())}, 200)
+	case "POST /clubhouse/woke":
+		// The screen woke this laptop and it has now answered: the pre-match check's proof
+		// that a wake works (clubhouse.LastWake).
+		var body struct {
+			After int `json:"after"`
+		}
+		if !readJSON(r, &body) || body.After < 0 || body.After > 24*3600 {
+			fail(400, "Bad request")
+			return
+		}
+		if err := saveWake(WakeRecord{At: time.Now(), AfterSec: body.After, From: remoteIP(r)}); err != nil {
+			fail(500, err.Error())
+			return
+		}
+		fmt.Printf("  Clubhouse screen (%s): switched this laptop on — it answered after %s\n", remoteIP(r), plainDuration(body.After))
+		writeJSON(w, map[string]any{"ok": true}, 200)
 	case "POST /clubhouse/poweroff/cancel":
 		if err := CancelPowerOff(); err != nil {
 			fail(500, err.Error())

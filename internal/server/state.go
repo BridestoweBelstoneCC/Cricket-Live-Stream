@@ -325,6 +325,10 @@ func SeedStateFromConfig() {
 		return
 	}
 	maps := configStateMap
+	// Held across load→seed→save: the window's pre-match check seeds while the panel (or
+	// the launcher, in the same process) may be saving.
+	stateRMWMu.Lock()
+	defer stateRMWMu.Unlock()
 	state := LoadState()
 	defaults := DefaultState()
 	var seeded []string
@@ -362,6 +366,16 @@ func SeedStateFromConfig() {
 		visible = append(visible, fmt.Sprintf("%d secret key(s)", n))
 	}
 	say("  ✔  Seeded from config.ini: %s", strings.Join(visible, ", "))
+}
+
+// ReplaceState is the launcher's write: build gets match_state.json as it is on disk (see
+// LoadExistingState) and returns the whole new state, as one step under the same lock as
+// UpdateState, so a save made meanwhile in this process isn't lost. Unlike UpdateState it
+// reports a failed save: the launcher can't carry on without the file.
+func ReplaceState(build func(existing M) M) error {
+	stateRMWMu.Lock()
+	defer stateRMWMu.Unlock()
+	return SaveState(build(LoadExistingState()))
 }
 
 // LoadExistingState is match_state.json exactly as it is on disk — no defaults filled in

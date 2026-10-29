@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"cricketstream/internal/ai"
+	"cricketstream/internal/clubhouse"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
@@ -554,6 +555,17 @@ func pcScorerLink(st M) CheckResult {
 	return chk("skip", "Scoring on this laptop (no second laptop to check).", "")
 }
 
+// pcClubhouse: can the clubhouse screen switch this laptop on? Only when the screen is
+// switched on ([Clubhouse] enabled); ⚠ at worst — a laptop on wifi at home days before
+// the match isn't wrong, and this runs every six hours (a ✗ would sit red all week).
+func pcClubhouse(M) CheckResult {
+	cfg, err := ini.Load(ConfigFile)
+	if err != nil || !cfg.GetBool("Clubhouse", "enabled", false) {
+		return chk("skip", "No clubhouse screen.", "")
+	}
+	return chk(clubhouse.WakeAdvice(clubhouse.CheckWake()))
+}
+
 // Prechecks is the list, in display order. Add new external dependencies here; a check
 // may panic — that's reported as "bad", never a crash.
 var Prechecks = []struct {
@@ -574,6 +586,7 @@ var Prechecks = []struct {
 	{"badge", "Opposition badge", pcBadge},
 	{"surnames", "Player names", pcSurnames},
 	{"update", "Software version", pcUpdate},
+	{"clubhouse", "Clubhouse screen", pcClubhouse},
 }
 
 var (

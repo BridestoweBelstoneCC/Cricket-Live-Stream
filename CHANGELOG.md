@@ -30,6 +30,27 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   row picked out. Public like the score — no PIN — and back to the score after a minute and
   a half untouched. New read-only route `GET /match/scorecard`; `/league/table` also gives
   the whole table (`rows`, `home_index`) alongside what the overlay uses.
+- **Test the camera cut** (control panel, next to *Automatic cut at over boundary*): before
+  a match with two cameras, it checks both are in every scene (Main, the bowler's end,
+  Replay — a camera missing from one reconnects at each cut and drifts behind the score),
+  cuts to the bowler's end and back exactly as the automatic cut does, and watches both
+  pictures the whole way. It won't run while the stream is live, and always puts OBS back
+  on the scene it was showing.
+- **The pre-match check says whether the clubhouse screen can switch the laptop on**:
+  a network cable in, Windows letting the port wake it, Fast Startup off, automatic
+  sign-in, CricketStream opening at sign-in — and when the screen last did it, and how
+  long the laptop took to answer (the screen reports each wake that works). ⚠ until it
+  has worked once; never ✗, since a laptop on wifi at home days before isn't wrong.
+- Fixed: a VirtualBox (or other virtual) network adapter counted as the laptop's network
+  cable — Windows calls VirtualBox's "Ethernet 3" — so the Clubhouse card said a cable was
+  in when it wasn't, and pairing gave the screen a card no wake can reach. Windows'
+  adapter description is checked too, and a card with a made-up address is never counted
+  as wired.
+- **The CPU warning works on Windows.** The control panel's health bar (now **CPU**, was
+  *Mac*) and the watchdog say when Windows is holding the laptop's CPU back — its
+  "% Performance Limit" below 95% — which happens when it's too hot, and also when it's
+  come off its charger, so the warning says to check the charger first. Read straight from
+  Windows' performance counters every few seconds at most; no admin rights needed.
 
 ---
 
