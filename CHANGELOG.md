@@ -24,6 +24,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - New server routes for it, login-gated: `GET /preview.jpg` (what's on air, small, at most
   one OBS screenshot every 1.5s however many ask), `GET /youtube/live` (the live
   broadcast's video id, cached), and the checklist action `stop_stream`.
+- **The CPU warning works on Windows.** The control panel's health bar (now **CPU**, was
+  *Mac*) and the watchdog say when Windows is holding the laptop's CPU back — its
+  "% Performance Limit" below 95% — which happens when it's too hot, and also when it's
+  come off its charger, so the warning says to check the charger first. Read straight from
+  Windows' performance counters every few seconds at most; no admin rights needed.
 
 ---
 
