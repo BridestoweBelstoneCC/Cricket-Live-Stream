@@ -132,7 +132,8 @@ The port is complete: every module, script and test, CI, docs. Beyond the origin
 settings page (/settings), full stream preview with demo graphics on the setup/settings
 page, Check buttons, "Your files" folder buttons, desktop shortcut (Windows), practice
 match from the control panel (internal/server/rehearsal.go), auto-opening control panel,
-second-start detection, panic guard, `cricketstream version`.
+second-start detection, panic guard, `cricketstream version`, and the optional clubhouse
+touch screen (internal/clubhouse, `cricketstream clubhouse`; CLUBHOUSE_SCREEN.md).
 
 The app window (2026-10-18, internal/app): the double-click opens CricketStream's own
 window (WebView2 via go-webview2, pure Go; browser fallback elsewhere) with "which computer

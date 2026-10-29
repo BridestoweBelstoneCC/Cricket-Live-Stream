@@ -6,6 +6,8 @@ name: Build executables
 #   CricketStream-mac.zip    -> macOS, one universal binary (Apple silicon + Intel) plus a
 #                               double-clickable .command launcher
 #   CricketStream-linux      -> Linux x86-64
+#   CricketStream-linux-arm64 -> Linux on ARM: the Raspberry Pi of the optional clubhouse
+#                               screen (`cricketstream clubhouse`, CLUBHOUSE_SCREEN.md)
 #
 # The same binary is the streaming laptop, the scorer's laptop (agent) and the bridge
 # machine: the first run's setup page asks which this machine is, and config.ini
@@ -48,6 +50,10 @@ jobs:
             goos: linux
             goarch: amd64
             out: CricketStream-linux
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            out: CricketStream-linux-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -110,7 +116,7 @@ jobs:
       # here rather than on a club's match morning.
       - name: Smoke-test the binary
         # Native builds only (the Windows and macOS runners can't run every architecture).
-        if: matrix.goos == 'linux' || matrix.goos == 'windows' && matrix.goarch == 'amd64' || matrix.goos == 'darwin' && matrix.goarch == 'arm64'
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64' || matrix.goos == 'windows' && matrix.goarch == 'amd64' || matrix.goos == 'darwin' && matrix.goarch == 'arm64'
         shell: bash
         env:
           CRICKETSTREAM_NO_PAUSE: '1'
@@ -312,5 +318,6 @@ jobs:
             artifacts/CricketStream-arm64.exe/CricketStream-arm64.exe
             artifacts/CricketStream-mac/CricketStream-mac.zip
             artifacts/CricketStream-linux/CricketStream-linux
+            artifacts/CricketStream-linux-arm64/CricketStream-linux-arm64
             LICENSE
             THIRD_PARTY_NOTICES.txt

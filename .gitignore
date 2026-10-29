@@ -44,6 +44,11 @@ manual_scoring.json
 # bridge_config.ini.bak, which the bare filename would not catch.
 .pcs_bridge_cache/
 bridge_config.ini*
+# Clubhouse screen (the Pi): its pairing (holds the laptop's pairing key), the club badge
+# it keeps for when the laptop is off, and its kiosk browser's own profile.
+clubhouse.ini*
+clubhouse_badge.img
+clubhouse-browser/
 # Scorer agent's remembered folder (a machine-specific path), written beside the script.
 scorer_agent.json*
 # Per-club match-day output: sponsor airtime log + the files quickstart writes after a

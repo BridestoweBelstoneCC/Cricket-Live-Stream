@@ -4,6 +4,29 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Clubhouse screen (optional).** A touch screen in the clubhouse — a Raspberry Pi running
+  `cricketstream clubhouse` — that switches the streaming laptop on with Wake-on-LAN,
+  starts match day, shows the match-day checklist with **Go live**, sets the YouTube title
+  and privacy, finds and adds cameras and cuts between two, shows the score large enough
+  to read across the bar with a picture of the stream in the corner (tap for full screen:
+  YouTube's own player), and at the end stops the stream, ends match day, closes OBS and
+  switches the laptop off — a minute's countdown, with **Keep it on**. A PIN locks the
+  controls; the score and the stream stay on show. The launcher's questions (the match
+  report, a leftover hand-scoring session) come up on the screen as well as the laptop.
+  Off unless switched on from the laptop's match-day screen (*Clubhouse screen*), which
+  also shows the pairing key, whether a screen has been in touch, and whether the laptop
+  has the network cable a wake needs. The screen reaches only the match-day buttons and
+  reads, on an allowlist, with the laptop's own login — never Settings or the club's keys.
+  Setup: [`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md), with an installer for the Pi
+  (`scripts/clubhouse/install-pi.sh`). Releases now include `CricketStream-linux-arm64`.
+- New server routes for it, login-gated: `GET /preview.jpg` (what's on air, small, at most
+  one OBS screenshot every 1.5s however many ask), `GET /youtube/live` (the live
+  broadcast's video id, cached), and the checklist action `stop_stream`.
+
+---
+
 ## v3.0.0-beta.1 — the Go edition (2026-10-18)
 
 CricketStream rewritten in Go as a single app. Everything the overlay, control panel and

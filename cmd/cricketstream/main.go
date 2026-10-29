@@ -22,6 +22,7 @@ import (
 	csapp "cricketstream/internal/app"
 	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
+	"cricketstream/internal/clubhouse"
 	"cricketstream/internal/console"
 	"cricketstream/internal/launcher"
 	"cricketstream/internal/obs"
@@ -50,6 +51,11 @@ Usage:
         --discovery-port N    UDP discovery port (default 8787)
         --check-template      report whether the NV Play scoreboard template is built in
   cricketstream bridge          scorer's machine elsewhere: token-gated scoreboard over HTTP
+  cricketstream clubhouse       the clubhouse touch screen (a Raspberry Pi): switches the
+                                streaming laptop on, runs match day, shows the score
+        --kiosk               open Chromium full screen on it (the Pi's autostart)
+        --port N              the screen page's port (default 5097, this computer only)
+        --laptop ADDR         pair with this address instead of searching the network
   cricketstream simulate        rehearse with a simulated match (--list for scenarios)
   cricketstream obs-setup       build OBS's scenes and sources (OBS must be open)
 
@@ -126,6 +132,15 @@ func run(cmd string, args []string) int {
 		return agent.Run(agent.Options{Folder: fs.Arg(0), Port: *port, DiscoveryPort: *disc, CheckTemplate: *check})
 	case "bridge":
 		return bridge.Run()
+	case "clubhouse":
+		fs := flag.NewFlagSet("clubhouse", flag.ExitOnError)
+		o := clubhouse.ScreenOptions{Version: version}
+		fs.BoolVar(&o.Kiosk, "kiosk", false, "open Chromium full screen on the screen's page")
+		fs.IntVar(&o.Port, "port", clubhouse.DefaultScreenPort, "the screen page's port (loopback only)")
+		fs.StringVar(&o.Laptop, "laptop", "", "the streaming laptop's address, if the network blocks the search")
+		fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+		fs.Parse(args)
+		return clubhouse.RunScreen(o)
 	case "simulate":
 		fs := flag.NewFlagSet("simulate", flag.ExitOnError)
 		o := simulate.Options{}

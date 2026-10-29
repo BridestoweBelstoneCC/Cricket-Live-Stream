@@ -255,6 +255,24 @@ func ChecklistAction(action string) (int, M) {
 			return 200, M{"ok": false, "error": "OBS wouldn't start the stream — check the stream key (OBS → Settings → Stream)."}
 		}
 		return 200, M{"ok": true, "message": "Going live…"}
+	case "stop_stream":
+		// The clubhouse screen's "End the stream". Only the stream: the replay buffer and
+		// recording stay as they are (closing OBS at the end of match day deals with them).
+		r := obsCall(st, []obsws.Req{{Type: "GetStreamStatus"}}, 5*time.Second)
+		if r == nil {
+			return 200, M{"ok": false, "error": "Couldn't reach OBS."}
+		}
+		if r[0] == nil { // refused: "not live" would be a guess, and the screen ends match day on it
+			return 200, M{"ok": false, "error": "OBS didn't say whether it's streaming — stop the stream in OBS on the laptop."}
+		}
+		if !gb(r[0], "outputActive", false) {
+			return 200, M{"ok": true, "message": "Not live."}
+		}
+		if r = obsCall(st, []obsws.Req{{Type: "StopStream"}}, 8*time.Second); r == nil || r[0] == nil {
+			return 200, M{"ok": false, "error": "OBS wouldn't stop the stream — stop it in OBS on the laptop."}
+		}
+		say("  ■  Stream stopped (clubhouse screen)")
+		return 200, M{"ok": true, "message": "Stream stopped."}
 	}
 	return 400, M{"ok": false, "error": "Unknown action: " + action}
 }

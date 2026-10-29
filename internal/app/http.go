@@ -197,6 +197,30 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok(nil)
+	case "POST /api/clubhouse":
+		// The match-day screen's Clubhouse card: on/off, switching off allowed, a new
+		// pairing key, open at sign-in. Only before or after match day, like Settings.
+		switch a.currentPhase() {
+		case phHome, phStopped:
+		default:
+			fail(409, "Change the clubhouse screen before or after match day.")
+			return
+		}
+		var body struct {
+			Enabled       *bool `json:"enabled"`
+			AllowPowerOff *bool `json:"allow_power_off"`
+			NewKey        *bool `json:"new_key"`
+			StartAtLogin  *bool `json:"start_at_login"`
+		}
+		if !readBody(r, &body) {
+			fail(400, "Bad request")
+			return
+		}
+		if err := a.setClubhouse(body.Enabled, body.AllowPowerOff, body.NewKey, body.StartAtLogin); err != nil {
+			fail(500, err.Error())
+			return
+		}
+		ok(map[string]any{"clubhouse": a.clubhouseInfo()})
 	case "POST /api/panel":
 		a.showPanel()
 		ok(nil)

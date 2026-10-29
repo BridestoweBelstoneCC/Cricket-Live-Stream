@@ -716,7 +716,8 @@
       document.getElementById('dl-version').innerHTML = rel.tag_name + (rel.prerelease ? ' (beta)' : '') +
         ' · <a href="' + rel.html_url + '">release notes</a>';
       var links = [['CricketStream.exe', 'Windows'], ['CricketStream-arm64.exe', 'Windows on Arm'],
-                   ['CricketStream-mac.zip', 'Mac'], ['CricketStream-linux', 'Linux']]
+                   ['CricketStream-mac.zip', 'Mac'], ['CricketStream-linux', 'Linux'],
+                   ['CricketStream-linux-arm64', 'Raspberry Pi (clubhouse screen)']]
         .filter(function (p) { return asset(p[0]); })
         .map(function (p) { return '<a href="' + asset(p[0]).browser_download_url + '">' + p[1] + '</a>'; });
       document.getElementById('dl-others').innerHTML = 'Also: ' + links.join(' · ');

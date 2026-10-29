@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="screen-key" content="{{SCREEN_KEY}}">
+<title>CricketStream clubhouse screen</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+/* A pavilion scoreboard: cream numerals painted on board-green plates. The club's own
+   colour (cached from the laptop) is the accent; red only ever means "on air". */
+@font-face{font-family:Board;src:url(/fonts/BarlowCondensed-SemiBold.ttf);font-weight:600}
+@font-face{font-family:Board;src:url(/fonts/BarlowCondensed-ExtraBold.ttf);font-weight:800}
+:root{
+  --night:#0d1f17; --board:#163327; --board-2:#1e4233; --edge:#2f5a47;
+  --cream:#efe7d2; --sage:#9fb5a8; --club:#c8a24a; --on-club:#14140f;
+  --live:#e04a3a; --good:#6fd39a; --warn:#f0bf4c; --bad:#ff7a6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--night);color:var(--cream);
+  font:18px/1.45 system-ui,"Segoe UI",Roboto,"DejaVu Sans",sans-serif;overflow:hidden;user-select:none}
+body.kiosk,body.kiosk *{cursor:none !important}
+button{font:inherit;color:inherit}
+.hidden{display:none !important}
+#app{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+/* The top bar: who this is, the time, the lock. */
+#top{display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--board);border-bottom:3px solid var(--club)}
+#badge{width:48px;height:48px;border-radius:50%;object-fit:contain;background:var(--board-2)}
+#badge-initials{width:48px;height:48px;border-radius:50%;background:var(--club);color:var(--on-club);
+  display:flex;align-items:center;justify-content:center;font:800 22px Board,sans-serif}
+#club{font:800 28px/1 Board,sans-serif;letter-spacing:.01em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chip{font:600 18px Board,sans-serif;padding:6px 14px;border-radius:999px;background:var(--board-2);color:var(--sage)}
+#chip.live{background:var(--live);color:#fff}
+#chip.good{color:var(--good)}
+#clock{font:600 26px Board,sans-serif;font-variant-numeric:tabular-nums;color:var(--sage)}
+#lockbtn,#setbtn{border:0;background:var(--board-2);border-radius:12px;width:56px;height:48px;font-size:22px}
+
+main{position:relative;overflow:auto;padding:22px 26px 26px}
+h1{font:800 44px/1.05 Board,sans-serif;margin:0 0 10px;letter-spacing:.005em}
+h2{font:800 30px/1.1 Board,sans-serif;margin:0 0 10px}
+p{margin:0 0 14px;max-width:62ch}
+.muted{color:var(--sage)}
+.center{min-height:100%;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;max-width:860px}
+
+/* Buttons sized for a finger, not a mouse. */
+.btn{border:2px solid var(--edge);background:var(--board-2);border-radius:14px;padding:16px 26px;min-height:64px;
+  font:600 24px Board,sans-serif;letter-spacing:.01em}
+.btn:active{transform:translateY(1px);filter:brightness(1.15)}
+.btn.go{background:var(--club);border-color:var(--club);color:var(--on-club)}
+.btn.huge{font-size:34px;padding:22px 42px;min-height:96px;border-radius:18px}
+.btn.stop{border-color:var(--live);color:#fff;background:#5b1f19}
+.btn.small{font-size:20px;min-height:52px;padding:10px 18px}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.choice{display:flex;gap:14px;margin:6px 0 22px;flex-wrap:wrap}
+.choice button{min-width:250px;text-align:left;padding:16px 20px}
+.choice button small{display:block;font:15px system-ui,sans-serif;color:var(--sage);margin-top:4px}
+.choice button[aria-pressed=true]{border-color:var(--club);box-shadow:0 0 0 2px var(--club) inset}
+
+/* The scoreboard: each figure on its own plate, as the wooden board has them. */
+.board{display:grid;grid-template-columns:repeat(3,auto);gap:14px;justify-content:start;margin:4px 0 18px}
+.plate{background:var(--board);border:2px solid var(--edge);border-radius:6px;padding:8px 22px 10px;text-align:center;min-width:160px}
+.plate b{display:block;font:800 104px/1 Board,sans-serif;font-variant-numeric:tabular-nums;color:var(--cream)}
+.plate span{display:block;font:600 20px Board,sans-serif;color:var(--sage);margin-top:2px}
+.plate.big b{font-size:148px}
+.batting{font:800 34px/1.1 Board,sans-serif;margin:0 0 8px}
+.chase{font:600 26px Board,sans-serif;color:var(--club);margin:-6px 0 16px}
+.people{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;max-width:980px}
+.who{display:flex;justify-content:space-between;align-items:baseline;background:var(--board);border-radius:8px;padding:10px 16px;
+  font:600 26px Board,sans-serif}
+.who .n{font-variant-numeric:tabular-nums;color:var(--cream)}
+.who.strike{box-shadow:inset 4px 0 0 var(--club)}
+.who .role{font:15px system-ui,sans-serif;color:var(--sage);margin-left:8px}
+
+/* The picture of the stream: small in the corner, the whole screen when tapped. */
+#pv{position:absolute;right:20px;bottom:20px;width:min(30vw,384px);aspect-ratio:16/9;border-radius:10px;overflow:hidden;
+  border:3px solid var(--board-2);background:#000;padding:0;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+#pv img{width:100%;height:100%;object-fit:cover;display:block}
+#pv .tag{position:absolute;left:8px;top:8px;background:var(--live);color:#fff;font:800 16px Board,sans-serif;padding:2px 9px;border-radius:5px}
+#pv .tap{position:absolute;right:8px;bottom:6px;font:600 15px Board,sans-serif;color:#fff;text-shadow:0 1px 3px #000}
+#full{position:fixed;inset:0;background:#000;z-index:40}
+#full iframe,#full img{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:contain}
+#full .bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:18px;padding:12px 18px;
+  background:linear-gradient(transparent,rgba(0,0,0,.8));font:800 34px Board,sans-serif}
+#full .bar .s{flex:1;font-variant-numeric:tabular-nums}
+#full .x{position:absolute;right:16px;top:16px;z-index:2}
+
+/* Operator tabs: along the bottom, where a thumb is. */
+#tabs{display:flex;background:var(--board);border-top:2px solid var(--edge)}
+#tabs button{flex:1;border:0;background:none;padding:14px 6px;font:600 22px Board,sans-serif;color:var(--sage);min-height:64px}
+#tabs button[aria-selected=true]{color:var(--cream);box-shadow:inset 0 4px 0 var(--club);background:var(--board-2)}
+
+.list{list-style:none;margin:0 0 18px;padding:0;max-width:900px}
+.list li{display:flex;gap:14px;align-items:center;background:var(--board);border-radius:10px;padding:12px 16px;margin-bottom:8px}
+.list .mark{font-size:24px;width:30px;text-align:center}
+.list .txt{flex:1}
+.list .txt b{display:block;font:600 24px Board,sans-serif}
+.list .txt span{color:var(--sage);font-size:16px}
+.done .mark{color:var(--good)} .todo .mark{color:var(--warn)} .bad .mark{color:var(--bad)} .busy .mark{color:var(--club)}
+
+.field{display:block;margin:0 0 16px;max-width:900px}
+.field span{display:block;color:var(--sage);font-size:16px;margin-bottom:6px}
+.field input,.field textarea{width:100%;font:22px system-ui,sans-serif;padding:14px 16px;border-radius:12px;border:2px solid var(--edge);
+  background:var(--board);color:var(--cream);user-select:text}
+.field input:focus,.field textarea:focus{outline:0;border-color:var(--club)}
+.field textarea{height:96px;resize:none}
+.say{min-height:28px;color:var(--sage);margin:8px 0 0}
+.say.bad{color:var(--bad)} .say.good{color:var(--good)}
+.log{font:15px/1.5 system-ui,sans-serif;color:var(--sage);background:var(--board);border-radius:10px;padding:12px 16px;max-width:900px;
+  min-height:180px;white-space:pre-wrap}
+.spin{display:inline-block;width:30px;height:30px;border:4px solid var(--edge);border-top-color:var(--club);border-radius:50%;
+  animation:spin 1s linear infinite;vertical-align:-6px;margin-right:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.count{font:800 120px/1 Board,sans-serif;font-variant-numeric:tabular-nums;margin:6px 0 18px}
+
+/* Dialogs: PIN, questions, confirmations. */
+.veil{position:fixed;inset:0;background:rgba(5,12,9,.78);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+.dlg{background:var(--board);border:2px solid var(--edge);border-radius:18px;padding:26px;max-width:720px;width:100%}
+.dlg h2{margin-bottom:8px}
+.pin{font:800 54px Board,sans-serif;letter-spacing:.3em;min-height:66px;margin:6px 0 14px;text-align:center}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:420px;margin:0 auto}
+.pad button{min-height:72px;font:800 34px Board,sans-serif;border-radius:14px;border:2px solid var(--edge);background:var(--board-2)}
+
+/* The touch keyboard (Chromium in kiosk mode has none of its own). */
+#osk{position:fixed;left:0;right:0;bottom:0;background:#0a1912;border-top:2px solid var(--edge);padding:10px;z-index:60}
+#osk .k{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+#osk button{flex:0 1 82px;min-height:60px;border-radius:10px;border:1px solid var(--edge);background:var(--board-2);font:600 24px system-ui,sans-serif}
+#osk button.w{flex-basis:170px} #osk button.sp{flex:1 1 420px;max-width:520px}
+#osk button.on{background:var(--club);color:var(--on-club)}
+body.osk main{padding-bottom:300px}
+/* Room for the stream picture: beside the content when wide, below it when tall. */
+body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
+
+/* Asleep: the laptop is off and nobody's touched the screen for a while. */
+#sleep{position:fixed;inset:0;background:#030805;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#5d7266}
+#sleep b{font:600 120px Board,sans-serif;font-variant-numeric:tabular-nums}
+
+@media (max-width:820px),(orientation:portrait){
+  .plate b{font-size:76px}.plate.big b{font-size:100px}.plate{min-width:120px;padding:6px 14px}
+  h1{font-size:36px} #pv{width:46vw}
+  body.pv main{padding-right:26px;padding-bottom:calc(46vw * 9 / 16 + 46px)}
+}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <img id="badge" class="hidden" alt="">
+    <div id="badge-initials">CS</div>
+    <div id="club">CricketStream</div>
+    <div id="chip" class="hidden"></div>
+    <div id="clock"></div>
+    <button id="lockbtn" type="button" class="hidden" aria-label="Lock"></button>
+    <button id="setbtn" type="button" class="hidden" aria-label="Screen settings">⚙</button>
+  </header>
+
+  <main id="main">
+    <!-- Not paired: the key from the laptop's match-day screen. -->
+    <section id="v-pair" class="view center hidden">
+      <h1>Pair with the streaming laptop</h1>
+      <p class="muted">On the laptop, open CricketStream and switch on <b>Clubhouse screen</b> on the match-day screen.
+        Type the pairing key it shows.</p>
+      <label class="field"><span>Pairing key</span><input id="pair_key" data-osk="key" maxlength="9" autocomplete="off" inputmode="none" placeholder="ABCD-EFGH"></label>
+      <label class="field hidden" id="pair_addr_row"><span>The laptop's address (shown on the same card)</span>
+        <input id="pair_addr" data-osk="addr" autocomplete="off" inputmode="none" placeholder="192.168.1.20"></label>
+      <div class="row">
+        <button class="btn go" id="pair_go" type="button">Pair</button>
+        <button class="btn small" id="pair_addr_show" type="button">Laptop not found?</button>
+      </div>
+      <p class="say" id="pair_say"></p>
+    </section>
+
+    <!-- Paired: a PIN so passers-by can watch but not touch. -->
+    <section id="v-pinset" class="view center hidden">
+      <h1>Set a PIN</h1>
+      <p class="muted">Anyone can see the score and the stream. Starting, changing and stopping it will need this PIN.</p>
+      <div class="pin" id="pinset_show"></div>
+      <div class="pad" id="pinset_pad"></div>
+      <div class="row" style="margin-top:18px">
+        <button class="btn go" id="pinset_go" type="button">Save PIN</button>
+        <button class="btn small" id="pinset_skip" type="button">No PIN</button>
+      </div>
+      <p class="say" id="pinset_say"></p>
+    </section>
+
+    <!-- The laptop is off. -->
+    <section id="v-off" class="view center hidden">
+      <h1>The streaming laptop is off</h1>
+      <p class="muted" id="off_why">Start the stream and this screen switches it on, opens OBS and gets match day ready.</p>
+      <button class="btn go huge" id="off_start" type="button">Start the stream</button>
+      <p class="say bad" id="off_say"></p>
+    </section>
+
+    <!-- Waking it. -->
+    <section id="v-waking" class="view center hidden">
+      <h1><span class="spin"></span>Switching the laptop on</h1>
+      <p class="muted" id="wake_line">This usually takes a minute or two.</p>
+      <div class="row hidden" id="wake_slow">
+        <button class="btn" id="wake_again" type="button">Try again</button>
+        <button class="btn small" id="wake_cancel" type="button">Stop waiting</button>
+      </div>
+    </section>
+
+    <!-- On, match day not started. -->
+    <section id="v-ready" class="view center hidden">
+      <h1 id="ready_title">Ready for match day</h1>
+      <p class="muted">How is today's match being scored?</p>
+      <div class="choice" id="ready_choice"></div>
+      <div class="row">
+        <button class="btn go huge" id="ready_start" type="button">Start match day</button>
+        <button class="btn" id="ready_off" type="button">Switch the laptop off</button>
+      </div>
+      <p class="say" id="ready_say"></p>
+    </section>
+
+    <!-- Getting ready (the launcher's own steps). -->
+    <section id="v-starting" class="view hidden">
+      <h1><span class="spin"></span>Getting match day ready</h1>
+      <p class="muted">Opening OBS, fetching today's match and starting the graphics.</p>
+      <div class="log" id="start_log"></div>
+    </section>
+
+    <!-- Switching off. -->
+    <section id="v-poweroff" class="view center hidden">
+      <h1>Switching the laptop off</h1>
+      <div class="count" id="off_count"></div>
+      <button class="btn go huge" id="off_keep" type="button">Keep it on</button>
+    </section>
+
+    <!-- Something to say and nothing to press. -->
+    <section id="v-note" class="view center hidden">
+      <h1 id="note_title"></h1>
+      <p class="muted" id="note_text"></p>
+    </section>
+
+    <!-- Match day running: the tabs. -->
+    <section id="v-score" class="view tab hidden">
+      <div id="score_wait" class="center"><h1>Waiting for the first ball</h1>
+        <p class="muted" id="score_wait_why">The score appears here as soon as the scorer starts.</p></div>
+      <div id="score" class="hidden">
+        <div class="batting" id="sc_bat"></div>
+        <div class="board">
+          <div class="plate big"><b id="sc_runs">0</b><span>Total</span></div>
+          <div class="plate"><b id="sc_wkts">0</b><span>Wickets</span></div>
+          <div class="plate"><b id="sc_overs">0</b><span>Overs</span></div>
+        </div>
+        <div class="chase" id="sc_chase"></div>
+        <div class="people" id="sc_people"></div>
+      </div>
+    </section>
+
+    <section id="v-get" class="view tab hidden">
+      <h2>Get ready to go live</h2>
+      <ul class="list" id="get_list"></ul>
+      <div class="row">
+        <button class="btn" id="pc_run" type="button">Run the pre-match check</button>
+      </div>
+      <p class="say" id="get_say"></p>
+      <ul class="list" id="pc_list"></ul>
+    </section>
+
+    <section id="v-yt" class="view tab hidden">
+      <h2>YouTube</h2>
+      <label class="field"><span>Title</span><input id="yt_title" data-osk="text" maxlength="100" inputmode="none"></label>
+      <label class="field"><span>Description</span><textarea id="yt_desc" data-osk="text" maxlength="4000" inputmode="none"></textarea></label>
+      <p class="muted" style="margin-bottom:6px">Who can watch</p>
+      <div class="choice" id="yt_privacy"></div>
+      <button class="btn go" id="yt_go" type="button">Update YouTube</button>
+      <p class="say" id="yt_say"></p>
+    </section>
+
+    <section id="v-cam" class="view tab hidden">
+      <div id="cut" class="hidden">
+        <h2>Camera</h2>
+        <div class="row" style="margin-bottom:24px">
+          <button class="btn" id="cut_wide" type="button">Wide</button>
+          <button class="btn" id="cut_bowler" type="button">Bowler's end</button>
+        </div>
+      </div>
+      <h2>Find cameras on the network</h2>
+      <p class="muted">For a new or replaced camera. Its own settings need ONVIF switched on.</p>
+      <button class="btn" id="cam_find" type="button">Find cameras</button>
+      <ul class="list" id="cam_list" style="margin-top:16px"></ul>
+      <div id="cam_form" class="hidden">
+        <h2 id="cam_name"></h2>
+        <label class="field"><span>Camera username</span><input id="cam_user" data-osk="text" value="admin" inputmode="none"></label>
+        <label class="field"><span>Camera password</span><input id="cam_pass" data-osk="text" type="password" inputmode="none"></label>
+        <div class="choice" id="cam_slot"></div>
+        <button class="btn go" id="cam_use" type="button">Use this camera</button>
+      </div>
+      <p class="say" id="cam_say"></p>
+    </section>
+
+    <section id="v-end" class="view tab hidden center">
+      <h1>End the stream</h1>
+      <p class="muted">Stops the stream on YouTube, ends match day and closes OBS. Replays already saved are kept.</p>
+      <button class="btn stop huge" id="end_go" type="button">End the stream</button>
+      <p class="say" id="end_say"></p>
+    </section>
+
+    <!-- The stream, small. -->
+    <button id="pv" class="hidden" type="button" aria-label="Show the stream full screen">
+      <img id="pv_img" alt=""><span class="tag hidden" id="pv_live">LIVE</span><span class="tap">Tap for full screen</span>
+    </button>
+  </main>
+
+  <nav id="tabs" class="hidden" role="tablist">
+    <button type="button" role="tab" data-tab="score">Score</button>
+    <button type="button" role="tab" data-tab="get" class="op">Get ready</button>
+    <button type="button" role="tab" data-tab="yt" class="op">YouTube</button>
+    <button type="button" role="tab" data-tab="cam" class="op">Cameras</button>
+    <button type="button" role="tab" data-tab="end" class="op">Finish</button>
+  </nav>
+</div>
+
+<div id="full" class="hidden">
+  <button class="btn small x" id="full_x" type="button">Close</button>
+  <div class="bar"><span class="s" id="full_score"></span><button class="btn small" id="full_sound" type="button">Sound on</button></div>
+</div>
+
+<div id="veil" class="veil hidden"><div class="dlg" id="dlg"></div></div>
+<div id="osk" class="hidden"></div>
+<div id="sleep" class="hidden"><b id="sleep_clock"></b><div>Touch the screen to wake it</div></div>
+
+<script>
+'use strict';
+var KEY = document.querySelector('meta[name=screen-key]').content;
+var S = null;                 // the screen's status (and the laptop's, inside it)
+var tab = 'score', lastTabPhase = '', manual = false, pendingStart = null, justEnded = false;
+var pinStep = false, liveData = null, ytVideo = '', lastTouch = Date.now();
+function $(id) { return document.getElementById(id); }
+function txt(id, t) { $(id).textContent = t == null ? '' : String(t); }
+function show(id, on) { $(id).classList.toggle('hidden', !on); }
+function say(id, t, cls) { var e = $(id); e.textContent = t || ''; e.className = 'say' + (cls ? ' ' + cls : ''); }
+if (/[?&]kiosk=1/.test(location.search)) document.body.classList.add('kiosk');
+
+function api(path, body) {
+  var o = {headers: {'X-Screen-Key': KEY}};
+  if (body !== undefined) { o.method = 'POST'; o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
+  return fetch('/api/' + path, o).then(function (r) {
+    return r.json().catch(function () { return {ok: false, error: 'No answer (' + r.status + ')'}; })
+      .then(function (d) { d._status = r.status; return d; });
+  }, function () { return {ok: false, error: 'The screen lost its own connection.'}; });
+}
+function blob(path) {
+  return fetch('/api/' + path, {headers: {'X-Screen-Key': KEY}}).then(function (r) {
+    if (!r.ok) throw new Error(r.status);
+    return r.blob();
+  });
+}
+function laptop() { return (S && S.laptop) || {}; }
+
+// ── The lock ──
+// Anything that changes the stream asks for the PIN first (if there is one); the action
+// then carries on by itself.
+function needUnlock(then) {
+  if (!S || S.unlocked) { then(); return; }
+  pinDialog('Enter the PIN', function (pin, done) {
+    api('unlock', {pin: pin}).then(function (d) {
+      if (!d.ok) { done(d.error); return; }
+      closeDialog(); poll().then(then);
+    });
+  });
+}
+function pinDialog(title, submit) {
+  var entered = '';
+  var dlg = openDialog();
+  var h = document.createElement('h2'); h.textContent = title; dlg.appendChild(h);
+  var shown = document.createElement('div'); shown.className = 'pin'; dlg.appendChild(shown);
+  var msg = document.createElement('p'); msg.className = 'say bad'; dlg.appendChild(msg);
+  var pad = document.createElement('div'); pad.className = 'pad'; dlg.appendChild(pad);
+  function redraw() { shown.textContent = entered.replace(/./g, '●'); }
+  buildPad(pad, function (k) {
+    if (k === '⌫') entered = entered.slice(0, -1);
+    else if (k === 'OK') { if (entered) submit(entered, function (err) { msg.textContent = err || ''; entered = ''; redraw(); }); return; }
+    else if (entered.length < 8) entered += k;
+    msg.textContent = ''; redraw();
+  });
+  var row = document.createElement('div'); row.className = 'row'; row.style.marginTop = '16px';
+  row.appendChild(button('Cancel', 'btn small', closeDialog)); dlg.appendChild(row);
+}
+function buildPad(pad, press) {
+  ['1','2','3','4','5','6','7','8','9','⌫','0','OK'].forEach(function (k) {
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = k;
+    b.addEventListener('click', function () { press(k); }); pad.appendChild(b);
+  });
+}
+function button(label, cls, fn) {
+  var b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label;
+  b.addEventListener('click', fn); return b;
+}
+function openDialog() { var d = $('dlg'); d.textContent = ''; show('veil', true); return d; }
+function closeDialog() { show('veil', false); $('dlg').textContent = ''; }
+function confirmDialog(title, text, yesLabel, yesCls, yes) {
+  var d = openDialog();
+  var h = document.createElement('h2'); h.textContent = title; d.appendChild(h);
+  var p = document.createElement('p'); p.className = 'muted'; p.textContent = text; d.appendChild(p);
+  var row = document.createElement('div'); row.className = 'row';
+  row.appendChild(button(yesLabel, 'btn ' + yesCls, function () { closeDialog(); yes(); }));
+  row.appendChild(button('Cancel', 'btn', closeDialog));
+  d.appendChild(row);
+}
+$('lockbtn').addEventListener('click', function () {
+  if (S.unlocked) api('lock', {}).then(poll); else needUnlock(function () {});
+});
+
+// ── The screen's own settings ──
+$('setbtn').addEventListener('click', function () {
+  needUnlock(function () {
+    var d = openDialog();
+    var h = document.createElement('h2'); h.textContent = 'This screen'; d.appendChild(h);
+    var p = document.createElement('p'); p.className = 'muted';
+    p.textContent = 'Paired with ' + (S.club || S.laptop_name || 'the streaming laptop') + ' (' + S.laptop_host + ').' +
+      (S.version ? ' CricketStream ' + S.version + '.' : '');
+    d.appendChild(p);
+    var row = document.createElement('div'); row.className = 'row';
+    row.appendChild(button(S.pin_set ? 'Change the PIN' : 'Set a PIN', 'btn', function () { closeDialog(); newPin = ''; txt('pinset_show', ''); pinStep = true; render(); }));
+    if (S.pin_set) row.appendChild(button('Remove the PIN', 'btn', function () {
+      confirmDialog('Remove the PIN?', 'Anyone in the clubhouse will be able to start and stop the stream.', 'Remove it', 'stop', function () {
+        api('pin', {pin: ''}).then(poll);
+      });
+    }));
+    row.appendChild(button('Pair again', 'btn', function () {
+      confirmDialog('Pair again?', 'This screen forgets the laptop. You\'ll need the pairing key from its match-day screen.', 'Forget the laptop', 'stop', function () {
+        api('forget', {}).then(poll);
+      });
+    }));
+    d.appendChild(row);
+    var r2 = document.createElement('div'); r2.className = 'row'; r2.style.marginTop = '14px';
+    r2.appendChild(button('Close', 'btn small', closeDialog)); d.appendChild(r2);
+  });
+});
+
+// ── The laptop's questions (the same ones its own window asks) ──
+var askedID = 0;
+function renderQuestion() {
+  var q = laptop().question;
+  if (!q || !S.unlocked) {
+    if (askedID && (!q || q.id !== askedID)) { askedID = 0; closeDialog(); }
+    return;
+  }
+  if (q.id === askedID) return;
+  askedID = q.id;
+  var d = openDialog();
+  var h = document.createElement('h2'); h.textContent = q.title || 'The laptop asks'; d.appendChild(h);
+  var p = document.createElement('p'); p.textContent = q.text || ''; d.appendChild(p);
+  (q.lines || []).forEach(function (l) { var x = document.createElement('p'); x.className = 'muted'; x.textContent = l; d.appendChild(x); });
+  var input = null;
+  if (q.kind === 'input') {
+    var f = document.createElement('label'); f.className = 'field';
+    input = document.createElement('input'); input.setAttribute('data-osk', 'text'); input.setAttribute('inputmode', 'none');
+    f.appendChild(input); d.appendChild(f); attachOSK(input);
+  }
+  var row = document.createElement('div'); row.className = 'row';
+  function answer(body) {
+    body.id = q.id;
+    api('laptop/answer', body).then(function () { askedID = 0; closeDialog(); hideOSK(); poll(); });
+  }
+  if (q.kind === 'confirm') {
+    row.appendChild(button('Yes', 'btn go', function () { answer({yes: true}); }));
+    row.appendChild(button('No', 'btn', function () { answer({yes: false}); }));
+  } else if (q.kind === 'input') {
+    row.appendChild(button('OK', 'btn go', function () { answer({text: input.value}); }));
+    row.appendChild(button('Skip', 'btn', function () { answer({dismissed: true}); }));
+  } else {
+    row.appendChild(button(q.button || 'Continue', 'btn go', function () { answer({}); }));
+  }
+  d.appendChild(row);
+}
+
+// ── Which screen ──
+function viewName() {
+  if (!S.paired) return 'pair';
+  if (pinStep) return 'pinset';
+  var L = S.laptop;
+  if (!S.reachable) return S.waking_for != null ? 'waking' : 'off';
+  if (L.power_off_in != null) return 'poweroff';
+  switch (L.phase) {
+    case 'home': case 'stopped': return 'ready';
+    case 'starting': return 'starting';
+    case 'running': return L.server_ready ? tab : 'starting';
+    case 'already': return 'note-already';
+    case 'welcome': return 'note-setup';
+  }
+  return 'off';
+}
+function render() {
+  if (!S.unlocked && tab !== 'score') tab = 'score'; // locked again: back to the public view
+  var v = viewName(), L = laptop();
+  var isNote = v.indexOf('note-') === 0;
+  document.querySelectorAll('.view').forEach(function (el) { el.classList.toggle('hidden', el.id !== 'v-' + (isNote ? 'note' : v)); });
+  renderTop(v);
+  var running = L.phase === 'running' && L.server_ready && S.reachable;
+  show('tabs', running);
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
+    if (b.classList.contains('op')) b.classList.toggle('hidden', !S.unlocked);
+  });
+  show('pv', running && !document.body.classList.contains('osk'));
+  document.body.classList.toggle('pv', running && !$('pv').classList.contains('hidden'));
+  if (v === 'off') {
+    txt('off_why', S.can_wake ? 'Start the stream and this screen switches it on, opens OBS and gets match day ready.'
+      : 'This screen can\'t switch it on (it isn\'t plugged in by cable) — switch the laptop on by hand and this screen takes over.');
+    $('off_start').textContent = S.can_wake ? 'Start the stream' : 'Waiting for the laptop';
+    $('off_start').disabled = !S.can_wake;
+    say('off_say', S.error, 'bad');
+  }
+  if (v === 'waking') {
+    var slow = S.waking_for > S.wake_wait;
+    txt('wake_line', slow ? 'It hasn\'t answered after ' + mins(S.waking_for) + '. Check it\'s plugged in (power and network cable) and switch it on by hand if needed.'
+      : 'This usually takes a minute or two. (' + mins(S.waking_for) + ')');
+    show('wake_slow', slow);
+  }
+  if (v === 'pinset') txt('pinset_skip', S.pin_set ? 'Cancel' : 'No PIN');
+  if (v === 'ready') renderReady(L);
+  if (v === 'starting') txt('start_log', (L.log || []).join('\n'));
+  if (v === 'poweroff') txt('off_count', mins(Math.max(0, L.power_off_in)));
+  if (v === 'note-already') { txt('note_title', 'Match day is open in another window'); txt('note_text', 'CricketStream on the laptop is already running match day from another copy. Use the laptop to carry on.'); }
+  if (v === 'note-setup') { txt('note_title', 'The laptop isn\'t set up yet'); txt('note_text', 'Run CricketStream\'s setup on the laptop first.'); }
+  if (v === 'score') renderScore();
+  renderQuestion();
+  // Started from the "off" screen: carry on to match day once the laptop is ready.
+  if (pendingStart && S.reachable && L.phase === 'home' && !L.question) {
+    var m = pendingStart.manual; pendingStart = null;
+    api('laptop/start', {manual: m}).then(function (d) { if (!d.ok) say('ready_say', d.error, 'bad'); poll(); });
+  }
+  if (pendingStart && Date.now() - pendingStart.at > 15 * 60000) pendingStart = null;
+  // First time match day is up: straight to "Get ready" (Go live is there).
+  if (running && lastTabPhase !== 'running') { tab = S.unlocked ? 'get' : 'score'; lastTabPhase = 'running'; render(); return; }
+  if (!running && L.phase) lastTabPhase = L.phase;
+}
+function mins(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+
+function renderTop(v) {
+  var club = S.club || (S.paired ? S.laptop_name : '') || 'CricketStream';
+  txt('club', club);
+  var ini = club.split(/\s+/).filter(Boolean).map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+  txt('badge-initials', ini || 'CS');
+  if (S.colour && /^#[0-9a-f]{6}$/i.test(S.colour) && S.colour !== accentFor) {
+    accentFor = S.colour;
+    var a = readableAccent(S.colour);
+    document.documentElement.style.setProperty('--club', a.hex);
+    document.documentElement.style.setProperty('--on-club', a.lum > 0.55 ? '#14140f' : '#ffffff');
+  }
+  var L = laptop(), chip = $('chip'), live = isLive();
+  chip.className = live ? 'live' : (S.reachable ? 'good' : '');
+  chip.textContent = L.question && !S.unlocked ? 'Unlock to answer the laptop' : live ? 'On air' : !S.paired ? '' : !S.reachable ? (S.waking_for != null ? 'Waking' : 'Laptop off')
+    : L.phase === 'running' ? 'Match day' : L.phase === 'starting' ? 'Starting' : 'Laptop on';
+  show('chip', S.paired);
+  show('lockbtn', S.pin_set);
+  show('setbtn', S.paired && !pinStep);
+  $('lockbtn').textContent = S.unlocked ? '🔓' : '🔒';
+  $('lockbtn').setAttribute('aria-label', S.unlocked ? 'Lock the screen' : 'Unlock');
+}
+
+// The club's colour, kept readable on the board green: a dark kit colour (navy, maroon,
+// bottle green) keeps its hue but is lifted until it stands out, as paint on a board would.
+var accentFor = '';
+function readableAccent(hex) {
+  var n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, h = 0, s = 0, d = mx - mn;
+  if (d) {
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  if (l < 0.6) { l = 0.6; s = Math.min(1, s * 1.15 + 0.1); }
+  function f(p, q, t) { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; }
+  function toRGB(l) {
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    return s ? [f(p, q, h + 1 / 3), f(p, q, h), f(p, q, h - 1 / 3)] : [l, l, l];
+  }
+  // HSL lightness flatters blue: navy at 0.6 is still #3333ff, too dim to read on the
+  // board. Lifted on until it's 4.5:1 against the night green behind it.
+  var rgb = toRGB(l);
+  while (contrastOnNight(rgb) < 4.5 && l < 0.95) { l += 0.02; rgb = toRGB(l); }
+  var out = '#' + rgb.map(function (v) { return ('0' + Math.round(v * 255).toString(16)).slice(-2); }).join('');
+  return {hex: out, lum: 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]};
+}
+// WCAG contrast of a colour (channels 0–1) against --night (#0d1f17).
+function contrastOnNight(rgb) {
+  var lin = rgb.map(function (c) { return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+  var L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (L + 0.05) / (0.0113 + 0.05);
+}
+
+function renderReady(L) {
+  txt('ready_title', L.phase === 'stopped' ? 'Match day is over' : 'Ready for match day');
+  var c = $('ready_choice');
+  if (!c.childNodes.length) {
+    [['NV Play / PCS Pro', 'The scorer\'s software feeds the score', false], ['By hand', 'Someone scores ball by ball on a phone', true]]
+      .forEach(function (o) {
+        var b = button(o[0], 'btn', function () { manual = o[2]; renderReady(laptop()); });
+        var s = document.createElement('small'); s.textContent = o[1]; b.appendChild(s);
+        b.dataset.manual = o[2] ? '1' : '0'; c.appendChild(b);
+      });
+  }
+  c.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', (b.dataset.manual === '1') === manual ? 'true' : 'false'); });
+  $('ready_start').textContent = L.phase === 'stopped' ? 'Start match day again' : 'Start match day';
+  show('ready_off', !!L.allow_power_off);
+  if (justEnded && L.phase === 'stopped' && L.allow_power_off && S.unlocked) {
+    justEnded = false;
+    confirmDialog('Switch the laptop off?', 'Match day is over. The laptop switches off in a minute unless you keep it on.',
+      'Switch it off', 'go', powerOff);
+  }
+}
+
+// ── Actions ──
+function scoringChoice(then) {
+  var d = openDialog();
+  var h = document.createElement('h2'); h.textContent = 'How is today\'s match being scored?'; d.appendChild(h);
+  var c = document.createElement('div'); c.className = 'choice';
+  [['NV Play / PCS Pro', false], ['By hand', true]].forEach(function (o) {
+    c.appendChild(button(o[0], 'btn', function () { manual = o[1]; closeDialog(); then(o[1]); }));
+  });
+  d.appendChild(c);
+  d.appendChild(button('Cancel', 'btn small', closeDialog));
+}
+$('off_start').addEventListener('click', function () {
+  needUnlock(function () {
+    scoringChoice(function (m) {
+      pendingStart = {manual: m, at: Date.now()};
+      api('wake', {}).then(function (d) { if (!d.ok) { pendingStart = null; say('off_say', d.error, 'bad'); } poll(); });
+    });
+  });
+});
+$('wake_again').addEventListener('click', function () { needUnlock(function () { api('wake', {}).then(poll); }); });
+$('wake_cancel').addEventListener('click', function () { pendingStart = null; api('wake/cancel', {}).then(poll); });
+$('ready_start').addEventListener('click', function () {
+  needUnlock(function () {
+    $('ready_start').disabled = true; say('ready_say', '');
+    api('laptop/start', {manual: manual}).then(function (d) {
+      $('ready_start').disabled = false;
+      if (!d.ok) say('ready_say', d.error, 'bad');
+      poll();
+    });
+  });
+});
+function powerOff() {
+  needUnlock(function () {
+    api('laptop/poweroff', {delay: 60}).then(function (d) { if (!d.ok) say('ready_say', d.error, 'bad'); poll(); });
+  });
+}
+$('ready_off').addEventListener('click', function () {
+  confirmDialog('Switch the laptop off?', 'It switches off in a minute unless you keep it on.', 'Switch it off', 'go', powerOff);
+});
+$('off_keep').addEventListener('click', function () { needUnlock(function () { api('laptop/poweroff/cancel', {}).then(poll); }); });
+$('end_go').addEventListener('click', function () {
+  needUnlock(function () {
+    confirmDialog('End the stream?', 'The stream stops for everyone watching, match day ends and OBS closes.', 'End the stream', 'stop', function () {
+      say('end_say', 'Stopping the stream…');
+      api('server/checklist/action', {action: 'stop_stream'}).then(function (d) {
+        if (!d.ok) { say('end_say', d.error, 'bad'); return; }
+        return api('laptop/stop', {close_obs: true}).then(function (d2) {
+          if (!d2.ok) { say('end_say', d2.error, 'bad'); return; }
+          justEnded = true; tab = 'score'; say('end_say', ''); poll();
+        });
+      });
+    });
+  });
+});
+
+// ── Tabs ──
+document.querySelectorAll('#tabs button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = b.getAttribute('data-tab');
+    var go = function () { tab = t; hideOSK(); render(); loadTab(); };
+    if (t === 'score') go(); else needUnlock(go);
+  });
+});
+function loadTab() {
+  if (tab === 'get') loadChecklist();
+  if (tab === 'yt') loadYouTube();
+  if (tab === 'cam') loadCameras();
+}
+
+// The score: what the overlay shows, read from the side-effect-free /live/view.
+function loadScore() {
+  return api('server/live/view').then(function (d) { liveData = d.ok === false ? null : d; renderScore(); });
+}
+function scoreState() { return liveData && liveData.source === 'pcs' && liveData.state ? liveData.state : null; }
+function renderScore() {
+  var st = scoreState();
+  show('score_wait', !st); show('score', !!st);
+  txt('full_score', st ? (st.battingTeamName || '') + '  ' + st.score + '/' + st.wickets + '  (' + st.overs + ')' : '');
+  if (!st) return;
+  txt('sc_bat', st.battingTeamName || '');
+  txt('sc_runs', st.score); txt('sc_wkts', st.wickets); txt('sc_overs', st.overs);
+  var chase = '';
+  if (st.targetRuns > 0) {
+    chase = 'Target ' + st.targetRuns;
+    if (st.runsRequired > 0) chase += ', needing ' + st.runsRequired + (st.ballsRemaining > 0 ? ' from ' + st.ballsRemaining + ' balls' : '');
+  }
+  txt('sc_chase', chase);
+  var ppl = $('sc_people'); ppl.textContent = '';
+  [st.batter1, st.batter2].forEach(function (b) {
+    if (!b || !b.name) return;
+    ppl.appendChild(who(b.name, b.runs + ' (' + b.balls + ')', b.onStrike ? 'on strike' : '', b.onStrike));
+  });
+  var w = st.bowler;
+  if (w && w.name && w.name !== '—') ppl.appendChild(who(w.name, w.overs + '–' + w.maidens + '–' + w.runs + '–' + w.wickets, 'bowling', false));
+}
+function who(name, n, role, strike) {
+  var d = document.createElement('div'); d.className = 'who' + (strike ? ' strike' : '');
+  var a = document.createElement('span'); a.textContent = name;
+  if (role) { var r = document.createElement('span'); r.className = 'role'; r.textContent = role; a.appendChild(r); }
+  var b = document.createElement('span'); b.className = 'n'; b.textContent = n;
+  d.appendChild(a); d.appendChild(b); return d;
+}
+
+// Get ready: the control panel's own match-day checklist, with its buttons.
+var CHECK_ACTIONS = {start_obs: 1, start_replay: 1, add_camera: 1, go_live: 1};
+var checklist = null;
+function loadChecklist() {
+  return api('server/checklist').then(function (d) { if (d.items) { checklist = d; renderChecklist(); } });
+}
+function isLive() {
+  var L = laptop();
+  if (!S || !S.reachable || L.phase !== 'running' || !L.server_ready) { checklist = null; return false; }
+  if (!checklist || !checklist.items) return false;
+  return checklist.items.some(function (i) { return i.id === 'live' && i.state === 'done'; });
+}
+function renderChecklist() {
+  var ul = $('get_list'); ul.textContent = '';
+  (checklist.items || []).forEach(function (i) {
+    var li = document.createElement('li'); li.className = i.state;
+    var m = document.createElement('span'); m.className = 'mark';
+    m.textContent = {done: '✓', todo: '•', busy: '…', na: '–'}[i.state] || '•';
+    var t = document.createElement('div'); t.className = 'txt';
+    var b = document.createElement('b'); b.textContent = i.label; var s = document.createElement('span'); s.textContent = i.detail || '';
+    t.appendChild(b); t.appendChild(s); li.appendChild(m); li.appendChild(t);
+    if (i.action && CHECK_ACTIONS[i.action]) {
+      li.appendChild(button(i.action_label || 'Do it', 'btn small' + (i.action === 'go_live' ? ' go' : ''), function (e) {
+        e.target.disabled = true; say('get_say', i.action === 'go_live' ? 'Going live…' : 'Working…');
+        api('server/checklist/action', {action: i.action}).then(function (d) {
+          say('get_say', d.ok ? (d.message || 'Done.') : d.error, d.ok ? 'good' : 'bad'); loadChecklist();
+        });
+      }));
+    }
+    ul.appendChild(li);
+  });
+}
+$('pc_run').addEventListener('click', function () {
+  $('pc_run').disabled = true; say('get_say', 'Checking every login and connection — about 20 seconds…');
+  api('server/precheck', {}).then(function (d) {
+    $('pc_run').disabled = false;
+    if (!d.checks) { say('get_say', d.error || 'The check didn\'t run.', 'bad'); return; }
+    say('get_say', d.ok ? 'Nothing wrong.' : 'Something needs fixing — see below.', d.ok ? 'good' : 'bad');
+    var ul = $('pc_list'); ul.textContent = '';
+    d.checks.forEach(function (c) {
+      if (c.status === 'skip') return;
+      var li = document.createElement('li'); li.className = {ok: 'done', warn: 'todo', bad: 'bad'}[c.status] || '';
+      var m = document.createElement('span'); m.className = 'mark'; m.textContent = {ok: '✓', warn: '⚠', bad: '✗'}[c.status] || '•';
+      var t = document.createElement('div'); t.className = 'txt';
+      var b = document.createElement('b'); b.textContent = c.name; var s = document.createElement('span');
+      s.textContent = (c.detail || '') + (c.fix && c.status !== 'ok' ? ' ' + c.fix : '');
+      t.appendChild(b); t.appendChild(s); li.appendChild(m); li.appendChild(t); ul.appendChild(li);
+    });
+  });
+});
+
+// YouTube: the panel's own "Update YouTube broadcast", with the title filled in.
+var privacy = 'unlisted', ytLoaded = false, stateCache = null;
+function loadState() { return api('server/state').then(function (d) { if (d.home_team !== undefined) stateCache = d; return stateCache; }); }
+function loadYouTube() {
+  if (ytLoaded) return;
+  loadState().then(function (st) {
+    if (!st) return;
+    ytLoaded = true;
+    var fill = function (t) { return String(t || '').split('{home}').join(st.home_team || '').split('{away}').join(st.away_team || ''); };
+    $('yt_title').value = fill(st.youtube_title_template || 'LIVE: {home} vs {away}');
+    $('yt_desc').value = fill(st.youtube_description || '');
+    privacy = st.youtube_privacy || 'unlisted';
+    renderPrivacy();
+  });
+}
+function renderPrivacy() {
+  var c = $('yt_privacy');
+  if (!c.childNodes.length) {
+    [['public', 'Anyone', 'Listed on the channel'], ['unlisted', 'With the link', 'Not listed or searchable'], ['private', 'Only the club', 'Signed-in managers only']]
+      .forEach(function (o) {
+        var b = button(o[1], 'btn', function () { privacy = o[0]; renderPrivacy(); });
+        var s = document.createElement('small'); s.textContent = o[2]; b.appendChild(s); b.dataset.v = o[0]; c.appendChild(b);
+      });
+  }
+  c.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === privacy ? 'true' : 'false'); });
+}
+$('yt_go').addEventListener('click', function () {
+  hideOSK(); $('yt_go').disabled = true; say('yt_say', 'Updating…');
+  api('server/youtube/update', {title: $('yt_title').value, description: $('yt_desc').value, privacy: privacy}).then(function (d) {
+    $('yt_go').disabled = false;
+    say('yt_say', d.ok ? (d.message || 'Updated.') : (d.error || 'YouTube didn\'t take it.'), d.ok ? 'good' : 'bad');
+  });
+});
+
+// Cameras: the cut buttons (two cameras), and finding a new one.
+var camPicked = null, camSlot = '1';
+function loadCameras() {
+  loadState().then(function (st) {
+    show('cut', !!(st && st.camera2_configured));
+  });
+}
+function cut(scene) { api('server/camera/scene', {scene: scene}).then(function (d) { say('cam_say', d.ok ? d.message : (d.message || d.error), d.ok ? 'good' : 'bad'); }); }
+$('cut_wide').addEventListener('click', function () { cut((stateCache && stateCache.obs_main_scene) || 'Main'); });
+$('cut_bowler').addEventListener('click', function () { cut((stateCache && stateCache.obs_bowler_scene) || 'Main-Bowler'); });
+$('cam_find').addEventListener('click', function () {
+  $('cam_find').disabled = true; say('cam_say', 'Looking…'); show('cam_form', false);
+  api('server/cameras/discover').then(function (d) {
+    $('cam_find').disabled = false;
+    var ul = $('cam_list'); ul.textContent = '';
+    say('cam_say', (d.cameras || []).length ? '' : (d.error || 'No camera answered.'), (d.cameras || []).length ? '' : 'bad');
+    (d.cameras || []).forEach(function (c) {
+      var li = document.createElement('li');
+      var t = document.createElement('div'); t.className = 'txt';
+      var b = document.createElement('b'); b.textContent = c.name || c.make || 'Camera';
+      var s = document.createElement('span'); s.textContent = c.address + (c.make ? ', ' + c.make : '');
+      t.appendChild(b); t.appendChild(s); li.appendChild(t);
+      li.appendChild(button('Use', 'btn small', function () { camPicked = c; txt('cam_name', b.textContent + ' (' + c.address + ')'); renderSlot(); show('cam_form', true); }));
+      ul.appendChild(li);
+    });
+  });
+});
+function renderSlot() {
+  var c = $('cam_slot');
+  if (!c.childNodes.length) {
+    [['1', 'Wide camera'], ['2', 'Bowler\'s end camera']].forEach(function (o) {
+      var b = button(o[1], 'btn', function () { camSlot = o[0]; renderSlot(); }); b.dataset.v = o[0]; c.appendChild(b);
+    });
+  }
+  c.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === camSlot ? 'true' : 'false'); });
+}
+$('cam_use').addEventListener('click', function () {
+  if (!camPicked) return;
+  hideOSK(); $('cam_use').disabled = true; say('cam_say', 'Asking the camera for its stream…');
+  var body = Object.assign({}, camPicked, {user: $('cam_user').value, pass: $('cam_pass').value, slot: camSlot});
+  api('server/cameras/use', body).then(function (d) {
+    if (!d.ok) { $('cam_use').disabled = false; say('cam_say', d.error, 'bad'); return; }
+    say('cam_say', 'Adding it to OBS…');
+    return api('server/obs/add_camera', {which: camSlot}).then(function (d2) {
+      $('cam_use').disabled = false; $('cam_pass').value = '';
+      say('cam_say', d2.message || (d2.ok ? 'Camera added.' : 'Saved, but OBS didn\'t take it — try Get ready → Add to OBS.'), d2.ok ? 'good' : 'bad');
+      if (d2.ok) show('cam_form', false);
+    });
+  });
+});
+
+// ── Pairing and the PIN ──
+$('pair_addr_show').addEventListener('click', function () { show('pair_addr_row', true); show('pair_addr_show', false); });
+$('pair_go').addEventListener('click', function () {
+  hideOSK(); $('pair_go').disabled = true; say('pair_say', 'Looking for the laptop…');
+  api('pair', {key: $('pair_key').value, address: $('pair_addr').value}).then(function (d) {
+    $('pair_go').disabled = false;
+    if (!d.ok) { say('pair_say', d.error, 'bad'); return; }
+    say('pair_say', d.warning || '', d.warning ? 'bad' : '');
+    $('pair_key').value = '';
+    pinStep = !S.pin_set;
+    poll();
+  });
+});
+var newPin = '';
+buildPad($('pinset_pad'), function (k) {
+  if (k === '⌫') newPin = newPin.slice(0, -1);
+  else if (k === 'OK') { $('pinset_go').click(); return; }
+  else if (newPin.length < 8) newPin += k;
+  txt('pinset_show', newPin.replace(/./g, '●'));
+});
+$('pinset_go').addEventListener('click', function () {
+  api('pin', {pin: newPin}).then(function (d) {
+    if (!d.ok) { say('pinset_say', d.error, 'bad'); return; }
+    pinStep = false; newPin = ''; txt('pinset_show', ''); poll();
+  });
+});
+$('pinset_skip').addEventListener('click', function () { pinStep = false; poll(); });
+
+// ── The stream picture ──
+var pvURL = '', pvBusy = false;
+function loadPreview(force) {
+  if (pvBusy || (!force && $('pv').classList.contains('hidden') && $('full').classList.contains('hidden'))) return;
+  pvBusy = true;
+  blob('server/preview.jpg?t=' + Date.now()).then(function (b) {
+    pvBusy = false;
+    var u = URL.createObjectURL(b);
+    $('pv_img').src = u;
+    var fi = $('full').querySelector('img'); if (fi) fi.src = u;
+    if (pvURL) URL.revokeObjectURL(pvURL);
+    pvURL = u;
+  }, function () { pvBusy = false; });
+}
+$('pv').addEventListener('click', function () {
+  // Full size: YouTube's own player when the stream is on air (the viewers' picture, with
+  // sound); otherwise the laptop's own picture, refreshed every couple of seconds.
+  var f = $('full');
+  f.querySelectorAll('iframe,img').forEach(function (e) { e.remove(); });
+  api('server/youtube/live').then(function (d) {
+    ytVideo = d && d.ok && d.status === 'active' && /^[\w-]{6,20}$/.test(d.video_id || '') ? d.video_id : '';
+    var el;
+    if (ytVideo) {
+      el = document.createElement('iframe');
+      el.allow = 'autoplay; encrypted-media';
+      el.src = 'https://www.youtube-nocookie.com/embed/' + ytVideo + '?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&enablejsapi=1';
+    } else {
+      el = document.createElement('img'); el.src = pvURL;
+    }
+    f.insertBefore(el, f.firstChild);
+    show('full_sound', !!ytVideo);
+    $('full_sound').textContent = 'Sound on'; muted = true;
+    show('full', true);
+  });
+});
+var muted = true;
+$('full_sound').addEventListener('click', function () {
+  var fr = $('full').querySelector('iframe'); if (!fr) return;
+  muted = !muted;
+  fr.contentWindow.postMessage(JSON.stringify({event: 'command', func: muted ? 'mute' : 'unMute', args: []}), 'https://www.youtube-nocookie.com');
+  $('full_sound').textContent = muted ? 'Sound on' : 'Sound off';
+});
+$('full_x').addEventListener('click', function () {
+  show('full', false); $('full').querySelectorAll('iframe,img').forEach(function (e) { e.remove(); });
+});
+
+// ── The touch keyboard ──
+var oskTarget = null, oskShift = false, oskMode = 'text';
+var LAYOUTS = {
+  text: [['1','2','3','4','5','6','7','8','9','0'], ['q','w','e','r','t','y','u','i','o','p'], ['a','s','d','f','g','h','j','k','l',"'"],
+    ['⇧','z','x','c','v','b','n','m','-','⌫'], ['&','.',',','space',':','!','Done']],
+  key: [['1','2','3','4','5','6','7','8','9','0'], ['Q','W','E','R','T','Y','P'], ['A','S','D','F','G','H','J','K'],
+    ['Z','X','C','V','B','N','M','-','⌫'], ['Done']],
+  addr: [['1','2','3'], ['4','5','6'], ['7','8','9'], ['.','0',':'], ['⌫','Done']]
+};
+function attachOSK(input) {
+  input.addEventListener('focus', function () { oskTarget = input; oskMode = input.getAttribute('data-osk'); drawOSK(); });
+}
+document.querySelectorAll('[data-osk]').forEach(attachOSK);
+function drawOSK() {
+  var k = $('osk'); k.textContent = '';
+  LAYOUTS[oskMode].forEach(function (row) {
+    var r = document.createElement('div'); r.className = 'k';
+    row.forEach(function (key) {
+      var label = key === 'space' ? ' ' : (oskShift && key.length === 1 ? key.toUpperCase() : key);
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = key === 'space' ? 'space' : label;
+      if (key === 'space') b.className = 'sp'; else if (key.length > 1) b.className = 'w';
+      if (key === '⇧' && oskShift) b.className += ' on';
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the field focused
+      b.addEventListener('click', function () { press(key === 'space' ? ' ' : label); });
+      r.appendChild(b);
+    });
+    k.appendChild(r);
+  });
+  show('osk', true); document.body.classList.add('osk');
+}
+function press(key) {
+  var t = oskTarget; if (!t) return;
+  if (key === 'Done') { hideOSK(); return; }
+  if (key === '⇧') { oskShift = !oskShift; drawOSK(); return; }
+  var s = t.selectionStart == null ? t.value.length : t.selectionStart, e = t.selectionEnd == null ? s : t.selectionEnd;
+  if (key === '⌫') {
+    if (s === e && s > 0) s--;
+    t.value = t.value.slice(0, s) + t.value.slice(e);
+  } else {
+    if (t.maxLength > 0 && t.value.length >= t.maxLength) return;
+    t.value = t.value.slice(0, s) + key + t.value.slice(e); s++;
+    if (oskShift) { oskShift = false; drawOSK(); }
+  }
+  t.setSelectionRange && t.setSelectionRange(s, s);
+  t.focus();
+}
+function hideOSK() { show('osk', false); document.body.classList.remove('osk'); if (oskTarget) oskTarget.blur(); oskTarget = null; }
+
+// ── Sleep: the laptop is off and nobody has touched the screen for five minutes ──
+document.addEventListener('pointerdown', function () {
+  lastTouch = Date.now();
+  if (!$('sleep').classList.contains('hidden')) show('sleep', false);
+}, true);
+function checkSleep() {
+  var idle = Date.now() - lastTouch > 5 * 60000;
+  var quiet = S && S.paired && !S.reachable && S.waking_for == null && !pendingStart;
+  show('sleep', idle && quiet);
+}
+
+// ── Clock and polling ──
+function tick() {
+  var d = new Date(), t = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  txt('clock', t); txt('sleep_clock', t);
+}
+function poll() {
+  return api('status').then(function (d) {
+    if (d.ok === false && !d.paired && d.error) return;
+    S = d; render(); checkSleep();
+  });
+}
+// Badge: cached on the Pi, so it's there with the laptop off.
+blob('badge').then(function (b) {
+  $('badge').src = URL.createObjectURL(b); show('badge', true); show('badge-initials', false);
+}, function () {});
+tick(); setInterval(tick, 10000);
+poll(); setInterval(poll, 1500);
+setInterval(function () {
+  var L = laptop();
+  if (!(S && S.reachable && L.phase === 'running' && L.server_ready)) return;
+  loadScore(); loadChecklist(); // the checklist also says whether it's on air
+}, 3000);
+setInterval(function () { loadPreview(false); }, 2000);
+</script>
+</body>
+</html>

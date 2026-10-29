@@ -112,12 +112,17 @@ flowchart LR
         phone["scoring.html<br/>/scoring"]
     end
 
+    subgraph PI["Clubhouse screen (optional, Raspberry Pi)"]
+        chscreen["cricketstream clubhouse<br/>page on its own loopback :5097"]
+    end
+
     cams["IP cameras<br/>RTSP :554"] --> scenes
     agent -. "pull /pcs" .-> http
     bridge -. "mirrored every 2 s<br/>into .pcs_bridge_cache/" .-> bg
     nv -. "same machine:<br/>read the file directly" .-> http
     panel -- "Bearer session<br/>(loopback, LAN, Tailscale<br/>or Cloudflare Tunnel)" --> http
     phone --> http
+    chscreen -- "Wake-on-LAN, then the window's link :5096<br/>(pairing key; allowlist into the server)" --> launcher
     scenes -- "RTMP" --> yt["YouTube Live"]
 ```
 
@@ -160,6 +165,13 @@ loopback port, each API call carrying a per-run key only its own page has. Where
 no web view the same pages open in the browser. The control panel stays a web page served
 by the server, because phones and tablets use it too; in the window it's logged in with
 the launcher's session and gains Activity and Stop buttons.
+
+The optional clubhouse screen isn't a fifth role: it's `cricketstream clubhouse` on a
+Raspberry Pi, and a link the streaming laptop's window opens when it's switched on. The
+link lives in the window, not the server, because it has to answer before match day starts
+(to start it) and after it ends (to switch the laptop off). It drives the same Start, Stop
+and questions as the window's own buttons, and reaches the server only on an allowlist of
+match-day routes, with the window's login ([`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md)).
 
 On Windows the window also owns an icon by the clock (`tray_windows.go`, Shell_NotifyIcon
 on the window's own message loop) and its notifications. `alerts.go` decides what is
@@ -263,6 +275,7 @@ flowchart LR
 | `internal/app` | The window: first screen, match-day screen, agent/bridge status, the console's questions, activity log | no |
 | `internal/launcher` / `internal/setup` | Match-day launch chain; the first-run setup page | no |
 | `internal/agent` / `internal/bridge` | The scorer's-laptop roles; no dependency on the server package | no |
+| `internal/clubhouse` | The optional clubhouse touch screen: the laptop's link (run by the window), the Pi's `cricketstream clubhouse`, Wake-on-LAN, power-off | no |
 | `internal/simulate` | Rehearsal feed: real NV Play quirks, `--chaos` failures | no |
 | `internal/tools` | Telemetry, camera encoder read-out, camera refresher, quality-ladder test | no |
 | `internal/pyval`, `internal/pyfmt`, `internal/ini`, `internal/htmlesc` | Python-compatible values, number formatting, configparser-compatible INI, `html.escape` — so output stays byte-identical to the original's | yes |
@@ -279,6 +292,7 @@ logic can be tested without a server, OBS or a network.
 | `overlay.html?preview=1` | iframe in the panel | one `/state` read, then never again | None |
 | `control.html` | `/control` | `/live/view`, `/health` (10 s), checklist, stream monitor (10 s), spotter (60 s)… | Operator POSTs only |
 | `scoring.html` | `/scoring` | `/scoring/state` (5 s) | Ball events |
+| `clubhouse.html` (the Pi) | the Pi's own loopback, through the window's link | `/live/view`, checklist (3 s), `/preview.jpg` (2 s, only while shown) | Operator POSTs on the link's allowlist only |
 
 The overlay's graphics are one DOM with a queue (`queueGraphic` → `nextGraphic`). Panels
 show one at a time, and every stage is wrapped so one failing graphic can't stall the

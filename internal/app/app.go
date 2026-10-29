@@ -33,6 +33,7 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/browser"
+	"cricketstream/internal/clubhouse"
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/launcher"
@@ -102,6 +103,9 @@ type App struct {
 
 	bridgeRun *bridge.Running
 	bridgeErr string
+
+	chLink *clubhouse.Link // the clubhouse screen's link, when setup turns it on
+	chErr  string
 
 	precheckRunning bool
 	precheckResult  map[string]any
@@ -342,6 +346,7 @@ func (a *App) enterRole(role string) {
 	defer a.updateTitle(role)
 	a.stopAgent()
 	a.stopBridge()
+	a.stopClubhouse()
 	switch role {
 	case "":
 		a.setPhase(phWelcome)
@@ -371,6 +376,7 @@ func (a *App) enterRole(role string) {
 			return
 		}
 		a.setPhase(phHome)
+		a.startClubhouse()
 	}
 }
 
@@ -579,6 +585,7 @@ func (a *App) quit() {
 func (a *App) finish() {
 	a.ask.close()
 	a.stop()
+	a.stopClubhouse()
 	a.mu.Lock()
 	end := a.launcherEnd
 	if a.abandoned {
@@ -738,6 +745,9 @@ func (a *App) status(since int) map[string]any {
 		out["home"] = homeInfo()
 		if phase == phHome || phase == phStopped || phase == phWelcome {
 			out["obs"] = a.obsStatus()
+		}
+		if phase == phHome || phase == phStopped {
+			out["clubhouse"] = a.clubhouseInfo()
 		}
 		a.mu.Lock()
 		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}
