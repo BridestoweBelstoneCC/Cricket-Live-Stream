@@ -457,6 +457,12 @@ out is left alone, because closing it would stop the stream; the activity log sa
 ### Stream is choppy or dropping frames
 
 - Close all other applications during the stream, including the control panel browser tab
+- If the ground's internet comes and goes, switch on **Auto quality scaling** in the
+  control panel's **Stream quality** card. It steps the quality down when the line
+  struggles and back up once it has been clean for 10 minutes, at a break in play. Each
+  step restarts the stream for a few seconds, so stream with a stream key: with OBS
+  signed in to YouTube ("Connect account"), a restart ends the broadcast. The pre-match
+  check says when your upload is tight enough to need it.
 - In `config.ini` under `[Stream]`, set `output_resolution = 720p` and/or
   `bitrate_kbps = 1500`, then start CricketStream again. (Changing these in OBS's own
   settings only lasts until the next start, which sets them again.)

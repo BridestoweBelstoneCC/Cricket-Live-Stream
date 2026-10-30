@@ -169,7 +169,9 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   the "Safe Mode?" prompt, puts the main scene back, and restarts the stream if it was
   live. Closing OBS normally after the match leaves it closed.
   If OBS's scorebar page didn't load (OBS opened before the server was ready), the server
-  notices it isn't asking for the score and reloads it.
+  notices it isn't asking for the score and reloads it. If the server itself crashes or
+  stops answering, it's restarted within a couple of minutes, picking up where it
+  was.
 - **AI camera spotter** *(new, optional)* — while live, Claude looks at each camera every
   few minutes and warns about a fogged or wet lens, a knocked camera, glare or a blocked
   view; a frozen picture is caught without AI. About 10–15p for a long match.
@@ -180,8 +182,13 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   step the stream quality down a ladder when the line is genuinely struggling — manually,
   or automatically with safeguards against flapping. Automatic mode climbs back up one
   step at a time once the line has been clean for 10 minutes, at the end of an over or a
-  pause in play, so one bad patch doesn't leave the whole match at low quality. Stepping down also reduces CPU load
-  on older laptops.
+  pause in play, so one bad patch doesn't leave the whole match at low quality. The
+  lowest step drops to 480p, which stays a clean picture at a low bitrate; the panel
+  shows the rate OBS is really sending next to the setting; and if CricketStream restarts
+  itself mid-match, the ladder carries on from where it was. Stepping down also reduces
+  CPU load on older laptops. Auto mode is off by default: switch it on in the panel's
+  **Stream quality** card if your ground's internet is unreliable (stream with a stream
+  key, not OBS's "Connect account", where a step would end the broadcast).
 - **Practice match** *(new)* — one button in the control panel (Match day → Practice
   match) rehearses the entire broadcast without a scorer: a realistic simulated match (full
   game, tense chase, century chase, or batting collapse) drives every graphic and replay

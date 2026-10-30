@@ -564,12 +564,16 @@ id changes mid-innings.
 | OBS freezes | Window hung 60 s **and** stream bytes not moving | Force-close → treated as a crash | Same |
 | OBS frozen but still streaming | Bytes moving | **Left alone** (killing it would cause the outage) | Warning |
 | Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down, and back up one step after 10 clean minutes, at a break in play | Monitor card, step history |
-| Server crashes | launcher | Relaunch up to 3× with backoff | Console |
+| Server crashes | launcher | Relaunch up to 3× with backoff; the count starts again after 10 min of steady running | Console, Activity, a notification |
+| Server running but not answering (stuck) | launcher: 4 missed `/health` checks in a row, once it has answered | Kill → relaunched as a crash | Same |
+| Server restarted while the stream is stepped down | `stream_ladder` in the state | The ladder carries on from its step (only while OBS is still at that bitrate, within 12 h) | Stream quality card |
 | State file unreadable | `LoadState` | Last good copy, else defaults | Console warning |
 | YouTube login expired | refresh error | Say so; never open a login mid-match | Pre-match check ✗ |
 | Anthropic unavailable | API error | Commentary skipped; captions fall back to templates | Nothing on air |
 | Camera fogged or knocked | Camera spotter (opt-in) | None (can't wipe a lens) | Red camera badge in the pinned bar |
 | Leftover quality downshift | Pre-match check, `/health` | The launcher resets the bitrate on next start | ⚠/✗ before going live |
+| Last match's scorer file still in the folder | file unchanged for 12 h (by the server's clock) | Pre-match graphics, nothing logged, until the scorer writes | Health strip |
+| Replay asked for with the replay buffer stopped | OBS refuses `SaveReplayBuffer` | That replay skipped (no stale clip on air); the buffer started for the next one | Activity |
 
 The rule behind the table: **automate what is safe to repeat, never what could put the
 club on air by surprise.** The stream is only restarted when OBS itself said it was live
