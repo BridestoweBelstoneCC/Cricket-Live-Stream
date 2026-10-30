@@ -331,6 +331,27 @@ problem + what to do + pause) or print and `console.Pause()`.
   Simple-mode x264 (or unset) onto the best hardware H.264 encoder; never touches a
   hardware choice or Advanced mode; `[Stream] encoder = manual` opts out. Verified by
   OBS's log naming the encoder it actually ran, before and after.
+- **A new bitrate only reaches the encoder when NO output is using it — and the replay
+  buffer always is.** Simple mode re-reads `VBitrate` when an output starts with nothing
+  else active; the replay buffer shares the stream's encoder and runs all match day, so
+  the quality ladder's stop→set→start changed nothing (real OBS 33: set 2000 or 4000, it
+  sent the 6000 it launched with; with the buffer stopped, 2014 and 4013). A step stops
+  the buffer after the stream, and `replayBackNote` starts it AFTER the stream (so the
+  stream builds the encoder); a recording in progress makes it refuse; `shifting` stops
+  the replay trigger restarting the buffer mid-step. Judge any bitrate change by what OBS
+  SENDS (`outputBytes` over time), never by reading the setting back — `quality-test` did
+  the latter and passed. `internal/integration/quality_windows_test.go`
+  (opt-in, throttled line → ffmpeg) measures it; the stress test
+  (`streamquality_stress_test.go`) models it and checks the encoder's rate, not the
+  setting. Also measured there: a stop on a congested line takes 30s+ (OBS flushes
+  first), so a step waits a stop out rather than abandoning it; and with Dynamic Bitrate
+  on, OBS holds a stream to a slow line itself (0 drops, congestion ~0.04), so the ladder
+  rightly doesn't move. Don't judge a bitrate on a picture H.264 can't fit in it: the
+  test's animated page (`motionPage`) needs 11-13 Mbps even at QP 51, so NVENC sent
+  10-15 Mbps whatever it was set to (ffmpeg's NVENC too; x264 held the rate by wrecking
+  the picture). Camera/game footage and heavy grain held to ±1% on NVENC, so the ladder
+  check asserts on `QStill` and the looped `QClip` (`CRICKETSTREAM_QUALITY_CLIP` = a
+  club's own footage), never `QMotion`.
 - **The clubhouse screen's link lives in the WINDOW (`internal/app`), not the server.** It
   must answer before match day starts (to start it) and after it ends (to switch the
   laptop off), so it can't be a server route. Its rules, each with a test:
@@ -405,7 +426,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   each: YouTube login + which channel, PlayCricket key, Anthropic key (free `models.list`),
   OBS WebSocket, scorer feed, replay disk space, OBS bitrate (from basic.ini when OBS is
   closed; the target is `targetBitrate()` — config.ini's rule, same as OBS setup), upload
-  speed, cameras (TCP to the RTSP port; never echo the URL — it holds the password),
+  speed, auto quality (suggested on a tight upload; ⚠ if on while OBS is signed in to
+  YouTube — `[Auth] Type` in the profile's basic.ini — where a quality step's stop ENDS
+  the broadcast, which is why `stream_auto_downshift` stays off by default), cameras
+  (TCP to the RTSP port; never echo the URL — it holds the password),
   surname clashes vs the roster, today's fixture, opposition badge, newer release,
   scorer's laptop/bridge, and (with the clubhouse screen on) whether the screen can switch
   the laptop on (`clubhouse.CheckWake`/`WakeAdvice`: cable, wake-armed port, Fast Startup,
@@ -436,4 +460,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   streaming, plus the quality-ladder position. Two-tier adaptive quality: OBS's Dynamic
   Bitrate (enabled by OBS setup; seamless) + the sentinel's bitrate ladder
   (stop→reconfigure→start, ~5-10s gap; auto mode is the `stream_auto_downshift` state key,
-  off by default, and only ever steps DOWN on its own).
+  off by default). Auto steps back UP one rung only after 10 clean minutes that really
+  carried the bitrate (`StreamClean`: Dynamic Bitrate can hold it lower silently), at a
+  break in play (`playBreak`, fed by the overlay's /live), doubling the wait per failed
+  step up. The ladder's place is also saved in the state (`stream_ladder`, cleared at
+  step 0) so a server the launcher restarts mid-match picks it up (`resumeLadderLocked`,
+  only while OBS is still at that bitrate and within 12h); in memory alone, a restart took
+  the stepped-down bitrate as the full one for the rest of the day.

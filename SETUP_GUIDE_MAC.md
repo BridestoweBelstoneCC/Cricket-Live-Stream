@@ -16,7 +16,7 @@ window of its own; on a Mac that's still to come), with a Terminal window behind
 the first run it asks which computer this is and the setup questions, and writes
 `config.ini`; on every run after that it opens on the match-day screen — press **Start
 match day** for OBS, today's fixture, season stats and the pre-flight check.
-Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://localhost:5000/overlay`
+Control panel: `http://localhost:5000/control` · Overlay (for OBS): `http://127.0.0.1:5000/overlay`
 
 OBS's scenes, the overlay source and the replay buffer are all set up for you. Full detail,
 replays, AI features, and troubleshooting follow below.
@@ -272,7 +272,7 @@ scored. Press **Start match day** and the steps tick off as they happen, somethi
   ─────────────────────────────────────────
   Ready: Your Club CC vs Example Opposition CC
   Control panel: http://localhost:5000/control
-  Overlay:       http://localhost:5000/overlay
+  Overlay:       http://127.0.0.1:5000/overlay
 ```
 
 The control panel then opens in a new browser tab, with today's match already filled in.
@@ -453,7 +453,7 @@ and reopens it.
 
 - OBS → right-click the Overlay browser source → **Refresh**
 - Make sure the Terminal window (the server) is still open
-- Check the URL in browser source properties is `http://localhost:5000/overlay`
+- Check the URL in browser source properties is `http://127.0.0.1:5000/overlay`
 
 ### Overlay goes grey during the stream
 
@@ -531,7 +531,7 @@ See [CLUB_LOGOS.md](CLUB_LOGOS.md) for full instructions and tips on finding clu
 | URL | Purpose |
 |---|---|
 | `http://localhost:5000/control` | Control panel |
-| `http://localhost:5000/overlay` | Overlay (add to OBS, don't open in browser) |
+| `http://127.0.0.1:5000/overlay` | Overlay (add to OBS, don't open in browser) |
 | `http://localhost:5000/scoring` | Manual ball-by-ball scoring (phone or tablet) |
 | `http://localhost:5000/pcs/debug` | Diagnose NV Play connection |
 | `http://localhost:5000/health` | Everything at a glance: feed, OBS, badges, keys |

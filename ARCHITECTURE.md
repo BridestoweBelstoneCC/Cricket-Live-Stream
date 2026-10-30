@@ -563,7 +563,7 @@ id changes mid-innings.
 | Overlay never loaded (OBS opened before the server) | overlay watch: no `/live` for 30 s | Reload the Overlay source (`refreshnocache`), up to 3 times | `/health` → `overlay`; watchdog log |
 | OBS freezes | Window hung 60 s **and** stream bytes not moving | Force-close → treated as a crash | Same |
 | OBS frozen but still streaming | Bytes moving | **Left alone** (killing it would cause the outage) | Warning |
-| Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down (never up on its own) | Monitor card, step history |
+| Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down, and back up one step after 10 clean minutes, at a break in play | Monitor card, step history |
 | Server crashes | launcher | Relaunch up to 3× with backoff | Console |
 | State file unreadable | `LoadState` | Last good copy, else defaults | Console warning |
 | YouTube login expired | refresh error | Say so; never open a login mid-match | Pre-match check ✗ |
@@ -574,7 +574,8 @@ id changes mid-innings.
 The rule behind the table: **automate what is safe to repeat, never what could put the
 club on air by surprise.** The stream is only restarted when OBS itself said it was live
 just before the crash. A normal close is never undone. A congested stream is never
-stepped *up* automatically.
+stepped *up*: auto quality climbs back only after a long clean spell, at a break in play,
+and waits longer each time a step up doesn't hold.
 
 ---
 

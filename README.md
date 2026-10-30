@@ -178,7 +178,9 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   link. OBS's dynamic bitrate is enabled automatically (the connection is managed
   seamlessly, with no disconnects), and a live congestion monitor in the control panel can
   step the stream quality down a ladder when the line is genuinely struggling — manually,
-  or automatically with safeguards against flapping. Stepping down also reduces CPU load
+  or automatically with safeguards against flapping. Automatic mode climbs back up one
+  step at a time once the line has been clean for 10 minutes, at the end of an over or a
+  pause in play, so one bad patch doesn't leave the whole match at low quality. Stepping down also reduces CPU load
   on older laptops.
 - **Practice match** *(new)* — one button in the control panel (Match day → Practice
   match) rehearses the entire broadcast without a scorer: a realistic simulated match (full

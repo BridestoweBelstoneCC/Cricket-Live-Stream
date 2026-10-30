@@ -155,7 +155,7 @@ Follow the standard OBS setup from the main Mac setup guide. Key points:
 
 - OBS runs **natively on macOS** — do not install it inside the VM
 - Use **Apple VT H264 Hardware Encoder** in OBS settings — much faster than software encoding
-- Overlay URL: `http://localhost:5000/overlay`
+- Overlay URL: `http://127.0.0.1:5000/overlay`
 - The overlay, server, and OBS all run on your Mac; the VM runs only NV Play
 
 ---
