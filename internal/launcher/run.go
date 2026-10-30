@@ -61,14 +61,16 @@ var (
 )
 
 // watchHung kills p if it stops answering after having answered once. It returns when
-// done closes (p exited).
-func watchHung(p Proc, done <-chan struct{}) {
+// done closes (p exited) or stop does (the restart loop is moving on without it).
+func watchHung(p Proc, done, stop <-chan struct{}) {
 	tick := time.NewTicker(hungCheckEvery)
 	defer tick.Stop()
 	answered, missed := false, 0
 	for {
 		select {
 		case <-done:
+			return
+		case <-stop:
 			return
 		case <-tick.C:
 		}
@@ -498,7 +500,11 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 		started := timeNow()
 		exited := make(chan struct{})
 		go func(p Proc) { p.Wait(); close(exited) }(p)
-		go watchHung(p, exited)
+		stopWatch, watchDone := make(chan struct{}), make(chan struct{})
+		go func(p Proc) { watchHung(p, exited, stopWatch); close(watchDone) }(p)
+		// Every way out of this round ends its watcher first: one left running would
+		// check (and could kill) whatever answers on the port next.
+		endWatch := func() { close(stopWatch); <-watchDone }
 		select {
 		case <-interrupt:
 			offerMatchReport(token)
@@ -509,11 +515,13 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 			case <-time.After(5 * time.Second):
 				p.Kill()
 			}
+			endWatch()
 			fmt.Println("  Server stopped. Bye!")
 			resumeOBSUpdates()
 			return 0
 		case <-exited:
 		}
+		endWatch()
 		// The server exited on its own — a crash, not a shutdown.
 		if timeNow().Sub(started) >= serverSettledAfter {
 			restarts = 0
