@@ -352,6 +352,11 @@ The overlay will appear white/blank in a browser — that's normal. It only show
 ### The stream is choppy
 
 - Close all other programs on the laptop while streaming
+- If the internet at the ground comes and goes, open the control panel, find the
+  **Stream quality** card and switch on **Auto quality scaling**. It lowers the quality
+  when the internet struggles and raises it again when it recovers. (Each change restarts
+  the stream for a few seconds; that's fine with a stream key, but if OBS is signed in to
+  YouTube instead, it ends the broadcast.)
 - Open `config.ini` in Notepad (TextEdit on a Mac). Under `[Stream]`, set
   `output_resolution = 720p` and `bitrate_kbps = 1500`, save, and start CricketStream again.
   (Don't change these in OBS itself — CricketStream sets OBS's video settings every time it

@@ -571,6 +571,49 @@ func TestMidWriteEmptyFileHoldsLastGoodFrame(t *testing.T) {
 	mustEq(t, gm(f.live(), "state")["score"], any(12.0))
 }
 
+func TestLastMatchsFileIsNeitherShownNorLogged(t *testing.T) {
+	// NV Play's file stays in the folder between matches. Until the scorer starts today's,
+	// it must not go on air or into today's records.
+	f := newPCSFixture(t)
+	f.write(17 * 3600)
+	body := f.live()
+	mustEq(t, body["source"], any("pcs")) // still fast-polling, waiting for the scorer
+	if body["state"] != nil {
+		t.Fatalf("last match's score was served: %v", body["state"])
+	}
+	if rows := queryRows(t, "SELECT COUNT(*) FROM balls"); fmt.Sprint(rows[0][0]) != "0" {
+		t.Fatalf("last match's balls logged: %v", rows)
+	}
+	f.write(1) // today's first ball
+	mustEq(t, gm(f.live(), "state")["score"], any(12.0))
+}
+
+func TestScorersClockADayOutStillShowsTheirBalls(t *testing.T) {
+	// In agent/bridge mode the file's time is the scorer's laptop's clock. A day behind,
+	// every ball looks a day old: once the file is written while the server watches, it's
+	// today's whatever the clock says.
+	f := newPCSFixture(t)
+	f.write(30 * 3600)
+	f.live()                       // the server finds it: last match's, as far as it can tell
+	f.write(29*3600, "runs", "16") // the next ball, stamped by a clock a day out
+	if st := gm(f.live(), "state"); st == nil || st["score"] != any(16.0) {
+		t.Fatalf("a ball written while the server watched was hidden: %v", st)
+	}
+}
+
+func TestServerLeftRunningOvernightHidesYesterdaysFile(t *testing.T) {
+	f := newPCSFixture(t)
+	f.write(1)
+	mustEq(t, gm(f.live(), "state")["score"], any(12.0)) // yesterday, live
+	later := now() + 13*3600
+	clock := func() float64 { return later }
+	clockOverride.Store(&clock)
+	t.Cleanup(func() { clockOverride.Store(nil) })
+	if st := f.live()["state"]; st != nil {
+		t.Fatalf("the next morning, yesterday's score was served: %v", st)
+	}
+}
+
 func TestNonNumericClubIDDoesNotCrashLive(t *testing.T) {
 	// The manual badge picker can set home_club_id to a filename stem
 	f := newPCSFixture(t)

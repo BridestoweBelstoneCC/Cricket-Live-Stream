@@ -150,7 +150,7 @@ func TestOverlayRoutesItsAudioIntoTheStream(t *testing.T) {
 	for _, r := range f.Requests {
 		if r.Type == "CreateInput" && r.Data["inputName"] == "Overlay" {
 			s := r.Data["inputSettings"].(map[string]any)
-			if s["reroute_audio"] != true || s["url"] != "http://localhost:5000/overlay" || s["width"].(float64) != 1920 {
+			if s["reroute_audio"] != true || s["url"] != "http://127.0.0.1:5000/overlay" || s["width"].(float64) != 1920 {
 				t.Fatal(s)
 			}
 			return

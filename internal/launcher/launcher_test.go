@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -202,9 +203,10 @@ func stubShutdown(t *testing.T) (*[]string, *bool) {
 	t.Helper()
 	var reports []string
 	died := false
-	sd, sr, so := dieFn, offerMatchReport, resumeOBSUpdates
-	t.Cleanup(func() { dieFn, offerMatchReport, resumeOBSUpdates = sd, sr, so })
+	sd, sr, so, sa := dieFn, offerMatchReport, resumeOBSUpdates, serverAnswers
+	t.Cleanup(func() { dieFn, offerMatchReport, resumeOBSUpdates, serverAnswers = sd, sr, so, sa })
 	dieFn = func(string, ...string) { died = true }
+	serverAnswers = func() bool { return true } // never the real port 5000
 	offerMatchReport = func(tok string) { reports = append(reports, tok) }
 	// Shutdown puts OBS's update check back — in the REAL OBS folder. Never from a test.
 	resumeOBSUpdates = func() {}
@@ -227,6 +229,77 @@ func TestRestartsUpToTheCapThenGivesUp(t *testing.T) {
 		t.Fatal(*reports)
 	}
 }
+
+func TestCrashesHoursApartDontUseUpTheCap(t *testing.T) {
+	_, died := stubShutdown(t)
+	clock := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	old := timeNow
+	t.Cleanup(func() { timeNow = old })
+	timeNow = func() time.Time { clock = clock.Add(11 * time.Minute); return clock } // each run lasts 11 minutes
+	sig := make(chan os.Signal, 1)
+	launched := 0
+	launch := func() (Proc, error) {
+		launched++
+		if launched == 6 {
+			sig <- os.Interrupt
+			return newFake(false), nil
+		}
+		return newFake(true), nil
+	}
+	RunServerWithRestarts(newFake(true), launch, "", 3, 0, func(time.Duration) {}, sig)
+	if *died || launched != 6 {
+		t.Fatal("gave up on crashes hours apart", *died, launched)
+	}
+}
+
+func TestHungServerIsKilledAndRestarted(t *testing.T) {
+	stubShutdown(t)
+	every, misses := hungCheckEvery, hungAfterMisses
+	t.Cleanup(func() { hungCheckEvery, hungAfterMisses = every, misses })
+	hungCheckEvery, hungAfterMisses = time.Millisecond, 3
+	var mu sync.Mutex
+	answers := 0
+	serverAnswers = func() bool { mu.Lock(); defer mu.Unlock(); answers++; return answers == 1 } // answers once, then hangs
+	hung := newFake(false)
+	killed := make(chan struct{})
+	hungKill := &killOnce{fakeProc: hung, killed: killed}
+	sig := make(chan os.Signal, 1)
+	restarted := 0
+	go func() { <-killed; close(hung.exit) }() // a kill ends the process
+	RunServerWithRestarts(hungKill, func() (Proc, error) {
+		restarted++
+		serverAnswers = func() bool { return true }
+		sig <- os.Interrupt
+		return newFake(false), nil
+	}, "", 3, 0, func(time.Duration) {}, sig)
+	if !hung.kill || restarted != 1 {
+		t.Fatal("hung server not restarted", hung.kill, restarted)
+	}
+}
+
+func TestStartingServerIsNotTakenForHung(t *testing.T) {
+	stubShutdown(t)
+	every := hungCheckEvery
+	t.Cleanup(func() { hungCheckEvery = every })
+	hungCheckEvery = time.Millisecond
+	serverAnswers = func() bool { return false } // never answered yet
+	p := newFake(false)
+	sig := make(chan os.Signal, 1)
+	go func() { time.Sleep(50 * time.Millisecond); sig <- os.Interrupt }()
+	RunServerWithRestarts(p, func() (Proc, error) { t.Fatal("restarted"); return nil, nil }, "", 3, 0, func(time.Duration) {}, sig)
+	if p.kill {
+		t.Fatal("killed a server that hadn't answered yet")
+	}
+}
+
+// killOnce signals the first Kill.
+type killOnce struct {
+	*fakeProc
+	killed chan struct{}
+	once   sync.Once
+}
+
+func (k *killOnce) Kill() { k.fakeProc.Kill(); k.once.Do(func() { close(k.killed) }) }
 
 func TestCtrlCOnFirstWaitShutsDownCleanlyNoRestart(t *testing.T) {
 	reports, _ := stubShutdown(t)

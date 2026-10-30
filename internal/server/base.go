@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cricketstream/internal/assets"
@@ -200,7 +201,16 @@ func sortedKeys[V any](m map[string]V) []string {
 	return k
 }
 
-func now() float64 { return float64(time.Now().UnixNano()) / 1e9 }
+func now() float64 {
+	if f := clockOverride.Load(); f != nil {
+		return (*f)()
+	}
+	return float64(time.Now().UnixNano()) / 1e9
+}
+
+// clockOverride replaces now() for simulations (the stream-quality stress test runs a
+// match day on a virtual clock). Atomic: background loops left by other tests read it.
+var clockOverride atomic.Pointer[func() float64]
 
 func trim(s string) string { return strings.TrimSpace(s) }
 

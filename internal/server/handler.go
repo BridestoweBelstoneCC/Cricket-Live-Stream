@@ -1648,6 +1648,9 @@ func (c *ctx) live(mutate bool) {
 	pcsState := manualState
 	if pcsState == nil {
 		pcsState = ReadScoreSource(s)
+		if pcsState != nil && leftoverFeed(s) {
+			pcsState = nil // the last match's file: pre-match graphics, nothing logged
+		}
 	}
 	// Agent mode has no local folder to check — "configured" just means the source is
 	// switched on; a missing/unreachable agent still reports "pcs" rather than falling
@@ -1661,6 +1664,7 @@ func (c *ctx) live(mutate bool) {
 		pcsState["winPredictor"] = safeWinPrediction(pcsState, s)
 		events := []M{}
 		if mutate {
+			notePlay(pcsState) // when a quality step up may restart the stream
 			// Logging must never interrupt the stream: each step guards itself.
 			BufferPCSEvents(pcsState) // advances event detection
 			MatchLogSnapshot(pcsState)

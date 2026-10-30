@@ -35,6 +35,7 @@ var (
 	settleWait   = 8 * time.Second  // let a fresh stream settle before the first check
 	shiftWait    = 12 * time.Second // let a down/restore step's stop-reconfigure-start finish
 	pollInterval = 2 * time.Second
+	measureWait  = 20 * time.Second // what OBS sends after a step, measured over this
 )
 
 func qlog(msg, status string) {
@@ -92,6 +93,42 @@ func watchSurvives(c *obsws.Conn, d time.Duration, label string) bool {
 		time.Sleep(pollInterval)
 	}
 	return survived
+}
+
+// sentKbps is what OBS actually sends over d, from outputBytes (0 = couldn't tell).
+var sentKbps = func(c *obsws.Conn, d time.Duration) float64 {
+	a := streamStatus(c)
+	t0 := time.Now()
+	time.Sleep(d)
+	b := streamStatus(c)
+	if a == nil || b == nil {
+		return 0
+	}
+	ab, _ := a["outputBytes"].(float64)
+	bb, _ := b["outputBytes"].(float64)
+	return (bb - ab) * 8 / 1000 / time.Since(t0).Seconds()
+}
+
+// tookEffect checks a step by what OBS sends, not by what the server says it set: this
+// test used to pass while the replay buffer kept the old encoder — and its bitrate —
+// running through every step. Sending MORE than the setting means it didn't take;
+// sending less is just a congested line, a quiet picture or Dynamic Bitrate.
+func tookEffect(c *obsws.Conn, setKbps any) bool {
+	set, _ := setKbps.(float64)
+	if set == 0 {
+		return true
+	}
+	got := sentKbps(c, measureWait)
+	if got == 0 {
+		qlog("Couldn't measure what OBS is sending", "warn")
+		return true
+	}
+	if got > 1.3*set+300 {
+		qlog(fmt.Sprintf("OBS is sending %.0f kbps but the step set %.0f kbps — the new bitrate did NOT reach the encoder", got, set), "err")
+		return false
+	}
+	qlog(fmt.Sprintf("OBS is sending %.0f kbps (set to %.0f)", got, set), "ok")
+	return true
 }
 
 func okOr(cond bool, bad string) string {
@@ -163,6 +200,8 @@ func QualityTest() int {
 		pyval.Str(mon["step"]), pyval.Str(mon["current_kbps"]), pyval.Str(mon["baseline_kbps"])), okOr(downOK, "err"))
 	if !downOK {
 		qlog("Stream did NOT survive the down-shift — check OBS/YouTube Studio now", "err")
+	} else {
+		downOK = tookEffect(c, mon["current_kbps"])
 	}
 
 	// ── Restore ──
@@ -175,6 +214,9 @@ func QualityTest() int {
 	upOK := watchSurvives(c, shiftWait, "the restore")
 	if mon, ok = monitor(); !ok {
 		return 1
+	}
+	if upOK {
+		upOK = tookEffect(c, mon["current_kbps"])
 	}
 	qlog(fmt.Sprintf("Back to step %s, %s kbps", pyval.Str(mon["step"]), pyval.Str(mon["current_kbps"])), okOr(upOK, "err"))
 	if !upOK {

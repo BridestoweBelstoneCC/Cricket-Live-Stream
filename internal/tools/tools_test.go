@@ -510,7 +510,9 @@ func (l *ladderServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func shrinkWaits(t *testing.T) {
 	a, b, c := settleWait, shiftWait, pollInterval
 	settleWait, shiftWait, pollInterval = 10*time.Millisecond, 120*time.Millisecond, 30*time.Millisecond
-	t.Cleanup(func() { settleWait, shiftWait, pollInterval = a, b, c })
+	savedSent := sentKbps
+	sentKbps = func(*obsws.Conn, time.Duration) float64 { return 0 } // the fake OBS sends nothing
+	t.Cleanup(func() { settleWait, shiftWait, pollInterval, sentKbps = a, b, c, savedSent })
 }
 
 func TestQualityTestBothShiftsSurvive(t *testing.T) {
@@ -586,6 +588,20 @@ func TestPyRepr(t *testing.T) {
 		json.Unmarshal([]byte(v), &x)
 		if got := pyRepr(x); got != want {
 			t.Errorf("pyRepr(%s) = %s, want %s", v, got, want)
+		}
+	}
+}
+
+func TestQualityStepJudgedByWhatOBSSends(t *testing.T) {
+	saved := sentKbps
+	t.Cleanup(func() { sentKbps = saved })
+	for _, c := range []struct {
+		sending float64
+		want    bool
+	}{{6000, false}, {2700, true}, {1500, true}, {0, true}} {
+		sentKbps = func(*obsws.Conn, time.Duration) float64 { return c.sending }
+		if got := tookEffect(nil, 2800.0); got != c.want {
+			t.Errorf("sending %.0f with 2800 set: %v", c.sending, got)
 		}
 	}
 }

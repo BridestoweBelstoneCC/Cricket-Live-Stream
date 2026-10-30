@@ -73,6 +73,7 @@ func obsBitrateSanityCheck(state M) M {
 	streamMonMu.Lock()
 	reachable, simple, configured := gb(streamMon, "reachable", false), streamMon["simple_mode"], gi(streamMon, "configured_kbps", 0)
 	hasConfigured := streamMon["configured_kbps"] != nil
+	step, ladderKbps := gi(streamMon, "step", 0), gi(streamMon, "current_kbps", 0)
 	streamMonMu.Unlock()
 	if !reachable || !hasConfigured {
 		return M{"available": false}
@@ -91,6 +92,13 @@ func obsBitrateSanityCheck(state M) M {
 	// the ladder's downshift fractions — so this only fires on a real leftover downshift.
 	suspicious := float64(configured) < float64(rec)*0.8
 	note := ""
+	if suspicious && step > 0 && configured == ladderKbps {
+		// The ladder's own step, this match: the Stream quality card says why. Red here
+		// called a working step down "left over from a previous match".
+		suspicious = false
+		note = fmt.Sprintf("Stepped down to %d kbps by the quality ladder (%d%% of the full bitrate) — see Stream quality.",
+			configured, int(StreamLadder[min(step, len(StreamLadder)-1)]*100))
+	}
 	if suspicious {
 		note = fmt.Sprintf("OBS is configured at %d kbps, well below the %d kbps your last network test "+
 			"recommended — looks like a leftover downshift from a previous match. Check OBS Settings → "+

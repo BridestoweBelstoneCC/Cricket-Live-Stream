@@ -33,6 +33,62 @@ const banner = `
 // normal operation, so an exit is a crash — but a broken config mustn't loop forever.
 const ServerMaxRestarts = 3
 
+// serverSettledAfter: a server that ran this long before it died was working, so the
+// crashes before it don't count towards the cap. Without this, three crashes hours apart
+// on a long match day ended the graphics for the rest of the match — a crash loop dies
+// within seconds of starting, every time.
+const serverSettledAfter = 10 * time.Minute
+
+var timeNow = time.Now // swappable for tests
+
+// A server that's running but no longer answering (stuck on a lock, say) never exits, so
+// the restart loop alone would leave it: no graphics, no replays, for the rest of the
+// match. Once it has answered, this many missed /health checks in a row gets it
+// restarted: over a minute of silence, far past any slow moment of a working server.
+// (Measured on a VM with 30s checks and a 15s timeout: 182s without graphics. Each miss
+// waits out its timeout, so both count.)
+var (
+	hungCheckEvery  = 20 * time.Second
+	hungAfterMisses = 4
+	serverAnswers   = func() bool { // swappable for tests
+		resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(base() + "/health")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == 200
+	}
+)
+
+// watchHung kills p if it stops answering after having answered once. It returns when
+// done closes (p exited) or stop does (the restart loop is moving on without it).
+func watchHung(p Proc, done, stop <-chan struct{}) {
+	tick := time.NewTicker(hungCheckEvery)
+	defer tick.Stop()
+	answered, missed := false, 0
+	for {
+		select {
+		case <-done:
+			return
+		case <-stop:
+			return
+		case <-tick.C:
+		}
+		if serverAnswers() {
+			answered, missed = true, 0
+			continue
+		}
+		if !answered {
+			continue // still starting; WaitForServer has its say about that
+		}
+		if missed++; missed >= hungAfterMisses {
+			log(fmt.Sprintf("The server stopped answering (%d checks in a row) — restarting it", missed), "warn")
+			p.Kill()
+			return
+		}
+	}
+}
+
 func log(msg string, status ...string) {
 	icon := "   "
 	if len(status) > 0 {
@@ -287,7 +343,7 @@ func Run(o Options) int {
 
 	fmt.Println()
 	fmt.Printf("  Control panel: http://localhost:%d/control\n", server.Port)
-	fmt.Printf("  Overlay:       http://localhost:%d/overlay\n", server.Port)
+	fmt.Printf("  Overlay:       http://127.0.0.1:%d/overlay\n", server.Port)
 	if manual {
 		fmt.Printf("  Manual scoring: http://localhost:%d/scoring  ← set the match up here\n", server.Port)
 		log("(Any PCS feed warnings in the pre-flight check above are expected today)", "")
@@ -441,8 +497,14 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 	backoff time.Duration, sleep func(time.Duration), interrupt <-chan os.Signal) int {
 	restarts := 0
 	for {
+		started := timeNow()
 		exited := make(chan struct{})
 		go func(p Proc) { p.Wait(); close(exited) }(p)
+		stopWatch, watchDone := make(chan struct{}), make(chan struct{})
+		go func(p Proc) { watchHung(p, exited, stopWatch); close(watchDone) }(p)
+		// Every way out of this round ends its watcher first: one left running would
+		// check (and could kill) whatever answers on the port next.
+		endWatch := func() { close(stopWatch); <-watchDone }
 		select {
 		case <-interrupt:
 			offerMatchReport(token)
@@ -453,12 +515,17 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 			case <-time.After(5 * time.Second):
 				p.Kill()
 			}
+			endWatch()
 			fmt.Println("  Server stopped. Bye!")
 			resumeOBSUpdates()
 			return 0
 		case <-exited:
 		}
+		endWatch()
 		// The server exited on its own — a crash, not a shutdown.
+		if timeNow().Sub(started) >= serverSettledAfter {
+			restarts = 0
+		}
 		if restarts >= maxRestarts {
 			dieFn(fmt.Sprintf("The server keeps crashing (restarted it %d times)", maxRestarts), "",
 				"Whatever killed it is printed above this box — scroll up; the",

@@ -24,6 +24,7 @@ import (
 	"cricketstream/internal/ai"
 	"cricketstream/internal/assets"
 	"cricketstream/internal/clubhouse"
+	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
 )
 
@@ -501,5 +502,44 @@ func TestPrecheckClubhouse(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("not in the pre-match check's list")
+	}
+}
+
+// obsProfile writes an OBS profile into the sandbox's OBS folder; signedIn adds the
+// "Connect account" sign-in OBS records there.
+func obsProfile(t *testing.T, signedIn bool) {
+	t.Helper()
+	dir := obs.ConfigDir()
+	prof := filepath.Join(dir, "basic", "profiles", "Untitled")
+	os.MkdirAll(prof, 0o755)
+	os.WriteFile(filepath.Join(dir, "user.ini"), []byte("[Basic]\nProfileDir=Untitled\n"), 0o644)
+	ini := "[Output]\nMode=Simple\n"
+	if signedIn {
+		ini += "[Auth]\nType=YouTube - RTMPS\n"
+	}
+	os.WriteFile(filepath.Join(prof, "basic.ini"), []byte(ini), 0o644)
+}
+
+func TestAutoQualityCheck(t *testing.T) {
+	sandbox(t, "")
+	for _, c := range []struct {
+		name     string
+		auto     bool
+		signedIn bool
+		mbps     float64
+		want     string
+	}{
+		{"on with a stream key", true, false, 10, "ok"},
+		{"on while signed in: a step would end the broadcast", true, true, 10, "warn"},
+		{"off on a tight line: suggest it", false, false, 3, "warn"},
+		{"off on a tight line, signed in: don't suggest it", false, true, 3, "skip"},
+		{"off with room to spare", false, false, 20, "skip"},
+		{"off, no upload test", false, false, 0, "skip"},
+	} {
+		obsProfile(t, c.signedIn)
+		st := M{"stream_auto_downshift": c.auto, "network_test_mbps": c.mbps, "network_test_at": now()}
+		if r := pcAutoQuality(st); r.Status != c.want {
+			t.Errorf("%s: %s (%s)", c.name, r.Status, r.Detail)
+		}
 	}
 }

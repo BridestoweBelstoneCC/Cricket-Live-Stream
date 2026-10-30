@@ -6,6 +6,88 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Fixed: stream quality steps never changed the quality on match day.** OBS only reads
+  the bitrate when it builds the encoder, and it only builds it when nothing is using it.
+  The replay buffer shares the stream's encoder and runs all match day, so a step (down,
+  up, or *Restore full quality*) restarted the stream and changed nothing: measured on a
+  real OBS 33, set to 2000 or 4000 kbps it went on sending the 6000 it started with. A
+  step now stops the replay buffer too (a replay in those few seconds is skipped) and
+  starts it again after the stream. While OBS is recording, a step is refused with the
+  reason, since the recording would have to be split. The old `quality-test` tool missed
+  this because it checked the stream survived, not what it sent.
+- **The Stream quality card shows what OBS is really sending**, next to what it's set to,
+  and warns if OBS keeps sending well over the setting for a minute: either the setting
+  hasn't reached the encoder, or the picture is too detailed for H.264 at that bitrate
+  (NVENC sent 3x its constant bitrate on an animated test page that even x264 needed
+  13 Mbps for at its coarsest; camera footage and heavy grain held their bitrate). The
+  same warning goes in the Activity log. `cricketstream
+  quality-test` now judges each step by what OBS sends afterwards, not by what the
+  server says it set.
+- **At the lowest quality step the stream also drops to 480p.** At 1400 kbps 720p breaks
+  up into blocks; 480p at that bitrate is a clean picture. Stepping up brings back the
+  club's own resolution. A club already streaming at 480p or below is left alone.
+- **The pre-match check has an Auto quality line.** It suggests switching auto quality
+  scaling on when the last upload test leaves little room over the stream's bitrate, and
+  warns if it's on while OBS is signed in to YouTube with "Connect account". In that mode
+  a quality step stops the stream, which ends the broadcast; stream with a stream key
+  instead. (That's also why auto quality stays off by default.)
+- **Fixed: after a server restart mid-match, a stepped-down stream stayed down all day.**
+  The ladder's place was kept only in memory, and the server is restarted after a crash
+  or a freeze. A new one took the reduced bitrate (and 480p) for the full quality, so auto
+  quality had nothing to climb back to and *Restore full quality* "restored" the reduced
+  bitrate. The place is now kept in the match state, and a restarted server picks it up
+  while OBS is still where the ladder left it. If someone changes the bitrate in OBS
+  while it's stepped down, the ladder starts again from that bitrate instead of "stepping
+  up" below it. And the health strip no longer shows a step down as red "left over from a
+  previous match": it says the quality ladder did it.
+- **Fixed: a quality step could leave the stream down while saying it had restarted.** If
+  OBS refused the new bitrate, the stream was restarted with a single try, reported
+  "restarted" whatever OBS said, and stayed down for the rest of the day when that one try
+  was refused. Every path that stops the stream now retries the restart, checks it stayed
+  up, and says plainly when you need to press Start Streaming.
+- **Fixed: on a congested line a step down could restart the stream for nothing, again
+  and again.** Stopping a stream on a slow line takes a while, as OBS flushes its backlog
+  (over 30 seconds measured), and a step down happens exactly then. The step gave up after
+  10 seconds and restarted at the old quality, then tried again on the next check; a stop
+  that finished later left the stream down. A stop is now waited out (up to a minute) and
+  the change made.
+- **Auto quality scaling now steps back up.** It used to only step down: one bad patch
+  early on and the stream stayed at a third of its quality for the rest of the day unless
+  someone pressed *Restore full quality* (which jumps straight to 100%, more than a weak
+  line can take). Now, with *Auto quality scaling* on, it climbs one step at a time once
+  the line has been clean for 10 minutes and is really carrying the current bitrate, and
+  only early in the gap between overs or in the first minutes of a pause (each step
+  restarts the stream for a few seconds: never as a ball is bowled, or while a replay
+  is showing). A step up the
+  line can't take is undone within about a minute, and the wait before the next try
+  doubles, up to two hours. The panel's Stream quality card shows what it's waiting for.
+  All of this is stress-tested: whole match days simulated on many kinds of line, OBS
+  refusing requests at random, an operator pressing the buttons — and on a real OBS on a
+  throttled line (`internal/integration`, opt-in).
+- **Fixed: a server that froze stayed frozen.** The launcher restarted a server that
+  crashed, but one still running and no longer answering (stuck, say) never exited: no
+  graphics or replays for the rest of the match. Once it has answered, four missed checks
+  in a row (20 seconds apart) get it restarted. Measured on a VM: a frozen server was
+  replaced and answering again in under two minutes. And crashes hours apart no longer
+  add up to the restart limit: a server that ran ten minutes before it died was working.
+- **Fixed: last match's score could go on air before the scorer started.** NV Play's file
+  stays in its folder between matches. It was read whatever its age, so yesterday's final
+  score went on the scorebar and into today's ball log, scorecard and match report. A file
+  unchanged for 12 hours is now neither shown nor recorded until the scorer writes to it.
+  The first write the server sees counts, whatever the scorer's laptop clock says (a clock
+  a day out must not hide the whole match).
+- **Fixed: a replay with OBS's replay buffer stopped cut to the previous clip.** The replay
+  scene showed the last clip saved (or nothing), on air. Now no cut is made, the buffer is
+  started for the next replay, and the Activity log says so. A slow disk gets up to ten
+  seconds to write the clip, and only a clip written since the replay was asked for is used.
+- **Fixed: an OBS crash-reopen that was slow to answer was taken for a normal close.** The
+  guard then stopped watching, and a match that was on air stayed off. It now keeps
+  trying until the reopened OBS answers, then puts the scene and the stream back, asking
+  OBS to start streaming again over the next few checks before handing over to a person.
+- OBS's Overlay source now points at `http://127.0.0.1:5000/overlay` instead of
+  `localhost`. On a Mac, `localhost` can resolve to IPv6 first, where AirPlay Receiver
+  answers on port 5000: no scorebar, while every check said the server was fine. Existing
+  installs are switched over by OBS setup on the next match day.
 - Fixed: **no scorebar on air after a fresh match-day start.** The launcher opens OBS
   before the server, so OBS's Overlay source loaded while nothing was listening, showed an
   error page and never tried again — no graphics, and nothing reached the ball database,

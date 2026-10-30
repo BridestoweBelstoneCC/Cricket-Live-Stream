@@ -622,7 +622,9 @@
     OBS's dynamic bitrate (enabled automatically by setup) flexes with the connection
     seamlessly. If the line struggles badly for a sustained period, quality can also be
     stepped down a ladder — each step briefly restarts the stream (viewers see a few
-    seconds of buffering; the broadcast survives). <b style="color:var(--warn);">Requires
+    seconds of buffering; the broadcast survives). With auto scaling on, it also climbs
+    back up one step at a time once the line has been clean for 10 minutes, at a break in
+    play. <b style="color:var(--warn);">Requires
     streaming with a plain stream key</b> — OBS's connected-YouTube-account mode with
     auto-stop ENDS the broadcast when the stream stops, so a quality step would kill it.
     In YouTube Studio copy the stream key and paste it into OBS Settings &rarr; Stream.
@@ -634,7 +636,7 @@
   <div class="toggle-row" style="margin-top:8px;">
     <div>
       <div class="toggle-label">Auto quality scaling</div>
-      <div class="toggle-desc">Step bitrate down automatically on sustained congestion (never steps up on its own)</div>
+      <div class="toggle-desc">Steps the bitrate down on sustained congestion, and back up one step after 10 clean minutes (at the end of an over or a pause in play). A step up that doesn't hold makes it wait twice as long before trying again.</div>
     </div>
     <label class="toggle"><input type="checkbox" id="stream_auto_downshift"
            onchange="saveState()"><span class="track"></span></label>
@@ -1958,12 +1960,19 @@ async function pollStreamMonitor() {
     const cong = d.congestion !== null && d.congestion !== undefined
       ? Math.round(d.congestion * 100) + '%' : '—';
     const healthy = d.step === 0 && d.congestion !== null && d.congestion < 0.1;
-    let html = '<div><strong style="color:' + (healthy ? 'var(--ok)' : 'var(--warn)') + ';">LIVE — '
+    // What OBS really sends, beside the setting: a setting that never reached the encoder
+    // looked fine here for a long time, because only the setting was shown.
+    const sent = d.sent_kbps ? ' &middot; sending ' + d.sent_kbps + ' kbps' : '';
+    let html = '<div><strong style="color:' + (healthy ? 'var(--ok)' : 'var(--warn)') + ';">LIVE — set to '
       + (d.current_kbps || '?') + ' kbps (' + pct + '% of baseline)</strong>'
-      + ' &middot; congestion ' + cong + '</div>'
+      + sent + ' &middot; congestion ' + cong + '</div>'
+      + (d.bitrate_warning ? '<div style="color:var(--bad);margin-top:3px;">&#9888; ' + d.bitrate_warning + '</div>' : '')
       + '<div style="color:var(--text-2);margin-top:3px;">' + (d.verdict || '') + '</div>';
+    if (d.upshift) html += '<div style="color:var(--text-2);margin-top:3px;">&#9206; ' + d.upshift + '</div>';
     (d.shifts || []).slice(-2).forEach(function (s) {
-      html += '<div style="color:var(--warn);margin-top:3px;">&#9207; ' + s.kbps_from + ' &rarr; '
+      const up = s.kbps_to > s.kbps_from;
+      html += '<div style="color:' + (up ? 'var(--ok)' : 'var(--warn)') + ';margin-top:3px;">'
+        + (up ? '&#9206; ' : '&#9207; ') + s.kbps_from + ' &rarr; '
         + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
     });
     body.innerHTML = html + dyn + modeNote;
