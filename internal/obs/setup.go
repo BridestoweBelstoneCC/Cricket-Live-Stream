@@ -128,8 +128,11 @@ func Setup(o SetupOptions) (bool, []string) {
 	existingInputs := names(must(req("GetInputList", nil)), "inputs", "inputName")
 
 	// ── Overlay browser source in Main ──
+	// 127.0.0.1, not localhost: the server listens on IPv4, and on a Mac "localhost" can
+	// resolve to IPv6 ::1 first, where AirPlay Receiver answers on port 5000 — the overlay
+	// got AirPlay's 403 while every health check (all on 127.0.0.1) said fine.
 	overlay := map[string]any{
-		"url": fmt.Sprintf("http://localhost:%d/overlay", o.ServerPort), "width": 1920, "height": 1080,
+		"url": fmt.Sprintf("http://127.0.0.1:%d/overlay", o.ServerPort), "width": 1920, "height": 1080,
 		"fps": 24, "fps_custom": true, "shutdown": false, "restart_when_active": false,
 		// Overlay audio (spoken commentary) goes through OBS's mixer and into the stream,
 		// not just out of the laptop's speakers.

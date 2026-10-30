@@ -39,6 +39,10 @@ func TestOBSCrashIsRecoveredAgainstPortableOBS(t *testing.T) {
 		if obs.Running() && !obs.Close(30*time.Second) {
 			obs.Kill()
 		}
+		// Gone, not just closing: the next test refuses to start while any OBS is open.
+		for end := time.Now().Add(30 * time.Second); obs.Running() && time.Now().Before(end); {
+			time.Sleep(500 * time.Millisecond)
+		}
 	})
 
 	app := t.TempDir()

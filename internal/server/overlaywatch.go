@@ -1,6 +1,6 @@
 package server
 
-// The overlay's own browser source in OBS loads http://localhost:5000/overlay once. If
+// The overlay's own browser source in OBS loads http://127.0.0.1:5000/overlay once. If
 // that load happens while the server isn't listening yet, OBS shows an error page and
 // never tries again — no scorebar on air, and nothing reaches the ball database, the
 // scorecard or the match report. That's the normal match-day order: the launcher opens
@@ -63,7 +63,7 @@ func overlayWatchTick() {
 	}
 	s := LoadState()
 	if !obsIsLocal(s) {
-		return // the Overlay source loads localhost: only OBS on this machine has one to reload
+		return // the Overlay source loads 127.0.0.1: only OBS on this machine has one to reload
 	}
 	r := obsCall(s, []obsws.Req{{Type: "PressInputPropertiesButton",
 		Data: M{"inputName": "Overlay", "propertyName": "refreshnocache"}}}, 5*time.Second)

@@ -1648,6 +1648,9 @@ func (c *ctx) live(mutate bool) {
 	pcsState := manualState
 	if pcsState == nil {
 		pcsState = ReadScoreSource(s)
+		if pcsState != nil && leftoverFeed(s) {
+			pcsState = nil // the last match's file: pre-match graphics, nothing logged
+		}
 	}
 	// Agent mode has no local folder to check — "configured" just means the source is
 	// switched on; a missing/unreachable agent still reports "pcs" rather than falling

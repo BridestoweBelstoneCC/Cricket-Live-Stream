@@ -35,6 +35,14 @@ const (
 
 type obsGuardT struct {
 	armed, streaming, gaveUp bool
+	// A reopen whose Main scene / stream restart hasn't been sent yet: OBS was slower
+	// than obsGuardStartupSec to answer, or didn't start at all. Its crash marker is
+	// already cleared, so without this the next check took OBS being down for a normal
+	// close and stopped watching — and an OBS that answered late was taken as "not live",
+	// so a match that was on air stayed off.
+	pending                  bool
+	pendingStream            bool
+	pendingTries             int
 	restarts                 []float64
 	lastEvent                M
 	enabled                  any
@@ -217,6 +225,12 @@ func obsGuardTick(t float64) string {
 			say("  ✓  OBS crash recovery: watching OBS")
 			return "armed"
 		}
+		obsGuardMu.Lock()
+		pending, pendingStream := obsGuard.pending, obsGuard.pendingStream
+		obsGuardMu.Unlock()
+		if pending && portUp {
+			return obsGuardRestore(st, pendingStream)
+		}
 		// A force-close leaves OBS's crash marker, so the next tick takes the crash path.
 		return obsFreezeCheck(st, t)
 	}
@@ -226,10 +240,14 @@ func obsGuardTick(t float64) string {
 		return "" // never seen OBS this session — not ours to start
 	}
 	wasStreaming := obsGuard.streaming
+	pending := obsGuard.pending
+	if pending {
+		wasStreaming = obsGuard.pendingStream
+	}
 	obsGuardMu.Unlock()
 
 	cfgDir := obs.ConfigDir()
-	crashed := false
+	crashed := pending // our own reopen that hasn't come up: its marker is already gone
 	if entries, err := os.ReadDir(filepath.Join(cfgDir, ".sentinel")); err == nil {
 		for _, e := range entries {
 			crashed = crashed || strings.HasPrefix(e.Name(), "run_")
@@ -259,7 +277,7 @@ func obsGuardTick(t float64) string {
 	gaveUp := len(recent) >= obsGuardMaxRestarts
 	attempt := 0
 	if gaveUp {
-		obsGuard.armed, obsGuard.gaveUp = false, true
+		obsGuard.armed, obsGuard.gaveUp, obsGuard.pending = false, true, false
 	} else {
 		obsGuard.restarts = append(obsGuard.restarts, t)
 		attempt = len(obsGuard.restarts)
@@ -282,25 +300,55 @@ func obsGuardTick(t float64) string {
 	}
 	say("  ⚠  OBS crashed%s — reopening it (attempt %d/%d)", mid, attempt, obsGuardMaxRestarts)
 	obs.ClearCrashSentinel(cfgDir)
+	obsGuardMu.Lock()
+	obsGuard.pending, obsGuard.pendingStream, obsGuard.pendingTries = true, wasStreaming, 0
+	obsGuardMu.Unlock()
 	if err := guardLaunch(exe, obs.LaunchArgsFor(cfgDir)); err != nil {
 		watchdogLogFix(fmt.Sprintf("OBS crashed and couldn't be reopened: %v", err))
 		obsGuardEvent(fmt.Sprintf("reopen failed: %v", err))
-		return "restart_failed"
+		return "restart_failed" // still pending: the next check tries again
 	}
 	if !guardWaitWS(port, obsGuardStartupSec*time.Second) {
 		watchdogLogFix("OBS crashed and was reopened, but isn't answering yet")
 		obsGuardEvent("reopened, not answering")
-		return "restart_failed"
+		return "restart_failed" // still pending: put right as soon as it answers
 	}
 	guardSleep(3 * time.Second) // past "port open" to "scene collection loaded"
-	// The replay buffer is started by the launch flag. Scene: OBS restores whichever was
-	// live at the crash, which could be mid-replay. Stream: only if it WAS live — a crash
-	// before kick-off must not put the club on air.
+	return obsGuardRestore(st, wasStreaming)
+}
+
+// obsGuardRestorePasses: an OBS that answers but refuses StartStream (still loading,
+// say) is asked again on the next few checks, then left for a person.
+const obsGuardRestorePasses = 6
+
+// obsGuardRestore puts a reopened OBS back how it was. The replay buffer is started by
+// the launch flag. Scene: OBS restores whichever was live at the crash, which could be
+// mid-replay. Stream: only if it WAS live — a crash before kick-off must not put the club
+// on air.
+func obsGuardRestore(st M, wasStreaming bool) string {
 	reqs := []obsws.Req{{Type: "SetCurrentProgramScene", Data: M{"sceneName": gs(st, "obs_main_scene", "Main")}}}
 	if wasStreaming {
 		reqs = append(reqs, obsws.Req{Type: "StartStream"})
 	}
-	obsCall(st, reqs, 10*time.Second)
+	r := obsCall(st, reqs, 10*time.Second)
+	if wasStreaming && (len(r) < 2 || r[1] == nil) {
+		obsGuardMu.Lock()
+		obsGuard.pendingTries++
+		tries := obsGuard.pendingTries
+		if tries >= obsGuardRestorePasses {
+			obsGuard.pending = false
+		}
+		obsGuardMu.Unlock()
+		if tries >= obsGuardRestorePasses {
+			watchdogLogFix("OBS was reopened, but wouldn't start the stream again — press Start Streaming in OBS")
+			obsGuardEvent("reopened; stream restart refused")
+			return "restart_failed"
+		}
+		return "restore_pending"
+	}
+	obsGuardMu.Lock()
+	obsGuard.pending = false
+	obsGuardMu.Unlock()
 	what := "OBS crashed — reopened"
 	if wasStreaming {
 		what += " and the stream restarted"
@@ -368,5 +416,7 @@ func streamMonitorStatus() M {
 		"baseline_kbps": streamMon["baseline_kbps"], "current_kbps": streamMon["current_kbps"],
 		"step": streamMon["step"], "ladder_pct": ladder, "congestion": cong,
 		"verdict": streamMon["last_reason"], "shifts": append([]any{}, shifts...), "auto": auto,
-		"dynamic_bitrate": streamMon["dynamic_bitrate"], "simple_mode": streamMon["simple_mode"]}
+		"dynamic_bitrate": streamMon["dynamic_bitrate"], "simple_mode": streamMon["simple_mode"],
+		"upshift": streamMon["upshift_note"], "sent_kbps": streamMon["sent_kbps"],
+		"bitrate_warning": streamMon["bitrate_warning"]}
 }

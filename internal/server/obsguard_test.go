@@ -62,7 +62,11 @@ func newGuardFake(t *testing.T) *guardFake {
 		if f.obsFn != nil {
 			return f.obsFn(reqs)
 		}
-		return []map[string]any{{}}
+		out := make([]map[string]any, len(reqs)) // one answer per request, as OBS gives
+		for i := range out {
+			out[i] = map[string]any{}
+		}
+		return out
 	}
 	guardPortOpen = func(int) bool { return f.running }
 	obsRunning = func() bool { f.runCalls++; return f.running }
@@ -273,6 +277,60 @@ func TestGuardOBSThatDoesntComeBackIsReported(t *testing.T) {
 	f.waitWS = false
 	mustEq(t, obsGuardTick(0), "restart_failed")
 	mustEq(t, len(f.calls), 0)
+}
+
+func TestGuardSlowReopenStillGetsItsStreamBack(t *testing.T) {
+	// Reopened OBS took longer than the wait to answer. When it does, the match that was
+	// on air goes back on air — not read as "OBS says it isn't live".
+	f := newGuardFake(t)
+	f.mon(true, true)
+	obsGuardTick(0)
+	f.crash()
+	f.waitWS = false
+	mustEq(t, obsGuardTick(0), "restart_failed")
+	f.running = true // it answers at last, not streaming
+	mustEq(t, obsGuardTick(0), "restarted")
+	eqv(t, f.lastSent(), []string{"SetCurrentProgramScene", "StartStream"})
+	mustEq(t, len(f.launches), 1)
+}
+
+func TestGuardFailedReopenIsRetriedNotTakenForAClose(t *testing.T) {
+	// The crash marker is cleared before the reopen, so an OBS that never came up looked
+	// like one closed on purpose, and the guard stopped watching.
+	f := newGuardFake(t)
+	obsGuardTick(0)
+	f.crash()
+	f.waitWS = false
+	mustEq(t, obsGuardTick(0), "restart_failed")
+	f.waitWS = true
+	mustEq(t, obsGuardTick(0), "restarted") // OBS still down, no marker: reopened again
+	mustEq(t, len(f.launches), 2)
+}
+
+func TestGuardRefusedStreamRestartAskedAgainThenLeft(t *testing.T) {
+	f := newGuardFake(t)
+	f.mon(true, true)
+	obsGuardTick(0)
+	f.crash()
+	f.obsFn = func(reqs []obsws.Req) []map[string]any {
+		out := make([]map[string]any, len(reqs))
+		for i, r := range reqs {
+			if r.Type != "StartStream" {
+				out[i] = map[string]any{}
+			}
+		}
+		return out
+	}
+	mustEq(t, obsGuardTick(0), "restore_pending")
+	f.running = true
+	for i := 2; i < obsGuardRestorePasses; i++ {
+		mustEq(t, obsGuardTick(0), "restore_pending")
+	}
+	mustEq(t, obsGuardTick(0), "restart_failed")
+	f.obsFn = nil
+	if r := obsGuardTick(0); r == "restarted" || r == "restore_pending" {
+		t.Fatal("still retrying after giving up:", r)
+	}
 }
 
 func TestGuardDisabledByConfigOrRemoteOBS(t *testing.T) {

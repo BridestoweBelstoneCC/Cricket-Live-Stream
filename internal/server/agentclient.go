@@ -47,6 +47,7 @@ var (
 func ResetAgentClient() {
 	agentMu.Lock()
 	agentLastMtime, agentLastState, agentResolved, agentLastError, agentLastOK, agentNextDiscover = 0, nil, "", "", 0, 0
+	leftoverFeedSaid, leftoverMtime, leftoverSince, leftoverWritten = false, 0, 0, false
 	agentMu.Unlock()
 }
 
@@ -323,6 +324,57 @@ func ReadScoreSource(s M) M {
 		return ReadAgentFile(s)
 	}
 	return ReadPCSFile(EffectivePCSFolder(s))
+}
+
+// leftoverFeedSec: a scoreboard nobody has written for this long is the last match's,
+// still sitting in the scorer's folder (NV Play's file has a fixed name, and is read
+// whatever its age). Found end to end on a VM: yesterday's final score went on air
+// before the scorer started, and into TODAY's ball log and live_* figures — so the
+// clubhouse scorecard, the report and the result card listed last week's batters. No
+// innings break or rain delay comes near half a day, and a restart mid-match finds a
+// file written minutes ago.
+//
+// The file's own time is only trusted for the file as this server first found it. In
+// agent and bridge mode it's the scorer's laptop's clock, and one that's a day out (a
+// flat clock battery, no internet at the ground to put it right) made every ball look
+// old: no scorebar all match. After that, what counts is how long it has sat unchanged
+// by this server's clock (a server left running overnight).
+const leftoverFeedSec = 12 * 3600
+
+var ( // under agentMu
+	leftoverFeedSaid bool
+	leftoverMtime    float64 // the file's time as last seen...
+	leftoverSince    float64 // ...and since when, by this server's clock
+	leftoverWritten  bool    // it has changed while this server watched
+)
+
+// leftoverFeed reports whether the frame /live just read is a previous match's: the
+// scorer last wrote it more than leftoverFeedSec ago (bridge mode keeps NV Play's own
+// file time on the mirror; agent mode carries it in the payload).
+func leftoverFeed(s M) bool {
+	var mt float64
+	if gs(s, "pcs_source", "local") == "agent" {
+		agentMu.Lock()
+		mt = agentLastMtime
+		agentMu.Unlock()
+	} else if p := FindPCSOutputFile(EffectivePCSFolder(s)); p != "" {
+		mt = mtime(p)
+	}
+	t := now()
+	agentMu.Lock()
+	if mt != leftoverMtime {
+		leftoverWritten = leftoverWritten || leftoverMtime != 0
+		leftoverMtime, leftoverSince = mt, t
+	}
+	old := mt != 0 && (t-leftoverSince > leftoverFeedSec || (!leftoverWritten && t-mt > leftoverFeedSec))
+	say1 := old && !leftoverFeedSaid
+	leftoverFeedSaid = old
+	agentMu.Unlock()
+	if say1 {
+		say("  ⚠  The scorer's file is from %s — waiting for today's first ball before showing or recording it.",
+			time.Unix(int64(mt), 0).Format("Mon 2 Jan 15:04"))
+	}
+	return old
 }
 
 // ── NV Play bridge sync (remote scorer machine) ────────────────

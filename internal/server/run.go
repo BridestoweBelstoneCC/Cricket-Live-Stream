@@ -99,7 +99,7 @@ func banner() {
   ║        CricketStream Overlay — Stream Server         ║
   ╠══════════════════════════════════════════════════════╣
   ║   Control panel  →  http://localhost:%d/control     ║
-  ║   OBS overlay    →  http://localhost:%d/overlay     ║
+  ║   OBS overlay    →  http://127.0.0.1:%d/overlay     ║
   ╚══════════════════════════════════════════════════════╝
 %s
   Replay clips capped at %d — oldest auto-deleted.
