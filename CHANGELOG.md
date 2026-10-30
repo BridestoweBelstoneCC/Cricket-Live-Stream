@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.2 — auto quality that works, and recovery (2026-10-30)
 
 - **Fixed: stream quality steps never changed the quality on match day.** OBS only reads
   the bitrate when it builds the encoder, and it only builds it when nothing is using it.
