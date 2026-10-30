@@ -1664,6 +1664,7 @@ func (c *ctx) live(mutate bool) {
 		pcsState["winPredictor"] = safeWinPrediction(pcsState, s)
 		events := []M{}
 		if mutate {
+			notePlay(pcsState) // when a quality step up may restart the stream
 			// Logging must never interrupt the stream: each step guards itself.
 			BufferPCSEvents(pcsState) // advances event detection
 			MatchLogSnapshot(pcsState)

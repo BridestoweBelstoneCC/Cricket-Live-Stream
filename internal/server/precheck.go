@@ -432,6 +432,45 @@ func pcUpload(st M) CheckResult {
 	return chk("ok", note, "")
 }
 
+// obsSignedInToYouTube: OBS is streaming through "Connect account" rather than a stream
+// key. OBS records the sign-in in the profile's basic.ini ([Auth] Type=YouTube - RTMPS).
+func obsSignedInToYouTube() bool {
+	p := obs.ActiveProfileINI(obs.ConfigDir())
+	if p == "" {
+		return false
+	}
+	v, _ := obs.ReadINIValue(p, "Auth", "Type")
+	return strings.Contains(strings.ToLower(v), "youtube")
+}
+
+// pcAutoQuality: auto quality scaling is off by default, because a quality step stops
+// and restarts the stream, and with OBS signed in to YouTube ("Connect account") that
+// ENDS the broadcast. So rather than switching it on for everyone, this says when a club
+// should (an upload with little room over the stream's bitrate, streaming with a key),
+// and warns a club that has it on in the mode where it would end their broadcast.
+func pcAutoQuality(st M) CheckResult {
+	auto, signedIn := gb(st, "stream_auto_downshift", false), obsSignedInToYouTube()
+	keyFix := "Stream with a stream key instead (YouTube Studio → copy the stream key → OBS Settings → Stream), " +
+		"or switch Auto quality scaling off (Match day → Stream quality)."
+	if auto && signedIn {
+		return chk("warn", "Auto quality scaling is on, but OBS is signed in to YouTube (\"Connect account\"): "+
+			"a quality step stops the stream, and in that mode stopping it ends the broadcast.", keyFix)
+	}
+	if auto {
+		return chk("ok", "On — steps the stream down when the line struggles, and back up when it recovers.", "")
+	}
+	mbps := gf(st, "network_test_mbps", 0)
+	want, _ := targetBitrate(st)
+	if want == 0 && mbps > 0 {
+		want = obs.RecommendStreamSettings(mbps).BitrateKbps
+	}
+	if mbps > 0 && want > 0 && mbps*1000 < 2*float64(want) && !signedIn {
+		return chk("warn", fmt.Sprintf("Off, and the last upload test (%s Mbps) leaves little room over the stream's %d kbps.",
+			pyfmt.Fixed(mbps, 1), want), "Switch on Auto quality scaling (Match day → Stream quality).")
+	}
+	return chk("skip", "Off.", "")
+}
+
 var versionNums = regexp.MustCompile(`\d+`)
 
 func versionTuple(v string) []int {
@@ -581,6 +620,7 @@ var Prechecks = []struct {
 	{"disk", "Disk space", pcDisk},
 	{"obs_bitrate", "Stream bitrate", pcOBSBitrate},
 	{"upload", "Upload speed", pcUpload},
+	{"auto_quality", "Auto quality", pcAutoQuality},
 	{"cameras", "Cameras", pcCameras},
 	{"fixture", "Today's fixture", pcFixture},
 	{"badge", "Opposition badge", pcBadge},

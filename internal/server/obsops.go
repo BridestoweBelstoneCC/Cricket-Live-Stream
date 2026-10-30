@@ -87,6 +87,7 @@ func ObsTriggerReplay(state M, reason string) {
 	if folder == "" {
 		folder = defaultReplayFolder()
 	}
+	noteReplay(float64(duration) + 15) // the clip, and up to ten seconds' saving: no quality step in it
 	c, err := obsws.Dial(obsTarget(state), 8*time.Second)
 	if err != nil {
 		say("  ✗  OBS WebSocket: %v — is OBS running? (check the password in the control panel)", err)
@@ -94,36 +95,66 @@ func ObsTriggerReplay(state M, reason string) {
 	}
 	defer c.Close()
 	say("  ✓  OBS WebSocket authenticated")
-	send := func(t string, d any) {
+	send := func(t string, d any) bool {
 		r, err := c.Request(t, d)
 		if err != nil {
 			say("  ✗  No response from OBS for %s", t)
 		} else if !r.OK {
 			say("  ✗  OBS request %s failed: %s", t, r.Comment)
 		}
+		return err == nil && r.OK
 	}
-	send("SaveReplayBuffer", nil)
-	time.Sleep(3 * time.Second) // for OBS to write the file
-	clip := newestClip(folder)
-	if clip == "" {
-		say("  ✗  No replay clip found in: %s", folder)
-		say("     Make sure OBS Replay Buffer is enabled and saving to: %s", folder)
-	} else {
-		enforceClipLimit(folder, gi(LoadState(), "max_clips", MaxClips))
-		say("  ✓  Clip found: %s", filepath.Base(clip))
-		// Tag the clip with why it was captured — feeds the highlights compiler.
-		logReplayClip(clip, reason, caption)
-		if caption != "" {
-			say("  🏷  Tagged: %s", caption)
+	asked := now()
+	if !send("SaveReplayBuffer", nil) {
+		// Usually the buffer isn't running (OBS reopened without it, or it was stopped).
+		// Start it, so the next replay works — this one is gone either way. Cutting to the
+		// Replay scene now would show the PREVIOUS clip, or nothing, on air. Not during a
+		// quality step, which stops it on purpose and starts it again itself.
+		if shifting.Load() {
+			say("  ✗  Replay skipped — a stream quality change is under way")
+			return
 		}
-		send("SetInputSettings", M{"inputName": "ReplayClip", "inputSettings": M{"local_file": clip}})
+		if send("StartReplayBuffer", nil) {
+			say("  ✓  Replay buffer wasn't running — started it for the next replay")
+			watchdogLogFix("OBS's replay buffer wasn't running — started it (that replay was skipped)")
+		}
+		return
 	}
+	// OBS writes the clip after answering; a slow disk can take longer than the 3s that
+	// used to be allowed. Only a clip written since the request will do.
+	clip := ""
+	replaySleep(3 * time.Second) // for OBS to write the file
+	for waited := 0; ; waited++ {
+		if c := newestClip(folder); c != "" && mtime(c) >= asked-1 {
+			clip = c
+			break
+		}
+		if waited == 7 {
+			break
+		}
+		replaySleep(time.Second)
+	}
+	if clip == "" {
+		say("  ✗  No new replay clip in: %s — replay skipped", folder)
+		say("     Make sure OBS Replay Buffer is enabled and saving to: %s", folder)
+		return
+	}
+	enforceClipLimit(folder, gi(LoadState(), "max_clips", MaxClips))
+	say("  ✓  Clip found: %s", filepath.Base(clip))
+	// Tag the clip with why it was captured — feeds the highlights compiler.
+	logReplayClip(clip, reason, caption)
+	if caption != "" {
+		say("  🏷  Tagged: %s", caption)
+	}
+	send("SetInputSettings", M{"inputName": "ReplayClip", "inputSettings": M{"local_file": clip}})
 	send("SetCurrentProgramScene", M{"sceneName": replay})
 	say("  ▶  Switched to %s scene", replay)
-	time.Sleep(time.Duration(duration) * time.Second)
+	replaySleep(time.Duration(duration) * time.Second)
 	send("SetCurrentProgramScene", M{"sceneName": main})
 	say("  ◀  Returned to %s scene", main)
 }
+
+var replaySleep = time.Sleep // swappable for tests
 
 // graphicsSources must always sit above any camera.
 var graphicsSources = []string{"Overlay", "ReplayClip"}
