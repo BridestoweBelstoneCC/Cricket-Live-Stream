@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"cricketstream/internal/ai"
+	"cricketstream/internal/discord"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/scorerfile"
 )
@@ -106,6 +107,32 @@ func CheckAnthropic(key string) Check {
 	return Check{"bad", fmt.Sprintf("Anthropic answered HTTP %d — try again later.", ai.StatusCode(err))}
 }
 
+// CheckDiscord posts a test message to the webhook: the one place a person can see it
+// arrive.
+func CheckDiscord(hook, club string) Check {
+	hook = strings.TrimSpace(hook)
+	if hook == "" {
+		return Check{"warn", "No webhook — alerts show on this laptop only."}
+	}
+	if club = strings.TrimSpace(club); club == "" {
+		club = "your club"
+	}
+	if err := discordPost(hook, "✅ Test from CricketStream at "+club+": match-day alerts will appear in this channel."); err != nil {
+		return Check{"bad", capitalise(err.Error()) + "."}
+	}
+	return Check{"ok", "Sent — look for the test message in the channel."}
+}
+
+// discordPost is discord.Post (a test seam).
+var discordPost = discord.Post
+
+func capitalise(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + strings.TrimSuffix(s[1:], ".")
+}
+
 // CheckFolder says whether NV Play's scoreboard output is (or will be) in folder.
 func CheckFolder(folder string) Check {
 	folder = strings.Trim(strings.TrimSpace(folder), `"`)
@@ -138,6 +165,7 @@ type CheckRequest struct {
 	Key    string `json:"key"`
 	ClubID string `json:"club_id"`
 	Folder string `json:"folder"`
+	Club   string `json:"club"`
 }
 
 // RunCheck answers a CheckRequest.
@@ -165,6 +193,14 @@ func RunCheck(body []byte) (int, any) {
 		return 200, CheckAnthropic(c.Key)
 	case "folder":
 		return 200, CheckFolder(c.Folder)
+	case "discord":
+		if strings.TrimSpace(c.Key) == "" {
+			c.Key = saved("Alerts", "discord_webhook")
+		}
+		if strings.TrimSpace(c.Club) == "" {
+			c.Club = saved("Club", "name")
+		}
+		return 200, CheckDiscord(c.Key, c.Club)
 	}
 	return 400, map[string]any{"ok": false, "error": "Nothing to check."}
 }

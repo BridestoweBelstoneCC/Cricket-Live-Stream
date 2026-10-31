@@ -33,8 +33,9 @@ installer, no command windows: download one file, double-click it, and it sets i
   control panel, even from a phone. No folders, no renaming files.
 - **Finds your kit** — discovers the club's IP cameras, installs OBS if it's missing, and pairs
   the scorer's laptop with a short code.
-- **Keeps an eye out** — a pre-match check of every login and connection, and Windows
-  notifications if the scorer's feed goes quiet or OBS crashes mid-match.
+- **Keeps an eye out** — a pre-match check of every login and connection, and alerts if
+  the scorer's feed goes quiet, OBS crashes or the stream stops mid-match: a Windows
+  notification, and a message in the club's Discord channel if you want one.
 - **Updates itself** — one click to install a new version; one exported file to move to a new laptop.
 
 **[Download CricketStream 3.0 →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** ·
