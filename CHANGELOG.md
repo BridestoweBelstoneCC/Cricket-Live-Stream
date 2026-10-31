@@ -6,6 +6,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **A pre-match show.** Go live before play and the stream has something on it: a
+  countdown to the start ("Play starts at 13:00 · in 25 min", and "Starts in 25 min" in
+  the scorebar), the head to head with today's opposition, both teams' XIs as entered on
+  PlayCricket (captain and keeper marked), and the ground's weather in the corner until
+  the first ball — alongside the competition, umpires, season form and league table it
+  already showed. The start time comes from today's PlayCricket fixture.
 - **Head to head.** Control panel → On-screen extras → **Show head-to-head**: the record
   of today's two teams over their last five meetings (in the last six seasons) and how the
   last one went — both totals, top scorers and best bowlers — from PlayCricket. It's today's

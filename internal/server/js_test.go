@@ -738,3 +738,37 @@ func TestClubAccentNotAColourFallsBackToDefaults(t *testing.T) {
 		}
 	}
 }
+
+// The pre-match countdown: minutes to cfg.match_time today, and when the panel shows at
+// all (not with no time, once it's passed, or hours ahead).
+func TestPrematchCountdown(t *testing.T) {
+	src := overlayFunctions(t, "minutesToStart", "untilText", "fillCountdownPanel") + `
+var els = {};
+function el(id) { return els[id] || (els[id] = {style: {}, textContent: ''}); }
+var cfg = {};
+function at(mins) { var d = new Date(Date.now() + mins * 60000 + 20000);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+var out = {};
+cfg.match_time = at(25); out.m = minutesToStart(); out.shown = fillCountdownPanel(); out.left = el('countdown-left').textContent;
+out.label = el('countdown-label').textContent.indexOf('Play starts at ' + cfg.match_time) === 0;
+cfg.match_time = at(95); out.hr = untilText(minutesToStart());
+cfg.match_time = ''; out.none = minutesToStart(); out.noneShown = fillCountdownPanel();
+cfg.match_time = at(-30); out.pastShown = fillCountdownPanel();
+cfg.match_time = at(300); out.farShown = fillCountdownPanel();
+cfg.match_time = '13.30'; out.dot = minutesToStart() !== null;
+console.log(JSON.stringify(out));
+`
+	var got map[string]any
+	runJS(t, src, &got)
+	// "25 min" from now lands on 25 or 26 whole minutes, depending on this second.
+	m, _ := got["m"].(float64)
+	if (m != 25 && m != 26) || got["shown"] != true || got["left"] != fmt.Sprintf("in %d min", int(m)) || got["label"] != true {
+		t.Fatalf("25 min to go: %v", got)
+	}
+	if got["hr"] != "in 1 hr 35 min" && got["hr"] != "in 1 hr 36 min" {
+		t.Errorf("over an hour: %v", got["hr"])
+	}
+	if got["none"] != nil || got["noneShown"] != false || got["pastShown"] != false || got["farShown"] != false || got["dot"] != true {
+		t.Fatalf("when it doesn't show: %v", got)
+	}
+}

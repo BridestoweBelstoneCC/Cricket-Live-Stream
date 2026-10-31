@@ -141,10 +141,11 @@ func BuildState(cfg *ini.File, match *Match, exist M) M {
 		}
 		return get(exist, key, def)
 	}
-	var awayTeam, awayAbbrev, comp, compID, ump1, ump2, scorer, pcID, awayClub string
+	var awayTeam, awayAbbrev, comp, compID, ump1, ump2, scorer, pcID, awayClub, start string
 	if match != nil {
 		awayTeam, awayAbbrev, comp, compID = match.AwayTeam, match.AwayAbbrev, match.Competition, match.CompetitionID
 		ump1, ump2, scorer, pcID, awayClub = match.Umpire1, match.Umpire2, match.Scorer1, match.MatchID, match.AwayClubID
+		start = match.Time
 	}
 	maxOvers, err := strconv.Atoi(strings.TrimSpace(c("Stream", "max_overs", "50")))
 	if err != nil {
@@ -173,6 +174,7 @@ func BuildState(cfg *ini.File, match *Match, exist M) M {
 		"umpire2_name":     pick(ump2, "umpire2_name", ""),
 		"scorer1_name":     pick(scorer, "scorer1_name", ""),
 		"pc_match_id":      pick(pcID, "pc_match_id", ""),
+		"match_time":       pick(start, "match_time", ""), // "13:00": the pre-match countdown
 		"match_notes":      "",
 		// API keys
 		"playcricket_api_key": c("API", "playcricket_key", ""),

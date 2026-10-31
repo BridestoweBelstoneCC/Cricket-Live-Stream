@@ -482,6 +482,11 @@ problem + what to do + pause) or print and `console.Pause()`.
   `.h2h_cache/`; `{"ready": false}` while it builds; `?force=1` (login) rebuilds.
   An innings' bowling list is the FIELDING side's — the first version would have credited
   their bowlers to us.
+- `http://localhost:5000/lineups` — today's two XIs as entered on PlayCricket
+  (match_detail `players`, kept 5 min), for the pre-match show. The show itself is the
+  overlay's `showPreMatchInfo()` rotation: countdown (`cfg.match_time`, from the fixture),
+  head to head (`graphics_h2h`), the XIs (`graphics_lineup`), and the weather card in the
+  corner, which `renderScorebar` takes down at the first live frame.
 - `http://localhost:5000/league/table` — today's competition's table (home club's row +
   the row above), backend for the overlay's `#league-table-panel` (`graphics_league_table`);
   `"usable": false` means `competition_id` is blank or doesn't resolve to a real league
