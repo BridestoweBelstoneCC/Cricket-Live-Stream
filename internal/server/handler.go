@@ -462,6 +462,21 @@ func (c *ctx) doGET() {
 	case path == "/weather":
 		c.json(FetchWeatherData())
 
+	case path == "/weather/radar":
+		// The rain radar loop for the overlay (radar.go). Open, like /weather: read-only,
+		// and the overlay has no login.
+		c.json(RainRadar())
+
+	case strings.HasPrefix(path, "/weather/radar/frame/"):
+		var i int
+		if _, err := fmt.Sscanf(path, "/weather/radar/frame/%d.png", &i); err == nil {
+			if b := RadarFramePNG(i); b != nil {
+				c.bytes(b, "image/png")
+				return
+			}
+		}
+		c.json(M{"ok": false, "error": "No such frame"}, 404)
+
 	case path == "/commands":
 		c.json(popCommands())
 

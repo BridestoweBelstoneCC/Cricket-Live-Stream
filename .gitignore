@@ -45,6 +45,7 @@ manual_scoring.json
 .pcs_bridge_cache/
 .h2h_cache/
 .sidecam/
+.radar_cache/
 bridge_config.ini*
 # Clubhouse screen (the Pi): its pairing (holds the laptop's pairing key), the club badge
 # it keeps for when the laptop is off, and its kiosk browser's own profile.

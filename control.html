@@ -945,6 +945,11 @@
       <label class="toggle"><input type="checkbox" id="graphics_h2h"><span class="track"></span></label>
     </div>
     <div class="toggle-row">
+      <div><div class="toggle-label">Rain radar</div>
+           <div class="toggle-desc">In a rain delay (and before play or at a break when rain's forecast), the last hour of rain around the ground as a loop, with when it should stop. While play's on, a strap half an hour before rain is due. Free services, no key; needs the ground's location (set by "Fetch today's match").</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_rain_radar"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
       <div><div class="toggle-label">Club milestones</div>
            <div class="toggle-desc">A strap when a home player passes 500, 1,000, 1,500… runs or 50, 100… wickets for the club, or makes a first fifty, a hundred or a five-for for the club — from every past PlayCricket scorecard of the club's sides (the first build takes a few minutes, in the background). Players whose names could be two people are left out.</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_club_milestones"><span class="track"></span></label>
@@ -2773,7 +2778,7 @@ const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_po
   'camera_over_hold','camera_walkout_hold'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';

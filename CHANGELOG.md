@@ -18,6 +18,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
     and never cuts back over a replay that started meanwhile.
   - The control panel calls the cameras **Camera 1** and **Camera 2** (the second needn't
     be at the bowler's end — a side-on camera at the pavilion works well).
+- **Rain radar.** In a rain delay, the stream shows the last hour of rain around the
+  ground as a moving radar picture, with the ground marked and when it should be dry
+  ("Dry by about 15:40") — so viewers can see for themselves whether there'll be more
+  cricket. Before play, or at a break, it shows too when rain's forecast; and while play's
+  on, a strap gives half an hour's warning ("Rain approaching — likely around 15:20").
+  Free services, no key: RainViewer's radar on an OpenStreetMap map, and Open-Meteo's
+  15-minute rain forecast. Control panel → On-screen extras → **Rain radar**.
 - **Club milestones.** A strap at the top of the stream when a home player passes 500,
   1,000, 1,500… runs or 50, 100… wickets for the club, or makes a first fifty, a hundred
   ("3rd hundred for the club") or a five-for for the club — and a chapter on the match
