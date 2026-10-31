@@ -775,7 +775,7 @@ console.log(JSON.stringify(out));
 
 // Club milestones: straps one after another, never two at once; off means none.
 func TestClubMilestoneStraps(t *testing.T) {
-	src := overlayFunctions(t, "showClubMilestone", "nextClubStrap") + `
+	src := overlayFunctions(t, "showClubMilestone", "showStrap", "nextClubStrap") + `
 var _clubStraps = [], _clubStrapOn = false, cfg = { home_colour: '#123456' };
 var els = {}, shown = [], timers = [];
 function el(id) { return els[id] || (els[id] = { style: {}, textContent: '', classList: {
@@ -834,6 +834,34 @@ console.log(JSON.stringify(out));
 	}
 }
 
+// Rain on its way: a strap only while play's on and dry, rain due within 30 minutes, once
+// an hour; never in a break or before play, or with the radar switched off.
+func TestRainWarning(t *testing.T) {
+	src := overlayFunctions(t, "rainWarning", "_scoreStarted", "ballsOf") + `
+var cfg = {}, _break = null, _breakAt = null, _rainWarnedAt = 0, straps = [];
+function showStrap(label, m) { straps.push(label + ': ' + m.text); }
+var soon = { rain_now: false, rain_starts: '15:30', rain_in_min: 15 };
+var out = [];
+rainWarning(soon); out.push(straps.length);                       // before play
+_breakAt = { state: { overs: 12.3, score: 60 } };
+rainWarning({ rain_now: false, rain_starts: '16:30', rain_in_min: 75 }); out.push(straps.length);  // not soon
+rainWarning(soon); out.push(straps.length);                       // yes
+rainWarning(soon); out.push(straps.length);                       // not again within the hour
+_rainWarnedAt = 0; _break = { kind: 'drinks' }; rainWarning(soon); out.push(straps.length);
+_break = null; rainWarning({ rain_now: true, rain_starts: '' }); out.push(straps.length);
+cfg.graphics_rain_radar = false; rainWarning(soon); out.push(straps.length);
+console.log(JSON.stringify({ counts: out, first: straps[0] }));
+`
+	var got struct {
+		Counts []int
+		First  string
+	}
+	runJS(t, src, &got)
+	if fmt.Sprint(got.Counts) != "[0 0 1 1 1 1 1]" || got.First != "Weather: Rain approaching — likely around 15:30" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 // Breaks: drinks start after the drinks over and end at the next ball — not on the next
 // poll whose ticker still holds the finished over (what made the old drinks card vanish);
 // the innings break lasts through the change of innings until the reply's first ball.
@@ -856,6 +884,10 @@ function queueGraphic(id) { queued.push(id); }
 function showScorecard() {}
 function loadPregameForm() {}
 function fillLeadersPanel() { return false; }
+var radarLoads = 0;
+function rainAbout() { return false; }
+function loadRadar() { radarLoads++; }
+function fillRadarPanel() { return false; }
 function oversDisplay(o) { return String(o); }
 function frame(inn, overs, wkts, score) { updateBreak({ innings: inn, overs: overs, wickets: wkts || 0, score: score || 0, battingTeamName: 'Home CC' }); }
 var log = [];
