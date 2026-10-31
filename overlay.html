@@ -597,7 +597,7 @@ body.style-franchise #break-panel, body.style-franchise #leaders-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
 body.style-franchise #player-card, body.style-franchise #player-card-right,
-body.style-franchise #weather-widget, body.style-franchise #replay-banner {
+body.style-franchise #weather-widget, body.style-franchise #replay-banner, body.style-franchise #club-strap {
   background: linear-gradient(180deg, rgba(42,22,104,0.95) 0%, rgba(16,9,52,0.95) 100%);
 }
 body.style-franchise #target-banner, body.style-franchise #vs-badge {
@@ -660,7 +660,7 @@ body.style-neon #break-panel, body.style-neon #leaders-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
 body.style-neon #player-card, body.style-neon #player-card-right,
-body.style-neon #weather-widget, body.style-neon #replay-banner { background: rgba(6,6,11,0.95); }
+body.style-neon #weather-widget, body.style-neon #replay-banner, body.style-neon #club-strap { background: rgba(6,6,11,0.95); }
 body.style-neon #target-banner, body.style-neon #vs-badge {
   background: rgba(5,5,9,0.9); border-color: rgba(0,229,255,0.6); color: #fff;
   box-shadow: 0 0 10px rgba(0,229,255,0.3);
@@ -722,7 +722,7 @@ body.style-block #pregame-form-home, body.style-block #pregame-form-away,
 body.style-block #league-table-panel, body.style-block #h2h-panel, body.style-block #countdown-panel,
 body.style-block #break-panel, body.style-block #leaders-panel { background: rgba(17,17,17,0.95); }
 body.style-block #player-card, body.style-block #player-card-right,
-body.style-block #weather-widget, body.style-block #replay-banner { background: rgba(17,17,17,0.97); }
+body.style-block #weather-widget, body.style-block #replay-banner, body.style-block #club-strap { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
   background: #111; border: 2px solid #ffde00; border-radius: 0; color: #fff; font-weight: 800;
 }
@@ -1160,6 +1160,18 @@ body.style-block #replay-banner { border-left-width: 8px; }
   opacity: 0; transition: opacity 0.3s; pointer-events: none;
 }
 #replay-banner.show { opacity: 1; }
+/* A club milestone ("passes 1,000 runs for the club"): top centre, clear of the replay
+   banner (top right) and the full-screen panels, so it can sit over a replay. */
+#club-strap {
+  position: absolute; top: 32px; left: 50%; transform: translateX(-50%);
+  background: rgba(12,12,18,0.90); border-left: 4px solid #c8a84b;
+  padding: 12px 26px; max-width: 1100px; text-align: left;
+  opacity: 0; transition: opacity 0.4s; pointer-events: none;
+}
+#club-strap.show { opacity: 1; }
+.club-strap-label { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #c8a84b; }
+.club-strap-text  { font-size: 26px; font-weight: 900; color: #fff; margin-top: 2px; }
+.club-strap-sub   { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 3px; }
 .replay-dot { width: 10px; height: 10px; border-radius: 50%; background: #c0392b; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 .replay-label { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: 2px; text-transform: uppercase; }
@@ -1638,6 +1650,11 @@ body.style-block #replay-banner { border-left-width: 8px; }
   </div>
 </div>
 
+<div id="club-strap">
+  <div class="club-strap-label">Club milestone</div>
+  <div class="club-strap-text" id="club-strap-text"></div>
+  <div class="club-strap-sub" id="club-strap-sub"></div>
+</div>
 <div id="replay-banner">
   <div class="replay-dot"></div>
   <div>
@@ -1851,6 +1868,28 @@ function showFlash(type, text) {
 
 // ── Replay banner ─────────────────────────────────────────
 let replayBannerTimer = null;
+// ── Club milestones (the server's career.go finds them) ──
+// One strap at a time, 12s each, a few seconds after the ball so the scorebar (and any
+// fifty card) lands first.
+var _clubStraps = [], _clubStrapOn = false;
+function showClubMilestone(m) {
+  if (!m || !m.text || cfg.graphics_club_milestones === false) return;
+  _clubStraps.push(m);
+  if (!_clubStrapOn) { _clubStrapOn = true; setTimeout(nextClubStrap, 3000); }
+}
+function nextClubStrap() {
+  var m = _clubStraps.shift();
+  if (!m) { _clubStrapOn = false; return; }
+  el('club-strap').style.borderLeftColor = cfg.home_colour || '#c8a84b';
+  el('club-strap-text').textContent = m.text;
+  el('club-strap-sub').textContent = m.sub || '';
+  el('club-strap').classList.add('show');
+  setTimeout(function () {
+    el('club-strap').classList.remove('show');
+    setTimeout(nextClubStrap, 800);
+  }, 12000);
+}
+
 function showReplayBanner(label) {
   if (replayBannerTimer) clearTimeout(replayBannerTimer);
   el('replay-sub').textContent = label;
@@ -2073,6 +2112,7 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
+    if (Array.isArray(cmds.club_milestone)) cmds.club_milestone.forEach(showClubMilestone);
     if (cmds.break) startBreak(cmds.break, false);
     if (cmds.break_end && _break) endBreak(false);
     if (cmds.break_clip) showReplayBanner(cmds.break_clip);

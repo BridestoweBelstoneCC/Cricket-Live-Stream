@@ -6,6 +6,15 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Club milestones.** A strap at the top of the stream when a home player passes 500,
+  1,000, 1,500… runs or 50, 100… wickets for the club, or makes a first fifty, a hundred
+  ("3rd hundred for the club") or a five-for for the club — and a chapter on the match
+  video. The records are added up from every past PlayCricket scorecard of the club's
+  sides, as far back as PlayCricket has them (the strap says since when); the first build
+  takes a few minutes in the background and is cached after. Today's match never counts
+  towards it, and a player whose name could be two people (two accounts, or two P Smiths)
+  is left out rather than risk a wrong claim. Control panel → On-screen extras →
+  **Club milestones**; `/club/career?name=SMITH` shows what a name resolves to.
 - **A thumbnail on the match video.** After the stream, the YouTube video's thumbnail
   becomes both clubs' badges, the teams, the date and the result, in the club's colours —
   so the channel isn't a row of identical camera shots. YouTube allows custom thumbnails
