@@ -41,7 +41,8 @@ max_overs = 40
 `
 
 var fixture = &Match{AwayTeam: "Fixture CC", AwayAbbrev: "FIX", Competition: "League Div 1",
-	CompetitionID: "12345", Umpire1: "U One", Umpire2: "U Two", Scorer1: "S One", MatchID: "999", AwayClubID: "222"}
+	CompetitionID: "12345", Umpire1: "U One", Umpire2: "U Two", Scorer1: "S One", MatchID: "999", AwayClubID: "222",
+	Time: "13:00"}
 
 func cfg(t *testing.T) *ini.File {
 	t.Helper()
@@ -99,6 +100,7 @@ func TestFixtureDataOverridesManualEntry(t *testing.T) {
 	eq(t, st["away_club_id"], "222", "away_club_id")
 	eq(t, st["competition_name"], "League Div 1", "competition")
 	eq(t, st["pc_match_id"], "999", "pc_match_id")
+	eq(t, st["match_time"], "13:00", "match_time (the pre-match countdown)")
 	eq(t, st["roster"], M{"21": "Peter Smith", "7": "James Smith"}, "roster")
 	eq(t, st["sponsor_name"], "Acme Builders", "sponsor")
 }

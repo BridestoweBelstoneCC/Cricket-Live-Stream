@@ -845,6 +845,10 @@ func (c *ctx) doGET() {
 		// like /live/view: the score is what the stream shows anyway.
 		c.json(MatchScorecard())
 
+	case path == "/lineups":
+		// Today's two XIs as entered on PlayCricket (lineups.go), for the pre-match show.
+		c.json(TodaysLineups())
+
 	case path == "/h2h":
 		// Head to head with today's opposition (h2h.go). Built in the background:
 		// {"ready": false} until it's done. ?force=1 (logged in) builds it again.
@@ -1465,7 +1469,7 @@ func (c *ctx) matchFetch() {
 		for _, kv := range [][2]string{{"home_club_id", "home_club_id"}, {"away_club_id", "away_club_id"},
 			{"away_abbrev", "away_abbrev"}, {"competition", "competition_name"},
 			{"competition_id", "competition_id"}, {"umpire1", "umpire1_name"},
-			{"umpire2", "umpire2_name"}, {"match_id", "pc_match_id"}} {
+			{"umpire2", "umpire2_name"}, {"match_id", "pc_match_id"}, {"match_time", "match_time"}} {
 			if pyval.Truthy(result[kv[0]]) {
 				updates[kv[1]] = result[kv[0]]
 			}

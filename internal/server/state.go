@@ -53,6 +53,7 @@ func DefaultState() M {
 		"graphics_partnership_display": true,
 		"graphics_runrate_trend":       true,
 		"graphics_league_table":        true, // /league/table context panel
+		"graphics_h2h":                 true, // head to head in the pre-match show
 		"graphics_player_card":         false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
 		// blocks and its SCOREBAR_STYLES list. "classic" is the base stylesheet, so an
