@@ -233,6 +233,15 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
           <span class="muted">— needed for the screen to switch the laptop on</span></span></label>
         <p class="note hidden" id="ch_nowire"></p>
       </div>
+      <label class="tick" style="margin-top:12px"><input type="checkbox" id="ch_view_enabled"><span>Let score-only screens show the score
+        <span class="muted">— the score, scorecard and stream, with no buttons (a bar TV, the pavilion)</span></span></label>
+      <div id="ch_view_on" class="hidden">
+        <p class="hint" style="margin:12px 0 4px">Type this score-only key on each of those screens:</p>
+        <div class="copyrow"><span class="token" id="ch_view_key"></span>
+          <button class="btn" type="button" data-copy="ch_view_key">Copy</button>
+          <button class="btn quiet" type="button" id="ch_newviewkey" title="The old key stops working">New key</button></div>
+        <p class="hint" id="ch_view_seen"></p>
+      </div>
       <p class="note hidden" id="ch_error"></p>
     </section>
   </div>
@@ -490,7 +499,15 @@ function renderClubhouse() {
   var seen = c.seen_ago != null ? 'A screen was in touch ' + ago(c.seen_ago) + ' (from ' + c.seen_from + ').'
     : 'No screen has connected yet. This laptop is at ' + c.ip + ' if the screen asks for its address.';
   txt('ch_seen', c.enabled ? seen : '');
-  $('ch_light').className = 'light' + (!c.enabled ? '' : c.error ? ' bad' : c.seen_ago != null && c.seen_ago < 30 ? ' ok' : ' warn');
+  $('ch_view_enabled').checked = !!c.view_enabled;
+  $('ch_view_on').classList.toggle('hidden', !c.view_enabled);
+  txt('ch_view_key', c.view_key || '');
+  txt('ch_view_seen', !c.view_enabled ? '' : c.view_seen_ago != null
+    ? 'A score-only screen was in touch ' + ago(c.view_seen_ago) + ' (from ' + c.view_seen_from + ').'
+    : 'No score-only screen has connected yet. This laptop is at ' + c.ip + ' if a screen asks for its address.');
+  // The light is the screen that runs match day when there is one; else the score-only ones.
+  var on = c.enabled || c.view_enabled, seenAgo = c.enabled ? c.seen_ago : c.view_seen_ago;
+  $('ch_light').className = 'light' + (!on ? '' : c.error ? ' bad' : seenAgo != null && seenAgo < 30 ? ' ok' : ' warn');
   var noWire = c.enabled && !c.wired;
   $('ch_nowire').classList.toggle('hidden', !noWire);
   if (noWire) txt('ch_nowire', 'No network cable found — the screen can still run match day, but switching this laptop ON ' +
@@ -510,6 +527,8 @@ $('ch_enabled').addEventListener('change', function () { setClubhouse({enabled: 
 $('ch_poweroff').addEventListener('change', function () { setClubhouse({allow_power_off: this.checked}); });
 $('ch_login').addEventListener('change', function () { setClubhouse({start_at_login: this.checked}); });
 $('ch_newkey').addEventListener('click', function () { setClubhouse({new_key: true}); });
+$('ch_view_enabled').addEventListener('change', function () { setClubhouse({view_enabled: this.checked}); });
+$('ch_newviewkey').addEventListener('click', function () { setClubhouse({new_view_key: true}); });
 
 // OBS missing: offer to install it (Windows' own installer) or link to the download.
 function renderOBS() {

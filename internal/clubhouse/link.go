@@ -5,7 +5,9 @@ package clubhouse
 // the clubhouse is exactly a press of the window's Start button — same launcher, same
 // questions (shown on the screen AND in the window; whichever answers first wins).
 //
-// Everything but /clubhouse/hello needs the pairing key. The control panel's routes are
+// Everything but /clubhouse/hello needs a pairing key: the screen's key, or the
+// score-only key, which reaches only the reads a score needs (viewGET) and nothing that
+// starts, stops, wakes or switches off. The control panel's routes are
 // reached through /clubhouse/server/..., on an allowlist, with the window's own login
 // added here: the screen never has the club password, and can't reach Settings, the
 // club's keys, the export, or anything else the allowlist doesn't name. Plain HTTP on
@@ -48,7 +50,8 @@ type Host interface {
 
 // Config is setup's [Clubhouse] section.
 type Config struct {
-	Key           string
+	Key           string // the screen that runs match day; "" when only score-only screens may connect
+	ViewKey       string // score-only screens; "" when there are none
 	Port          int
 	AllowPowerOff bool
 	Name          string // the club, in discovery replies (not secret)
@@ -66,6 +69,14 @@ var proxyGET = map[string]bool{
 var proxyPOST = map[string]bool{
 	"/checklist/action": true, "/precheck": true, "/cameras/use": true, "/obs/add_camera": true,
 	"/camera/scene": true, "/youtube/update": true,
+}
+
+// viewGET: what a score-only screen may read — the score, the scorecard and table, the
+// club's colours and badge, the stream picture, and whether it's on air (the checklist).
+// A subset of proxyGET.
+var viewGET = map[string]bool{
+	"/live/view": true, "/state": true, "/checklist": true, "/preview.jpg": true, "/youtube/live": true,
+	"/match/scorecard": true, "/league/table": true,
 }
 
 // proxyGETPrefix: the club badges the scorebar uses (/logo/<club id or name>).
@@ -93,6 +104,26 @@ func ProxyAllowed(method, path string) bool {
 	return false
 }
 
+// ViewAllowed: may a score-only screen make this request of the server? Reads only.
+func ViewAllowed(method, path string) bool {
+	if method != "GET" || !ProxyAllowed(method, path) {
+		return false
+	}
+	if viewGET[path] {
+		return true
+	}
+	for _, p := range proxyGETPrefix {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// viewStatus: the parts of the window's status a score-only screen sees — never the
+// question showing or the activity log.
+var viewStatus = []string{"phase", "club", "version", "server_ready"}
+
 // Link is the running link.
 type Link struct {
 	cfg  Config
@@ -101,12 +132,14 @@ type Link struct {
 	udp  net.PacketConn
 	srv  *http.Server
 
-	mu       sync.Mutex
-	seen     time.Time
-	seenFrom string
-	fails    map[string]*failCount
-	lockAll  time.Time
-	allFails []time.Time
+	mu           sync.Mutex
+	seen         time.Time
+	seenFrom     string
+	seenView     time.Time
+	seenViewFrom string
+	fails        map[string]*failCount
+	lockAll      time.Time
+	allFails     []time.Time
 }
 
 type failCount struct {
@@ -127,7 +160,7 @@ const (
 
 // StartLink opens the link on the club network.
 func StartLink(cfg Config, host Host) (*Link, error) {
-	if len(NormaliseKey(cfg.Key)) != KeyLen {
+	if len(NormaliseKey(cfg.Key)) != KeyLen && len(NormaliseKey(cfg.ViewKey)) != KeyLen {
 		return nil, errors.New("no pairing key — turn the clubhouse screen off and on again on the match-day screen")
 	}
 	if cfg.Port == 0 {
@@ -167,6 +200,13 @@ func (l *Link) Seen() (time.Time, string) {
 	return l.seen, l.seenFrom
 }
 
+// SeenView is Seen for the score-only key.
+func (l *Link) SeenView() (time.Time, string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.seenView, l.seenViewFrom
+}
+
 func (l *Link) answerProbes(pc net.PacketConn) {
 	buf := make([]byte, 512)
 	name, _ := os.Hostname()
@@ -194,24 +234,30 @@ func remoteIP(r *http.Request) string {
 	return h
 }
 
-// keyOK checks the request's key, counting wrong ones. False means the response has
-// been written.
-func (l *Link) keyOK(w http.ResponseWriter, r *http.Request) bool {
+// keyOK checks the request's key, counting wrong ones; view is true for the score-only
+// key. False means the response has been written.
+func (l *Link) keyOK(w http.ResponseWriter, r *http.Request) (ok, view bool) {
 	ip, now := remoteIP(r), time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if now.Before(l.lockAll) {
 		writeJSON(w, map[string]any{"ok": false, "error": "Too many wrong pairing keys — try again in a few minutes."}, 429)
-		return false
+		return false, false
 	}
 	if f := l.fails[ip]; f != nil && now.Before(f.until) {
 		writeJSON(w, map[string]any{"ok": false, "error": "Too many wrong pairing keys — try again in a couple of minutes."}, 429)
-		return false
+		return false, false
 	}
-	if KeyMatches(l.cfg.Key, r.Header.Get(KeyHeader)) {
+	typed := r.Header.Get(KeyHeader)
+	if KeyMatches(l.cfg.Key, typed) {
 		l.seen, l.seenFrom = now, ip
 		delete(l.fails, ip)
-		return true
+		return true, false
+	}
+	if KeyMatches(l.cfg.ViewKey, typed) {
+		l.seenView, l.seenViewFrom = now, ip
+		delete(l.fails, ip)
+		return true, true
 	}
 	f := l.fails[ip]
 	if f == nil || now.Sub(f.first) > failWindow {
@@ -235,7 +281,7 @@ func (l *Link) keyOK(w http.ResponseWriter, r *http.Request) bool {
 		fmt.Println("  ⚠ Clubhouse screen: many wrong pairing keys — refusing every screen for 5 minutes")
 	}
 	writeJSON(w, map[string]any{"ok": false, "error": "That isn't this laptop's pairing key."}, 403)
-	return false
+	return false, false
 }
 
 func writeJSON(w http.ResponseWriter, v any, status int) {
@@ -274,21 +320,30 @@ func (l *Link) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": false, "error": "Not from a browser"}, 403)
 		return
 	}
-	if !l.keyOK(w, r) {
+	ok, view := l.keyOK(w, r)
+	if !ok {
 		return
 	}
 	if rest, ok := strings.CutPrefix(p, "/clubhouse/server/"); ok {
 		// Checked as decoded, sent as it came: a badge named "Club #2" must stay one path.
 		raw := strings.TrimPrefix(r.URL.EscapedPath(), "/clubhouse/server")
+		if view && !ViewAllowed(r.Method, "/"+rest) {
+			writeJSON(w, map[string]any{"ok": false, "error": "This screen only shows the score."}, 403)
+			return
+		}
 		l.proxy(w, r, "/"+rest, raw)
 		return
 	}
 	fail := func(status int, msg string) { writeJSON(w, map[string]any{"ok": false, "error": msg}, status) }
+	if view {
+		l.serveView(w, r)
+		return
+	}
 	switch r.Method + " " + p {
 	case "GET /clubhouse/pair":
 		name, _ := os.Hostname()
 		writeJSON(w, map[string]any{"ok": true, "service": Service, "host": name, "club": l.cfg.Name,
-			"nics": LocalNICs(localIPFor(r)), "allow_power_off": l.cfg.AllowPowerOff}, 200)
+			"nics": LocalNICs(localIPFor(r)), "allow_power_off": l.cfg.AllowPowerOff, "role": "control"}, 200)
 	case "GET /clubhouse/status":
 		out := map[string]any{"ok": true, "allow_power_off": l.cfg.AllowPowerOff}
 		for k, v := range l.host.Status() {
@@ -390,6 +445,28 @@ func (l *Link) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true}, 200)
 	default:
 		fail(404, "Not found")
+	}
+}
+
+// serveView is the link for a score-only screen: pairing and a trimmed status. It can't
+// start, stop, wake or switch anything off, so it isn't told the network cards (no wake)
+// or offered power-off.
+func (l *Link) serveView(w http.ResponseWriter, r *http.Request) {
+	switch r.Method + " " + r.URL.Path {
+	case "GET /clubhouse/pair":
+		name, _ := os.Hostname()
+		writeJSON(w, map[string]any{"ok": true, "service": Service, "host": name, "club": l.cfg.Name, "role": "view"}, 200)
+	case "GET /clubhouse/status":
+		st := l.host.Status()
+		out := map[string]any{"ok": true, "view": true}
+		for _, k := range viewStatus {
+			if v, ok := st[k]; ok {
+				out[k] = v
+			}
+		}
+		writeJSON(w, out, 200)
+	default:
+		writeJSON(w, map[string]any{"ok": false, "error": "This screen only shows the score."}, 403)
 	}
 }
 

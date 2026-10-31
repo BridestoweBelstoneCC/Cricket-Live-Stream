@@ -1,7 +1,8 @@
 package app
 
 // The clubhouse screen's link (internal/clubhouse), run by the window on the streaming
-// laptop when setup has [Clubhouse] enabled = yes. It lives here, not in the server,
+// laptop when setup has [Clubhouse] enabled = yes, or view_enabled = yes for score-only
+// screens (which can't start, stop or switch anything). It lives here, not in the server,
 // because it has to outlive match day: it answers before match day starts (to start it)
 // and after it ends (to switch the laptop off).
 
@@ -23,6 +24,8 @@ type clubhouseSettings struct {
 	Enabled       bool
 	Key           string
 	AllowPowerOff bool
+	ViewEnabled   bool   // score-only screens may connect
+	ViewKey       string // their key
 }
 
 func loadClubhouseSettings() (clubhouseSettings, string) {
@@ -34,6 +37,8 @@ func loadClubhouseSettings() (clubhouseSettings, string) {
 		Enabled:       f.GetBool("Clubhouse", "enabled", false),
 		Key:           clubhouse.NormaliseKey(f.Get("Clubhouse", "key", "")),
 		AllowPowerOff: f.GetBool("Clubhouse", "allow_power_off", false),
+		ViewEnabled:   f.GetBool("Clubhouse", "view_enabled", false),
+		ViewKey:       clubhouse.NormaliseKey(f.Get("Clubhouse", "view_key", "")),
 	}, f.Get("Club", "name", "")
 }
 
@@ -49,6 +54,8 @@ func saveClubhouseSettings(s clubhouseSettings) error {
 	f.Set("Clubhouse", "enabled", yes[s.Enabled])
 	f.Set("Clubhouse", "key", s.Key)
 	f.Set("Clubhouse", "allow_power_off", yes[s.AllowPowerOff])
+	f.Set("Clubhouse", "view_enabled", yes[s.ViewEnabled])
+	f.Set("Clubhouse", "view_key", s.ViewKey)
 	return writeConfig(path, f)
 }
 
@@ -65,13 +72,13 @@ var writeConfig = func(path string, f *ini.File) error {
 func (a *App) startClubhouse() {
 	a.stopClubhouse()
 	s, club := loadClubhouseSettings()
-	if !s.Enabled {
+	if !s.Enabled && !s.ViewEnabled {
 		return
 	}
-	if len(s.Key) != clubhouse.KeyLen {
-		// Switched on, but no key of its own: settings moved from another laptop (the key
-		// is this laptop's and never travels), or hand-edited. A fresh one; pair again.
-		s.Key = clubhouse.NewKey()
+	if s.missingKey() {
+		// Switched on, but no key of its own: settings moved from another laptop (the keys
+		// are this laptop's and never travel), or hand-edited. A fresh one; pair again.
+		s.fillKeys()
 		if err := saveClubhouseSettings(s); err != nil {
 			a.mu.Lock()
 			a.chErr = "The clubhouse screen's pairing key couldn't be saved: " + err.Error()
@@ -79,7 +86,14 @@ func (a *App) startClubhouse() {
 			return
 		}
 	}
-	l, err := startLink(clubhouse.Config{Key: s.Key, AllowPowerOff: s.AllowPowerOff, Name: club}, chHost{a})
+	cfg := clubhouse.Config{AllowPowerOff: s.AllowPowerOff, Name: club}
+	if s.Enabled {
+		cfg.Key = s.Key
+	}
+	if s.ViewEnabled {
+		cfg.ViewKey = s.ViewKey
+	}
+	l, err := startLink(cfg, chHost{a})
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err != nil {
@@ -89,6 +103,20 @@ func (a *App) startClubhouse() {
 	}
 	a.chLink, a.chErr = l, ""
 	fmt.Printf("  ✓  Clubhouse screen can connect on %s:%d\n", agent.LocalIP(), clubhouse.Port())
+}
+
+// missingKey: a kind of screen is switched on without its key.
+func (s clubhouseSettings) missingKey() bool {
+	return (s.Enabled && len(s.Key) != clubhouse.KeyLen) || (s.ViewEnabled && len(s.ViewKey) != clubhouse.KeyLen)
+}
+
+func (s *clubhouseSettings) fillKeys() {
+	if s.Enabled && len(s.Key) != clubhouse.KeyLen {
+		s.Key = clubhouse.NewKey()
+	}
+	if s.ViewEnabled && len(s.ViewKey) != clubhouse.KeyLen {
+		s.ViewKey = clubhouse.NewKey()
+	}
 }
 
 func (a *App) stopClubhouse() {
@@ -111,9 +139,13 @@ func (a *App) clubhouseInfo() map[string]any {
 	l, errText := a.chLink, a.chErr
 	a.mu.Unlock()
 	out := map[string]any{"enabled": s.Enabled, "allow_power_off": s.AllowPowerOff, "error": errText,
-		"login_supported": clubhouse.StartAtLoginSupported, "port": clubhouse.Port(), "ip": agent.LocalIP()}
+		"login_supported": clubhouse.StartAtLoginSupported, "port": clubhouse.Port(), "ip": agent.LocalIP(),
+		"view_enabled": s.ViewEnabled}
 	if s.Enabled {
 		out["key"] = clubhouse.FormatKey(s.Key)
+	}
+	if s.ViewEnabled {
+		out["view_key"] = clubhouse.FormatKey(s.ViewKey)
 	}
 	if clubhouse.StartAtLoginSupported {
 		on, this := clubhouse.StartAtLogin()
@@ -122,6 +154,9 @@ func (a *App) clubhouseInfo() map[string]any {
 	if l != nil {
 		if seen, from := l.Seen(); !seen.IsZero() {
 			out["seen_ago"], out["seen_from"] = int(time.Since(seen).Seconds()), from
+		}
+		if seen, from := l.SeenView(); !seen.IsZero() {
+			out["view_seen_ago"], out["view_seen_from"] = int(time.Since(seen).Seconds()), from
 		}
 	}
 	nics := clubhouse.LocalNICs(agent.LocalIP())
@@ -133,27 +168,43 @@ func (a *App) clubhouseInfo() map[string]any {
 	return out
 }
 
-// setClubhouse is the card's switches. A nil field is left as it is.
-func (a *App) setClubhouse(enabled, allowOff, newKey, login *bool) error {
+// clubhouseChange is the card's switches. A nil field is left as it is.
+type clubhouseChange struct {
+	Enabled       *bool `json:"enabled"`
+	AllowPowerOff *bool `json:"allow_power_off"`
+	NewKey        *bool `json:"new_key"`
+	StartAtLogin  *bool `json:"start_at_login"`
+	ViewEnabled   *bool `json:"view_enabled"`
+	NewViewKey    *bool `json:"new_view_key"`
+}
+
+func (a *App) setClubhouse(c clubhouseChange) error {
 	s, _ := loadClubhouseSettings()
-	if enabled != nil {
-		s.Enabled = *enabled
+	if c.Enabled != nil {
+		s.Enabled = *c.Enabled
 	}
-	if allowOff != nil {
-		s.AllowPowerOff = *allowOff
+	if c.AllowPowerOff != nil {
+		s.AllowPowerOff = *c.AllowPowerOff
 	}
-	if (newKey != nil && *newKey) || (s.Enabled && len(s.Key) != clubhouse.KeyLen) {
+	if c.ViewEnabled != nil {
+		s.ViewEnabled = *c.ViewEnabled
+	}
+	if c.NewKey != nil && *c.NewKey {
 		s.Key = clubhouse.NewKey()
-		if newKey != nil && *newKey {
-			fmt.Println("  New clubhouse pairing key — pair the screen again with it.")
-		}
+		fmt.Println("  New clubhouse pairing key — pair the screen again with it.")
 	}
+	if c.NewViewKey != nil && *c.NewViewKey {
+		s.ViewKey = clubhouse.NewKey()
+		fmt.Println("  New score-only key — pair the score-only screens again with it.")
+	}
+	s.fillKeys()
+	login := c.StartAtLogin
 	if login != nil {
 		if err := clubhouse.SetStartAtLogin(*login); err != nil {
 			return err
 		}
 	}
-	if enabled != nil || allowOff != nil || newKey != nil {
+	if c.Enabled != nil || c.AllowPowerOff != nil || c.NewKey != nil || c.ViewEnabled != nil || c.NewViewKey != nil {
 		if err := saveClubhouseSettings(s); err != nil {
 			return err
 		}

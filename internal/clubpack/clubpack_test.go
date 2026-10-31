@@ -43,7 +43,8 @@ func oldLaptop(t *testing.T) string {
 	write(t, filepath.Join(d, "config.ini"), "[App]\nrole = streaming\n\n[Club]\nname = Bridestowe CC\nplaycricket_id = 29434\n\n"+
 		"[API]\nplaycricket_key = pc-OLD\nanthropic_key = sk-ant-OLD\n\n[Auth]\nclub_password = pw-OLD\ncontrol_token = tok-OLD\n\n"+
 		"[OBS]\nobs_password = obs-OLD\nreplay_folder = C:\\Users\\Old\\Videos\\Replays\n\n"+
-		"[Scoring]\npcs_output_folder = C:\\Users\\Old\\NV\\Output\nlogos_folder = D:\\Shared\\Badges\n\n[Network]\nbind_host = 0.0.0.0\n")
+		"[Scoring]\npcs_output_folder = C:\\Users\\Old\\NV\\Output\nlogos_folder = D:\\Shared\\Badges\n\n[Network]\nbind_host = 0.0.0.0\n\n"+
+		"[Clubhouse]\nenabled = yes\nkey = CHKEYOLD\nview_enabled = yes\nview_key = VWKEYOLD\n")
 	server.SaveState(server.M{"home_team": "Bridestowe CC", "sponsor_name": "Acme Builders", "graphics_partnership_display": false,
 		"roster": server.M{"7": "John Walker"}, "anthropic_api_key": "sk-ant-OLD", "obs_password": "obs-OLD",
 		"logos_folder": `D:\Shared\Badges`, "pcs_output_folder": `C:\Users\Old\NV\Output`, "agent_host": "192.168.1.40:8788"})
@@ -166,7 +167,8 @@ func TestExportWithKeys(t *testing.T) {
 			t.Errorf("%s not in the club file", want)
 		}
 	}
-	for _, never := range []string{"tok-OLD", "obs-OLD"} {
+	// Nor the clubhouse screens' keys: each laptop makes its own, and its screens pair again.
+	for _, never := range []string{"tok-OLD", "obs-OLD", "CHKEYOLD", "VWKEYOLD"} {
 		if strings.Contains(got["config.ini"]+got["match_state.json"], never) {
 			t.Errorf("%s went into the club file", never)
 		}

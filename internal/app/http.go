@@ -206,17 +206,12 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			fail(409, "Change the clubhouse screen before or after match day.")
 			return
 		}
-		var body struct {
-			Enabled       *bool `json:"enabled"`
-			AllowPowerOff *bool `json:"allow_power_off"`
-			NewKey        *bool `json:"new_key"`
-			StartAtLogin  *bool `json:"start_at_login"`
-		}
+		var body clubhouseChange
 		if !readBody(r, &body) {
 			fail(400, "Bad request")
 			return
 		}
-		if err := a.setClubhouse(body.Enabled, body.AllowPowerOff, body.NewKey, body.StartAtLogin); err != nil {
+		if err := a.setClubhouse(body); err != nil {
 			fail(500, err.Error())
 			return
 		}

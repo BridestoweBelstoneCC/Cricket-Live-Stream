@@ -69,6 +69,7 @@ var configSecrets = [][2]string{{"API", "playcricket_key"}, {"API", "anthropic_k
 
 // configMachine is config.ini's per-laptop part (never travels).
 var configMachine = [][2]string{{"OBS", "obs_password"}, {"Auth", "control_token"}, {"Clubhouse", "key"},
+	{"Clubhouse", "view_key"},
 	{"Scoring", "pcs_output_folder"}, {"OBS", "replay_folder"}, {"Scoring", "logos_folder"},
 	{"Network", "bind_host"}}
 
