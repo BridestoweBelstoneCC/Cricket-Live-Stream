@@ -51,7 +51,7 @@ var (
 // matchTables is every table keyed by match_id, for FollowMatchID. A new match-keyed
 // table must be added here or it gets left behind when the id changes.
 var matchTables = []string{"balls", "live_innings", "live_batting", "live_bowling", "live_fow",
-	"innings_totals", "batting", "bowling", "clips"}
+	"innings_totals", "batting", "bowling", "clips", "moments"}
 
 var (
 	loggedMid   string

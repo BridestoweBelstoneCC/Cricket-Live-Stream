@@ -123,6 +123,10 @@ CREATE TABLE IF NOT EXISTS live_bowling (
 CREATE TABLE IF NOT EXISTS live_fow (
     match_id TEXT, innings INTEGER, wicket INTEGER, batter TEXT, score INTEGER,
     PRIMARY KEY (match_id, innings, wicket));
+-- Moments for the match video's chapters (chapters.go), with when they happened.
+CREATE TABLE IF NOT EXISTS moments (
+    match_id TEXT, key TEXT, ts REAL, kind TEXT, text TEXT,
+    PRIMARY KEY (match_id, key));
 `
 
 // DBInit creates the tables.

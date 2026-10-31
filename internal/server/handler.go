@@ -1032,6 +1032,14 @@ func (c *ctx) doGET() {
 		}
 		c.bytes(jpeg, "image/jpeg")
 
+	case path == "/youtube/chapters":
+		// What the match video's chapters would be — nothing is written (POST does that).
+		if !c.checkToken() {
+			return
+		}
+		ok, msg, text := AddChaptersToYouTube(CurrentMatchID(), true)
+		c.json(M{"ok": ok, "message": msg, "chapters": text})
+
 	case path == "/youtube/live":
 		// The live broadcast's video id, for the clubhouse screen to play full size.
 		if !c.checkToken() {
@@ -1687,6 +1695,7 @@ func (c *ctx) live(mutate bool) {
 				FollowMatchID(pcsState)  // an id change mid-match keeps its data
 				LogBallData(pcsState)    // our own ball-by-ball database
 				LogLiveFigures(pcsState) // the scorer's totals, for the report/card
+				LogMoments(pcsState)     // wickets and milestones, for the video's chapters
 			}()
 			// Hand buffered events to the overlay and clear — under the lock, so an
 			// event landing mid-pop can't be silently dropped
