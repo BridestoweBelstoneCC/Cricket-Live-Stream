@@ -845,6 +845,15 @@ func (c *ctx) doGET() {
 		// like /live/view: the score is what the stream shows anyway.
 		c.json(MatchScorecard())
 
+	case path == "/h2h":
+		// Head to head with today's opposition (h2h.go). Built in the background:
+		// {"ready": false} until it's done. ?force=1 (logged in) builds it again.
+		force := c.q("force") == "1"
+		if force && !c.checkToken() {
+			return
+		}
+		c.json(HeadToHead(force))
+
 	case path == "/league/table":
 		// Pre-game / between-innings "context" panel: where this result leaves the home
 		// club in the table. Same lazy-build pattern — never blocks the overlay's poll.

@@ -469,6 +469,10 @@ func (c *ctx) doPOST() {
 		setCommand("show_scorecard", true)
 		c.json(M{"ok": true})
 
+	case path == "/h2h/show":
+		setCommand("show_h2h", true)
+		c.json(M{"ok": true})
+
 	case path == "/cards/show":
 		// Manually (re)show player cards for the current batters — handy for testing the
 		// pipeline and for match-day "show them again" moments.

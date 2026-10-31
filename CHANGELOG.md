@@ -6,6 +6,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Head to head.** Control panel → On-screen extras → **Show head-to-head**: the record
+  of today's two teams over their last five meetings (in the last six seasons) and how the
+  last one went — both totals, top scorers and best bowlers — from PlayCricket. It's today's
+  TEAMS (our 1st XI v their 1st XI), not any two sides of the clubs.
+- **Fixed: the league table graphic had no background.** It sat in the bottom-left corner
+  over the camera picture; it's now the full-screen panel the other pre-match graphics are.
 - **Chapters on the match video.** After the stream ends, the YouTube video's description
   gets a chapter for each innings, wicket, fifty, hundred and five-for (starting a few
   seconds before the scorer entered it, so it opens on the ball itself), and YouTube shows
