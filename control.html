@@ -613,6 +613,7 @@
       <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
       <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
       <button class="btn btn-test" onclick="showPlayerCards()" style="flex:1;">&#9786; Show player cards</button>
+      <button class="btn btn-test" onclick="showH2H()" style="flex:1;">&#8644; Show head-to-head</button>
     </div>
     <div id="weather-preview" style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:12px;color:var(--accent);">Click "Show weather" to fetch current conditions</div>
   </div>
@@ -872,6 +873,11 @@
       <div><div class="toggle-label">League table context</div>
            <div class="toggle-desc">Where today's result leaves the home club in the table — once pre-match, once per innings. Needs competition_id (set automatically by "Fetch today's match")</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_league_table"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Head to head before play</div>
+           <div class="toggle-desc">In the pre-match show: the record against today's opposition over the last five meetings, and how the last one went (PlayCricket). The countdown to the start and both teams' XIs (when the clubs have entered them) show too.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_h2h"><span class="track"></span></label>
     </div>
     <div class="toggle-row">
       <div><div class="toggle-label">Win predictor</div>
@@ -2691,7 +2697,7 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -3142,6 +3148,15 @@ async function showScorecard() {
   try {
     await apiFetch('/scorecard/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     showStatus('Scorecard showing on overlay','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function showH2H() {
+  try {
+    const d = await (await apiFetch('/h2h')).json();
+    if (d.ready === false) { showStatus('Looking up past meetings on PlayCricket — try again in a few seconds', 'ok'); return; }
+    if (!d.usable) { showStatus(d.reason || 'No head-to-head to show', 'err'); return; }
+    await apiFetch('/h2h/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('Head-to-head showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 async function showPlayerCards() {
