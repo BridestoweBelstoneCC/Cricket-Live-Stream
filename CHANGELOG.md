@@ -4,6 +4,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Season leaders.** The home club's top three run-scorers and wicket-takers this season
+  (with their averages), from the PlayCricket scorecards the season stats already load —
+  in the pre-match show and the break show. Control panel → On-screen extras →
+  **Season leaders** turns it off.
+
 ## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 
 - **The break show, and drinks that work.** Drinks never really showed: the weather card
