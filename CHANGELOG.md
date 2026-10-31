@@ -6,6 +6,14 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **The break show, and drinks that work.** Drinks never really showed: the weather card
+  came up after the drinks over and went again a poll later, because NV Play leaves the
+  finished over's balls in its ticker and that read as play restarting. Breaks now end at
+  the first ball after, counted from the overs. During drinks, the innings break, or a
+  break started from the control panel (**Breaks → Rain delay / Break in play**), the
+  stream shows a break card ("Drinks · Home CC 96/2 after 20 overs", or at the innings
+  break what the reply needs), the scorecard and the weather — and replays the match's best
+  moments so far (wickets, fifties, sixes, fours) through the Replay scene, captioned.
 - **A pre-match show.** Go live before play and the stream has something on it: a
   countdown to the start ("Play starts at 13:00 · in 25 min", and "Starts in 25 min" in
   the scorebar), the head to head with today's opposition, both teams' XIs as entered on

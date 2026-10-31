@@ -845,6 +845,13 @@ func (c *ctx) doGET() {
 		// like /live/view: the score is what the stream shows anyway.
 		c.json(MatchScorecard())
 
+	case path == "/break":
+		// The break show (breakshow.go), for the panel.
+		if !c.checkToken() {
+			return
+		}
+		c.json(BreakStatus())
+
 	case path == "/lineups":
 		// Today's two XIs as entered on PlayCricket (lineups.go), for the pre-match show.
 		c.json(TodaysLineups())

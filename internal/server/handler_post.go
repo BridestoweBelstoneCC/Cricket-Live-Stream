@@ -26,7 +26,8 @@ import (
 // requiring a session the overlay can never obtain. The checklist never belongs here: it
 // starts OBS and goes live.
 var overlayEndpoints = map[string]bool{"/commentary/over/generate": true, "/replay": true,
-	"/weather/show": true, "/weather/hide": true, "/camera/scene": true, "/sponsor/airtime": true}
+	"/weather/show": true, "/weather/hide": true, "/camera/scene": true, "/sponsor/airtime": true,
+	"/break/start": true, "/break/end": true}
 
 // jsonObject is json.loads(body or "{}") required to be an object; anything else is
 // an empty object, as the Python routes that tolerated bad bodies treated it.
@@ -468,6 +469,20 @@ func (c *ctx) doPOST() {
 	case path == "/scorecard/show":
 		setCommand("show_scorecard", true)
 		c.json(M{"ok": true})
+
+	case path == "/break/start":
+		// Drinks and the innings break come from the overlay; a rain delay or a break in
+		// play from the panel. Either way the overlay is told (it shows the break graphics),
+		// and a break already running just takes the new name.
+		kind := trim(str(jsonObject(body), "kind", "break"))
+		StartBreak(kind)
+		setCommand("break", gs(BreakStatus(), "kind", "break"))
+		c.json(BreakStatus())
+
+	case path == "/break/end":
+		EndBreak()
+		setCommand("break_end", true)
+		c.json(M{"ok": true, "active": false})
 
 	case path == "/h2h/show":
 		setCommand("show_h2h", true)
