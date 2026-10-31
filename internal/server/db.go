@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS live_fow (
 CREATE TABLE IF NOT EXISTS moments (
     match_id TEXT, key TEXT, ts REAL, kind TEXT, text TEXT,
     PRIMARY KEY (match_id, key));
+-- What's gone up to YouTube for a match (ytafter.go), so it goes up once.
+CREATE TABLE IF NOT EXISTS yt_uploads (
+    match_id TEXT, kind TEXT, video_id TEXT, ts TEXT,
+    PRIMARY KEY (match_id, kind));
 `
 
 // DBInit creates the tables.

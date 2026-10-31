@@ -802,6 +802,32 @@ console.log(JSON.stringify({ shown: shown, oneTimer: before === 1, colour: els['
 	if strings.Join(got.Shown, " | ") != "A passes 1,000 runs for the club / since 2014 | A: first fifty for the club / since 2014" ||
 		!got.OneTimer || got.Colour != "#123456" {
 		t.Fatalf("%+v", got)
+// Season leaders: both lists shown, names escaped; nothing when the season is empty or the
+// switch is off.
+func TestSeasonLeadersPanel(t *testing.T) {
+	src := overlayFunctions(t, "leaderRows", "fillLeadersPanel") + `
+var els = {};
+function el(id) { return els[id] || (els[id] = { style: {}, textContent: '', innerHTML: '' }); }
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+var cfg = { home_team: 'Home CC' }, out = {};
+var _seasonLeaders = null;
+out.none = fillLeadersPanel();
+_seasonLeaders = { runs: [], wkts: [] }; out.empty = fillLeadersPanel();
+_seasonLeaders = { runs: [{ name: 'P <Smith>', runs: 412, inn: '9', avg: '51.50' }], wkts: [] };
+out.shown = fillLeadersPanel(); out.runs = el('leaders-runs').innerHTML; out.wkts = el('leaders-wkts').innerHTML;
+out.title = el('leaders-title').textContent;
+cfg.graphics_season_leaders = false; out.off = fillLeadersPanel();
+console.log(JSON.stringify(out));
+`
+	var got map[string]any
+	runJS(t, src, &got)
+	runs, _ := got["runs"].(string)
+	if got["none"] != false || got["empty"] != false || got["off"] != false || got["shown"] != true {
+		t.Fatalf("when it shows: %v", got)
+	}
+	if !strings.Contains(runs, "P &lt;Smith>") || !strings.Contains(runs, ">412<") || !strings.Contains(runs, "avg 51.50") ||
+		got["wkts"] != "—" || got["title"] != "Home CC" {
+		t.Fatalf("panel: %v", got)
 	}
 }
 
@@ -825,6 +851,8 @@ setInterval = function () { return 0; };
 clearTimeout = clearInterval = function () {};
 function queueGraphic(id) { queued.push(id); }
 function showScorecard() {}
+function loadPregameForm() {}
+function fillLeadersPanel() { return false; }
 function oversDisplay(o) { return String(o); }
 function frame(inn, overs, wkts, score) { updateBreak({ innings: inn, overs: overs, wickets: wkts || 0, score: score || 0, battingTeamName: 'Home CC' }); }
 var log = [];

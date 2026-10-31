@@ -55,6 +55,7 @@ func DefaultState() M {
 		"graphics_league_table":        true, // /league/table context panel
 		"graphics_h2h":                 true, // head to head in the pre-match show
 		"graphics_club_milestones":     true, // "passes 1,000 runs for the club" (career.go)
+		"graphics_season_leaders":      true, // the club's top run-scorers and wicket-takers, pre-match and at breaks
 		"break_reel":                   true, // replays in breaks (breakshow.go)
 		"graphics_player_card":         false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
@@ -79,6 +80,8 @@ func DefaultState() M {
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut":  false,
 		"youtube_chapters":          true,
+		"youtube_thumbnail":         true, // the match video's thumbnail, after the stream (ytafter.go)
+		"youtube_highlights":        true, // a highlights video, once the match has a result
 		"graphics_win_predictor":    true,
 		"graphics_voice_commentary": false, // read the end-of-over line aloud (computer voice)
 		"camera_spotter":            false, // AI camera checks while live — spends AI credit

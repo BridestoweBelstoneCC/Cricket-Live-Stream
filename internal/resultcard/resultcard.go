@@ -537,27 +537,7 @@ func scoreRow(img *image.RGBA, P Palette, side Side, y, rowH int, look Look, dim
 	}
 
 	const badgeSize = 84
-	var badge *image.NRGBA
-	if cid := strings.TrimSpace(side.ClubID); cid != "" && look.LogosDir != "" {
-		for _, ext := range []string{".png", ".webp", ".jpg", ".jpeg"} {
-			p := filepath.Join(look.LogosDir, cid+ext)
-			if _, err := os.Stat(p); err == nil {
-				badge = loadRGBA(p, badgeSize, badgeSize)
-				break
-			}
-		}
-	}
-	if badge == nil {
-		name := side.Club
-		if name == "" {
-			name = "?"
-		}
-		c := [3]uint8{90, 98, 112}
-		if side.Ours {
-			c = P.Club
-		}
-		badge = initialsBadge(name, badgeSize, c)
-	}
+	badge := clubBadge(side, look, badgeSize, P)
 	if dim {
 		scaleAlpha(badge, 0.6)
 	}
@@ -583,4 +563,29 @@ func scoreRow(img *image.RGBA, P Palette, side Side, y, rowH int, look Look, dim
 	if hasTeam {
 		tracked(img, nx, float64(y+98), strings.ToUpper(side.Team), face(25, "semi"), 25, subC, 0.08, "ls")
 	}
+}
+
+// clubBadge is the side's badge from logos/ (by PlayCricket club id), else its initials on
+// a disc — the club colour for ours, grey for theirs.
+func clubBadge(side Side, look Look, size int, P Palette) *image.NRGBA {
+	if cid := strings.TrimSpace(side.ClubID); cid != "" && look.LogosDir != "" {
+		for _, ext := range []string{".png", ".webp", ".jpg", ".jpeg"} {
+			p := filepath.Join(look.LogosDir, cid+ext)
+			if _, err := os.Stat(p); err == nil {
+				if b := loadRGBA(p, size, size); b != nil {
+					return b
+				}
+				break
+			}
+		}
+	}
+	name := side.Club
+	if name == "" {
+		name = "?"
+	}
+	c := [3]uint8{90, 98, 112}
+	if side.Ours {
+		c = P.Club
+	}
+	return initialsBadge(name, size, c)
 }

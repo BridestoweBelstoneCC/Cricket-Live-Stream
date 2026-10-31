@@ -324,7 +324,7 @@ func backOnAirNote(st M) string {
 
 var streamEnded = func() { // swappable for tests
 	time.AfterFunc(60*time.Second, matchPageAfterStreamEnd)
-	time.AfterFunc(90*time.Second, chaptersAfterStreamEnd)
+	time.AfterFunc(90*time.Second, afterStreamYouTube) // chapters, thumbnail, highlights (ytafter.go)
 }
 
 // ApplyStreamQualityStep: stop â†’ wait â†’ set the SimpleOutput bitrate â†’ start, verified

@@ -766,6 +766,26 @@
     </div>
     <div id="youtube-chapters-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <pre id="youtube-chapters" style="display:none;margin-top:6px;padding:8px;background:var(--surface-2);border-radius:5px;font-size:11px;white-space:pre-wrap;"></pre>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Thumbnail on the match video</div>
+           <div class="toggle-desc">After the stream, the video's thumbnail becomes both clubs' badges, the teams and the result, in the club's colours. YouTube only allows this on a verified channel (youtube.com/verify — once).</div></div>
+      <label class="toggle"><input type="checkbox" id="youtube_thumbnail"><span class="track"></span></label>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn btn-test" onclick="youtubeThumbnail(true)">Preview the thumbnail</button>
+      <button class="btn btn-test" onclick="youtubeThumbnail(false)">Set it on the video now</button>
+    </div>
+    <div id="youtube-thumb-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <img id="youtube-thumb" alt="" style="display:none;margin-top:6px;width:100%;max-width:480px;border-radius:5px;">
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Highlights video</div>
+           <div class="toggle-desc">Once the match has a result and the stream has ended, the match's replays go up as a separate video, captioned, with a chapter for each and a link to the full match — same privacy as the match video. Needs FFmpeg and at least three replays; uploading takes a while on a slow line.</div></div>
+      <label class="toggle"><input type="checkbox" id="youtube_highlights"><span class="track"></span></label>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn btn-test" onclick="youtubeHighlights()">Upload the highlights now</button>
+    </div>
+    <div id="youtube-highlights-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:11px;color:var(--muted);line-height:1.6;">
       <strong style="color:var(--accent);">One-time setup:</strong><br>
       1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">console.cloud.google.com</a><br>
@@ -909,6 +929,11 @@
       <div><div class="toggle-label">Club milestones</div>
            <div class="toggle-desc">A strap when a home player passes 500, 1,000, 1,500… runs or 50, 100… wickets for the club, or makes a first fifty, a hundred or a five-for for the club — from every past PlayCricket scorecard of the club's sides (the first build takes a few minutes, in the background). Players whose names could be two people are left out.</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_club_milestones"><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Season leaders</div>
+           <div class="toggle-desc">The home club's top three run-scorers and wicket-takers this season (PlayCricket), in the pre-match show and during breaks.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_season_leaders"><span class="track"></span></label>
     </div>
     <div class="toggle-row">
       <div><div class="toggle-label">Win predictor</div>
@@ -2728,7 +2753,7 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -3173,6 +3198,63 @@ async function youtubeChapters(preview) {
     pre.textContent = d.chapters || '';
     pre.style.display = d.chapters ? 'block' : 'none';
   } catch (e) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; }
+}
+
+// The match video's thumbnail (ytafter.go): a preview draws it, "set" uploads it.
+async function youtubeThumbnail(preview) {
+  const msg = document.getElementById('youtube-thumb-msg');
+  const img = document.getElementById('youtube-thumb');
+  msg.textContent = preview ? 'Drawing the thumbnail…' : 'Setting the thumbnail on the match video…';
+  msg.style.color = 'var(--accent)';
+  try {
+    if (preview) {
+      const res = await apiFetch('/youtube/thumbnail');
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'failed'); }
+      img.src = URL.createObjectURL(await res.blob());
+      img.style.display = 'block';
+      msg.textContent = '';
+      return;
+    }
+    const res = await apiFetch('/youtube/thumbnail', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || d.error || '');
+    msg.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
+  } catch (e) { msg.textContent = '✗ ' + (e.message || 'Could not reach server'); msg.style.color = 'var(--bad)'; }
+}
+
+// The highlights video: starts the upload, then follows it until it's done.
+async function youtubeHighlights(force) {
+  const msg = document.getElementById('youtube-highlights-msg');
+  try {
+    const res = await apiFetch('/youtube/highlights', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({force: !!force})});
+    const d = await res.json();
+    if (!d.ok) { msg.textContent = '✗ ' + (d.error || ''); msg.style.color = 'var(--bad)'; return; }
+  } catch (e) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; return; }
+  followHighlights();
+}
+async function followHighlights() {
+  const msg = document.getElementById('youtube-highlights-msg');
+  try {
+    const d = await (await apiFetch('/youtube/highlights')).json();
+    msg.textContent = '';
+    const t = document.createElement('span');
+    t.textContent = (d.running ? '⏳ ' : d.ok ? '✓ ' : d.ok === false ? '✗ ' : '') + (d.message || '');
+    msg.appendChild(t);
+    msg.style.color = d.running ? 'var(--accent)' : d.ok ? 'var(--ok)' : 'var(--bad)';
+    if (d.url && /^https:\/\/youtu\.be\/[\w-]+$/.test(d.url)) {
+      const a = document.createElement('a');
+      a.href = d.url; a.target = '_blank'; a.textContent = ' ' + d.url; a.style.color = 'var(--accent)';
+      msg.appendChild(a);
+      if (!d.running && d.ok && /already/.test(d.message || '')) {
+        const b = document.createElement('button');
+        b.className = 'btn btn-test'; b.style.marginLeft = '8px'; b.textContent = 'Upload again';
+        b.onclick = function () { youtubeHighlights(true); };
+        msg.appendChild(b);
+      }
+    }
+    if (d.running) setTimeout(followHighlights, 3000);
+  } catch (e) { setTimeout(followHighlights, 5000); }
 }
 
 async function showWeather() {
