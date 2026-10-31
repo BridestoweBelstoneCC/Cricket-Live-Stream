@@ -44,7 +44,8 @@ func oldLaptop(t *testing.T) string {
 		"[API]\nplaycricket_key = pc-OLD\nanthropic_key = sk-ant-OLD\n\n[Auth]\nclub_password = pw-OLD\ncontrol_token = tok-OLD\n\n"+
 		"[OBS]\nobs_password = obs-OLD\nreplay_folder = C:\\Users\\Old\\Videos\\Replays\n\n"+
 		"[Scoring]\npcs_output_folder = C:\\Users\\Old\\NV\\Output\nlogos_folder = D:\\Shared\\Badges\n\n[Network]\nbind_host = 0.0.0.0\n\n"+
-		"[Clubhouse]\nenabled = yes\nkey = CHKEYOLD\nview_enabled = yes\nview_key = VWKEYOLD\n")
+		"[Clubhouse]\nenabled = yes\nkey = CHKEYOLD\nview_enabled = yes\nview_key = VWKEYOLD\n\n"+
+		"[Alerts]\ndiscord_webhook = https://discord.com/api/webhooks/1234567890/hookOLDhookOLDhookOLD\n")
 	server.SaveState(server.M{"home_team": "Bridestowe CC", "sponsor_name": "Acme Builders", "graphics_partnership_display": false,
 		"roster": server.M{"7": "John Walker"}, "anthropic_api_key": "sk-ant-OLD", "obs_password": "obs-OLD",
 		"logos_folder": `D:\Shared\Badges`, "pcs_output_folder": `C:\Users\Old\NV\Output`, "agent_host": "192.168.1.40:8788"})
@@ -92,7 +93,7 @@ func TestMoveToANewLaptop(t *testing.T) {
 		t.Errorf("export summary %+v", sum)
 	}
 	got := entries(t, buf.Bytes())
-	for _, leak := range []string{"pc-OLD", "sk-ant-OLD", "pw-OLD", "tok-OLD", "obs-OLD", `C:\Users\Old`, "0.0.0.0", "192.168.1.40", "shared-drive", `D:\Shared`} {
+	for _, leak := range []string{"pc-OLD", "sk-ant-OLD", "pw-OLD", "hookOLD", "tok-OLD", "obs-OLD", `C:\Users\Old`, "0.0.0.0", "192.168.1.40", "shared-drive", `D:\Shared`} {
 		for name, body := range got {
 			if strings.Contains(body, leak) {
 				t.Errorf("%q went into the club file (%s)", leak, name)
@@ -162,7 +163,7 @@ func TestExportWithKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := entries(t, buf.Bytes())
-	for _, want := range []string{"pc-OLD", "sk-ant-OLD", "pw-OLD"} {
+	for _, want := range []string{"pc-OLD", "sk-ant-OLD", "pw-OLD", "hookOLD"} {
 		if !strings.Contains(got["config.ini"], want) {
 			t.Errorf("%s not in the club file", want)
 		}

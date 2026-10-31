@@ -13,6 +13,7 @@ import (
 
 	"cricketstream/internal/agent"
 	"cricketstream/internal/assets"
+	"cricketstream/internal/discord"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/scorerfile"
 )
@@ -68,6 +69,7 @@ type Values struct {
 	YTKey         string `json:"yt_key"`
 	MaxOvers      string `json:"max_overs"`
 	AnthropicKey  string `json:"anthropic_key"`
+	Discord       string `json:"discord_webhook"`
 	ClubPassword  string `json:"club_password"`
 	AllowRemote   bool   `json:"allow_remote"`
 	// Bridge only.
@@ -122,7 +124,7 @@ func (v *Values) Normalise() {
 	}
 	trim := func(s *string) { *s = strings.TrimSpace(*s) }
 	for _, s := range []*string{&v.Name, &v.Abbrev, &v.Colour, &v.Motto, &v.PCID, &v.PCKey, &v.PCSFolder,
-		&v.ScorebarStyle, &v.ReplayFolder, &v.YTTitle, &v.YTKey, &v.MaxOvers, &v.AnthropicKey, &v.ClubPassword} {
+		&v.ScorebarStyle, &v.ReplayFolder, &v.YTTitle, &v.YTKey, &v.MaxOvers, &v.AnthropicKey, &v.ClubPassword, &v.Discord} {
 		trim(s)
 	}
 	v.PCSFolder = strings.Trim(v.PCSFolder, `"`)
@@ -177,6 +179,10 @@ func (v Values) Problems() []string {
 	if v.PCID == "" {
 		out = append(out, "The PlayCricket club ID is required.")
 	}
+	if v.Discord != "" && !discord.Valid(v.Discord) {
+		out = append(out, "That isn't a Discord webhook link — in Discord: the channel → Edit Channel → Integrations → "+
+			"Webhooks → Copy Webhook URL (it starts https://discord.com/api/webhooks/).")
+	}
 	return out
 }
 
@@ -196,6 +202,7 @@ func (v Values) Config() *ini.File {
 	f.Set("Club", "motto", v.Motto)
 	f.Set("API", "playcricket_key", v.PCKey)
 	f.Set("API", "anthropic_key", v.AnthropicKey)
+	f.Set("Alerts", "discord_webhook", v.Discord)
 	f.Set("Scoring", "pcs_output_folder", v.PCSFolder)
 	f.Set("Scoring", "logos_folder", "")
 	f.Set("Scoring", "ground_filter", "")

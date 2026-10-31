@@ -5,7 +5,7 @@ package clubhouse
 // the clubhouse is exactly a press of the window's Start button — same launcher, same
 // questions (shown on the screen AND in the window; whichever answers first wins).
 //
-// Everything but /clubhouse/hello needs a pairing key: the screen's key, or the
+// Everything but /clubhouse/hello and asking to pair (ask.go) needs a pairing key: the screen's key, or the
 // score-only key, which reaches only the reads a score needs (viewGET) and nothing that
 // starts, stops, wakes or switches off. The control panel's routes are
 // reached through /clubhouse/server/..., on an allowlist, with the window's own login
@@ -140,6 +140,7 @@ type Link struct {
 	fails        map[string]*failCount
 	lockAll      time.Time
 	allFails     []time.Time
+	asks         map[string]*askEntry // screens asking to pair (ask.go)
 }
 
 type failCount struct {
@@ -318,6 +319,15 @@ func (l *Link) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// sends no Origin): refused before the key is even looked at.
 	if r.Header.Get("Origin") != "" {
 		writeJSON(w, map[string]any{"ok": false, "error": "Not from a browser"}, 403)
+		return
+	}
+	// Asking to pair needs no key: it only puts a request on the laptop's own card.
+	switch r.Method + " " + p {
+	case "POST /clubhouse/ask":
+		l.ask(w, r)
+		return
+	case "POST /clubhouse/ask/poll":
+		l.askPoll(w, r)
 		return
 	}
 	ok, view := l.keyOK(w, r)

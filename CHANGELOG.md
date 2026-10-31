@@ -11,6 +11,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   with Raspberry Pi Imager (setting the username and wifi there) and the Pi boots
   straight to pairing — no terminal. See
   [CLUBHOUSE_SCREEN.md](CLUBHOUSE_SCREEN.md#2-the-pi).
+- **Pair a clubhouse screen without typing.** Press **Pair from the laptop** on the screen:
+  it shows a three-digit code, the laptop's Clubhouse card shows the same code, and one
+  press there (**Match-day screen** or **Score-only screen**) pairs it. Typing the key
+  still works.
+- **Alerts on Discord.** Paste a Discord webhook into **Settings → Alerts on Discord** and
+  the match-day alerts go to that channel too — the scorer's feed going quiet, OBS
+  crashing, the server restarting — so whoever's at the ground hears about them on their
+  phone. **Send a test** tries it there and then, and the pre-match check checks the
+  webhook is still there. Messages can't ping anyone, and the link is kept with the club's
+  other keys (it only goes into the club file if you include the keys).
+- **A new alert: the stream has stopped.** When the stream has been off for a minute and a
+  half after going live (longer than a quality step's restart), and again when it's back.
 - **Score-only clubhouse screens.** A clubhouse screen can now show the score with no
   buttons at all — for the bar's TV, the pavilion or the scorebox. Tick **Let score-only
   screens show the score** on the laptop's Clubhouse screen card and pair the screen with

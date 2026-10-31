@@ -287,8 +287,15 @@ func TestFirstRunAsTheScorersLaptopSharesTheScoreInTheWindow(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the app didn't close")
 	}
-	if _, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", agentOptions.Port)); err == nil {
-		t.Error("still sharing after close")
+	// The agent itself, not whatever else may have been given the freed port since (seen
+	// on Linux CI: another test server landed on it).
+	if resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", agentOptions.Port)); err == nil {
+		var d M
+		json.NewDecoder(resp.Body).Decode(&d)
+		resp.Body.Close()
+		if d["service"] == agent.ServiceName {
+			t.Error("still sharing after close")
+		}
 	}
 }
 

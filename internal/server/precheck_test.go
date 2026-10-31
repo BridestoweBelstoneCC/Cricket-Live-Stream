@@ -24,6 +24,7 @@ import (
 	"cricketstream/internal/ai"
 	"cricketstream/internal/assets"
 	"cricketstream/internal/clubhouse"
+	"cricketstream/internal/discord"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
 )
@@ -541,5 +542,36 @@ func TestAutoQualityCheck(t *testing.T) {
 		if r := pcAutoQuality(st); r.Status != c.want {
 			t.Errorf("%s: %s (%s)", c.name, r.Status, r.Detail)
 		}
+	}
+}
+
+// The Discord line: skipped with no webhook; asks Discord without posting; ✗ only when
+// Discord says the webhook is gone (it runs every six hours: offline is ⚠).
+func TestPrecheckDiscord(t *testing.T) {
+	sandbox(t, "")
+	if r := pcDiscord(M{}); r.Status != "skip" {
+		t.Fatalf("no config.ini: %+v", r)
+	}
+	os.WriteFile(ConfigFile, []byte("[Alerts]\ndiscord_webhook = https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz\n"), 0o600)
+	saved := discordCheck
+	t.Cleanup(func() { discordCheck = saved })
+	discordCheck = func(string) (string, error) { return "Match alerts", nil }
+	if r := pcDiscord(M{}); r.Status != "ok" || !strings.Contains(r.Detail, "Match alerts") {
+		t.Fatalf("there: %+v", r)
+	}
+	discordCheck = func(string) (string, error) { return "", discord.Gone }
+	if r := pcDiscord(M{}); r.Status != "bad" || r.Fix == "" {
+		t.Fatalf("gone: %+v", r)
+	}
+	discordCheck = func(string) (string, error) { return "", errors.New("couldn't reach Discord: no route") }
+	if r := pcDiscord(M{}); r.Status != "warn" {
+		t.Fatalf("offline: %+v", r)
+	}
+	found := false
+	for _, c := range Prechecks {
+		found = found || c.ID == "discord"
+	}
+	if !found {
+		t.Fatal("not in the pre-match check's list")
 	}
 }

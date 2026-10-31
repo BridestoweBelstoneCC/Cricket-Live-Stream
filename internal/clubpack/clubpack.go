@@ -65,7 +65,7 @@ type Summary struct {
 
 // configSecrets are config.ini's passwords and keys (travel only when asked for).
 var configSecrets = [][2]string{{"API", "playcricket_key"}, {"API", "anthropic_key"},
-	{"Stream", "youtube_stream_key"}, {"Auth", "club_password"}}
+	{"Stream", "youtube_stream_key"}, {"Auth", "club_password"}, {"Alerts", "discord_webhook"}}
 
 // configMachine is config.ini's per-laptop part (never travels).
 var configMachine = [][2]string{{"OBS", "obs_password"}, {"Auth", "control_token"}, {"Clubhouse", "key"},

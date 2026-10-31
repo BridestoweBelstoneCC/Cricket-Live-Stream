@@ -2,6 +2,7 @@ package setup
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"cricketstream/internal/discord"
 	"cricketstream/internal/ini"
 )
 
@@ -146,5 +148,60 @@ func TestSaveRemovesASecretOnlyWhenAsked(t *testing.T) {
 	b, _ := json.Marshal(info)
 	if strings.Contains(string(b), "pc-1") {
 		t.Error("a secret's value reached the page")
+	}
+}
+
+// The Discord webhook is a secret like the club's keys: kept when the field is left
+// blank, removed only when asked, and a link that isn't a webhook is refused on save.
+func TestDiscordWebhookSetting(t *testing.T) {
+	dir := appDir(t)
+	hook := "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+	save := func(extra map[string]any) (int, map[string]any) {
+		body := map[string]any{"role": "streaming", "name": "X CC", "pc_id": "1"}
+		for k, v := range extra {
+			body[k] = v
+		}
+		b, _ := json.Marshal(body)
+		code, out, _ := Save(b)
+		return code, out
+	}
+	if code, out := save(map[string]any{"discord_webhook": "https://discord.com/channels/1/2"}); code != 400 ||
+		!strings.Contains(fmt.Sprint(out["error"]), "Discord webhook") {
+		t.Fatalf("a channel link saved as a webhook: %d %v", code, out)
+	}
+	if code, out := save(map[string]any{"discord_webhook": hook}); code != 200 {
+		t.Fatal(code, out)
+	}
+	cfg := func() *ini.File { f, _ := ini.Load(filepath.Join(dir, "config.ini")); return f }
+	if cfg().Get("Alerts", "discord_webhook", "") != hook {
+		t.Fatal("not saved")
+	}
+	if set, _ := Info()["secrets_set"].(map[string]bool); !set["discord_webhook"] {
+		t.Error("the page should say it's saved")
+	}
+	if code, _ := save(nil); code != 200 || cfg().Get("Alerts", "discord_webhook", "") != hook {
+		t.Fatal("a blank field must keep the saved webhook")
+	}
+	if code, _ := save(map[string]any{"clear": []string{"discord_webhook"}}); code != 200 || cfg().Get("Alerts", "discord_webhook", "?") != "" {
+		t.Fatal("removing it, asked for")
+	}
+}
+
+func TestCheckDiscordSendsATest(t *testing.T) {
+	appDir(t)
+	var got []string
+	saved := discordPost
+	t.Cleanup(func() { discordPost = saved })
+	discordPost = func(hook, msg string) error { got = append(got, msg); return nil }
+	if c := CheckDiscord("", "X CC"); c.Status != "warn" || len(got) != 0 {
+		t.Fatalf("no webhook: %+v", c)
+	}
+	if c := CheckDiscord("https://discord.com/api/webhooks/1/x", "Test Town CC"); c.Status != "ok" ||
+		len(got) != 1 || !strings.Contains(got[0], "Test Town CC") {
+		t.Fatalf("sent: %+v %v", c, got)
+	}
+	discordPost = func(string, string) error { return discord.Gone }
+	if c := CheckDiscord("https://discord.com/api/webhooks/1/x", ""); c.Status != "bad" || !strings.Contains(c.Detail, "doesn't exist") {
+		t.Fatalf("gone: %+v", c)
 	}
 }

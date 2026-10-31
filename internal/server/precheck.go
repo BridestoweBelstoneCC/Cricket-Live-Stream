@@ -27,6 +27,7 @@ import (
 
 	"cricketstream/internal/ai"
 	"cricketstream/internal/clubhouse"
+	"cricketstream/internal/discord"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
@@ -605,6 +606,32 @@ func pcClubhouse(M) CheckResult {
 	return chk(clubhouse.WakeAdvice(clubhouse.CheckWake()))
 }
 
+// pcDiscord: is the alerts webhook still there? Asked without posting anything (this runs
+// every six hours). ✗ only when Discord says it's gone; offline is ⚠.
+func pcDiscord(M) CheckResult {
+	cfg, err := ini.Load(ConfigFile)
+	hook := ""
+	if err == nil {
+		hook = strings.TrimSpace(cfg.Get("Alerts", "discord_webhook", ""))
+	}
+	if hook == "" {
+		return chk("skip", "No Discord alerts.", "")
+	}
+	name, err := discordCheck(hook)
+	switch {
+	case errors.Is(err, discord.Gone):
+		return chk("bad", "The Discord webhook doesn't exist any more.", "Make a new one in Discord and paste it in Settings → Alerts on Discord.")
+	case err != nil:
+		return chk("warn", "Couldn't ask Discord about the alerts webhook: "+err.Error()+".", "")
+	case name != "":
+		return chk("ok", "Alerts go to Discord (webhook “"+name+"”).", "")
+	}
+	return chk("ok", "Alerts go to Discord.", "")
+}
+
+// discordCheck is discord.Check (a test seam).
+var discordCheck = discord.Check
+
 // Prechecks is the list, in display order. Add new external dependencies here; a check
 // may panic — that's reported as "bad", never a crash.
 var Prechecks = []struct {
@@ -627,6 +654,7 @@ var Prechecks = []struct {
 	{"surnames", "Player names", pcSurnames},
 	{"update", "Software version", pcUpdate},
 	{"clubhouse", "Clubhouse screen", pcClubhouse},
+	{"discord", "Discord alerts", pcDiscord},
 }
 
 var (

@@ -180,6 +180,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   edits/deletions within an over stay correct. Don't switch it to plain append.
 - **Secrets never reach the browser.** `/state` redacts secret keys; POST `/state` drops
   sentinel values. Keep any new secret field in that redaction list.
+  The Discord alerts webhook (`[Alerts] discord_webhook`) is a secret too — the token is
+  in the URL — and it's never in the state at all: only `internal/discord`, the window's
+  `sendDiscord` and the pre-match check read it from config.ini. Go's HTTP errors quote
+  the URL, so `discord` strips it (`clean()`); print only errors that came through it.
 - **Never commit `config.ini`, `match_state.json`, or `match_data.db`.** They're git-ignored;
   check `git status` before committing. The `.gitignore` entries are globbed
   (`config.ini*`, not `config.ini`) so a hand-made backup copy (`config.ini.bak`,
@@ -355,8 +359,13 @@ problem + what to do + pause) or print and `console.Pause()`.
 - **The clubhouse screen's link lives in the WINDOW (`internal/app`), not the server.** It
   must answer before match day starts (to start it) and after it ends (to switch the
   laptop off), so it can't be a server route. Its rules, each with a test:
-  - Everything but `/clubhouse/hello` needs the pairing key (`X-Clubhouse-Key`, constant
-    time, a per-address and a global lockout). A request with an `Origin` header is
+  - Everything but `/clubhouse/hello` and asking to pair needs the pairing key
+    (`X-Clubhouse-Key`, constant time, a per-address and a global lockout). Asking
+    (`ask.go`: `POST /clubhouse/ask`, `/clubhouse/ask/poll`) is keyless by design, so it
+    may only ever put a request on the laptop's card: the LAPTOP picks the code (a
+    requester choosing it could copy a real screen's), one request per address and
+    `maxAsks` at once, the key handed only to the secret's holder, once, after
+    `Link.Answer` — a press on the card. Don't let it return anything else. A request with an `Origin` header is
     refused outright: the screen is a program, so an Origin means a web page.
   - The server is reached only through `/clubhouse/server/...` on `proxyGET`/`proxyPOST`
     in `link.go`. **That allowlist is the security boundary** — the Pi's PIN is a UI lock.
@@ -452,7 +461,8 @@ problem + what to do + pause) or print and `console.Pause()`.
   the broadcast, which is why `stream_auto_downshift` stays off by default), cameras
   (TCP to the RTSP port; never echo the URL — it holds the password),
   surname clashes vs the roster, today's fixture, opposition badge, newer release,
-  scorer's laptop/bridge, and (with the clubhouse screen on) whether the screen can switch
+  scorer's laptop/bridge, the Discord alerts webhook (asked about with a GET, never a post —
+  this runs every six hours), and (with the clubhouse screen on) whether the screen can switch
   the laptop on (`clubhouse.CheckWake`/`WakeAdvice`: cable, wake-armed port, Fast Startup,
   auto sign-in, start at login, and the last wake the screen reported — ⚠ at worst). Read-only. Add new external dependencies to `Prechecks`; a check
   returns (ok|warn|bad|skip, detail, fix) and may raise — that's reported as `bad`, never a
