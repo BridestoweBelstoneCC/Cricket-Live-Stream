@@ -501,6 +501,10 @@ func (c *ctx) doPOST() {
 	case path == "/youtube/update":
 		c.youtubeUpdate(body)
 
+	case path == "/youtube/chapters":
+		ok, msg, text := AddChaptersToYouTube(CurrentMatchID(), false)
+		c.json(M{"ok": ok, "message": msg, "chapters": text})
+
 	case path == "/match/page":
 		started := StartMatchPageBuild()
 		if started {
