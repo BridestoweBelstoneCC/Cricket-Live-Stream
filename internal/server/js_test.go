@@ -802,6 +802,9 @@ console.log(JSON.stringify({ shown: shown, oneTimer: before === 1, colour: els['
 	if strings.Join(got.Shown, " | ") != "A passes 1,000 runs for the club / since 2014 | A: first fifty for the club / since 2014" ||
 		!got.OneTimer || got.Colour != "#123456" {
 		t.Fatalf("%+v", got)
+	}
+}
+
 // Season leaders: both lists shown, names escaped; nothing when the season is empty or the
 // switch is off.
 func TestSeasonLeadersPanel(t *testing.T) {
