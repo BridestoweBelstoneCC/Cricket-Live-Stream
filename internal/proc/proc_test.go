@@ -3,8 +3,10 @@ package proc
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +27,16 @@ func TestMain(m *testing.M) {
 	case "pwd":
 		wd, _ := os.Getwd()
 		os.Stdout.WriteString(wd)
+		os.Exit(0)
+	case "tie":
+		// Start a tied sleeper, say its pid, and exit without stopping it.
+		exe, _ := os.Executable()
+		cmd := exec.Command(exe)
+		cmd.Env = append(os.Environ(), "PROC_TEST_CHILD=sleep")
+		if err := StartTied(cmd); err != nil {
+			os.Exit(2)
+		}
+		os.Stdout.WriteString(strconv.Itoa(cmd.Process.Pid))
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -89,5 +101,25 @@ func TestRunsInTheGivenFolder(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("ran in %q, want %q", got, want)
+	}
+}
+
+// A tied program dies with the program that started it, however that one ends.
+func TestStartTiedDiesWithItsParent(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		t.Skip("no kill-with-parent on " + runtime.GOOS)
+	}
+	r, err := Run(child(t, "tie"), nil, Options{Timeout: 20 * time.Second})
+	if err != nil || r.Code != 0 {
+		t.Fatalf("%v %+v", err, r)
+	}
+	pid, _ := strconv.Atoi(r.Stdout)
+	for i := 0; i < 50 && alive(pid); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if alive(pid) {
+		p, _ := os.FindProcess(pid)
+		p.Kill()
+		t.Fatal("the tied program outlived its parent")
 	}
 }

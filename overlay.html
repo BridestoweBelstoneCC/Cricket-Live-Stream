@@ -2197,6 +2197,7 @@ async function pollCommands() {
     if (cmds.break) startBreak(cmds.break, false);
     if (cmds.break_end && _break) endBreak(false);
     if (cmds.break_clip) showReplayBanner(cmds.break_clip);
+    if (cmds.replay_caption) showReplayBanner(cmds.replay_caption);
     if (cmds.show_h2h) { _h2hRequested = false; loadH2H(function () { if (fillH2HPanel()) queueGraphic('h2h-panel', 12000); }); }
     // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
     if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
@@ -2621,6 +2622,7 @@ var _cameraAutoCutTimer = null;
 function autoCutCameraForOver() {
   if (!cfg.graphics_camera_auto_cut || !cfg.camera2_configured) return;
   if (_cameraAutoCutTimer) { clearTimeout(_cameraAutoCutTimer); _cameraAutoCutTimer = null; }
+  if (_walkOut) { console.log('[camera-cut] skipped: the walk-out has camera 2'); return; }
   // Don't step on an instant replay's own scene transition (Replay -> main, on its own
   // server-side timer -- see obs_trigger_replay's `duration`) -- if one triggered earlier
   // in the over that just ended and could still be running, skip this over's cut entirely
@@ -2630,24 +2632,58 @@ function autoCutCameraForOver() {
     console.log('[camera-cut] skipped: replay still in progress');
     return;
   }
-  var cutAt = Date.now();
-  cutCameraScene(cfg.obs_bowler_scene || 'Main-Bowler', 'auto-cut: over start');
-  _cameraAutoCutTimer = setTimeout(function() {
-    _cameraAutoCutTimer = null;
-    // If a replay fired during our bowler-end window, it now owns the return-to-main
-    // transition on its own timer -- cutting back ourselves here would race it.
-    if (_lastReplayTime > cutAt) { console.log('[camera-cut] revert skipped: replay took over'); return; }
-    cutCameraScene(cfg.obs_main_scene || 'Main', 'auto-cut: revert');
-  }, 8000);
+  // The server holds camera 2 for camera_over_hold seconds and cuts back only if OBS is
+  // still on it -- a replay in the meantime owns the picture (camhold.go).
+  cutCameraScene(cfg.obs_bowler_scene || 'Main-Bowler', 'auto-cut: over start',
+    { hold: Math.max(3, Math.min(120, parseInt(cfg.camera_over_hold, 10) || 8)), back: cfg.obs_main_scene || 'Main' });
 }
 
-async function cutCameraScene(scene, reason) {
+// wicketReplayMs: from the wicket until its replay's over -- the main replay, and the
+// side-on one when camera 2 records it (sidecam.go).
+function wicketReplayMs() {
+  var d = (cfg.replay_duration || 20);
+  var side = cfg.replay_side_on && cfg.camera2_configured ? d : 0;
+  return 6000 + (d + side + 5) * 1000;
+}
+
+// ── The walk-out: camera 2 while a new batter walks out (after a wicket's replay) or the
+// teams walk off (the innings break). Opt-in (camera_walkout); a no-op without camera 2.
+// The server holds the cut and cuts back only if OBS is still on camera 2; a ball bowled
+// first cuts back at once.
+var _walkOut = null, _walkOutTimer = null;   // {balls}: the cut is up
+function walkOutCut(delayMs, reason, state) {
+  if (!cfg.camera_walkout || !cfg.camera2_configured) return;
+  clearTimeout(_walkOutTimer);
+  var balls = ballsOf(state.overs), inn = parseInt(state.innings || 1, 10);
+  _walkOutTimer = setTimeout(function () {
+    var hold = Math.max(10, Math.min(180, parseInt(cfg.camera_walkout_hold, 10) || 35));
+    _walkOut = { balls: balls, innings: inn };
+    cutCameraScene(cfg.obs_bowler_scene || 'Main-Bowler', reason,
+      { hold: hold, back: cfg.obs_main_scene || 'Main' });
+    _walkOutTimer = setTimeout(function () { _walkOut = null; }, hold * 1000);
+  }, delayMs);
+}
+
+// walkOutBall: a ball's been bowled (in this innings, or the next one's first -- the
+// scorer often opens it during the break) while the walk-out is still up -- back to
+// camera 1 now.
+function walkOutBall(state) {
+  if (!_walkOut) return;
+  var balls = ballsOf(state.overs), inn = parseInt(state.innings || 1, 10);
+  if ((inn === _walkOut.innings && balls > _walkOut.balls) || (inn > _walkOut.innings && balls > 0)) {
+    _walkOut = null; clearTimeout(_walkOutTimer);
+    cutCameraScene(cfg.obs_main_scene || 'Main', 'walk-out: play',
+      { if_on: cfg.obs_bowler_scene || 'Main-Bowler' });
+  }
+}
+
+async function cutCameraScene(scene, reason, opts) {
   try {
     // fetch() only rejects on a network failure -- checked explicitly, same as triggerReplay,
     // so a rejected/failed request never silently looks like a successful cut.
     const res = await fetch(`${SERVER}/camera/scene`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ scene: scene }),
+      body: JSON.stringify(Object.assign({ scene: scene }, opts || {})),
     });
     if (!res.ok) {
       console.warn('[camera-cut] server rejected (' + reason + '):', res.status, await res.text().catch(() => ''));
@@ -3118,6 +3154,7 @@ function processPCSData(state) {
 function detectEvents(state, allInnings) {
   const { score, wickets, overs, innings, batter1, batter2 } = state;
   try { updateBreak(state); } catch(e) { console.warn('break error:', e); }
+  try { walkOutBall(state); } catch(e) { console.warn('walk-out error:', e); }
 
   if (prev.score === null) {
     prev.score=score; prev.wickets=wickets; prev.overs=overs;
@@ -3188,12 +3225,14 @@ function detectEvents(state, allInnings) {
     _lastWicketOver = Math.floor(parseFloat(overs));
     if (cfg.replay_enabled) {
       // Block player card until replay finishes
-      var _rd = (cfg.replay_duration || 20) + 5;
-      _wicketReplayAt = Date.now() + 6000 + _rd * 1000;
+      _wicketReplayAt = Date.now() + wicketReplayMs();
       setTimeout(function() { triggerReplay('Wicket'); }, 6000);
     } else {
       _wicketReplayAt = 0;  // no replay — show card as soon as batter enters
     }
+    // The new batter walking out, on camera 2 — once the replay's done. Not the innings'
+    // last wicket: the walk-off at the innings break covers that.
+    if (wickets < 10) walkOutCut(cfg.replay_enabled ? wicketReplayMs() : 2000, 'walk-out', state);
     prev.partnership=0; prev.partnershipMilestone=0;
     // Player card detection moved to batter-change check below
     // Clear milestones for dismissed batter
@@ -3682,6 +3721,8 @@ function updateBreak(state) {
   var drinksOv = parseInt(cfg.drinks_over, 10) || 0;
   if (inn === 1 && !_inningsBreakDone && (wk >= 10 || (MAX_OVERS > 0 && balls >= MAX_OVERS * 6))) {
     _inningsBreakDone = true;
+    // The teams walking off -- after the last wicket's replay, if it ended on one.
+    walkOutCut(wk >= 10 && cfg.replay_enabled ? wicketReplayMs() : 2000, 'walk-off', state);
     startBreak('innings', true, 9000);      // after the innings summary and scorecard
   } else if (drinksOv > 0 && balls === drinksOv * 6 && !_drinksDone[inn] && wk < 10) {
     _drinksDone[inn] = true;
@@ -4004,7 +4045,7 @@ async function poll() {
               if (ev.type==='wicket') {
                 // replay handled by detectEvents with 6s delay;
                 // here just update _wicketReplayAt so pending card timing is correct
-                _wicketReplayAt = Date.now() + 6000 + ((cfg.replay_duration||20)+5)*1000;
+                _wicketReplayAt = Date.now() + wicketReplayMs();
               }
             } catch(e){ console.warn('event handler error:', ev, e); }
           });

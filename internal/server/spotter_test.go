@@ -184,7 +184,7 @@ func packageSource(t *testing.T) map[string]string {
 func TestCameraEndpointPrefersFastPathKeepsFallback(t *testing.T) {
 	src := packageSource(t)
 	i := strings.Index(src["handler_post.go"], `case path == "/camera/scene":`)
-	if i < 0 || !strings.Contains(src["handler_post.go"][i:i+800], "cutToScene(") {
+	if i < 0 || !strings.Contains(src["handler_post.go"][i:i+1600], "cutToScene(") {
 		t.Fatal("/camera/scene should cut through cutToScene")
 	}
 	j := strings.Index(src["obsops.go"], "func cutToScene(")

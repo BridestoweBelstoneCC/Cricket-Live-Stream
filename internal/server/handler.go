@@ -859,6 +859,13 @@ func (c *ctx) doGET() {
 		}
 		c.json(M{"ready": true, "scorers": scorers, "bowlers": bowlers, "leaders": leaders})
 
+	case path == "/camera/side-on":
+		// Whether camera 2 is being recorded for side-on replays (sidecam.go), for the panel.
+		if !c.checkToken() {
+			return
+		}
+		c.json(SideCamStatus())
+
 	case path == "/club/career":
 		// The club records behind the milestones (career.go): built in the background,
 		// {"ready": false} until then. ?name= shows what a scorebar name resolves to.

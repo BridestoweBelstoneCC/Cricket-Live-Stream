@@ -6,6 +6,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **More from a second camera** (all optional, and nothing changes with one camera):
+  - **Side-on wicket replays.** A wicket replays twice: camera 1 as before, then camera
+    2's view of the same moment, captioned "Side-on". OBS only keeps what was on air, so
+    CricketStream records camera 2 itself while this is on — it copies the camera's
+    stream without re-encoding, next to no work for the laptop. Needs FFmpeg.
+  - **Walking out and off.** After a wicket (once its replays are done), camera 2 while
+    the new batter walks out; at the end of an innings, the teams walking off. Back to
+    camera 1 after a time you set, or the moment the next ball's bowled.
+  - **The over change** holds camera 2 for as long as you set (it was always 8 seconds),
+    and never cuts back over a replay that started meanwhile.
+  - The control panel calls the cameras **Camera 1** and **Camera 2** (the second needn't
+    be at the bowler's end — a side-on camera at the pavilion works well).
 - **Rain radar.** In a rain delay, the stream shows the last hour of rain around the
   ground as a moving radar picture, with the ground marked and when it should be dry
   ("Dry by about 15:40") — so viewers can see for themselves whether there'll be more

@@ -81,7 +81,7 @@ var (
 func spotterCameras(st M) [][2]string {
 	cams := [][2]string{{"Wide camera", trim(gs(st, "obs_camera_name", ""))}}
 	if trim(gs(st, "camera2_rtsp_url", "")) != "" {
-		cams = append(cams, [2]string{"Bowler-end camera", trim(gs(st, "obs_camera2_name", ""))})
+		cams = append(cams, [2]string{"Camera 2", trim(gs(st, "obs_camera2_name", ""))})
 	}
 	var out [][2]string
 	for _, c := range cams {

@@ -313,6 +313,18 @@ problem + what to do + pause) or print and `console.Pause()`.
   cut** (`cuttest.go`, POST/GET `/camera/cut_test`, login-gated, refuses while live): every
   camera in every scene incl. Replay, the cut and the 8s hold and back, both pictures still
   "playing" throughout, and OBS always put back on the scene it was on.
+- **Camera 2's held cuts and side-on recording.** The over-change cut and the walk-out
+  (`camhold.go`) are one `/camera/scene` request with `hold` + `back`: the SERVER cuts back,
+  and only if OBS is still on camera 2's scene (a replay or the operator may have moved
+  it — they win). `if_on` cuts only from a given scene (the overlay cutting back early
+  when a ball's bowled). The break show waits out a hold or a running replay
+  (`breakClear`). Side-on replays (`sidecam.go`): FFmpeg copies camera 2's RTSP into a
+  ring of 2s MPEG-TS segments in `.sidecam/<pid>/` while `replay_side_on` is on; a wicket
+  cuts the last ~25s into `<replays>/side-on/` (never the replay folder itself — every
+  video there counts as a replay). The recorder is started with `proc.StartTied` (a
+  kill-on-close job object on Windows, Pdeathsig on Linux) so it can't outlive a server
+  the launcher killed; macOS has no tie, so each FFmpeg run also ends itself after 30
+  minutes. Never log camera 2's URL — it holds the password.
 - **The control panel's Match-day checklist** (`ChecklistStatus()` / `ChecklistAction()`,
   `GET /checklist`, `POST /checklist/action`, both token-gated — they start OBS and go live,
   so NEVER the overlay's loopback carve-out). Every item is detected, none ticked by hand

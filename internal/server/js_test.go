@@ -382,11 +382,13 @@ function fetch(url, opts) {
   return Promise.resolve({ok: true, text: function(){return Promise.resolve('');}});
 }
 var _cameraAutoCutTimer = null;
+var _walkOut = null;
 var _pendingTimeout = null;
 function setTimeout(fn, ms) { _pendingTimeout = {fn: fn, ms: ms}; return 1; }
 function clearTimeout(id) { _pendingTimeout = null; }
 function flushTimeout() { var t = _pendingTimeout; _pendingTimeout = null; if (t) t.fn(); }
-function scenesRequested() { return fetchCalls.map(function(c){ return c.body.scene; }); }
+function scenesRequested() { return fetchCalls.map(function(c){
+  return c.body.scene + (c.body.hold ? ' hold ' + c.body.hold + ' back ' + c.body.back : ''); }); }
 var console = { log: function(){ process.stderr.write(Array.prototype.slice.call(arguments).join(' ') + '\n'); },
                warn: function(){ process.stderr.write(Array.prototype.slice.call(arguments).join(' ') + '\n'); } };
 `
@@ -407,8 +409,15 @@ const twoCams = `cfg = { graphics_camera_auto_cut: true, camera2_configured: tru
         obs_bowler_scene: 'Main-Bowler', obs_main_scene: 'Main', replay_duration: 18 };
 `
 
-func TestAutoCutToBowlerEndThenRevertsToMain(t *testing.T) {
-	eqv(t, autocut(t, twoCams+"autoCutCameraForOver();\nflushTimeout();"), []string{"Main-Bowler", "Main"})
+// The cut back is the server's (camhold.go: only if OBS is still on camera 2), after
+// camera_over_hold seconds.
+func TestAutoCutHoldsBowlerEndAndAsksForTheWayBack(t *testing.T) {
+	eqv(t, autocut(t, twoCams+"autoCutCameraForOver();\nflushTimeout();"), []string{"Main-Bowler hold 8 back Main"})
+	eqv(t, autocut(t, twoCams+"cfg.camera_over_hold = 40;\nautoCutCameraForOver();"), []string{"Main-Bowler hold 40 back Main"})
+}
+
+func TestAutoCutLeavesCameraTwoToTheWalkOut(t *testing.T) {
+	eqv(t, autocut(t, twoCams+"_walkOut = {balls: 60, innings: 1};\nautoCutCameraForOver();"), []string{})
 }
 
 func TestAutoCutNoopWhenToggleOff(t *testing.T) {
@@ -425,12 +434,8 @@ func TestAutoCutSkipsWhileReplayStillRunning(t *testing.T) {
 	eqv(t, autocut(t, twoCams+"_lastReplayTime = Date.now() - 5000;\nautoCutCameraForOver();\nflushTimeout();"), []string{})
 }
 
-func TestAutoCutSkipsRevertIfReplayStartsDuringBowlerEndWindow(t *testing.T) {
-	eqv(t, autocut(t, twoCams+"autoCutCameraForOver();\n_lastReplayTime = Date.now() + 1000;\nflushTimeout();"), []string{"Main-Bowler"})
-}
-
 func TestAutoCutStaleReplayDoesNotBlockLaterOver(t *testing.T) {
-	eqv(t, autocut(t, twoCams+"_lastReplayTime = Date.now() - 60000;\nautoCutCameraForOver();\nflushTimeout();"), []string{"Main-Bowler", "Main"})
+	eqv(t, autocut(t, twoCams+"_lastReplayTime = Date.now() - 60000;\nautoCutCameraForOver();\nflushTimeout();"), []string{"Main-Bowler hold 8 back Main"})
 }
 
 // ── Scorebar styles: the three places that define them must agree ──
@@ -834,6 +839,53 @@ console.log(JSON.stringify(out));
 	}
 }
 
+// The walk-out: camera 2 once the wicket's replays are done (main + side-on), held by
+// the server; a ball bowled first cuts back at once, and only if still on camera 2; off,
+// or without camera 2, nothing.
+func TestWalkOut(t *testing.T) {
+	src := overlayFunctions(t, "wicketReplayMs", "walkOutCut", "walkOutBall", "ballsOf", "cutCameraScene") + `
+var SERVER = '', cfg = { camera_walkout: true, camera2_configured: true, replay_duration: 18,
+  obs_bowler_scene: 'Clubhouse', obs_main_scene: 'Main' };
+var _walkOut = null, _walkOutTimer = null, timers = [], posts = [];
+var report = console.log.bind(console);
+console = { log: function () {}, warn: function () {} };
+setTimeout = function (f, ms) { timers.push({ f: f, ms: ms }); return timers.length; };
+clearTimeout = function () {};
+function fetch(u, o) { posts.push(o.body); return Promise.resolve({ ok: true }); }
+function fire() { var t = timers.shift(); t.f(); return t.ms; }
+var out = {};
+out.plain = wicketReplayMs();
+cfg.replay_side_on = true; out.sideOn = wicketReplayMs();
+walkOutCut(wicketReplayMs(), 'walk-out', { overs: 12.3, innings: 1 });
+out.delay = fire();
+out.cut = posts.slice();
+walkOutBall({ overs: 12.3, innings: 1 }); out.sameBall = posts.length;
+walkOutBall({ overs: 12.4, innings: 1 }); out.back = posts[posts.length - 1];
+out.over = _walkOut;
+cfg.camera_walkout = false; posts = []; timers = [];
+walkOutCut(1000, 'walk-out', { overs: 1, innings: 1 }); out.off = timers.length + posts.length;
+cfg.camera_walkout = true; cfg.camera2_configured = false;
+walkOutCut(1000, 'walk-out', { overs: 1, innings: 1 }); out.noCam = timers.length + posts.length;
+cfg.camera2_configured = true;
+walkOutCut(0, 'walk-off', { overs: 40, innings: 1 }); fire();
+walkOutBall({ overs: 0, innings: 2 }); out.inn2Opened = posts.length;
+walkOutBall({ overs: 0.1, innings: 2 }); out.inn2Ball = posts.length;
+report(JSON.stringify(out));
+`
+	var got map[string]any
+	runJS(t, src, &got)
+	if got["plain"] != 29000.0 || got["sideOn"] != 47000.0 || got["delay"] != 47000.0 {
+		t.Fatalf("timing: %v", got)
+	}
+	if fmt.Sprint(got["cut"]) != `[{"scene":"Clubhouse","hold":35,"back":"Main"}]` || got["sameBall"] != 1.0 ||
+		got["back"] != `{"scene":"Main","if_on":"Clubhouse"}` || got["over"] != nil {
+		t.Fatalf("cuts: %v", got)
+	}
+	if got["off"] != 0.0 || got["noCam"] != 0.0 || got["inn2Opened"] != 1.0 || got["inn2Ball"] != 2.0 {
+		t.Fatalf("when not: %v", got)
+	}
+}
+
 // Rain on its way: a strap only while play's on and dry, rain due within 30 minutes, once
 // an hour; never in a break or before play, or with the radar switched off.
 func TestRainWarning(t *testing.T) {
@@ -882,6 +934,9 @@ setInterval = function () { return 0; };
 clearTimeout = clearInterval = function () {};
 function queueGraphic(id) { queued.push(id); }
 function showScorecard() {}
+var walkOuts = [];
+function walkOutCut(ms, reason) { walkOuts.push(reason + '@' + ms); }
+function wicketReplayMs() { return 31000; }
 function loadPregameForm() {}
 function fillLeadersPanel() { return false; }
 var radarLoads = 0;

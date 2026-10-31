@@ -225,6 +225,12 @@ func breakReel(stop chan struct{}) {
 			return
 		}
 		for _, c := range clips {
+			// Not over a held camera cut (the teams walking off) or a wicket's replay.
+			for i := 0; i < 120 && !breakClear(); i++ {
+				if !breakWait(stop, time.Second) {
+					return
+				}
+			}
 			if shifting.Load() { // a stream quality step: not now
 				if !breakWait(stop, breakBetween) {
 					return

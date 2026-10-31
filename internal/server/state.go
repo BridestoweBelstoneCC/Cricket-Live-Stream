@@ -79,7 +79,17 @@ func DefaultState() M {
 		"obs_bowler_scene": "Main-Bowler",
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
-		"graphics_camera_auto_cut":  false,
+		"graphics_camera_auto_cut": false,
+		"camera_over_hold":         8, // seconds on camera 2 at the over change
+		// After a wicket (once its replay's done), camera 2 while the new batter walks out;
+		// and the teams walking off at the end of an innings (camhold.go). Opt-in, like
+		// the auto-cut; a no-op without camera 2.
+		"camera_walkout":      false,
+		"camera_walkout_hold": 35,
+		// A wicket replays side-on from camera 2 too (sidecam.go): FFmpeg records camera 2
+		// while this is on. Opt-in; a no-op without camera 2.
+		"replay_side_on":            false,
+		"replay_side_on_seconds":    25,
 		"youtube_chapters":          true,
 		"youtube_thumbnail":         true, // the match video's thumbnail, after the stream (ytafter.go)
 		"youtube_highlights":        true, // a highlights video, once the match has a result
