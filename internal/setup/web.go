@@ -38,12 +38,12 @@ type Result struct {
 // secretKeys are kept from the existing config.ini when the form leaves them blank, so
 // re-running setup never needs the keys typed in again (and never shows them).
 var secretKeys = [][2]string{{"API", "playcricket_key"}, {"API", "anthropic_key"},
-	{"Stream", "youtube_stream_key"}, {"Auth", "club_password"}}
+	{"Stream", "youtube_stream_key"}, {"Auth", "club_password"}, {"Alerts", "discord_webhook"}}
 
 // secretFields are the form's names for them (a "Remove" on the page names these).
 var secretFields = map[string][2]string{"pc_key": {"API", "playcricket_key"},
 	"anthropic_key": {"API", "anthropic_key"}, "yt_key": {"Stream", "youtube_stream_key"},
-	"club_password": {"Auth", "club_password"}}
+	"club_password": {"Auth", "club_password"}, "discord_webhook": {"Alerts", "discord_webhook"}}
 
 // Merge applies the answers to an existing config.ini (or a new one): keys the
 // interview doesn't own — the OBS password match day writes, manage_obs, a hand-set

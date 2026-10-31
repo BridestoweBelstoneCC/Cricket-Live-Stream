@@ -270,6 +270,19 @@ button:disabled{opacity:.6;cursor:default}
   </section>
 
   <section>
+    <h2>Alerts on Discord <span class="opt">(optional)</span></h2>
+    <p class="hint">The scorer's feed going quiet, OBS crashing, the stream stopping: posted to a
+    channel on the club's Discord, so whoever's at the ground hears about it on their phone. In
+    Discord: the channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+    Treat the link like a password.</p>
+    <label for="discord_webhook">Discord webhook link</label>
+    <div class="field-row"><input type="password" id="discord_webhook" data-secret placeholder="https://discord.com/api/webhooks/…">
+      <button type="button" class="small" data-check="discord">Send a test</button></div>
+    <p class="saved hidden" data-saved="discord_webhook"></p>
+    <p class="result" id="result_discord" role="status"></p>
+  </section>
+
+  <section>
     <h2>Control panel access</h2>
     <p class="hint">The club password is what operators type to unlock the control panel. Left
     blank, the panel is open to anyone who can reach it.</p>
@@ -341,7 +354,7 @@ var graphic = '';           // the demo graphic showing in the preview
 function $(id) { return document.getElementById(id); }
 function role() { return document.querySelector('input[name=role]:checked').value; }
 var FIELDS = ['name','abbrev','colour','motto','pc_id','pc_key','pcs_folder','replay_folder',
-              'yt_title','max_overs','yt_key','anthropic_key','club_password'];
+              'yt_title','max_overs','yt_key','anthropic_key','club_password','discord_webhook'];
 
 // The control panel's login (same tab, so the same sessionStorage): settings need it.
 function headers(json) {
@@ -480,6 +493,7 @@ document.querySelectorAll('[data-check]').forEach(function (b) {
     var req = {what: what};
     if (what === 'playcricket') { req.key = $('pc_key').value; req.club_id = $('pc_id').value; }
     if (what === 'anthropic') { req.key = $('anthropic_key').value; }
+    if (what === 'discord') { req.key = $('discord_webhook').value; req.club = $('name').value; }
     if (what === 'folder') { req.folder = $('pcs_folder').value; }
     out.className = 'result busy'; out.textContent = 'Checking…';
     b.disabled = true;
@@ -693,7 +707,7 @@ $('colour').addEventListener('input', refreshPreview);
 $('colour').addEventListener('change', refreshPreview);
 $('colour_pick').addEventListener('input', function () { $('colour').value = $('colour_pick').value; refreshPreview(); });
 window.addEventListener('resize', scalePreview);
-['pc_key','anthropic_key','yt_key','club_password'].forEach(function (k) {
+['pc_key','anthropic_key','yt_key','club_password','discord_webhook'].forEach(function (k) {
   $(k).addEventListener('input', function () { if ($(k).value && clearing[k]) { clearing[k] = false; showSaved(); } });
 });
 
@@ -751,7 +765,7 @@ function settingsSaved(d) {
   msg(parts.join(' '), 'good');
   // Fresh copy of what's saved (which secrets are set now, the role).
   clearing = {};
-  ['pc_key','anthropic_key','yt_key','club_password'].forEach(function (k) { $(k).value = ''; });
+  ['pc_key','anthropic_key','yt_key','club_password','discord_webhook'].forEach(function (k) { $(k).value = ''; });
   api('/info').then(function (fresh) { info = fresh; showSaved(); showForRole(); }).catch(function () {});
 }
 

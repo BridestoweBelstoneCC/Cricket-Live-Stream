@@ -1,8 +1,12 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"cricketstream/internal/setup"
 )
 
 func feed(fresh bool) map[string]any {
@@ -148,4 +152,95 @@ func TestLogOnLine(t *testing.T) {
 	if strings.Join(got, "|") != "one|two" {
 		t.Fatalf("%q", got)
 	}
+}
+
+func onAir(on bool) map[string]any { return map[string]any{"streaming": on} }
+
+// The stream stopping is news once it has stayed stopped past a quality step's restart;
+// once, and once more when it's back.
+func TestAlertStreamStopped(t *testing.T) {
+	var s alertState
+	t0 := time.Date(2026, 6, 6, 14, 0, 0, 0, time.UTC)
+	if n := s.stream(onAir(false), t0); len(n) != 0 {
+		t.Fatalf("not on air yet (before Go live): %v", n)
+	}
+	if n := s.stream(onAir(false), t0.Add(10*time.Minute)); len(n) != 0 {
+		t.Fatalf("never went live: %v", n)
+	}
+	s.stream(onAir(true), t0.Add(11*time.Minute))
+	// A quality step: off for a few seconds, back on. Nothing said.
+	s.stream(onAir(false), t0.Add(20*time.Minute))
+	if n := s.stream(onAir(true), t0.Add(20*time.Minute+10*time.Second)); len(n) != 0 {
+		t.Fatalf("a quality step's restart: %v", n)
+	}
+	off := t0.Add(30 * time.Minute)
+	s.stream(onAir(false), off)
+	if n := s.stream(onAir(false), off.Add(streamGrace-time.Second)); len(n) != 0 {
+		t.Fatalf("inside the grace: %v", n)
+	}
+	n := s.stream(onAir(false), off.Add(streamGrace))
+	if len(n) != 1 || !n[0].Warn || !strings.Contains(n[0].Title, "stopped") || n[0].Local {
+		t.Fatalf("stopped: %v", n)
+	}
+	if n := s.stream(onAir(false), off.Add(10*time.Minute)); len(n) != 0 {
+		t.Fatalf("said again: %v", n)
+	}
+	n = s.stream(onAir(true), off.Add(11*time.Minute))
+	if len(n) != 1 || n[0].Warn || !strings.Contains(n[0].Title, "Back on air") {
+		t.Fatalf("back: %v", n)
+	}
+	// No answer from OBS reads as not streaming: the same rule.
+	if n := s.stream(map[string]any{"reachable": false}, off.Add(12*time.Minute)); len(n) != 0 {
+		t.Fatalf("just gone: %v", n)
+	}
+}
+
+func TestDiscordMessage(t *testing.T) {
+	got := discordMessage("Test Town CC", notice{Title: "The scorer's feed has gone quiet", Text: "No update for 2 minutes.", Warn: true})
+	if got != "⚠️ Test Town CC: **The scorer's feed has gone quiet**\nNo update for 2 minutes." {
+		t.Fatalf("%q", got)
+	}
+	if got := discordMessage("", notice{Title: "Back on air", Text: "Live again."}); got != "✅ **Back on air**\nLive again." {
+		t.Fatalf("%q", got)
+	}
+}
+
+// Every alert goes to the club's channel when there's a webhook — but a new version is
+// this laptop's news, and with no webhook nothing is sent.
+func TestNotifySendsToDiscord(t *testing.T) {
+	ta := newTestApp(t)
+	sent := make(chan string, 4)
+	saved := discordPost
+	discordPost = func(hook, msg string) error { sent <- hook + " | " + msg; return nil }
+	t.Cleanup(func() { discordPost = saved })
+
+	ta.notify(notice{Title: "OBS", Text: "OBS crashed — reopened.", Warn: false})
+	select {
+	case m := <-sent:
+		t.Fatalf("sent with no webhook: %s", m)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	hook := "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+	os.WriteFile(setup.ConfigFile(), []byte("[App]\nrole = streaming\n\n[Club]\nname = Test Town CC\n\n[Alerts]\ndiscord_webhook = "+hook+"\n"), 0o600)
+	ta.notify(notice{Title: "The stream has stopped", Text: "Nothing has gone to YouTube.", Warn: true})
+	select {
+	case m := <-sent:
+		if !strings.HasPrefix(m, hook+" | ⚠️ Test Town CC: **The stream has stopped**") {
+			t.Fatalf("sent %q", m)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("nothing sent to Discord")
+	}
+	ta.notify(s0update())
+	select {
+	case m := <-sent:
+		t.Fatalf("a new version went to the club channel: %s", m)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func s0update() notice {
+	var s alertState
+	return s.update("3.1.0")[0]
 }
