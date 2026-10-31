@@ -161,6 +161,14 @@ func TestAfterStreamHighlightsWaitForTheResult(t *testing.T) {
 	stubCompile(t)
 	saved := matchFinished
 	t.Cleanup(func() { matchFinished = saved })
+	// The upload runs in the background: wait it out (slow under the race detector)
+	// before anything it uses is put back. Registered last, so it runs first.
+	idle := func() {
+		for i := 0; i < 1200 && gb(YTHighlightsStatus(), "running", false); i++ {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	t.Cleanup(idle)
 
 	matchFinished = func() bool { return false }
 	afterStreamYouTube()
@@ -169,9 +177,7 @@ func TestAfterStreamHighlightsWaitForTheResult(t *testing.T) {
 	}
 	matchFinished = func() bool { return true }
 	afterStreamYouTube()
-	for i := 0; i < 100 && gb(YTHighlightsStatus(), "running", false); i++ {
-		time.Sleep(50 * time.Millisecond)
-	}
+	idle()
 	if len(f.callsTo("POST", "videos")) != 1 {
 		t.Fatalf("after the result: %v", YTHighlightsStatus())
 	}
