@@ -138,6 +138,7 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Instant replay** — automatically saves and replays wickets, boundaries, and milestones via the OBS replay buffer.
 - **Replay transition** — full-screen animated transition before each replay.
 - **Highlights compiler** — stitches all replay clips into a post-match highlights reel automatically with FFmpeg.
+- **Chapters on the match video** — after the stream, the YouTube video gets a timestamp for each innings, wicket, fifty, hundred and five-for, so anyone watching later can jump straight to them.
 - **Auto-tagged highlights** *(new)* — every replay clip is tagged with why it fired and the
   match situation at that moment ("WICKET · WALKER 22 · C JONES B HARRISON · 84-3"). The
   reel gets those captions burned in as lower-thirds, test clips are skipped, and a

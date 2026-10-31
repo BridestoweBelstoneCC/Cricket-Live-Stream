@@ -75,6 +75,7 @@ func DefaultState() M {
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut":  false,
+		"youtube_chapters":          true,
 		"graphics_win_predictor":    true,
 		"graphics_voice_commentary": false, // read the end-of-over line aloud (computer voice)
 		"camera_spotter":            false, // AI camera checks while live — spends AI credit

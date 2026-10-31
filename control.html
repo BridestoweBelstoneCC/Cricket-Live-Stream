@@ -740,6 +740,17 @@
     </p>
     <button class="btn btn-test" onclick="updateYouTubeBroadcast()" style="margin-top:8px;">&#9654; Update YouTube broadcast now</button>
     <div id="youtube-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Chapters on the match video</div>
+           <div class="toggle-desc">After the stream ends, the video's description gets a timestamp for each innings, wicket, fifty, hundred and five-for, so viewers can jump to them. Your own description is kept; the chapters go at the end.</div></div>
+      <label class="toggle"><input type="checkbox" id="youtube_chapters"><span class="track"></span></label>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn btn-test" onclick="youtubeChapters(true)">Preview the chapters</button>
+      <button class="btn btn-test" onclick="youtubeChapters(false)">Add them to the video now</button>
+    </div>
+    <div id="youtube-chapters-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
+    <pre id="youtube-chapters" style="display:none;margin-top:6px;padding:8px;background:var(--surface-2);border-radius:5px;font-size:11px;white-space:pre-wrap;"></pre>
     <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:11px;color:var(--muted);line-height:1.6;">
       <strong style="color:var(--accent);">One-time setup:</strong><br>
       1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">console.cloud.google.com</a><br>
@@ -2692,7 +2703,7 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','youtube_chapters','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -3120,6 +3131,23 @@ async function updateYouTubeBroadcast() {
       msg.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
     }
   } catch(e) { if (msg) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; } }
+}
+
+// The match video's chapters (chapters.go): a preview reads, "add" writes the description.
+async function youtubeChapters(preview) {
+  const msg = document.getElementById('youtube-chapters-msg');
+  const pre = document.getElementById('youtube-chapters');
+  msg.textContent = preview ? 'Working out the chapters…' : 'Adding the chapters to the video…';
+  msg.style.color = 'var(--accent)';
+  try {
+    const res = preview ? await apiFetch('/youtube/chapters')
+                        : await apiFetch('/youtube/chapters', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    msg.textContent = (d.ok ? '✓ ' : '✗ ') + (d.message || d.error || '');
+    msg.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
+    pre.textContent = d.chapters || '';
+    pre.style.display = d.chapters ? 'block' : 'none';
+  } catch (e) { msg.textContent = 'Could not reach server'; msg.style.color = 'var(--bad)'; }
 }
 
 async function showWeather() {
