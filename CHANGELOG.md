@@ -6,6 +6,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Pair a clubhouse screen without typing.** Press **Pair from the laptop** on the screen:
+  it shows a three-digit code, the laptop's Clubhouse card shows the same code, and one
+  press there (**Match-day screen** or **Score-only screen**) pairs it. Typing the key
+  still works.
 - **Score-only clubhouse screens.** A clubhouse screen can now show the score with no
   buttons at all — for the bar's TV, the pavilion or the scorebox. Tick **Let score-only
   screens show the score** on the laptop's Clubhouse screen card and pair the screen with

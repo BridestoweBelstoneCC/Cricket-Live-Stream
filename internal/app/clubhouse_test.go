@@ -282,3 +282,38 @@ func TestClubhouseScoreOnlyScreens(t *testing.T) {
 		t.Fatal("the link still answers with both switched off")
 	}
 }
+
+// A screen asking to pair shows on the card, and the card's answer reaches it.
+func TestClubhouseCardAnswersAScreenAsking(t *testing.T) {
+	ta := newTestApp(t)
+	t.Cleanup(ta.stopClubhouse)
+	port := freePort(t)
+	t.Setenv(clubhouse.PortEnv, fmt.Sprint(port))
+	if r := ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	c := ta.api("POST", "clubhouse", M{"view_enabled": true}).json(t)["clubhouse"].(M)
+	viewKey := clubhouse.NormaliseKey(c["view_key"].(string))
+	secret := strings.Repeat("ab", 16)
+	if code, out := screenCall(t, port, "POST", "/clubhouse/ask", "", M{"secret": secret, "name": "clubhouse-pi"}); code != 200 {
+		t.Fatalf("ask: %d %v", code, out)
+	}
+	reqs, _ := ta.status()["clubhouse"].(M)["requests"].([]any)
+	if len(reqs) != 1 || reqs[0].(M)["name"] != "clubhouse-pi" {
+		t.Fatalf("card: %v", reqs)
+	}
+	id := reqs[0].(M)["id"]
+	if r := ta.api("POST", "clubhouse", M{"answer": id, "as": "control"}); r.status == 200 {
+		t.Fatal("said yes as a match-day screen, which isn't switched on")
+	}
+	if r := ta.api("POST", "clubhouse", M{"answer": id, "as": "view"}); r.status != 200 {
+		t.Fatalf("yes: %d %s", r.status, r.body)
+	}
+	_, out := screenCall(t, port, "POST", "/clubhouse/ask/poll", "", M{"secret": secret})
+	if out["status"] != "view" || out["key"] != viewKey {
+		t.Fatalf("poll: %v", out)
+	}
+	if f, _ := ini.Load(setup.ConfigFile()); f.GetBool("Clubhouse", "enabled", false) {
+		t.Fatal("answering must not change the settings")
+	}
+}

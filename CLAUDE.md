@@ -355,8 +355,13 @@ problem + what to do + pause) or print and `console.Pause()`.
 - **The clubhouse screen's link lives in the WINDOW (`internal/app`), not the server.** It
   must answer before match day starts (to start it) and after it ends (to switch the
   laptop off), so it can't be a server route. Its rules, each with a test:
-  - Everything but `/clubhouse/hello` needs the pairing key (`X-Clubhouse-Key`, constant
-    time, a per-address and a global lockout). A request with an `Origin` header is
+  - Everything but `/clubhouse/hello` and asking to pair needs the pairing key
+    (`X-Clubhouse-Key`, constant time, a per-address and a global lockout). Asking
+    (`ask.go`: `POST /clubhouse/ask`, `/clubhouse/ask/poll`) is keyless by design, so it
+    may only ever put a request on the laptop's card: the LAPTOP picks the code (a
+    requester choosing it could copy a real screen's), one request per address and
+    `maxAsks` at once, the key handed only to the secret's holder, once, after
+    `Link.Answer` — a press on the card. Don't let it return anything else. A request with an `Origin` header is
     refused outright: the screen is a program, so an Origin means a web page.
   - The server is reached only through `/clubhouse/server/...` on `proxyGET`/`proxyPOST`
     in `link.go`. **That allowlist is the security boundary** — the Pi's PIN is a UI lock.

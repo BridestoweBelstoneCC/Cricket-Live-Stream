@@ -158,6 +158,7 @@ func (a *App) clubhouseInfo() map[string]any {
 		if seen, from := l.SeenView(); !seen.IsZero() {
 			out["view_seen_ago"], out["view_seen_from"] = int(time.Since(seen).Seconds()), from
 		}
+		out["requests"] = l.Requests()
 	}
 	nics := clubhouse.LocalNICs(agent.LocalIP())
 	wired := false
@@ -176,9 +177,21 @@ type clubhouseChange struct {
 	StartAtLogin  *bool `json:"start_at_login"`
 	ViewEnabled   *bool `json:"view_enabled"`
 	NewViewKey    *bool `json:"new_view_key"`
+	// A screen asking to pair (clubhouse/ask.go): its id, and "control", "view" or "no".
+	Answer string `json:"answer"`
+	As     string `json:"as"`
 }
 
 func (a *App) setClubhouse(c clubhouseChange) error {
+	if c.Answer != "" {
+		a.mu.Lock()
+		l := a.chLink
+		a.mu.Unlock()
+		if l == nil {
+			return errors.New("The clubhouse screen isn't switched on.")
+		}
+		return l.Answer(c.Answer, c.As)
+	}
 	s, _ := loadClubhouseSettings()
 	if c.Enabled != nil {
 		s.Enabled = *c.Enabled

@@ -184,11 +184,14 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
   </header>
 
   <main id="main">
-    <!-- Not paired: the key from the laptop's match-day screen. -->
+    <!-- Not paired: ask the laptop (someone says yes there), or type its key. -->
     <section id="v-pair" class="view center hidden">
       <h1>Pair with the streaming laptop</h1>
       <p class="muted">On the laptop, open CricketStream and switch on <b>Clubhouse screen</b> on the match-day screen.
-        Type the pairing key it shows — or its score-only key, for a screen that shows the score with no buttons.</p>
+        Then press this, and say yes on the laptop — nothing to type.</p>
+      <button class="btn go huge" id="ask_go" type="button">Pair from the laptop</button>
+      <p class="muted" style="margin-top:22px">Or type the pairing key it shows (or its score-only key, for a screen that
+        shows the score with no buttons):</p>
       <label class="field"><span>Pairing key</span><input id="pair_key" data-osk="key" maxlength="9" autocomplete="off" inputmode="none" placeholder="ABCD-EFGH"></label>
       <label class="field hidden" id="pair_addr_row"><span>The laptop's address (shown on the same card)</span>
         <input id="pair_addr" data-osk="addr" autocomplete="off" inputmode="none" placeholder="192.168.1.20"></label>
@@ -197,6 +200,15 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
         <button class="btn small" id="pair_addr_show" type="button">Laptop not found?</button>
       </div>
       <p class="say" id="pair_say"></p>
+    </section>
+
+    <!-- Asked: waiting for someone at the laptop to say yes. -->
+    <section id="v-asking" class="view center hidden">
+      <h1><span class="spin"></span>Say yes on the laptop</h1>
+      <p class="muted">On the streaming laptop's match-day screen, under <b>Clubhouse screen</b>, this screen is asking
+        to pair. Check the code there matches this one, then press <b>Match-day screen</b> or <b>Score-only</b>.</p>
+      <div id="ask_codes"></div>
+      <button class="btn small" id="ask_cancel" type="button">Cancel</button>
     </section>
 
     <!-- Paired: a PIN so passers-by can watch but not touch. -->
@@ -377,6 +389,7 @@ var KEY = document.querySelector('meta[name=screen-key]').content;
 var S = null;                 // the screen's status (and the laptop's, inside it)
 var tab = 'score', lastTabPhase = '', manual = false, pendingStart = null, justEnded = false;
 var pinStep = false, liveData = null, ytVideo = '', lastTouch = Date.now();
+var wasAsking = false, askErrShown = '';
 function $(id) { return document.getElementById(id); }
 function txt(id, t) { $(id).textContent = t == null ? '' : String(t); }
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
@@ -520,7 +533,7 @@ function renderQuestion() {
 
 // ── Which screen ──
 function viewName() {
-  if (!S.paired) return 'pair';
+  if (!S.paired) return S.asking && S.asking.length ? 'asking' : 'pair';
   if (pinStep) return 'pinset';
   var L = S.laptop;
   if (S.view_only) return S.reachable && L.phase === 'running' && L.server_ready ? 'score' : 'idle';
@@ -562,6 +575,18 @@ function render() {
       : 'This usually takes a minute or two. (' + mins(S.waking_for) + ')');
     show('wake_slow', slow);
   }
+  if (v === 'asking') {
+    var codes = $('ask_codes'); codes.textContent = '';
+    S.asking.forEach(function (a) {
+      var c = document.createElement('div'); c.className = 'pin'; c.textContent = a.code; codes.appendChild(c);
+      if (S.asking.length > 1 && a.club) { var n = document.createElement('p'); n.className = 'muted'; n.textContent = a.club; codes.appendChild(n); }
+    });
+  }
+  // Paired by a yes on the laptop: on to the PIN, as a typed key does.
+  if (wasAsking && S.paired) { wasAsking = false; pinStep = !S.pin_set; render(); return; }
+  wasAsking = !S.paired && v === 'asking';
+  if (v === 'pair' && S.ask_error && S.ask_error !== askErrShown) say('pair_say', S.ask_error, 'bad');
+  askErrShown = S.ask_error || '';
   if (v === 'pinset') {
     txt('pinset_skip', S.pin_set ? 'Cancel' : 'No PIN');
     txt('pinset_why', S.view_only ? 'This screen only shows the score. The PIN keeps its settings (and pairing) to the people who know it.'
@@ -1017,6 +1042,15 @@ $('pair_go').addEventListener('click', function () {
     poll();
   });
 });
+$('ask_go').addEventListener('click', function () {
+  hideOSK(); $('ask_go').disabled = true; say('pair_say', 'Looking for the laptop…');
+  api('ask', {address: $('pair_addr').value}).then(function (d) {
+    $('ask_go').disabled = false;
+    say('pair_say', d.ok ? '' : d.error, d.ok ? '' : 'bad');
+    poll();
+  });
+});
+$('ask_cancel').addEventListener('click', function () { api('ask/cancel', {}).then(poll); });
 var newPin = '';
 buildPad($('pinset_pad'), function (k) {
   if (k === '⌫') newPin = newPin.slice(0, -1);

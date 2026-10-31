@@ -112,10 +112,19 @@ on mains power, or it will go to sleep mid-match.
    onto a USB stick with the script, and run `bash install-pi.sh` beside it.)
 4. Restart the Pi (`sudo reboot`).
 
-The screen opens and asks for the **pairing key**. Type the one on the laptop's card and
-press **Pair** (the laptop must be on, with CricketStream open). If the club's network
-blocks the search — some guest wifi does — press *Laptop not found?* and type the
-laptop's address too (it's on the same card).
+The screen opens on **Pair with the streaming laptop** (the laptop must be on, with
+CricketStream open and the clubhouse screen ticked on its card):
+
+- **Pair from the laptop** — nothing to type. The screen shows a three-digit code, and
+  the laptop's Clubhouse card shows *A screen is asking to pair* with the same code.
+  Check they match, and press **Match-day screen** (or **Score-only screen**) on the
+  laptop. The screen pairs a moment later. If the codes don't match, press **No**:
+  something else on the network is asking.
+- Or type the **pairing key** from the laptop's card and press **Pair**.
+
+If the club's network blocks the search — some guest wifi does — press *Laptop not
+found?* and type the laptop's address too (it's on the same card); either way of pairing
+then uses it.
 
 Then set a **PIN**: four to eight digits. Without one, anyone in the clubhouse can start
 and stop the stream.
@@ -144,8 +153,8 @@ number of score-only ones, or score-only screens alone.
 
 1. On the laptop, on the match-day screen's **Clubhouse screen** card, tick **Let
    score-only screens show the score**. A second key appears, the **score-only key**.
-2. Set up the Pi exactly as in [2. The Pi](#2-the-pi), and type the **score-only key**
-   when it asks for the pairing key.
+2. Set up the Pi exactly as in [2. The Pi](#2-the-pi). Press **Pair from the laptop** on
+   it and **Score-only screen** on the laptop — or type the **score-only key**.
 
 The screen says *No match on* until match day starts on the laptop, then shows the score
 by itself. The laptop doesn't need a network cable for it (nothing is woken). A PIN on a
@@ -164,7 +173,10 @@ the match-day screen's key is separate and carries on.
   It switches the laptop on with a Wake-on-LAN "magic packet" sent on the club network.
 - The laptop listens for the screen on **port 5096** (TCP and UDP), only while the
   clubhouse screen is switched on. Every request needs the pairing key; five wrong keys
-  from one address and it's refused for a couple of minutes.
+  from one address and it's refused for a couple of minutes. The one exception is asking
+  to pair, which only puts a request on the laptop's own card: the laptop picks the code,
+  a few requests at most wait at once, and the key goes only to the screen that asked,
+  once, after someone at the laptop said yes.
 - The screen can only reach the control panel's match-day buttons and reads — the
   checklist, going live and stopping, the pre-match check, YouTube's title, adding a
   camera, the camera cut, the score, the stream picture. It can't open Settings, see the
