@@ -47,7 +47,10 @@ func HeadToHead(force bool) M {
 		trim(gs(cfg, "pc_match_id", "")), h2hNow().Format("2006-01-02")}, "|")
 	h2hMu.Lock()
 	defer h2hMu.Unlock()
-	if !force && h2hKey == key && h2hResult != nil {
+	if force {
+		h2hResult = nil // asked for afresh: the old answer isn't given out meanwhile
+	}
+	if h2hKey == key && h2hResult != nil {
 		return h2hResult
 	}
 	if !h2hBuilding {
