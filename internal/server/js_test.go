@@ -738,3 +738,108 @@ func TestClubAccentNotAColourFallsBackToDefaults(t *testing.T) {
 		}
 	}
 }
+
+// The pre-match countdown: minutes to cfg.match_time today, and when the panel shows at
+// all (not with no time, once it's passed, or hours ahead).
+func TestPrematchCountdown(t *testing.T) {
+	src := overlayFunctions(t, "minutesToStart", "untilText", "fillCountdownPanel") + `
+var els = {};
+function el(id) { return els[id] || (els[id] = {style: {}, textContent: ''}); }
+var cfg = {};
+function at(mins) { var d = new Date(Date.now() + mins * 60000 + 20000);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+var out = {};
+cfg.match_time = at(25); out.m = minutesToStart(); out.shown = fillCountdownPanel(); out.left = el('countdown-left').textContent;
+out.label = el('countdown-label').textContent.indexOf('Play starts at ' + cfg.match_time) === 0;
+cfg.match_time = at(95); out.hr = untilText(minutesToStart());
+cfg.match_time = ''; out.none = minutesToStart(); out.noneShown = fillCountdownPanel();
+cfg.match_time = at(-30); out.pastShown = fillCountdownPanel();
+cfg.match_time = at(300); out.farShown = fillCountdownPanel();
+cfg.match_time = '13.30'; out.dot = minutesToStart() !== null;
+console.log(JSON.stringify(out));
+`
+	var got map[string]any
+	runJS(t, src, &got)
+	// "25 min" from now lands on 25 or 26 whole minutes, depending on this second.
+	m, _ := got["m"].(float64)
+	if (m != 25 && m != 26) || got["shown"] != true || got["left"] != fmt.Sprintf("in %d min", int(m)) || got["label"] != true {
+		t.Fatalf("25 min to go: %v", got)
+	}
+	if got["hr"] != "in 1 hr 35 min" && got["hr"] != "in 1 hr 36 min" {
+		t.Errorf("over an hour: %v", got["hr"])
+	}
+	if got["none"] != nil || got["noneShown"] != false || got["pastShown"] != false || got["farShown"] != false || got["dot"] != true {
+		t.Fatalf("when it doesn't show: %v", got)
+	}
+}
+
+// Breaks: drinks start after the drinks over and end at the next ball — not on the next
+// poll whose ticker still holds the finished over (what made the old drinks card vanish);
+// the innings break lasts through the change of innings until the reply's first ball.
+func TestBreakDetection(t *testing.T) {
+	src := overlayFunctions(t, "ballsOf", "updateBreak", "startBreak", "endBreak", "fillBreakPanel", "breakGraphics") + `
+var BREAK_LABELS = { drinks: 'Drinks', innings: 'Innings break', rain: 'Rain delay', 'break': 'Break in play' };
+var _break = null, _breakAt = null, _drinksDone = {}, _inningsBreakDone = false;
+var _breakTimer = null, _breakLoop = null, _weatherBreak = false, _weatherOK = true;
+var MAX_OVERS = 40, SERVER = '', queue = [], graphicActive = false, _lastCard = null, _lastCardMeta = null;
+var cfg = { drinks_over: 20, home_team: 'Home CC', away_team: 'Rivals CC' };
+var posts = [], queued = [];
+var els = {};
+function el(id) { return els[id] || (els[id] = { style: {}, textContent: '', classList: {
+  s: {}, add: function (c) { this.s[c] = 1; }, remove: function (c) { delete this.s[c]; }, contains: function (c) { return !!this.s[c]; } } }); }
+function fetch(u, o) { posts.push(u + ' ' + ((o && o.body) || '')); return { catch: function () {} }; }
+setTimeout = function (f) { f(); return 0; };
+setInterval = function () { return 0; };
+clearTimeout = clearInterval = function () {};
+function queueGraphic(id) { queued.push(id); }
+function showScorecard() {}
+function oversDisplay(o) { return String(o); }
+function frame(inn, overs, wkts, score) { updateBreak({ innings: inn, overs: overs, wickets: wkts || 0, score: score || 0, battingTeamName: 'Home CC' }); }
+var log = [];
+function note(what) { log.push(what + ':' + (_break ? _break.kind : '-') + ':' + posts.length); }
+frame(1, 19.5); note('19.5');
+frame(1, 20); note('drinks over done');           // the over-completing write
+frame(1, 20); note('stale ticker, same overs');    // the old code ended it here
+frame(1, 20); note('still drinks');
+frame(1, 20.1); note('first ball');
+frame(1, 39.5, 7, 187);
+frame(1, 40, 7, 188); note('innings over');
+var weatherDuring = el('weather-widget').classList.contains('show');
+var sub = el('break-sub').textContent;
+frame(2, 0); note('innings 2 opened, no ball yet');
+frame(2, 0.1); note('reply under way');
+frame(2, 20); note('innings 2 drinks');
+frame(2, 20.1);
+frame(2, 20); note('no second drinks this innings');
+startBreak('rain', false, 0); note('rain from the panel');
+frame(2, 20); note('rain, no ball');
+frame(2, 20.1); note('rain over');
+console.log(JSON.stringify({ log: log, posts: posts, queued: queued, weather: weatherDuring,
+  weatherAfter: el('weather-widget').classList.contains('show'), sub: sub }));
+`
+	var got struct {
+		Log, Posts, Queued    []string
+		Weather, WeatherAfter bool
+		Sub                   string
+	}
+	runJS(t, src, &got)
+	want := []string{"19.5:-:0", "drinks over done:drinks:1", "stale ticker, same overs:drinks:1", "still drinks:drinks:1",
+		"first ball:-:2", "innings over:innings:3", "innings 2 opened, no ball yet:innings:3", "reply under way:-:4",
+		"innings 2 drinks:drinks:5", "no second drinks this innings:-:6", "rain from the panel:rain:6",
+		"rain, no ball:rain:6", "rain over:-:7"}
+	if strings.Join(got.Log, " | ") != strings.Join(want, " | ") {
+		t.Fatalf("got  %s\nwant %s", strings.Join(got.Log, " | "), strings.Join(want, " | "))
+	}
+	if !strings.Contains(got.Posts[0], `/break/start {"kind":"drinks"}`) || !strings.HasPrefix(got.Posts[1], "/break/end") {
+		t.Fatalf("posts: %v", got.Posts)
+	}
+	if !got.Weather || got.WeatherAfter {
+		t.Error("the weather card goes up for the break and comes down at the first ball")
+	}
+	if got.Sub != "Rivals CC need 189 to win" {
+		t.Errorf("the innings break card: %q", got.Sub)
+	}
+	if len(got.Queued) == 0 || got.Queued[0] != "break-panel" {
+		t.Errorf("break graphics: %v", got.Queued)
+	}
+}

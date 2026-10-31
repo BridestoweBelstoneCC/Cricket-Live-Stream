@@ -6,6 +6,26 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **The break show, and drinks that work.** Drinks never really showed: the weather card
+  came up after the drinks over and went again a poll later, because NV Play leaves the
+  finished over's balls in its ticker and that read as play restarting. Breaks now end at
+  the first ball after, counted from the overs. During drinks, the innings break, or a
+  break started from the control panel (**Breaks → Rain delay / Break in play**), the
+  stream shows a break card ("Drinks · Home CC 96/2 after 20 overs", or at the innings
+  break what the reply needs), the scorecard and the weather — and replays the match's best
+  moments so far (wickets, fifties, sixes, fours) through the Replay scene, captioned.
+- **A pre-match show.** Go live before play and the stream has something on it: a
+  countdown to the start ("Play starts at 13:00 · in 25 min", and "Starts in 25 min" in
+  the scorebar), the head to head with today's opposition, both teams' XIs as entered on
+  PlayCricket (captain and keeper marked), and the ground's weather in the corner until
+  the first ball — alongside the competition, umpires, season form and league table it
+  already showed. The start time comes from today's PlayCricket fixture.
+- **Head to head.** Control panel → On-screen extras → **Show head-to-head**: the record
+  of today's two teams over their last five meetings (in the last six seasons) and how the
+  last one went — both totals, top scorers and best bowlers — from PlayCricket. It's today's
+  TEAMS (our 1st XI v their 1st XI), not any two sides of the clubs.
+- **Fixed: the league table graphic had no background.** It sat in the bottom-left corner
+  over the camera picture; it's now the full-screen panel the other pre-match graphics are.
 - **A ready-made Raspberry Pi image for the clubhouse screen.** Releases now include
   `CricketStream-clubhouse-pi.img.xz`: Raspberry Pi OS with the screen built in. Flash it
   with Raspberry Pi Imager (setting the username and wifi there) and the Pi boots

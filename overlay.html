@@ -591,7 +591,9 @@ body.style-franchise .lineup-body, body.style-franchise .summary-body {
 body.style-franchise #over-summary-panel, body.style-franchise #partnership-display,
 body.style-franchise #winpred-display, body.style-franchise #over-commentary-display,
 body.style-franchise #runrate-display, body.style-franchise #prematch-panel,
-body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away {
+body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away,
+body.style-franchise #league-table-panel, body.style-franchise #h2h-panel, body.style-franchise #countdown-panel,
+body.style-franchise #break-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
 body.style-franchise #player-card, body.style-franchise #player-card-right,
@@ -652,7 +654,9 @@ body.style-neon .lineup-body, body.style-neon .summary-body {
 body.style-neon #over-summary-panel, body.style-neon #partnership-display,
 body.style-neon #winpred-display, body.style-neon #over-commentary-display,
 body.style-neon #runrate-display, body.style-neon #prematch-panel,
-body.style-neon #pregame-form-home, body.style-neon #pregame-form-away {
+body.style-neon #pregame-form-home, body.style-neon #pregame-form-away,
+body.style-neon #league-table-panel, body.style-neon #h2h-panel, body.style-neon #countdown-panel,
+body.style-neon #break-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
 body.style-neon #player-card, body.style-neon #player-card-right,
@@ -714,7 +718,9 @@ body.style-block .lineup-body, body.style-block .summary-body {
 body.style-block #over-summary-panel, body.style-block #partnership-display,
 body.style-block #winpred-display, body.style-block #over-commentary-display,
 body.style-block #runrate-display, body.style-block #prematch-panel,
-body.style-block #pregame-form-home, body.style-block #pregame-form-away { background: rgba(17,17,17,0.95); }
+body.style-block #pregame-form-home, body.style-block #pregame-form-away,
+body.style-block #league-table-panel, body.style-block #h2h-panel, body.style-block #countdown-panel,
+body.style-block #break-panel { background: rgba(17,17,17,0.95); }
 body.style-block #player-card, body.style-block #player-card-right,
 body.style-block #weather-widget, body.style-block #replay-banner { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
@@ -769,7 +775,7 @@ body.style-block #replay-banner { border-left-width: 8px; }
   background:rgba(12,12,18,0.92); }
 /* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
    (defined further down), since nothing else needs to be on screen until play starts. */
-#prematch-panel, #pregame-form-home, #pregame-form-away {
+#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px; height: auto;
   background: rgba(10,15,25,0.92);
@@ -1349,6 +1355,45 @@ body.style-block #replay-banner { border-left-width: 8px; }
   <div style="font-size:13px;color:rgba(255,255,255,0.55);margin-top:16px;" id="league-table-above-row">
     A win today moves them above <span id="league-table-above-team" style="color:#fff;font-weight:700;">—</span>
   </div>
+</div>
+
+<!-- Head to head — "the last time we played them" (GET /h2h, h2h.go): the record over the
+     last few meetings of today's two teams, and the last game's totals and stars. Shown
+     in the pre-match rotation and from the control panel's "Show head-to-head". -->
+<div class="graphic-panel" id="h2h-panel">
+  <div class="over-accent" id="h2h-accent"></div>
+  <div class="pc-label" id="h2h-label">Head to Head</div>
+  <div class="pc-name" id="h2h-title" style="font-size:26px;">Last time we met</div>
+  <div class="pc-stats" style="margin-top:12px;">
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-won">0</span><span class="pc-stat-key" id="h2h-won-key">Won</span></div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-lost">0</span><span class="pc-stat-key" id="h2h-lost-key">Lost</span></div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-other">0</span><span class="pc-stat-key">Drawn / no result</span></div>
+  </div>
+  <div style="font-size:15px;color:#fff;font-weight:700;margin-top:14px;" id="h2h-result">—</div>
+  <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:6px;" id="h2h-our"></div>
+  <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px;" id="h2h-their"></div>
+</div>
+
+<!-- Pre-match countdown — "play starts at 13:00 · in 25 min" (cfg.match_time, from today's
+     PlayCricket fixture), first in the pre-match rotation while play is still to come. -->
+<div class="graphic-panel" id="countdown-panel">
+  <div class="over-accent" id="countdown-accent"></div>
+  <div class="pc-label" id="countdown-label">Play starts at —</div>
+  <div class="pc-name" id="countdown-teams" style="margin-top:6px;">—</div>
+  <div class="pc-stat-val" id="countdown-left" style="font-size:60px;margin-top:22px;">—</div>
+  <div class="pc-stat-key" id="countdown-comp" style="font-size:12px;margin-top:10px;"></div>
+</div>
+
+<!-- The break show (startBreak below): drinks, the innings break, or a break the operator
+     started. Between the replays the server plays (breakshow.go), on the main scene. -->
+<div class="graphic-panel" id="break-panel">
+  <div class="over-accent" id="break-accent"></div>
+  <div class="pc-label" id="break-label">Drinks</div>
+  <div class="pc-name" id="break-teams" style="margin-top:6px;">—</div>
+  <div class="pc-stat-val" id="break-score" style="font-size:52px;margin-top:22px;">—</div>
+  <div class="pc-stat-key" id="break-sub" style="font-size:13px;margin-top:10px;"></div>
 </div>
 
 <!-- Player card (new batter) -->
@@ -1933,10 +1978,10 @@ function triggerBowlerMilestone(bigText, name, sub) {
 }
 
 // ── Lineup card ───────────────────────────────────────────
-function showLineup(teamName, players, inningsNum) {
+function showLineup(teamName, players, inningsNum, subtitle) {
   if (!cfg.graphics_lineup) return;
   el('lineup-team-name').textContent = teamName.split(' ').slice(0,3).join(' ');
-  el('lineup-subtitle').textContent  = `${inningsNum===1?'1st':'2nd'} innings batting order`;
+  el('lineup-subtitle').textContent  = subtitle || `${inningsNum===1?'1st':'2nd'} innings batting order`;
   const grid = el('lineup-grid');
   grid.innerHTML = '';
   players.slice(0,11).forEach((p,i) => {
@@ -1945,7 +1990,7 @@ function showLineup(teamName, players, inningsNum) {
     const cls  = p.status==='out'?' batted':p.status==='in'?' batting':'';
     const stat = p.status==='out' ? `<span class="lineup-stat">${esc(p.runs)}</span>` : '';
     div.innerHTML = `<span class="lineup-num">${i+1}</span>
-      <span class="lineup-name${cls}">${esc(fmtSurname(p.name))}</span>${stat}`;
+      <span class="lineup-name${cls}">${esc(fmtSurname(p.name))}${p.tag ? ' (' + esc(p.tag) + ')' : ''}</span>${stat}`;
     grid.appendChild(div);
   });
   queueGraphic('lineup-panel', 10000);
@@ -1984,11 +2029,14 @@ function triggerInningsSummary(state, allInnings) {
 }
 
 // ── Weather ───────────────────────────────────────────────
+var _weatherOK = false;         // /weather has answered: there are conditions to show
+var _weatherPrematch = false;   // the pre-match show put the card up (and takes it down)
 async function refreshWeather() {
   try {
     const res  = await fetch(`${SERVER}/weather`);
     const data = await res.json();
     if (data.ok) {
+      _weatherOK = true;                            // the pre-match show may put it up
       _rainProb = parseInt(data.rain_prob || 0);   // drives the DLS pill
       el('w-icon').textContent     = data.icon || '?';
       el('w-temp').textContent     = data.temp;
@@ -2013,6 +2061,10 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
+    if (cmds.break) startBreak(cmds.break, false);
+    if (cmds.break_end && _break) endBreak(false);
+    if (cmds.break_clip) showReplayBanner(cmds.break_clip);
+    if (cmds.show_h2h) { _h2hRequested = false; loadH2H(function () { if (fillH2HPanel()) queueGraphic('h2h-panel', 12000); }); }
     // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
     if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
     if (cmds.show_player_cards && prev && prev.batter1 && prev.batter1.name) {
@@ -2823,20 +2875,6 @@ function processPCSData(state) {
     catch(e){ console.warn('spell error:', e); }
     try { overExtras(state, _lastPCSovers + 1, overRuns); }
     catch(e){ console.warn('overExtras error:', e); }
-    // Drinks break — show weather card after the over graphics sequence
-    var drinksOv = parseInt(cfg.drinks_over) || 0;
-    if (drinksOv > 0 && (_lastPCSovers + 1) === drinksOv) {
-      var seqDuration = 7000
-        + (cfg.graphics_partnership_display ? 5000 : 0)
-        + (cfg.graphics_runrate_trend       ? 5000 : 0)
-        + (cfg.graphics_win_predictor !== false && state.winPredictor ? 6000 : 0)
-        + (cfg.graphics_commentary_over     ? 9000 : 0)
-        + 1500;  // buffer
-      setTimeout(function() {
-        fetch(SERVER+'/weather/show',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
-        _drinksWeatherShown = true;
-      }, seqDuration);
-    }
   }
   // Clear the ticker the moment the over completes, not on the first ball of the next one.
   // The ticker string can't be used to detect this: NV Play does NOT reliably blank last_ball
@@ -2931,11 +2969,6 @@ function processPCSData(state) {
     var pcR = document.getElementById("player-card-right");
     if (pcR) pcR.classList.remove("show");
   }
-  // Auto-hide drinks break weather on next ball
-  if (_drinksWeatherShown && parsed.length > 0) {
-    _drinksWeatherShown = false;
-    fetch(SERVER+'/weather/hide',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
-  }
   updatePartnership(pRuns, pBalls);
   rrRecordOver(state);
   updateRunRateTrend(state.over_history, state.run_rate);
@@ -2951,6 +2984,7 @@ function processPCSData(state) {
 // ── Event detection ───────────────────────────────────────
 function detectEvents(state, allInnings) {
   const { score, wickets, overs, innings, batter1, batter2 } = state;
+  try { updateBreak(state); } catch(e) { console.warn('break error:', e); }
 
   if (prev.score === null) {
     prev.score=score; prev.wickets=wickets; prev.overs=overs;
@@ -3114,6 +3148,7 @@ function detectEvents(state, allInnings) {
 
 // ── Scorebar render ───────────────────────────────────────
 function renderScorebar(state, home, away) {
+  if (_weatherPrematch) { _weatherPrematch = false; el('weather-widget').classList.remove('show'); }
   const batting = state.battingTeamName||home;
   const bowling = state.bowlingTeamName||away;
   // Use abbreviation if set, otherwise auto-shorten the full name
@@ -3232,7 +3267,6 @@ var _pendingFOW         = null; // {batter, runs, balls, score, wkts} waiting fo
 var _cardShownAtBall    = -1; // legal-ball ordinal when player card shown (-1 = not shown)
 var _lastHomeBatting    = true; // remembers which side is batting so colours don't flicker
 var _lastWicketOver     = -1; // suppress over summary when wicket was last ball
-var _drinksWeatherShown = false;
 var _lastBallSig        = null; // last-seen ticker string (null = not yet seeded; '' is a real empty ticker)
 var _lastBallCount      = 0;   // ball count last poll (within current over)
 var _lastBallOver       = -1;  // over number last poll (-1 = not yet seeded)
@@ -3415,6 +3449,147 @@ function fillLeagueTablePanel() {
   return true;
 }
 
+// ── Head to head (GET /h2h) ──
+var _h2h = null;            // the last usable answer
+var _h2hRequested = false;
+function loadH2H(then) {
+  if (_h2hRequested) { if (then) then(); return; }
+  _h2hRequested = true;
+  var tries = 0;
+  (function attempt() {
+    fetch(SERVER + '/h2h').then(function(r){ return r.json(); }).then(function(d) {
+      if (d && d.ready === false && tries < 20) { tries++; setTimeout(attempt, 3000); return; }
+      if (d && d.ready && d.usable) _h2h = d;
+      if (then) then();
+    }).catch(function(){ if (then) then(); });
+  })();
+}
+
+function h2hSide(s) {
+  if (!s) return '';
+  var bits = [];
+  if (s.top_bat) bits.push(s.top_bat);
+  if (s.best_bowl) bits.push(s.best_bowl);
+  return (s.team || '') + ' ' + (s.total || '') + (s.overs ? ' (' + s.overs + ' ov)' : '') +
+    (bits.length ? ' — ' + bits.join(', ') : '');
+}
+
+// Fills #h2h-panel from _h2h; false when there's nothing to show (first meeting, no
+// PlayCricket key, or not built yet).
+function fillH2HPanel() {
+  if (!_h2h || !_h2h.last) return false;
+  var rec = _h2h.record || {}, last = _h2h.last;
+  el('h2h-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('h2h-label').textContent = 'Head to Head · last ' + (rec.played || 0) + ' meeting' + (rec.played === 1 ? '' : 's');
+  el('h2h-title').textContent = (cfg.home_team || _h2h.us || 'Us') + ' v ' + (cfg.away_team || _h2h.them || 'Them');
+  el('h2h-won').textContent = rec.won || 0;
+  el('h2h-lost').textContent = rec.lost || 0;
+  el('h2h-other').textContent = (rec.drawn || 0) + (rec.tied || 0) + (rec.no_result || 0);
+  el('h2h-won-key').textContent = (cfg.home_abbrev || 'Home') + ' won';
+  el('h2h-lost-key').textContent = (cfg.away_abbrev || 'Away') + ' won';
+  el('h2h-result').textContent = 'Last time (' + (last.date || '?') + '): ' + (last.result || 'no result recorded');
+  el('h2h-our').textContent = h2hSide(last.our);
+  el('h2h-their').textContent = h2hSide(last.their);
+  return true;
+}
+
+// ── The break show ──
+// A break starts at drinks (once the drinks over's graphics have played), when the first
+// innings ends, or when the panel says (rain, an injury); it ends at the FIRST BALL after —
+// counted from the overs, never from the ball ticker: NV Play leaves the finished over's
+// balls in the ticker, which is why the old drinks card vanished a poll after it appeared.
+var _break = null;          // {kind, innings, balls}
+var _breakAt = null;        // the last frame's {innings, balls, state}
+var _drinksDone = {};       // innings → drinks already had
+var _inningsBreakDone = false;
+var _breakTimer = null, _breakLoop = null, _weatherBreak = false;
+var BREAK_LABELS = { drinks: 'Drinks', innings: 'Innings break', rain: 'Rain delay', 'break': 'Break in play' };
+
+function ballsOf(overs) {
+  var o = parseFloat(overs) || 0, w = Math.floor(o);
+  return w * 6 + Math.round((o - w) * 10);
+}
+
+function updateBreak(state) {
+  var inn = parseInt(state.innings || 1, 10), balls = ballsOf(state.overs), wk = parseInt(state.wickets || 0, 10);
+  _breakAt = { innings: inn, balls: balls, state: state };
+  if (_break) {
+    // Play again: a ball bowled in the same innings, or the next innings under way.
+    if ((inn === _break.innings && balls > _break.balls) || (inn > _break.innings && balls > 0)) endBreak(true);
+    return;
+  }
+  var drinksOv = parseInt(cfg.drinks_over, 10) || 0;
+  if (inn === 1 && !_inningsBreakDone && (wk >= 10 || (MAX_OVERS > 0 && balls >= MAX_OVERS * 6))) {
+    _inningsBreakDone = true;
+    startBreak('innings', true, 9000);      // after the innings summary and scorecard
+  } else if (drinksOv > 0 && balls === drinksOv * 6 && !_drinksDone[inn] && wk < 10) {
+    _drinksDone[inn] = true;
+    var seq = 7000 + (cfg.graphics_partnership_display ? 5000 : 0) + (cfg.graphics_runrate_trend ? 5000 : 0)
+      + (cfg.graphics_win_predictor !== false && state.winPredictor ? 6000 : 0)
+      + (cfg.graphics_commentary_over ? 9000 : 0) + 1500;
+    startBreak('drinks', true, seq);        // after the over's own graphics
+  }
+}
+
+// startBreak: tell is true when the overlay found the break (so the server is told);
+// false when the panel started it (the server already knows).
+function startBreak(kind, tell, delay) {
+  var at = _breakAt || { innings: 1, balls: 0 };
+  if (_break) { _break.kind = kind; fillBreakPanel(); return; }
+  _break = { kind: kind, innings: at.innings, balls: at.balls };
+  clearTimeout(_breakTimer);
+  _breakTimer = setTimeout(function () {
+    if (!_break) return;                    // play started before the graphics were done
+    if (tell) {
+      fetch(SERVER + '/break/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: kind }) }).catch(function () {});
+    }
+    if (_weatherOK && !el('weather-widget').classList.contains('show')) {
+      el('weather-widget').classList.add('show'); _weatherBreak = true;
+    }
+    breakGraphics();
+    _breakLoop = setInterval(breakGraphics, 45000);
+  }, delay || 0);
+}
+
+function endBreak(tell) {
+  if (!_break) return;
+  _break = null;
+  clearTimeout(_breakTimer); clearInterval(_breakLoop);
+  if (tell) fetch(SERVER + '/break/end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
+  if (_weatherBreak) { _weatherBreak = false; el('weather-widget').classList.remove('show'); }
+  el('break-panel').classList.remove('show');
+}
+
+// Fills #break-panel from the last frame: what the break is, and where the match stands.
+function fillBreakPanel() {
+  if (!_break) return false;
+  var st = (_breakAt && _breakAt.state) || {};
+  el('break-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('break-label').textContent = BREAK_LABELS[_break.kind] || 'Break';
+  el('break-teams').textContent = (cfg.home_team || 'Home') + ' v ' + (cfg.away_team || 'Away');
+  var team = st.battingTeamName || '';
+  el('break-score').textContent = (team ? team + ' ' : '') + (st.score || 0) + '/' + (st.wickets || 0);
+  var ov = parseFloat(st.overs) || 0;
+  var sub = 'after ' + (ov === Math.floor(ov) ? String(ov) : oversDisplay(ov)) + ' overs';
+  if (_break.kind === 'innings' && parseInt(st.innings || 1, 10) === 1) {
+    sub = (cfg.away_team && team === cfg.home_team ? cfg.away_team : cfg.home_team && team === cfg.away_team ? cfg.home_team : 'The reply')
+      + ' need ' + ((parseInt(st.score || 0, 10)) + 1) + ' to win';
+  } else if (parseInt(st.targetRuns || 0, 10) > 0) {
+    sub += ' · need ' + st.runsRequired + ' more';
+  }
+  el('break-sub').textContent = sub;
+  return true;
+}
+
+// The break's graphics, on the main scene between the server's replays: the break card,
+// then the scorecard. Every 45s, and only when nothing else is showing.
+function breakGraphics() {
+  if (!_break || graphicActive || queue.length) return;
+  if (fillBreakPanel()) queueGraphic('break-panel', 12000);
+  if (_lastCard) showScorecard(_lastCard, _lastCardMeta);
+}
+
 function isPreMatchPCS(state) {
   // NV Play sets batting_team (server.py parse_pcs_json) as soon as the match is configured in
   // PCS Pro -- well before the scorer selects the openers, which is normally the last setup step
@@ -3431,6 +3606,12 @@ function isPreMatchPCS(state) {
 function showPreMatchInfo() {
   loadPregameForm();
   if (cfg.graphics_league_table) loadLeagueTable();
+  if (cfg.graphics_h2h !== false) loadH2H();
+  loadLineups();
+  // The ground's conditions in the corner until the first ball (renderScorebar takes it down).
+  if (_weatherOK && !_weatherPrematch && !el('weather-widget').classList.contains('show')) {
+    el('weather-widget').classList.add('show'); _weatherPrematch = true;
+  }
   // Show pre-match competition/umpires panel if we have API data
   const comp   = cfg.competition_name || '';
   const u1     = cfg.umpire1_name     || '';
@@ -3459,7 +3640,48 @@ function showPreMatchInfo() {
       queueGraphic('league-table-panel', 9000);
       _leagueTableShownInnings = 1;   // covers the pre-match showing for innings 1
     }
+    // The pre-match show: the countdown, head to head and today's XIs.
+    if (fillCountdownPanel()) queueGraphic('countdown-panel', 8000);
+    if (cfg.graphics_h2h !== false && fillH2HPanel()) queueGraphic('h2h-panel', 10000);
+    ['home', 'away'].forEach(function (side) {
+      var t = _lineups && _lineups[side];
+      if (!t || !t.players || !t.players.length) return;
+      showLineup(t.team || (side === 'home' ? cfg.home_team : cfg.away_team) || '', t.players.map(function (p) {
+        return { name: p.name, tag: p.captain && p.keeper ? 'c, wk' : p.captain ? 'c' : p.keeper ? 'wk' : '' };
+      }), 0, "Today's XI");
+    });
   }
+}
+
+// ── The pre-match show's countdown and line-ups ──
+// Minutes until play (cfg.match_time "13:00", today), or null when there's no time.
+function minutesToStart() {
+  var t = String(cfg.match_time || '').match(/^(\d{1,2})[:.](\d{2})/);
+  if (!t) return null;
+  var d = new Date(); d.setHours(parseInt(t[1], 10), parseInt(t[2], 10), 0, 0);
+  return Math.ceil((d.getTime() - Date.now()) / 60000);
+}
+function untilText(m) {
+  return m >= 60 ? 'in ' + Math.floor(m / 60) + ' hr' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : 'in ' + m + ' min';
+}
+// Fills #countdown-panel; false when there's nothing to count down to (no start time, it's
+// passed, or it's hours away — a stream doesn't start that early).
+function fillCountdownPanel() {
+  var m = minutesToStart();
+  if (m === null || m < 1 || m > 180) return false;
+  el('countdown-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('countdown-label').textContent = 'Play starts at ' + String(cfg.match_time).slice(0, 5);
+  el('countdown-teams').textContent = (cfg.home_team || 'Home') + ' v ' + (cfg.away_team || 'Away');
+  el('countdown-left').textContent = untilText(m);
+  el('countdown-comp').textContent = cfg.competition_name || '';
+  return true;
+}
+var _lineups = null, _lineupsAt = 0;
+function loadLineups() {
+  if (Date.now() - _lineupsAt < 300000) return;   // the server keeps them 5 min too
+  _lineupsAt = Date.now();
+  fetch(SERVER + '/lineups').then(function (r) { return r.json(); })
+    .then(function (d) { if (d && d.ok) _lineups = d; }).catch(function () {});
 }
 
 function renderPreMatch(home, away) {
@@ -3469,7 +3691,9 @@ function renderPreMatch(home, away) {
   el('overs-display').innerHTML=`0.0 <span class="muted">/ ${MAX_OVERS}</span>`;
   // Show competition and/or umpires in status segment pre-match
   const comp = cfg.competition_name ? cfg.competition_name.split(' — ')[0] : '';
-  el('status-text').textContent = comp || 'Pre-match';
+  const toGo = minutesToStart();
+  el('status-text').textContent = toGo !== null && toGo >= 1 && toGo <= 180 ? 'Starts ' + untilText(toGo)
+    : comp || 'Pre-match';
   ['batter1','batter2'].forEach(id=>{
     el(id+'-name').textContent='—';
     el(id+'-runs').textContent=el(id+'-balls').textContent='';
