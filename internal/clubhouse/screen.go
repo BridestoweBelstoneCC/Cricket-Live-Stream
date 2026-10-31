@@ -8,6 +8,10 @@ package clubhouse
 // The PIN is the screen's own lock — it's a public room. Locked, the page shows the
 // score and the stream and nothing that changes anything; the laptop's allowlist is
 // still the real boundary whatever the page does.
+//
+// Paired with the laptop's score-only key, it's a score-only screen: the score, the
+// scorecard, overs and table, and the stream — no buttons at all, and the laptop refuses
+// anything else from that key whatever this program asks.
 
 import (
 	"bytes"
@@ -59,6 +63,7 @@ type screenConfig struct {
 	Port    int
 	Key     string
 	MACs    []string
+	View    bool // paired with the score-only key
 	Club    string
 	Name    string // the laptop's computer name
 	Colour  string
@@ -83,6 +88,7 @@ func loadScreenConfig() screenConfig {
 			c.MACs = append(c.MACs, m)
 		}
 	}
+	c.View = f.GetBool("Laptop", "view_only", false)
 	c.Club = f.Get("Laptop", "club", "")
 	c.Name = f.Get("Laptop", "name", "")
 	c.Colour = f.Get("Laptop", "colour", "")
@@ -98,6 +104,7 @@ func saveScreenConfig(c screenConfig) error {
 	f.Set("Laptop", "port", strconv.Itoa(c.Port))
 	f.Set("Laptop", "key", c.Key)
 	f.Set("Laptop", "macs", strings.Join(c.MACs, ","))
+	f.Set("Laptop", "view_only", map[bool]string{true: "yes", false: "no"}[c.View])
 	f.Set("Laptop", "club", c.Club)
 	f.Set("Laptop", "name", c.Name)
 	f.Set("Laptop", "colour", c.Colour)
@@ -447,8 +454,21 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 		s.touch()
 		return false
 	}
+	s.mu.Lock()
+	view := s.cfg.View
+	s.mu.Unlock()
+	viewFail := func() { fail(403, "This screen only shows the score.") }
 	if rest, ok := strings.CutPrefix(p, "/server/"); ok {
 		path := "/" + rest
+		if view {
+			// Nothing to unlock: a score-only screen reads, and only what the laptop lets it.
+			if !ViewAllowed(r.Method, path) {
+				viewFail()
+				return
+			}
+			s.forward(w, r, "/clubhouse/server"+strings.TrimPrefix(r.URL.EscapedPath(), "/api/server"))
+			return
+		}
 		if r.Method == "POST" || !(publicReads[path] || strings.HasPrefix(path, "/logo/")) {
 			if locked() {
 				return
@@ -466,6 +486,10 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 		case "start", "answer", "stop", "poweroff", "poweroff/cancel":
 		default:
 			fail(404, "Not found")
+			return
+		}
+		if view {
+			viewFail()
 			return
 		}
 		if r.Method != "POST" || locked() {
@@ -538,7 +562,7 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mu.Lock()
-		s.cfg.Host, s.cfg.Key, s.cfg.MACs, s.cfg.Club, s.cfg.Name = "", "", nil, "", ""
+		s.cfg.Host, s.cfg.Key, s.cfg.MACs, s.cfg.View, s.cfg.Club, s.cfg.Name = "", "", nil, false, "", ""
 		s.reachable, s.laptop = false, nil
 		err := saveScreenConfig(s.cfg)
 		s.mu.Unlock()
@@ -555,6 +579,10 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		writeJSON(w, map[string]any{"ok": true}, 200)
 	case "POST /wake":
+		if view {
+			viewFail()
+			return
+		}
 		if locked() {
 			return
 		}
@@ -632,7 +660,8 @@ func (s *Screen) status() map[string]any {
 	_, badgeErr := os.Stat(badgeFile())
 	out := map[string]any{"ok": true, "paired": c.paired(), "club": c.Club, "laptop_name": c.Name,
 		"laptop_host": c.Host, "colour": c.Colour, "has_badge": badgeErr == nil, "reachable": s.reachable,
-		"error": s.lastErr, "laptop": s.laptop, "pin_set": c.PinHash != "", "can_wake": len(c.MACs) > 0,
+		"error": s.lastErr, "laptop": s.laptop, "pin_set": c.PinHash != "", "can_wake": len(c.MACs) > 0 && !c.View,
+		"view_only": c.View,
 		"wake_wait": c.WakeFor, "version": s.o.Version}
 	unlocked := c.PinHash == "" || time.Now().Before(s.unlockedTil)
 	out["unlocked"] = unlocked
@@ -774,6 +803,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 			Club          string        `json:"club"`
 			NICs          []WakeableNIC `json:"nics"`
 			AllowPowerOff bool          `json:"allow_power_off"`
+			Role          string        `json:"role"`
 			Error         string        `json:"error"`
 		}
 		json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&d)
@@ -787,6 +817,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 		}
 		host, portS, _ := net.SplitHostPort(hp)
 		port, _ := strconv.Atoi(portS)
+		view := d.Role == "view"
 		var macs []string
 		wired := false
 		for _, n := range d.NICs {
@@ -795,6 +826,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 		}
 		s.mu.Lock()
 		s.cfg.Host, s.cfg.Port, s.cfg.Key, s.cfg.MACs, s.cfg.Club, s.cfg.Name = host, port, key, macs, d.Club, d.Host
+		s.cfg.View = view
 		err = saveScreenConfig(s.cfg)
 		s.mu.Unlock()
 		if err != nil {
@@ -803,8 +835,8 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 		fmt.Printf("  ✓ Paired with %s (%s)\n", orDefault(d.Club, d.Host), host)
 		s.background(s.pollOnce)
 		out := map[string]any{"ok": true, "club": d.Club, "host": d.Host, "address": host, "nics": d.NICs,
-			"allow_power_off": d.AllowPowerOff}
-		if !wired {
+			"allow_power_off": d.AllowPowerOff, "view_only": view}
+		if !wired && !view {
 			out["warning"] = "The laptop isn't plugged into the network by cable, so this screen can't switch it on " +
 				"(it can still run match day once the laptop is on). Plug a network cable in and pair again."
 		}

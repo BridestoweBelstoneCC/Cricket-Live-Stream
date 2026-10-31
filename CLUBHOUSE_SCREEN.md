@@ -20,6 +20,10 @@ An **optional** touch screen in the clubhouse that runs the stream for you:
 Anyone can see the score and the stream. Everything that changes anything needs the
 screen's PIN.
 
+Want the score on a screen with **no buttons at all** — the bar's TV, the pavilion, the
+scorebox? That's a [score-only screen](#score-only-screens): the same Pi and the same
+install, paired with a different key.
+
 Nothing about it is specific to one club, and nothing changes for a club that doesn't
 use it: it's off until someone switches it on, on the laptop.
 
@@ -131,6 +135,29 @@ and stop the stream.
 
 The laptop's own window still works throughout: anything done on one shows on the other.
 
+## Score-only screens
+
+A score-only screen shows the score, the Scorecard, Overs and Table views and the stream
+picture, and nothing else: no Start, no Get ready, no Finish. It can't switch the laptop on
+or off. Use it anywhere people can touch it — a club can have one match-day screen and any
+number of score-only ones, or score-only screens alone.
+
+1. On the laptop, on the match-day screen's **Clubhouse screen** card, tick **Let
+   score-only screens show the score**. A second key appears, the **score-only key**.
+2. Set up the Pi exactly as in [2. The Pi](#2-the-pi), and type the **score-only key**
+   when it asks for the pairing key.
+
+The screen says *No match on* until match day starts on the laptop, then shows the score
+by itself. The laptop doesn't need a network cable for it (nothing is woken). A PIN on a
+score-only screen guards only its settings — pairing again, the PIN itself.
+
+The laptop is what enforces it: a screen holding the score-only key can read the score,
+the scorecard and table, the club's colours and badge, the stream picture and whether
+it's on air, and the laptop refuses everything else from it, whatever the screen asks. It
+isn't shown the laptop's questions or its activity log either. **New key** beside the
+score-only key stops every score-only screen until it's paired again with the new one;
+the match-day screen's key is separate and carries on.
+
 ## How it works (and what it can't do)
 
 - The Pi serves the screen itself, because the laptop is off when it's first touched.
@@ -161,6 +188,7 @@ The laptop's own window still works throughout: anything done on one shows on th
 | *Switching the laptop on* never finishes | Wake-on-LAN (above). Check the laptop's on mains power and its cable is in. Try **Start the stream** from the laptop's sleep rather than off, to tell a wake problem from a sign-in one. |
 | The laptop wakes but the screen keeps waiting | Windows is at the sign-in screen, or CricketStream didn't open: *Open CricketStream when Windows starts*, and automatic sign-in. |
 | *The laptop doesn't accept this screen's pairing key any more* | Someone pressed **New key** on the laptop. On the screen: ⚙ → **Pair again**, and type the new key. |
+| A screen shows *No match on* and no buttons | It's paired with the score-only key. For the match-day buttons: ⚙ → **Pair again** with the other key. |
 | *No streaming laptop answered* when pairing | CricketStream open on the laptop, the clubhouse screen ticked, both on the same network. Windows Firewall may ask the first time — allow CricketStream on **private** networks. Or type the laptop's address. |
 | The stream picture is black | OBS isn't showing anything yet (no camera added), or OBS is closed — see **Get ready**. |
 | Full screen shows the small picture, not YouTube | The stream isn't live on YouTube yet, or YouTube isn't connected on the laptop. |

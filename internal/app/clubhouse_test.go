@@ -221,3 +221,64 @@ func TestClubhouseCardOnlyBeforeOrAfterMatchDay(t *testing.T) {
 		t.Fatalf("changing it mid-match: %d", r.status)
 	}
 }
+
+func TestClubhouseScoreOnlyScreens(t *testing.T) {
+	ta := newTestApp(t)
+	t.Cleanup(ta.stopClubhouse)
+	port := freePort(t)
+	t.Setenv(clubhouse.PortEnv, fmt.Sprint(port))
+	if r := ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	// Score-only screens on their own: the link opens with that key alone.
+	r := ta.api("POST", "clubhouse", M{"view_enabled": true})
+	if r.status != 200 {
+		t.Fatalf("enable: %d %s", r.status, r.body)
+	}
+	c := r.json(t)["clubhouse"].(M)
+	viewKey, _ := c["view_key"].(string)
+	if c["enabled"] != false || c["key"] != nil || len(clubhouse.NormaliseKey(viewKey)) != clubhouse.KeyLen {
+		t.Fatalf("card: %v", c)
+	}
+	f, _ := ini.Load(setup.ConfigFile())
+	if !f.GetBool("Clubhouse", "view_enabled", false) || clubhouse.FormatKey(f.Get("Clubhouse", "view_key", "")) != viewKey ||
+		f.GetBool("Clubhouse", "enabled", true) {
+		t.Fatal("config.ini should hold the score-only key, with the match-day screen still off")
+	}
+	if code, s := screenCall(t, port, "GET", "/clubhouse/status", viewKey, nil); code != 200 || s["view"] != true || s["club"] != "Test Town CC" {
+		t.Fatalf("score-only status: %d %v", code, s)
+	}
+	if code, _ := screenCall(t, port, "POST", "/clubhouse/start", viewKey, M{"manual": true}); code != 403 {
+		t.Fatalf("score-only key started match day: %d", code)
+	}
+	if ta.currentPhase() != phHome {
+		t.Fatalf("phase %v", ta.currentPhase())
+	}
+
+	// Both on: two different keys, each its own; a new score-only key leaves the other be.
+	c = ta.api("POST", "clubhouse", M{"enabled": true}).json(t)["clubhouse"].(M)
+	key := c["key"].(string)
+	if key == viewKey || c["view_key"] != viewKey {
+		t.Fatalf("keys: %v", c)
+	}
+	c = ta.api("POST", "clubhouse", M{"new_view_key": true}).json(t)["clubhouse"].(M)
+	if c["view_key"] == viewKey || c["key"] != key {
+		t.Fatalf("new score-only key: %v", c)
+	}
+	if code, _ := screenCall(t, port, "GET", "/clubhouse/status", viewKey, nil); code != 403 {
+		t.Fatalf("old score-only key: %d", code)
+	}
+	if code, _ := screenCall(t, port, "GET", "/clubhouse/status", key, nil); code != 200 {
+		t.Fatalf("match-day key after a new score-only key: %d", code)
+	}
+
+	// Both off: the port closes.
+	ta.api("POST", "clubhouse", M{"enabled": false})
+	if code, _ := screenCall(t, port, "GET", "/clubhouse/hello", "", nil); code != 200 {
+		t.Fatal("the score-only screens lost the link when the match-day screen was switched off")
+	}
+	ta.api("POST", "clubhouse", M{"view_enabled": false})
+	if code, _ := screenCall(t, port, "GET", "/clubhouse/hello", "", nil); code == 200 {
+		t.Fatal("the link still answers with both switched off")
+	}
+}

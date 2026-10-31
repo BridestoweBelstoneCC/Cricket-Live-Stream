@@ -188,7 +188,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     <section id="v-pair" class="view center hidden">
       <h1>Pair with the streaming laptop</h1>
       <p class="muted">On the laptop, open CricketStream and switch on <b>Clubhouse screen</b> on the match-day screen.
-        Type the pairing key it shows.</p>
+        Type the pairing key it shows — or its score-only key, for a screen that shows the score with no buttons.</p>
       <label class="field"><span>Pairing key</span><input id="pair_key" data-osk="key" maxlength="9" autocomplete="off" inputmode="none" placeholder="ABCD-EFGH"></label>
       <label class="field hidden" id="pair_addr_row"><span>The laptop's address (shown on the same card)</span>
         <input id="pair_addr" data-osk="addr" autocomplete="off" inputmode="none" placeholder="192.168.1.20"></label>
@@ -202,7 +202,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     <!-- Paired: a PIN so passers-by can watch but not touch. -->
     <section id="v-pinset" class="view center hidden">
       <h1>Set a PIN</h1>
-      <p class="muted">Anyone can see the score and the stream. Starting, changing and stopping it will need this PIN.</p>
+      <p class="muted" id="pinset_why">Anyone can see the score and the stream. Starting, changing and stopping it will need this PIN.</p>
       <div class="pin" id="pinset_show"></div>
       <div class="pad" id="pinset_pad"></div>
       <div class="row" style="margin-top:18px">
@@ -218,6 +218,13 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <p class="muted" id="off_why">Start the stream and this screen switches it on, opens OBS and gets match day ready.</p>
       <button class="btn go huge" id="off_start" type="button">Start the stream</button>
       <p class="say bad" id="off_say"></p>
+    </section>
+
+    <!-- A score-only screen with no match on (laptop off, or match day not started). -->
+    <section id="v-idle" class="view center hidden">
+      <h1 id="idle_title">No match on</h1>
+      <p class="muted" id="idle_why">The score appears here as soon as match day starts.</p>
+      <p class="say bad" id="idle_say"></p>
     </section>
 
     <!-- Waking it. -->
@@ -458,7 +465,8 @@ $('setbtn').addEventListener('click', function () {
     var row = document.createElement('div'); row.className = 'row';
     row.appendChild(button(S.pin_set ? 'Change the PIN' : 'Set a PIN', 'btn', function () { closeDialog(); newPin = ''; txt('pinset_show', ''); pinStep = true; render(); }));
     if (S.pin_set) row.appendChild(button('Remove the PIN', 'btn', function () {
-      confirmDialog('Remove the PIN?', 'Anyone in the clubhouse will be able to start and stop the stream.', 'Remove it', 'stop', function () {
+      confirmDialog('Remove the PIN?', S.view_only ? 'Anyone in the clubhouse will be able to unpair this screen.'
+      : 'Anyone in the clubhouse will be able to start and stop the stream.', 'Remove it', 'stop', function () {
         api('pin', {pin: ''}).then(poll);
       });
     }));
@@ -515,6 +523,7 @@ function viewName() {
   if (!S.paired) return 'pair';
   if (pinStep) return 'pinset';
   var L = S.laptop;
+  if (S.view_only) return S.reachable && L.phase === 'running' && L.server_ready ? 'score' : 'idle';
   if (!S.reachable) return S.waking_for != null ? 'waking' : 'off';
   if (L.power_off_in != null) return 'poweroff';
   switch (L.phase) {
@@ -533,7 +542,7 @@ function render() {
   document.querySelectorAll('.view').forEach(function (el) { el.classList.toggle('hidden', el.id !== 'v-' + (isNote ? 'note' : v)); });
   renderTop(v);
   var running = L.phase === 'running' && L.server_ready && S.reachable;
-  show('tabs', running);
+  show('tabs', running && !S.view_only); // score-only: the Score tab alone, so no tabs
   document.querySelectorAll('#tabs button').forEach(function (b) {
     b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
     if (b.classList.contains('op')) b.classList.toggle('hidden', !S.unlocked);
@@ -553,7 +562,17 @@ function render() {
       : 'This usually takes a minute or two. (' + mins(S.waking_for) + ')');
     show('wake_slow', slow);
   }
-  if (v === 'pinset') txt('pinset_skip', S.pin_set ? 'Cancel' : 'No PIN');
+  if (v === 'pinset') {
+    txt('pinset_skip', S.pin_set ? 'Cancel' : 'No PIN');
+    txt('pinset_why', S.view_only ? 'This screen only shows the score. The PIN keeps its settings (and pairing) to the people who know it.'
+      : 'Anyone can see the score and the stream. Starting, changing and stopping it will need this PIN.');
+  }
+  if (v === 'idle') {
+    var starting = S.reachable && (L.phase === 'starting' || L.phase === 'running');
+    txt('idle_title', starting ? 'Match day is starting' : 'No match on');
+    txt('idle_why', starting ? 'The score appears here in a moment.' : 'The score appears here as soon as match day starts on the streaming laptop.');
+    say('idle_say', S.error, 'bad');
+  }
   if (v === 'ready') renderReady(L);
   if (v === 'starting') txt('start_log', (L.log || []).join('\n'));
   if (v === 'poweroff') txt('off_count', mins(Math.max(0, L.power_off_in)));
@@ -568,7 +587,7 @@ function render() {
   }
   if (pendingStart && Date.now() - pendingStart.at > 15 * 60000) pendingStart = null;
   // First time match day is up: straight to "Get ready" (Go live is there).
-  if (running && lastTabPhase !== 'running') { tab = S.unlocked ? 'get' : 'score'; lastTabPhase = 'running'; render(); return; }
+  if (running && lastTabPhase !== 'running') { tab = S.unlocked && !S.view_only ? 'get' : 'score'; lastTabPhase = 'running'; render(); return; }
   if (!running && L.phase) lastTabPhase = L.phase;
 }
 function mins(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }

@@ -183,3 +183,36 @@ console.log("ok");
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// A score-only screen never shows a screen with buttons: the score while match day runs,
+// otherwise "no match on" — never "Start the stream", the start choice or the switch-off.
+func TestScreenPageScoreOnlyViews(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	test := `var S, pinStep = false, tab = 'get';
+function laptop() { return (S && S.laptop) || {}; }
+` + grabFunc(t, pageScript(t), "viewName") + `
+function want(s, v) { S = s; var got = viewName(); if (got !== v) throw new Error(JSON.stringify(s) + ": " + got + ", want " + v); }
+want({paired: false, view_only: true}, 'pair');
+want({paired: true, view_only: true, reachable: false, laptop: null}, 'idle');
+want({paired: true, view_only: true, reachable: false, waking_for: 5, laptop: null}, 'idle');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'home'}}, 'idle');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'stopped', power_off_in: 40}}, 'idle');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'starting'}}, 'idle');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'running', server_ready: false}}, 'idle');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'running', server_ready: true}}, 'score');
+// The match-day screen is unchanged.
+want({paired: true, reachable: false, laptop: null}, 'off');
+want({paired: true, reachable: true, laptop: {phase: 'home'}}, 'ready');
+want({paired: true, reachable: true, laptop: {phase: 'running', server_ready: true}}, 'get');
+console.log("ok");
+`
+	f := filepath.Join(t.TempDir(), "scoreonly.js")
+	os.WriteFile(f, []byte(test), 0o644)
+	out, err := exec.Command(bin, f).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "ok" {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

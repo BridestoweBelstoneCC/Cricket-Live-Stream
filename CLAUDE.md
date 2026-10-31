@@ -374,6 +374,13 @@ problem + what to do + pause) or print and `console.Pause()`.
     reach the real `shutdown`/`systemctl poweroff`.
   - `[Clubhouse] key` is per-laptop: it's in `clubpack.configMachine`, so "Move to another
     laptop" never copies it (a laptop that arrives enabled without a key makes its own).
+    So is `view_key`.
+  - **Score-only screens** hold `[Clubhouse] view_key` (`view_enabled`), a second key the
+    link checks in `keyOK`. It reaches only `serveView` (pairing, and a status trimmed to
+    `viewStatus` — never the question or the activity log) and the proxy's `viewGET`
+    reads; every start/stop/answer/power-off/woke and every POST is refused on the
+    LAPTOP. Keep `viewGET` a subset of `proxyGET` with no operator reads in it. The Pi's
+    `[Laptop] view_only` only decides what the page shows.
   - The Pi page must be served by the Pi (the laptop is off when it's first touched); it
     talks only to its own `/api/` with a page key, never to the laptop directly. Its
     corner picture is `/preview.jpg` (cached 1.5s server-side, only fetched while shown)

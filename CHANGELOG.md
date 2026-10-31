@@ -4,6 +4,15 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Score-only clubhouse screens.** A clubhouse screen can now show the score with no
+  buttons at all — for the bar's TV, the pavilion or the scorebox. Tick **Let score-only
+  screens show the score** on the laptop's Clubhouse screen card and pair the screen with
+  the second key it shows. It shows the score, scorecard, overs, league table and the
+  stream picture, and the laptop refuses anything else from that key. See
+  [CLUBHOUSE_SCREEN.md](CLUBHOUSE_SCREEN.md#score-only-screens).
+
 ## v3.0.0-beta.2 — auto quality that works, and recovery (2026-10-30)
 
 - **Fixed: stream quality steps never changed the quality on match day.** OBS only reads
