@@ -485,6 +485,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   OBS crash recovery (`obs_recovery`: watching, recent reopens, last event), and whether
   OBS's overlay is polling (`overlay`: seconds since its last `/live`, reloads).
 - `http://localhost:5000/player/stats?name=SURNAME&debug=1` — which season record a name resolves to.
+- `http://localhost:5000/club/career?name=SURNAME` — the club record behind the club
+  milestones (`career.go`): every past PlayCricket scorecard of the home club's sides,
+  today's match excluded; a name that could be two people resolves to nothing, on purpose
+  (a split account would read low and "pass 1,000" twice).
 - `http://localhost:5000/h2h` — head to head with today's opposition (`h2h.go`): today's
   two TEAM ids from the fixture, meetings in the last 6 seasons' fixture lists, the last 5
   scorecards. Past seasons' lists and finished scorecards are cached for good in

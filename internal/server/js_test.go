@@ -773,6 +773,38 @@ console.log(JSON.stringify(out));
 	}
 }
 
+// Club milestones: straps one after another, never two at once; off means none.
+func TestClubMilestoneStraps(t *testing.T) {
+	src := overlayFunctions(t, "showClubMilestone", "nextClubStrap") + `
+var _clubStraps = [], _clubStrapOn = false, cfg = { home_colour: '#123456' };
+var els = {}, shown = [], timers = [];
+function el(id) { return els[id] || (els[id] = { style: {}, textContent: '', classList: {
+  add: function () { shown.push(els['club-strap-text'].textContent + ' / ' + els['club-strap-sub'].textContent); },
+  remove: function () {} } }); }
+setTimeout = function (f) { timers.push(f); };
+function run() { while (timers.length) timers.shift()(); }
+showClubMilestone({ text: 'A passes 1,000 runs for the club', sub: 'since 2014' });
+showClubMilestone({ text: 'A: first fifty for the club', sub: 'since 2014' });
+var before = timers.length;
+showClubMilestone({});
+run();
+cfg.graphics_club_milestones = false;
+showClubMilestone({ text: 'off' });
+run();
+console.log(JSON.stringify({ shown: shown, oneTimer: before === 1, colour: els['club-strap'].style.borderLeftColor }));
+`
+	var got struct {
+		Shown    []string
+		OneTimer bool
+		Colour   string
+	}
+	runJS(t, src, &got)
+	if strings.Join(got.Shown, " | ") != "A passes 1,000 runs for the club / since 2014 | A: first fifty for the club / since 2014" ||
+		!got.OneTimer || got.Colour != "#123456" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 // Breaks: drinks start after the drinks over and end at the next ball — not on the next
 // poll whose ticker still holds the finished over (what made the old drinks card vanish);
 // the innings break lasts through the change of innings until the reply's first ball.

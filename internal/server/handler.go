@@ -840,6 +840,22 @@ func (c *ctx) doGET() {
 		}
 		c.json(M{"ready": true, "scorers": scorers, "bowlers": bowlers})
 
+	case path == "/club/career":
+		// The club records behind the milestones (career.go): built in the background,
+		// {"ready": false} until then. ?name= shows what a scorebar name resolves to.
+		career := ClubCareer()
+		if career == nil {
+			c.json(M{"ready": false})
+			return
+		}
+		out := M{"ready": true, "since": career["since"], "matches": career["matches"], "error": career["error"],
+			"players": len(uniqueRecords(gm(career, "lookup")))}
+		if n := c.q("name"); n != "" {
+			lookupBy, _ := resolvePlayer(n, c.q("num"))
+			out["record"] = careerRecord(career, lookupBy)
+		}
+		c.json(out)
+
 	case path == "/match/scorecard":
 		// The match so far for the clubhouse screen (scorecard.go). Read-only and open,
 		// like /live/view: the score is what the stream shows anyway.
@@ -1699,10 +1715,11 @@ func (c *ctx) live(mutate bool) {
 			func() {
 				dbLogMu.RLock() // a practice's clean-up waits for this poll's writes
 				defer dbLogMu.RUnlock()
-				FollowMatchID(pcsState)  // an id change mid-match keeps its data
-				LogBallData(pcsState)    // our own ball-by-ball database
-				LogLiveFigures(pcsState) // the scorer's totals, for the report/card
-				LogMoments(pcsState)     // wickets and milestones, for the video's chapters
+				FollowMatchID(pcsState)     // an id change mid-match keeps its data
+				LogBallData(pcsState)       // our own ball-by-ball database
+				LogLiveFigures(pcsState)    // the scorer's totals, for the report/card
+				LogMoments(pcsState)        // wickets and milestones, for the video's chapters
+				LogClubMilestones(pcsState) // "passes 1,000 runs for the club" (career.go)
 			}()
 			// Hand buffered events to the overlay and clear — under the lock, so an
 			// event landing mid-pop can't be silently dropped

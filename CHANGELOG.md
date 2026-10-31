@@ -4,6 +4,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Club milestones.** A strap at the top of the stream when a home player passes 500,
+  1,000, 1,500… runs or 50, 100… wickets for the club, or makes a first fifty, a hundred
+  ("3rd hundred for the club") or a five-for for the club — and a chapter on the match
+  video. The records are added up from every past PlayCricket scorecard of the club's
+  sides, as far back as PlayCricket has them (the strap says since when); the first build
+  takes a few minutes in the background and is cached after. Today's match never counts
+  towards it, and a player whose name could be two people (two accounts, or two P Smiths)
+  is left out rather than risk a wrong claim. Control panel → On-screen extras →
+  **Club milestones**; `/club/career?name=SMITH` shows what a name resolves to.
+
 ## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 
 - **The break show, and drinks that work.** Drinks never really showed: the weather card
