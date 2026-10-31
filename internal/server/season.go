@@ -179,19 +179,21 @@ func aggregateSeasonBat(details []M, keepClubs []string) M {
 	return lookup
 }
 
-// seasonTopBowler is one club's leading wicket-taker. PlayCricket's per-innings bowling
-// card belongs to the FIELDING side, not the innings' own team, so a club's bowling
-// figures live on the OTHER innings of the same match.
-func seasonTopBowler(details []M, clubFrag string) M {
+// seasonBowlers is one club's bowling this season, one record per bowler in the order
+// first seen. PlayCricket's per-innings bowling card belongs to the FIELDING side, not the
+// innings' own team, so a club's bowling figures live on the OTHER innings of the same
+// match.
+type seasonBowler struct {
+	name       string
+	wkts, runs int
+}
+
+func seasonBowlers(details []M, clubFrag string) []*seasonBowler {
 	if clubFrag == "" {
 		return nil
 	}
-	type acc struct {
-		name       string
-		wkts, runs int
-	}
-	accs := map[string]*acc{}
-	var order []string
+	accs := map[string]*seasonBowler{}
+	var order []*seasonBowler
 	for _, det := range details {
 		innings := gl(firstDetail(det), "innings")
 		if len(innings) < 2 {
@@ -221,9 +223,9 @@ func seasonTopBowler(details []M, clubFrag string) M {
 					k := normNameKey(nm)
 					a := accs[k]
 					if a == nil {
-						a = &acc{name: nm}
+						a = &seasonBowler{name: nm}
 						accs[k] = a
-						order = append(order, k)
+						order = append(order, a)
 					}
 					a.wkts += w
 					a.runs += r
@@ -231,12 +233,22 @@ func seasonTopBowler(details []M, clubFrag string) M {
 			}
 		}
 	}
+	return order
+}
+
+func (b *seasonBowler) record() M {
+	avg := pyfmt.Float(pyfmt.Round(float64(b.runs)/float64(b.wkts), 1))
+	return M{"name": b.name, "wkts": b.wkts, "runs": b.runs, "avg": avg}
+}
+
+// seasonTopBowler is one club's leading wicket-taker.
+func seasonTopBowler(details []M, clubFrag string) M {
+	order := seasonBowlers(details, clubFrag)
 	if len(order) == 0 {
 		return nil
 	}
-	best := accs[order[0]]
-	for _, k := range order[1:] {
-		a := accs[k]
+	best := order[0]
+	for _, a := range order[1:] {
 		if a.wkts > best.wkts || (a.wkts == best.wkts && -a.runs > -best.runs) {
 			best = a
 		}
@@ -244,8 +256,53 @@ func seasonTopBowler(details []M, clubFrag string) M {
 	if best.wkts <= 0 {
 		return nil
 	}
-	avg := pyfmt.Float(pyfmt.Round(float64(best.runs)/float64(best.wkts), 1))
-	return M{"name": best.name, "wkts": best.wkts, "runs": best.runs, "avg": avg}
+	return best.record()
+}
+
+// seasonLeaders is the home club's top three run-scorers and wicket-takers this season,
+// for the overlay's season leaders panel. Ties: more runs (fewer runs conceded) first,
+// then the order the players first appeared, so a rebuild never reshuffles them.
+func seasonLeaders(details []M, clubFrag string) M {
+	const n = 3
+	runs := []any{}
+	var bats []M
+	// The lookup holds one record under several keys (full name, initial, surname).
+	lk := aggregateSeasonBat(details, []string{clubFrag})
+	for _, k := range sortedKeys(lk) {
+		r, _ := lk[k].(map[string]any)
+		if r == nil {
+			continue
+		}
+		dup := false
+		for _, b := range bats {
+			dup = dup || mapIdentity(b) == mapIdentity(r)
+		}
+		if !dup && gi(r, "runs", 0) > 0 {
+			bats = append(bats, r)
+		}
+	}
+	sort.SliceStable(bats, func(i, j int) bool {
+		if gi(bats[i], "runs", 0) != gi(bats[j], "runs", 0) {
+			return gi(bats[i], "runs", 0) > gi(bats[j], "runs", 0)
+		}
+		return gs(bats[i], "name", "") < gs(bats[j], "name", "")
+	})
+	for i := 0; i < len(bats) && i < n; i++ {
+		b := bats[i]
+		runs = append(runs, M{"name": b["name"], "runs": b["runs"], "inn": b["inn"], "avg": b["avg"]})
+	}
+	bowl := seasonBowlers(details, clubFrag)
+	sort.SliceStable(bowl, func(i, j int) bool {
+		if bowl[i].wkts != bowl[j].wkts {
+			return bowl[i].wkts > bowl[j].wkts
+		}
+		return bowl[i].runs < bowl[j].runs
+	})
+	wkts := []any{}
+	for i := 0; i < len(bowl) && i < n && bowl[i].wkts > 0; i++ {
+		wkts = append(wkts, bowl[i].record())
+	}
+	return M{"runs": runs, "wkts": wkts}
 }
 
 // seasonTopScorer picks the highest season-runs record from a filtered batting lookup.
@@ -468,6 +525,7 @@ func BuildSeasonStats(force bool) M {
 			errv = strings.Join(errs, "; ")
 		}
 		result = M{"date": today, "away_id": awayID, "away_ok": awayOK, "lookup": lookup,
+			"leaders":         seasonLeaders(details, homeFrag),
 			"innings_history": history,
 			"top_scorers":     M{"home": homeTop, "away": awayTop},
 			"top_bowlers":     M{"home": homeBowl, "away": awayBowl}, "build_started": nil,

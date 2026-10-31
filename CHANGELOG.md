@@ -16,6 +16,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   video. Once per match; needs FFmpeg and at least three replays. Control panel → YouTube:
   **Preview the thumbnail**, **Set it on the video now**, **Upload the highlights now**,
   and a switch for each.
+- **Season leaders.** The home club's top three run-scorers and wicket-takers this season
+  (with their averages), from the PlayCricket scorecards the season stats already load —
+  in the pre-match show and the break show. Control panel → On-screen extras →
+  **Season leaders** turns it off.
 
 ## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 

@@ -116,6 +116,36 @@ func TestSeasonTopScorerDedupesSharedRecords(t *testing.T) {
 	eqv(t, []any{top["name"], top["runs"]}, []any{"Peter Smith", 90})
 }
 
+func TestSeasonLeadersTopThreeEachWay(t *testing.T) {
+	data := append(seasonSample(),
+		match(M{"team_batting_name": homeXI, "bat": []any{bat("Ann Able", 40, ""), bat("Ben Bell", 40, ""), bat("Cat Cole", 5, "")}},
+			M{"team_batting_name": awayXI, "bat": []any{bat("Bob Rival", 200, "")},
+				"bowl": []any{M{"bowler_name": "Ann Able", "wickets": "4", "runs": "30"},
+					M{"bowler_name": "Ben Bell", "wickets": "4", "runs": "20"},
+					M{"bowler_name": "Cat Cole", "wickets": "0", "runs": "50"}}}))
+	l := seasonLeaders(data, "home")
+	var names []any
+	for _, r := range toMs(gl(l, "runs")) {
+		names = append(names, []any{r["name"], r["runs"]})
+	}
+	// Smith 90, Jones 60, then a tie on 40 goes by name; each player once (the lookup
+	// holds Smith under three keys), and never the opposition's 200.
+	eqv(t, names, []any{[]any{"Peter Smith", 90}, []any{"Karl Jones", 60}, []any{"Ann Able", 40}})
+	names = nil
+	for _, r := range toMs(gl(l, "wkts")) {
+		names = append(names, []any{r["name"], r["wkts"]})
+	}
+	// Bell's 4 for 20 beats Able's 4 for 30; Smith's 4 for 55 is third; nought wickets never.
+	eqv(t, names, []any{[]any{"Ben Bell", 4}, []any{"Ann Able", 4}, []any{"Peter Smith", 4}})
+}
+
+func TestSeasonLeadersEmptyWithoutMatches(t *testing.T) {
+	l := seasonLeaders(nil, "home")
+	if len(gl(l, "runs")) != 0 || len(gl(l, "wkts")) != 0 {
+		t.Fatalf("leaders from nothing: %v", l)
+	}
+}
+
 func withSeasonLookup(t *testing.T) {
 	t.Helper()
 	lk := aggregateSeasonBat(seasonSample(), []string{"home"})

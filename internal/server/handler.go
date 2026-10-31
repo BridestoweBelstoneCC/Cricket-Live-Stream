@@ -838,7 +838,11 @@ func (c *ctx) doGET() {
 		if !pyval.Truthy(bowlers) {
 			bowlers = blank
 		}
-		c.json(M{"ready": true, "scorers": scorers, "bowlers": bowlers})
+		leaders := ss["leaders"]
+		if !pyval.Truthy(leaders) {
+			leaders = M{"runs": []any{}, "wkts": []any{}} // a build from before leaders existed
+		}
+		c.json(M{"ready": true, "scorers": scorers, "bowlers": bowlers, "leaders": leaders})
 
 	case path == "/match/scorecard":
 		// The match so far for the clubhouse screen (scorecard.go). Read-only and open,

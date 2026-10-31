@@ -54,6 +54,7 @@ func DefaultState() M {
 		"graphics_runrate_trend":       true,
 		"graphics_league_table":        true, // /league/table context panel
 		"graphics_h2h":                 true, // head to head in the pre-match show
+		"graphics_season_leaders":      true, // the club's top run-scorers and wicket-takers, pre-match and at breaks
 		"break_reel":                   true, // replays in breaks (breakshow.go)
 		"graphics_player_card":         false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS

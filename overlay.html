@@ -593,7 +593,7 @@ body.style-franchise #winpred-display, body.style-franchise #over-commentary-dis
 body.style-franchise #runrate-display, body.style-franchise #prematch-panel,
 body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away,
 body.style-franchise #league-table-panel, body.style-franchise #h2h-panel, body.style-franchise #countdown-panel,
-body.style-franchise #break-panel {
+body.style-franchise #break-panel, body.style-franchise #leaders-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
 body.style-franchise #player-card, body.style-franchise #player-card-right,
@@ -656,7 +656,7 @@ body.style-neon #winpred-display, body.style-neon #over-commentary-display,
 body.style-neon #runrate-display, body.style-neon #prematch-panel,
 body.style-neon #pregame-form-home, body.style-neon #pregame-form-away,
 body.style-neon #league-table-panel, body.style-neon #h2h-panel, body.style-neon #countdown-panel,
-body.style-neon #break-panel {
+body.style-neon #break-panel, body.style-neon #leaders-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
 body.style-neon #player-card, body.style-neon #player-card-right,
@@ -720,7 +720,7 @@ body.style-block #winpred-display, body.style-block #over-commentary-display,
 body.style-block #runrate-display, body.style-block #prematch-panel,
 body.style-block #pregame-form-home, body.style-block #pregame-form-away,
 body.style-block #league-table-panel, body.style-block #h2h-panel, body.style-block #countdown-panel,
-body.style-block #break-panel { background: rgba(17,17,17,0.95); }
+body.style-block #break-panel, body.style-block #leaders-panel { background: rgba(17,17,17,0.95); }
 body.style-block #player-card, body.style-block #player-card-right,
 body.style-block #weather-widget, body.style-block #replay-banner { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
@@ -775,7 +775,7 @@ body.style-block #replay-banner { border-left-width: 8px; }
   background:rgba(12,12,18,0.92); }
 /* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
    (defined further down), since nothing else needs to be on screen until play starts. */
-#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel {
+#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel, #leaders-panel {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px; height: auto;
   background: rgba(10,15,25,0.92);
@@ -1374,6 +1374,18 @@ body.style-block #replay-banner { border-left-width: 8px; }
   <div style="font-size:15px;color:#fff;font-weight:700;margin-top:14px;" id="h2h-result">—</div>
   <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:6px;" id="h2h-our"></div>
   <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px;" id="h2h-their"></div>
+</div>
+
+<!-- Season leaders (GET /season/top's "leaders", season.go): the home club's top three
+     run-scorers and wicket-takers this season. In the pre-match show and the break show. -->
+<div class="graphic-panel" id="leaders-panel">
+  <div class="over-accent" id="leaders-accent"></div>
+  <div class="pc-label" id="leaders-label">Season leaders</div>
+  <div class="pc-name" id="leaders-title" style="font-size:26px;">—</div>
+  <div style="display:flex;gap:40px;margin-top:14px;">
+    <div style="flex:1;min-width:0;"><div class="pc-stat-key" style="margin-bottom:6px;">Runs</div><div id="leaders-runs"></div></div>
+    <div style="flex:1;min-width:0;"><div class="pc-stat-key" style="margin-bottom:6px;">Wickets</div><div id="leaders-wkts"></div></div>
+  </div>
 </div>
 
 <!-- Pre-match countdown — "play starts at 13:00 · in 25 min" (cfg.match_time, from today's
@@ -3363,9 +3375,37 @@ function loadPregameForm() {
           ? { scorer: d.scorers.home, bowler: (d.bowlers || {}).home } : null;
         _pregameForm.away = (d.scorers && d.scorers.away)
           ? { scorer: d.scorers.away, bowler: (d.bowlers || {}).away } : null;
+        _seasonLeaders = d.leaders || null;
       }
     }).catch(function(){});
   })();
+}
+
+// ── Season leaders ──
+var _seasonLeaders = null;   // {runs: [{name, runs, inn, avg}], wkts: [{name, wkts, avg}]}
+
+function leaderRows(list, big, small) {
+  return list.map(function (p) {
+    return '<div style="display:flex;align-items:baseline;gap:10px;font-size:17px;color:#fff;margin-top:4px;">'
+      + '<span style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(p.name) + '</span>'
+      + '<span style="font-weight:800;font-size:22px;">' + esc(String(p[big])) + '</span>'
+      + '<span style="font-size:12px;color:rgba(255,255,255,0.6);width:64px;">' + esc(small(p)) + '</span></div>';
+  }).join('');
+}
+
+// Fills #leaders-panel; false when the season has nothing to show yet (both lists empty,
+// e.g. the first match of the season, or no PlayCricket key).
+function fillLeadersPanel() {
+  var d = _seasonLeaders;
+  if (cfg.graphics_season_leaders === false || !d) return false;
+  var runs = d.runs || [], wkts = d.wkts || [];
+  if (!runs.length && !wkts.length) return false;
+  el('leaders-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('leaders-label').textContent = 'Season leaders · ' + new Date().getFullYear();
+  el('leaders-title').textContent = cfg.home_team || 'Home';
+  el('leaders-runs').innerHTML = runs.length ? leaderRows(runs, 'runs', function (p) { return 'avg ' + p.avg; }) : '—';
+  el('leaders-wkts').innerHTML = wkts.length ? leaderRows(wkts, 'wkts', function (p) { return 'avg ' + p.avg; }) : '—';
+  return true;
 }
 
 // Fills the DOM for one side and returns true if there was data worth showing.
@@ -3585,9 +3625,11 @@ function fillBreakPanel() {
 // The break's graphics, on the main scene between the server's replays: the break card,
 // then the scorecard. Every 45s, and only when nothing else is showing.
 function breakGraphics() {
+  loadPregameForm();                        // the season leaders (once; cached after)
   if (!_break || graphicActive || queue.length) return;
   if (fillBreakPanel()) queueGraphic('break-panel', 12000);
   if (_lastCard) showScorecard(_lastCard, _lastCardMeta);
+  if (fillLeadersPanel()) queueGraphic('leaders-panel', 10000);
 }
 
 function isPreMatchPCS(state) {
@@ -3636,6 +3678,7 @@ function showPreMatchInfo() {
     if (fillPregameForm('away', cfg.away_team, cfg.away_abbrev, cfg.away_colour)) {
       queueGraphic('pregame-form-away', 9000);
     }
+    if (fillLeadersPanel()) queueGraphic('leaders-panel', 9000);
     if (cfg.graphics_league_table && fillLeagueTablePanel()) {
       queueGraphic('league-table-panel', 9000);
       _leagueTableShownInnings = 1;   // covers the pre-match showing for innings 1
