@@ -481,6 +481,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   `"usable": false` means `competition_id` is blank or doesn't resolve to a real league
   table (a cup/friendly fixture, most likely) — see the league-table fetch.
 - `http://localhost:5000/data/status` — ball-by-ball DB status.
+- `http://localhost:5000/youtube/chapters` (auth-required) — the match video's chapters as
+  they'd be written, from the `moments` table (`LogMoments()` on each /live poll; POST
+  writes them into the video's description, which also happens 90s after the stream ends).
+  The video is the broadcast whose actualStart/End holds most of the match's moments.
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights
   compile (clips are auto-tagged at replay time via the `clips` DB table; the reel gets
   captions + a chapters description file).
