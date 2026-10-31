@@ -593,7 +593,7 @@ body.style-franchise #winpred-display, body.style-franchise #over-commentary-dis
 body.style-franchise #runrate-display, body.style-franchise #prematch-panel,
 body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away,
 body.style-franchise #league-table-panel, body.style-franchise #h2h-panel, body.style-franchise #countdown-panel,
-body.style-franchise #break-panel, body.style-franchise #leaders-panel {
+body.style-franchise #break-panel, body.style-franchise #leaders-panel, body.style-franchise #radar-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
 body.style-franchise #player-card, body.style-franchise #player-card-right,
@@ -656,7 +656,7 @@ body.style-neon #winpred-display, body.style-neon #over-commentary-display,
 body.style-neon #runrate-display, body.style-neon #prematch-panel,
 body.style-neon #pregame-form-home, body.style-neon #pregame-form-away,
 body.style-neon #league-table-panel, body.style-neon #h2h-panel, body.style-neon #countdown-panel,
-body.style-neon #break-panel, body.style-neon #leaders-panel {
+body.style-neon #break-panel, body.style-neon #leaders-panel, body.style-neon #radar-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
 body.style-neon #player-card, body.style-neon #player-card-right,
@@ -720,7 +720,7 @@ body.style-block #winpred-display, body.style-block #over-commentary-display,
 body.style-block #runrate-display, body.style-block #prematch-panel,
 body.style-block #pregame-form-home, body.style-block #pregame-form-away,
 body.style-block #league-table-panel, body.style-block #h2h-panel, body.style-block #countdown-panel,
-body.style-block #break-panel, body.style-block #leaders-panel { background: rgba(17,17,17,0.95); }
+body.style-block #break-panel, body.style-block #leaders-panel, body.style-block #radar-panel { background: rgba(17,17,17,0.95); }
 body.style-block #player-card, body.style-block #player-card-right,
 body.style-block #weather-widget, body.style-block #replay-banner, body.style-block #club-strap { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
@@ -775,7 +775,7 @@ body.style-block #replay-banner { border-left-width: 8px; }
   background:rgba(12,12,18,0.92); }
 /* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
    (defined further down), since nothing else needs to be on screen until play starts. */
-#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel, #leaders-panel {
+#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel, #leaders-panel, #radar-panel {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px; height: auto;
   background: rgba(10,15,25,0.92);
@@ -1400,6 +1400,22 @@ body.style-block #replay-banner { border-left-width: 8px; }
   </div>
 </div>
 
+<!-- Rain radar (GET /weather/radar, radar.go): the last hour of rain around the ground as
+     a loop, and when it should stop or start. In a rain delay, and before play or at a
+     break when rain is about. -->
+<div class="graphic-panel" id="radar-panel">
+  <div class="over-accent" id="radar-accent"></div>
+  <div class="pc-label" id="radar-label">Rain radar</div>
+  <div style="display:flex;gap:28px;align-items:center;margin-top:12px;">
+    <img id="radar-img" alt="" style="width:576px;height:432px;border-radius:6px;display:block;background:#1e222a;">
+    <div style="width:300px;">
+      <div class="pc-name" id="radar-outlook" style="font-size:30px;line-height:1.15;">—</div>
+      <div class="pc-stat-key" id="radar-time" style="font-size:14px;margin-top:14px;"></div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:22px;" id="radar-credit"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Pre-match countdown — "play starts at 13:00 · in 25 min" (cfg.match_time, from today's
      PlayCricket fixture), first in the pre-match rotation while play is still to come. -->
 <div class="graphic-panel" id="countdown-panel">
@@ -1651,7 +1667,7 @@ body.style-block #replay-banner { border-left-width: 8px; }
 </div>
 
 <div id="club-strap">
-  <div class="club-strap-label">Club milestone</div>
+  <div class="club-strap-label" id="club-strap-label">Club milestone</div>
   <div class="club-strap-text" id="club-strap-text"></div>
   <div class="club-strap-sub" id="club-strap-sub"></div>
 </div>
@@ -1874,13 +1890,18 @@ let replayBannerTimer = null;
 var _clubStraps = [], _clubStrapOn = false;
 function showClubMilestone(m) {
   if (!m || !m.text || cfg.graphics_club_milestones === false) return;
-  _clubStraps.push(m);
+  showStrap('Club milestone', m);
+}
+// showStrap queues a strap at the top centre (a club milestone, rain on its way).
+function showStrap(label, m) {
+  _clubStraps.push({ label: label, text: m.text, sub: m.sub });
   if (!_clubStrapOn) { _clubStrapOn = true; setTimeout(nextClubStrap, 3000); }
 }
 function nextClubStrap() {
   var m = _clubStraps.shift();
   if (!m) { _clubStrapOn = false; return; }
   el('club-strap').style.borderLeftColor = cfg.home_colour || '#c8a84b';
+  el('club-strap-label').textContent = m.label || '';
   el('club-strap-text').textContent = m.text;
   el('club-strap-sub').textContent = m.sub || '';
   el('club-strap').classList.add('show');
@@ -2094,8 +2115,68 @@ async function refreshWeather() {
       el('w-wind').textContent     = data.wind;
       el('w-humidity').textContent = data.humidity + '%';
       el('w-desc').textContent     = data.description;
+      _rainOutlook = data;
+      rainWarning(data);
     }
   } catch(e) {}
+}
+
+// ── Rain: the radar, and a warning before it arrives ──
+var _rainOutlook = null;        // /weather's rain_now / rain_starts / rain_in_min / outlook
+var _rainWarnedAt = 0;
+var _radar = null, _radarAt = 0, _radarFrame = 0, _radarImgs = [], _radarTimer = null;
+
+// rainAbout: rain now, or forecast in the next three hours (the radar's worth a look).
+function rainAbout() {
+  var o = _rainOutlook;
+  return !!(o && (o.rain_now || o.rain_starts));
+}
+
+// rainWarning: play's on, it's dry, and rain is due within half an hour — say so, once
+// an hour. Not before play or in a break (the radar covers those).
+function rainWarning(o) {
+  if (cfg.graphics_rain_radar === false || !o || o.rain_now || !o.rain_starts) return;
+  if (o.rain_in_min < 0 || o.rain_in_min > 30 || _break || !_scoreStarted()) return;
+  if (Date.now() - _rainWarnedAt < 3600000) return;
+  _rainWarnedAt = Date.now();
+  showStrap('Weather', { text: 'Rain approaching — likely around ' + o.rain_starts, sub: 'Forecast: Open-Meteo' });
+}
+function _scoreStarted() {
+  var st = _breakAt && _breakAt.state;
+  return !!(st && (ballsOf(st.overs) > 0 || parseInt(st.score || 0, 10) > 0));
+}
+
+function loadRadar() {
+  if (cfg.graphics_rain_radar === false || Date.now() - _radarAt < 300000) return;
+  _radarAt = Date.now();
+  fetch(SERVER + '/weather/radar').then(function (r) { return r.json(); }).then(function (d) {
+    if (!d || !d.ok || !d.frames || !d.frames.length) return;
+    _radar = d;
+    _radarImgs = d.frames.map(function (f) { var i = new Image(); i.src = SERVER + f.img; return i; });
+    if (!_radarTimer) _radarTimer = setInterval(stepRadar, 600);
+  }).catch(function () {});
+}
+
+// The loop: one frame every 0.6s while the panel's up, holding on the latest.
+function stepRadar() {
+  if (!_radar || !el('radar-panel').classList.contains('show')) { _radarFrame = 0; return; }
+  var n = _radar.frames.length, i = Math.min(_radarFrame, n - 1);
+  el('radar-img').src = _radarImgs[i].src;
+  el('radar-time').textContent = 'Radar ' + _radar.frames[i].label + (i === n - 1 ? ' (latest)' : '');
+  _radarFrame = _radarFrame >= n + 3 ? 0 : _radarFrame + 1;
+}
+
+function fillRadarPanel() {
+  if (cfg.graphics_rain_radar === false || !_radar) return false;
+  var o = _rainOutlook || _radar;
+  el('radar-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('radar-label').textContent = 'Rain radar · the last hour';
+  el('radar-outlook').textContent = o.outlook || _radar.outlook || '';
+  el('radar-credit').textContent = _radar.credit || '';
+  _radarFrame = 0;
+  el('radar-img').src = _radarImgs[0].src;
+  el('radar-time').textContent = 'Radar ' + _radar.frames[0].label;
+  return true;
 }
 // Not in preview mode: that renders one static frame and makes no other requests (see
 // startPreview) -- each open panel would otherwise call the weather service every 5 min.
@@ -3617,6 +3698,7 @@ function startBreak(kind, tell, delay) {
   var at = _breakAt || { innings: 1, balls: 0 };
   if (_break) { _break.kind = kind; fillBreakPanel(); return; }
   _break = { kind: kind, innings: at.innings, balls: at.balls };
+  if (kind === 'rain' || rainAbout()) loadRadar();   // ready for the first round of graphics
   clearTimeout(_breakTimer);
   _breakTimer = setTimeout(function () {
     if (!_break) return;                    // play started before the graphics were done
@@ -3670,6 +3752,10 @@ function breakGraphics() {
   if (fillBreakPanel()) queueGraphic('break-panel', 12000);
   if (_lastCard) showScorecard(_lastCard, _lastCardMeta);
   if (fillLeadersPanel()) queueGraphic('leaders-panel', 10000);
+  if (_break.kind === 'rain' || rainAbout()) {
+    loadRadar();
+    if (fillRadarPanel()) queueGraphic('radar-panel', 14000);
+  }
 }
 
 function isPreMatchPCS(state) {
@@ -3690,6 +3776,7 @@ function showPreMatchInfo() {
   if (cfg.graphics_league_table) loadLeagueTable();
   if (cfg.graphics_h2h !== false) loadH2H();
   loadLineups();
+  if (rainAbout()) loadRadar();
   // The ground's conditions in the corner until the first ball (renderScorebar takes it down).
   if (_weatherOK && !_weatherPrematch && !el('weather-widget').classList.contains('show')) {
     el('weather-widget').classList.add('show'); _weatherPrematch = true;
@@ -3719,6 +3806,7 @@ function showPreMatchInfo() {
       queueGraphic('pregame-form-away', 9000);
     }
     if (fillLeadersPanel()) queueGraphic('leaders-panel', 9000);
+    if (rainAbout()) { loadRadar(); if (fillRadarPanel()) queueGraphic('radar-panel', 12000); }
     if (cfg.graphics_league_table && fillLeagueTablePanel()) {
       queueGraphic('league-table-panel', 9000);
       _leagueTableShownInnings = 1;   // covers the pre-match showing for innings 1

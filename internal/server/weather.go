@@ -89,9 +89,11 @@ func FetchWeatherData() M {
 	q.Set("current", "temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code")
 	q.Set("hourly", "precipitation_probability")
 	q.Set("forecast_hours", "4")
+	q.Set("minutely_15", "precipitation") // when rain starts or stops (rainOutlook)
+	q.Set("forecast_minutely_15", "13")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("timezone", "Europe/London")
-	data, err := httpGetJSON("https://api.open-meteo.com/v1/forecast?"+q.Encode(), 8*time.Second, nil)
+	data, err := weatherGet("https://api.open-meteo.com/v1/forecast?"+q.Encode(), 8*time.Second, nil)
 	if err != nil {
 		return M{"ok": false, "error": err.Error()}
 	}
@@ -120,8 +122,15 @@ func FetchWeatherData() M {
 	if !ok {
 		desc = "Unknown"
 	}
-	return M{"ok": true, "temp": pyRoundInt(gf(cur, "temperature_2m", 0)),
+	out := M{"ok": true, "temp": pyRoundInt(gf(cur, "temperature_2m", 0)),
 		"humidity":  pyRoundInt(gf(cur, "relative_humidity_2m", 0)),
 		"wind":      fmt.Sprintf("%d mph", pyRoundInt(gf(cur, "wind_speed_10m", 0))),
 		"rain_prob": int(rain), "icon": icon, "description": desc}
+	// The next three hours in quarter-hours: the overlay's "rain approaching" strap and
+	// whether the pre-match and break shows put the radar up.
+	m15 := gm(data, "minutely_15")
+	for k, v := range outlookFrom(gl(m15, "time"), gl(m15, "precipitation")) {
+		out[k] = v
+	}
+	return out
 }
