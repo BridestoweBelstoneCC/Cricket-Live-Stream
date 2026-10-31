@@ -399,9 +399,16 @@ file to send with a bug report.
 The icon by the clock (behind the **^** arrow until you drag it onto the taskbar) brings
 the window back with a click, and right-click has Activity, the control panel and Close.
 It also shows a Windows notification when something needs someone during the match: the
-scorer's feed gone quiet, OBS crashing (and being reopened), CricketStream restarting its
-server, the streaming laptop no longer collecting the score, a new version. Each says so
-once, and once more when it's put right; Windows' do-not-disturb keeps them quiet.
+scorer's feed gone quiet, OBS crashing (and being reopened), the stream stopping for more
+than a minute and a half, CricketStream restarting its server, the streaming laptop no
+longer collecting the score, a new version. Each says so once, and once more when it's put
+right; Windows' do-not-disturb keeps them quiet.
+
+**On your phone, too:** paste a Discord webhook link into **Settings → Alerts on Discord**
+and the same alerts (all but the new version) are posted to that channel, so whoever's at
+the ground hears about them. In Discord: the channel → Edit Channel → Integrations →
+Webhooks → New Webhook → Copy Webhook URL. **Send a test** checks it; the pre-match check
+checks it's still there. Treat the link like a password.
 
 ### My settings have gone / it's asking the setup questions again
 
