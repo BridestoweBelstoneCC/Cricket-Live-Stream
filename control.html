@@ -542,7 +542,7 @@
       <p class="hint">Shown in the status segment of the scorebar</p>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label>Drinks break over <span style="color:var(--muted);font-weight:400;">(weather card shows at end of this over)</span></label>
+      <label>Drinks break over <span style="color:var(--muted);font-weight:400;">(the break show starts at the end of this over, and stops at the next ball)</span></label>
       <input type="number" id="drinks_over" placeholder="25" min="1" max="49">
       <p class="hint">Set to 0 to disable. Weather card shows automatically at the end of this over.</p>
     </div>
@@ -616,6 +616,21 @@
       <button class="btn btn-test" onclick="showH2H()" style="flex:1;">&#8644; Show head-to-head</button>
     </div>
     <div id="weather-preview" style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:12px;color:var(--accent);">Click "Show weather" to fetch current conditions</div>
+  </div>
+  <div class="card">
+    <h2>Breaks</h2>
+    <p class="section-note">Drinks (at the drinks over below) and the innings break start by themselves. For anything else — rain, bad light, an injury — start one here. A break shows a break card, the scorecard and the weather, and replays the match's best moments so far; it ends by itself at the next ball.</p>
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn btn-test" onclick="startBreak('rain')" style="flex:1;">&#9730; Rain delay</button>
+      <button class="btn btn-test" onclick="startBreak('break')" style="flex:1;">&#9208; Break in play</button>
+      <button class="btn btn-test" onclick="endBreak()" style="flex:1;background:#3a1a1a;">&#9654; End the break</button>
+    </div>
+    <div id="break-status" style="margin-top:8px;font-size:12px;min-height:16px;color:var(--muted);">No break on.</div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Replays in breaks</div>
+           <div class="toggle-desc">Plays the match's best saved replays (wickets, fifties, sixes, fours) through the Replay scene between the break graphics. Needs replays switched on.</div></div>
+      <label class="toggle"><input type="checkbox" id="break_reel"><span class="track"></span></label>
+    </div>
   </div>
   <div class="card">
     <h2>Stream quality</h2>
@@ -2697,7 +2712,7 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','break_reel','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -3150,6 +3165,34 @@ async function showScorecard() {
     showStatus('Scorecard showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
+// Breaks (breakshow.go): the panel starts rain delays and breaks in play; play ends them.
+async function startBreak(kind) {
+  try {
+    const d = await (await apiFetch('/break/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({kind})})).json();
+    showStatus((d.label || 'Break') + ' on — it ends at the next ball', 'ok');
+    refreshBreak();
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function endBreak() {
+  try {
+    await apiFetch('/break/end', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    showStatus('Break over', 'ok');
+    refreshBreak();
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function refreshBreak() {
+  const out = document.getElementById('break-status');
+  if (!out) return;
+  try {
+    const d = await (await apiFetch('/break')).json();
+    if (!d.active) { out.textContent = 'No break on.'; out.style.color = 'var(--muted)'; return; }
+    const mins = Math.floor((d.since || 0) / 60);
+    out.textContent = '☕ ' + d.label + ' — ' + (mins ? mins + ' min' : 'just started') + (d.clip ? ' · replaying: ' + d.clip : '');
+    out.style.color = 'var(--accent)';
+  } catch(e) {}
+}
+setInterval(refreshBreak, 10000);
+
 async function showH2H() {
   try {
     const d = await (await apiFetch('/h2h')).json();

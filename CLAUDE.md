@@ -259,6 +259,14 @@ problem + what to do + pause) or print and `console.Pause()`.
     disagreeing with the over-summary card. Fixed by keying the clear off the over boundary
     directly (`ballInOver === 0 && currentOver > 0`, guarded so innings-start 0.0 doesn't
     trigger it) instead of the ticker string's content.
+- **Breaks end at the first ball, counted from the overs — never from the ticker.** The
+  drinks card used to hide on "the next poll with balls in the ticker", which (stale
+  ticker, above) was the very next poll: drinks never really showed. The overlay's
+  `updateBreak()` starts drinks at `drinks_over` complete, the innings break when innings 1
+  is all out / out of overs, and ends either at a ball bowled after it (or the reply's
+  first ball); the panel starts rain delays / breaks in play the same way. The server's
+  `breakshow.go` plays the match's best saved clips through the Replay scene between the
+  overlay's break graphics, and cuts back to Main the moment the break ends.
 - **On that same over-completing write, `bowler` has ALREADY rotated to the next over's
   bowler and the batter pair has swapped ends.** Anything attributing the over's final
   (never-in-any-ticker) delivery must use the previous poll's snapshot — `_lastPolledBowler`
@@ -275,7 +283,8 @@ problem + what to do + pause) or print and `console.Pause()`.
   token.** The overlay has no login flow (it's a loopback OBS browser source), so `/replay`,
   `/weather/show`, `/weather/hide`, and `/commentary/over/generate` check
   `trustedLoopback() or checkToken()` in the POST handler instead of requiring a token
-  outright. Any *new* endpoint the overlay calls needs the same carve-out, or it silently
+  outright (so do `/break/start` and `/break/end`, the break show). Any *new* endpoint the
+  overlay calls needs the same carve-out, or it silently
   401/403s the moment `club_password` is set, with nothing but a console warning to show for it.
 - **Two players sharing a surname silently suppress season-stat matching, by design.** PCS Pro
   only reports a bare surname, so if it's ambiguous (e.g. brothers), the surname-only stats
