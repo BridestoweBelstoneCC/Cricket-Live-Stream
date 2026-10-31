@@ -435,12 +435,30 @@ func (c *ctx) doPOST() {
 		// Hard-cut between camera scenes (bowler-end <-> wide). Called from the panel's
 		// manual cut buttons (operator, needs a session) AND automatically by the overlay
 		// at the over boundary when graphics_camera_auto_cut is on (loopback carve-out).
-		scene := trim(str(jsonObject(body), "scene", ""))
+		// Optional: "hold" seconds then back to "back" (camhold.go: the over change, a walk-
+		// out); "if_on" cuts only while OBS is on that scene (cutting back early).
+		d := jsonObject(body)
+		scene := trim(str(d, "scene", ""))
 		if scene == "" {
 			c.json(M{"ok": false, "error": "No scene given"}, 400)
 			return
 		}
-		ok := cutToScene(LoadState(), scene)
+		st := LoadState()
+		var ok bool
+		hold, _ := pyval.Float(d["hold"])
+		switch back, ifOn := trim(str(d, "back", "")), trim(str(d, "if_on", "")); {
+		case ifOn != "":
+			var cut bool
+			if ok, cut = cutIfOn(st, scene, ifOn); !cut {
+				c.json(M{"ok": true, "scene": scene, "message": "Not on " + ifOn + " — left as it is"})
+				return
+			}
+		case hold > 0 && back != "":
+			ok = holdCut(st, scene, back, time.Duration(min(hold, 300)*float64(time.Second)))
+		default:
+			endCamHold()
+			ok = cutToScene(st, scene)
+		}
 		msg := "Switched to " + scene
 		if !ok {
 			msg = fmt.Sprintf("Could not switch OBS to '%s' — check it exists and OBS is reachable", scene)

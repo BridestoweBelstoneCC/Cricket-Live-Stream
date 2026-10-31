@@ -46,7 +46,12 @@ func replayRig(t *testing.T, saveOK bool, writeClip bool) (*obswstest.Server, st
 	tg := srv.Target()
 	setState(t, M{"obs_host": tg.Host, "obs_port": tg.Port, "replay_folder": folder, "replay_duration": 1})
 	saved := replaySleep
-	t.Cleanup(func() { replaySleep = saved })
+	t.Cleanup(func() {
+		replaySleep = saved
+		camHoldMu.Lock()
+		replayBusyUntil = time.Time{} // the break show's tests mustn't wait on this one
+		camHoldMu.Unlock()
+	})
 	replaySleep = func(time.Duration) {}
 	return srv, folder
 }

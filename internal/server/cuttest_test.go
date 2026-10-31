@@ -147,7 +147,7 @@ func TestCutTestFindsACameraMissingFromAScene(t *testing.T) {
 	f := newCutFake(t)
 	delete(f.scenes["Replay"], "Bowler End Camera")
 	s := runCutTestToEnd(t)
-	if s["ok"] != false || !strings.Contains(stepTexts(s), "Bowler's-end camera isn't in the Replay scene") {
+	if s["ok"] != false || !strings.Contains(stepTexts(s), "Camera 2 isn't in the Replay scene") {
 		t.Fatalf("missing camera:\n%s", stepTexts(s))
 	}
 	if len(f.cuts) != 0 {

@@ -441,9 +441,9 @@
           title="The AI camera spotter found a problem — see the Cameras card"></button>
   <div id="topbar-cams" style="display:none">
     <button class="btn btn-test cam-btn" data-cam="main" onclick="cutToCameraScene('main')"
-            title="Cut to the wide camera (or press C)">&#127909;<span class="long"> Wide</span></button>
+            title="Cut to camera 1 (or press C)">&#127909;<span class="long"> Camera 1</span></button>
     <button class="btn btn-test cam-btn" data-cam="bowler" onclick="cutToCameraScene('bowler')"
-            title="Cut to the bowler-end camera (or press C)">&#127909;<span class="long"> Bowler-end</span></button>
+            title="Cut to camera 2 (or press C)">&#127909;<span class="long"> Camera 2</span></button>
   </div>
   <button class="btn" id="save-btn" onclick="saveState()">Save<span class="long"> &amp; Update Overlay</span></button>
 </div>
@@ -550,8 +550,8 @@
   <div class="card">
     <h2>Cameras</h2>
     <div class="half-grid" style="margin-top:8px;">
-      <button class="btn btn-test cam-btn" id="cam-btn-main" data-cam="main" onclick="cutToCameraScene('main')">&#127909; Wide angle</button>
-      <button class="btn btn-test cam-btn" id="cam-btn-bowler" data-cam="bowler" onclick="cutToCameraScene('bowler')">&#127909; Bowler-end</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-main" data-cam="main" onclick="cutToCameraScene('main')">&#127909; Camera 1</button>
+      <button class="btn btn-test cam-btn" id="cam-btn-bowler" data-cam="bowler" onclick="cutToCameraScene('bowler')">&#127909; Camera 2</button>
     </div>
     <p class="hint" style="margin-top:6px;">
       Press <kbd>C</kbd> to flick between the two without aiming at a button — the quickest
@@ -559,10 +559,29 @@
     </p>
     <div id="camera-cut-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <div class="toggle-row" style="margin-top:10px">
-      <div><div class="toggle-label">Automatic cut at over boundary</div>
-           <div class="toggle-desc">Overlay cuts to the bowler-end camera at the start of each over, back to wide ~8s later. No-op unless a bowler-end camera is set up (Setup → Cameras). Not yet proven with two real cameras — run <strong>Test the camera cut</strong> before your first match with it.</div></div>
+      <div><div class="toggle-label">Camera 2 at the over change</div>
+           <div class="toggle-desc">At the end of each over, cut to camera 2 and back to camera 1 after the time below — set it to about how long your over changes take. Never cuts back over a replay. Needs camera 2 (Setup → Cameras); run <strong>Test the camera cut</strong> before your first match with it.</div></div>
       <label class="toggle"><input type="checkbox" id="graphics_camera_auto_cut"><span class="track"></span></label>
     </div>
+    <div class="field" style="margin-top:6px">
+      <label>Seconds on camera 2 at the over change</label>
+      <input type="number" id="camera_over_hold" min="3" max="120" style="width:90px">
+    </div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Walking out and off on camera 2</div>
+           <div class="toggle-desc">After a wicket (once its replay's done), camera 2 while the new batter walks out; at the end of an innings, the teams walking off. Best when camera 2 looks at the pavilion. Back to camera 1 after the time below, or as soon as the next ball's bowled.</div></div>
+      <label class="toggle"><input type="checkbox" id="camera_walkout"><span class="track"></span></label>
+    </div>
+    <div class="field" style="margin-top:6px">
+      <label>Seconds on camera 2 for a walk-out</label>
+      <input type="number" id="camera_walkout_hold" min="10" max="180" style="width:90px">
+    </div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Side-on wicket replays</div>
+           <div class="toggle-desc">Each wicket replays twice: camera 1 as now, then camera 2's view of the same moment. CricketStream records camera 2 itself while this is on (it copies the stream — next to no work for the laptop). Needs FFmpeg and camera 2.</div></div>
+      <label class="toggle"><input type="checkbox" id="replay_side_on"><span class="track"></span></label>
+    </div>
+    <div id="side-on-status" class="hint" style="margin-top:4px;min-height:14px;"></div>
     <div style="margin-top:8px">
       <button class="btn btn-test" id="cut-test-btn" onclick="runCutTest()">&#9654; Test the camera cut</button>
       <span class="hint" style="margin-left:8px">Before going live: checks both cameras are in every scene, cuts to the bowler's end and back as a match does, and watches both pictures.</span>
@@ -1600,14 +1619,14 @@ async function useSponsor(id) {
     <div id="camera-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
     <hr>
     <p class="section-note">
-      Second camera (e.g. bowler-end) for a hard cut between two angles &mdash; optional,
+      Second camera (at the bowler's end, or side-on from the pavilion) &mdash; optional,
       leave the URL blank to skip. <strong>New, not yet verified against real two-camera
       hardware</strong> &mdash; test it on a real match before relying on it. Both cameras
       end up placed in Main, the bowler-end scene, and Replay, so switching never leaves a
       camera deactivated (see CLAUDE.md's camera-source gotcha).
     </p>
     <div class="field">
-      <label>Bowler-end camera RTSP URL</label>
+      <label>Camera 2 RTSP URL</label>
       <input type="text" id="camera2_rtsp_url" placeholder="rtsp://user:pass@192.168.1.51:554/stream">
     </div>
     <div class="half-grid">
@@ -1616,11 +1635,11 @@ async function useSponsor(id) {
         <input type="text" id="obs_camera2_name" placeholder="Bowler End Camera">
       </div>
       <div class="field">
-        <label>Bowler-end scene name</label>
+        <label>Camera 2 scene name</label>
         <input type="text" id="obs_bowler_scene" placeholder="Main-Bowler">
       </div>
     </div>
-    <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add bowler-end camera to OBS</button>
+    <button class="btn btn-test" onclick="addCameraToObs(2)" style="width:100%;">&#128247; Add camera 2 to OBS</button>
     <div id="camera2-msg" style="margin-top:8px;font-size:12px;min-height:16px;"></div>
   </div>
   <div class="card">
@@ -2750,10 +2769,11 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
   'obs_host','obs_password','obs_main_scene','obs_replay_scene','camera_rtsp_url','obs_camera_name',
   'camera2_rtsp_url','obs_camera2_name','obs_bowler_scene',
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id','scorebar_style'];
-const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips'];
+const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips',
+  'camera_over_hold','camera_walkout_hold'];
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -2947,6 +2967,8 @@ async function saveState() {
   if (!state.obs_main_scene)   state.obs_main_scene   = 'Main';
   if (!state.obs_replay_scene) state.obs_replay_scene = 'Replay';
   if (!state.replay_duration)  state.replay_duration  = 18;
+  if (!state.camera_over_hold) state.camera_over_hold = 8;
+  if (!state.camera_walkout_hold) state.camera_walkout_hold = 35;
   try {
     const res = await apiFetch('/state', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
     showStatus(res.ok ? 'Saved — overlay updates on its next poll' : 'Error saving', res.ok?'ok':'err');
@@ -3124,6 +3146,22 @@ async function testReplay() {
 }
 
 // The camera cut test (POST/GET /camera/cut_test): runs on the server, steps polled here.
+// Side-on replays (sidecam.go): is camera 2 being recorded? Shown under the switch while
+// it's on; asked again every 15s.
+async function refreshSideOn() {
+  const box = document.getElementById('side-on-status');
+  const on = document.getElementById('replay_side_on');
+  if (!box || !on) return;
+  if (!on.checked) { box.textContent = ''; return; }
+  try {
+    const d = await (await apiFetch('/camera/side-on')).json();
+    box.textContent = d.running ? '● Recording camera 2 — side-on replays ready'
+      : 'Not recording: ' + (d.status === 'off' ? 'starts within a few seconds of saving' : d.status);
+    box.style.color = d.running ? 'var(--ok)' : 'var(--warn, #c87800)';
+  } catch (e) {}
+}
+setInterval(refreshSideOn, 15000);
+
 async function runCutTest() {
   const btn = document.getElementById('cut-test-btn'), ul = document.getElementById('cut-test-steps');
   ul.textContent = '';
@@ -3921,7 +3959,7 @@ document.getElementById('home_team').addEventListener('input',updatePreview);
 document.getElementById('away_team').addEventListener('input',updatePreview);
 document.getElementById('home_abbrev')?.addEventListener('input',updatePreview);
 document.getElementById('away_abbrev')?.addEventListener('input',updatePreview);
-loadState();
+loadState().then(refreshSideOn);
 loadLogoOptions();
 loadRoster();
 loadDataStatus();

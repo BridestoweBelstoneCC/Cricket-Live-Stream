@@ -87,7 +87,26 @@ func ObsTriggerReplay(state M, reason string) {
 	if folder == "" {
 		folder = defaultReplayFolder()
 	}
-	noteReplay(float64(duration) + 15) // the clip, and up to ten seconds' saving: no quality step in it
+	// A wicket replays side-on from camera 2 too (sidecam.go), cut from its recording at
+	// the same moment OBS saves the main clip, so both cover the same seconds.
+	var side chan string
+	if reason == "Wicket" && sideOnEnabled(state) {
+		side = make(chan string, 1)
+		go func() {
+			defer func() { recover() }()
+			p, why := sideOnClipFor(state, float64(gi(state, "replay_side_on_seconds", 25)))
+			if why != "" {
+				say("  ⚠  No side-on replay: %s", why)
+			}
+			side <- p
+		}()
+	}
+	replays := float64(duration)
+	if side != nil {
+		replays *= 2
+	}
+	noteReplay(replays + 15) // the clips, and up to ten seconds' saving: no quality step in it
+	setReplayBusy(time.Duration(replays+15) * time.Second)
 	c, err := obsws.Dial(obsTarget(state), 8*time.Second)
 	if err != nil {
 		say("  ✗  OBS WebSocket: %v — is OBS running? (check the password in the control panel)", err)
@@ -150,6 +169,21 @@ func ObsTriggerReplay(state M, reason string) {
 	send("SetCurrentProgramScene", M{"sceneName": replay})
 	say("  ▶  Switched to %s scene", replay)
 	replaySleep(time.Duration(duration) * time.Second)
+	if side != nil {
+		var p string
+		select {
+		case p = <-side:
+		case <-time.After(5 * time.Second):
+		}
+		if p != "" {
+			// The same Replay scene, the side-on clip: restart the source on the new file.
+			send("SetInputSettings", M{"inputName": "ReplayClip", "inputSettings": M{"local_file": p}})
+			send("TriggerMediaInputAction", M{"inputName": "ReplayClip", "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
+			setCommand("replay_caption", strings.TrimSpace("Side-on · "+caption))
+			say("  ▶  Side-on replay from camera 2")
+			replaySleep(time.Duration(duration) * time.Second)
+		}
+	}
 	send("SetCurrentProgramScene", M{"sceneName": main})
 	say("  ◀  Returned to %s scene", main)
 }

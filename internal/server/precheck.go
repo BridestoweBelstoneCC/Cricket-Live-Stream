@@ -276,7 +276,7 @@ func pcOBSBitrate(st M) CheckResult {
 func pcCameras(st M) CheckResult {
 	type cam struct{ name, url string }
 	var cams []cam
-	for _, c := range []cam{{"Camera", gs(st, "camera_rtsp_url", "")}, {"Bowler-end camera", gs(st, "camera2_rtsp_url", "")}} {
+	for _, c := range []cam{{"Camera", gs(st, "camera_rtsp_url", "")}, {"Camera 2", gs(st, "camera2_rtsp_url", "")}} {
 		if trim(c.url) != "" {
 			cams = append(cams, cam{c.name, trim(c.url)})
 		}

@@ -45,6 +45,7 @@ func Start() {
 	StartOBSGuard()
 	StartOverlayWatch()
 	StartPCSBridgeSync()
+	StartSideCam()
 	if CloudflareTunnel {
 		if ClubPassword == "" {
 			say("  ✗  Cloudflare Tunnel is enabled in config.ini but club_password is blank.")
@@ -154,6 +155,7 @@ func Run(opts Options) error {
 	}()
 	err = srv.Serve(ln)
 	stopCloudflareTunnel()
+	StopSideCam()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

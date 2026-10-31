@@ -86,7 +86,7 @@ func runCutTest(st M) {
 	bowler := gsOr(st, "obs_bowler_scene", "Main-Bowler")
 	replay := gsOr(st, "obs_replay_scene", "Replay")
 	cams := [][2]string{{"Wide camera", gsOr(st, "obs_camera_name", "Cricket Camera")},
-		{"Bowler's-end camera", gsOr(st, "obs_camera2_name", "Bowler End Camera")}}
+		{"Camera 2", gsOr(st, "obs_camera2_name", "Bowler End Camera")}}
 
 	// 1) Every camera in every scene it's shown in or cut to, Replay included.
 	var reqs []obsws.Req
