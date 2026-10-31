@@ -15,7 +15,7 @@
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Built%20with-Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform: Windows & Mac](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?logo=windows&logoColor=white)](README.md)
-[![Version](https://img.shields.io/badge/Version-3.0.0--beta.2-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.0--beta.3-orange)](CHANGELOG.md)
 [![OBS Studio](https://img.shields.io/badge/Works%20with-OBS%20Studio-purple?logo=obs-studio&logoColor=white)](https://obsproject.com)
 
 **[Download →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/#download)** &nbsp;·&nbsp; **[Project website →](https://bridestowebelstonecc.github.io/Cricket-Live-Stream/)**

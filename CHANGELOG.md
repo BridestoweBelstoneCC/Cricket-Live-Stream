@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 
 - **The break show, and drinks that work.** Drinks never really showed: the weather card
   came up after the drinks over and went again a poll later, because NV Play leaves the
