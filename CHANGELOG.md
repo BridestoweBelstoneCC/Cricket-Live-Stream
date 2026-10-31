@@ -6,6 +6,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Chapters on the match video.** After the stream ends, the YouTube video's description
+  gets a chapter for each innings, wicket, fifty, hundred and five-for (starting a few
+  seconds before the scorer entered it, so it opens on the ball itself), and YouTube shows
+  them on the video's timeline. The club's own description is kept. Control panel →
+  YouTube: **Preview the chapters** / **Add them to the video now**, and a switch to turn
+  it off.
 - **A ready-made Raspberry Pi image for the clubhouse screen.** Releases now include
   `CricketStream-clubhouse-pi.img.xz`: Raspberry Pi OS with the screen built in. Flash it
   with Raspberry Pi Imager (setting the username and wifi there) and the Pi boots
