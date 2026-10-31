@@ -4,6 +4,19 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **A thumbnail on the match video.** After the stream, the YouTube video's thumbnail
+  becomes both clubs' badges, the teams, the date and the result, in the club's colours —
+  so the channel isn't a row of identical camera shots. YouTube allows custom thumbnails
+  only on a verified channel (youtube.com/verify, once).
+- **A highlights video by the evening.** Once the match has a result and the stream has
+  ended, the match's replays go up to YouTube as a separate video — captioned, a chapter
+  for each, a link to the full match, its own thumbnail, and the same privacy as the match
+  video. Once per match; needs FFmpeg and at least three replays. Control panel → YouTube:
+  **Preview the thumbnail**, **Set it on the video now**, **Upload the highlights now**,
+  and a switch for each.
+
 ## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 
 - **The break show, and drinks that work.** Drinks never really showed: the weather card

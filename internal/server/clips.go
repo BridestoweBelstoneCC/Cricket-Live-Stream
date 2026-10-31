@@ -251,6 +251,15 @@ func CompileHighlights(folder, output string) (bool, string) {
 	if len(clips) == 0 {
 		return false, "No replay clips found in " + folder
 	}
+	return compileHighlights(clips, output)
+}
+
+// compileHighlights is CompileHighlights for a given set of clips (the YouTube
+// highlights video uses only this match's).
+func compileHighlights(clips []string, output string) (bool, string) {
+	if !ffmpegFound() {
+		return false, noFFmpeg
+	}
 	plan, _ := taggedPlan(clips)
 	if len(plan) == 0 {
 		return false, "Only replay-test clips found — nothing worth compiling"
