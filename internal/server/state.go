@@ -79,6 +79,8 @@ func DefaultState() M {
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut":  false,
 		"youtube_chapters":          true,
+		"youtube_thumbnail":         true, // the match video's thumbnail, after the stream (ytafter.go)
+		"youtube_highlights":        true, // a highlights video, once the match has a result
 		"graphics_win_predictor":    true,
 		"graphics_voice_commentary": false, // read the end-of-over line aloud (computer voice)
 		"camera_spotter":            false, // AI camera checks while live — spends AI credit

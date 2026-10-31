@@ -171,6 +171,7 @@ type ytCall struct {
 	method, kind, part string
 	query              string
 	body               M
+	raw                []byte // an upload's bytes (a thumbnail, a video)
 }
 
 type fakeYouTube struct {
@@ -190,10 +191,30 @@ func newFakeYouTube(t *testing.T, f *fakeYouTube) *fakeYouTube {
 		kind := strings.TrimPrefix(r.URL.Path, "/")
 		q := r.URL.Query()
 		c := ytCall{method: r.Method, kind: kind, part: q.Get("part"), query: r.URL.RawQuery}
-		if r.Method == "PUT" {
+		if kind == "session" || kind == "thumbnails/set" {
+			c.raw, _ = io.ReadAll(r.Body)
+		} else if r.Method == "PUT" || r.Method == "POST" {
 			json.NewDecoder(r.Body).Decode(&c.body)
 		}
 		f.calls = append(f.calls, c)
+		// The upload endpoints (ytUpload points here too): a thumbnail, and a resumable
+		// video upload — start a session, then PUT the bytes to it.
+		switch {
+		case kind == "thumbnails/set":
+			if f.fail[[2]string{kind, ""}] {
+				w.WriteHeader(403)
+				io.WriteString(w, `{"error":{"message":"The authenticated user doesn't have permissions to upload and set custom video thumbnails."}}`)
+				return
+			}
+			io.WriteString(w, "{}")
+			return
+		case kind == "videos" && r.Method == "POST":
+			w.Header().Set("Location", "http://"+r.Host+"/session")
+			return
+		case kind == "session":
+			io.WriteString(w, `{"id":"HL"}`)
+			return
+		}
 		if r.Method == "PUT" {
 			if f.fail[[2]string{kind, c.part}] {
 				w.WriteHeader(403)
@@ -224,9 +245,9 @@ func newFakeYouTube(t *testing.T, f *fakeYouTube) *fakeYouTube {
 		json.NewEncoder(w).Encode(M{"items": items})
 	}))
 	t.Cleanup(srv.Close)
-	saved := ytAPI
-	ytAPI = srv.URL + "/"
-	t.Cleanup(func() { ytAPI = saved })
+	saved, savedUp := ytAPI, ytUpload
+	ytAPI, ytUpload = srv.URL+"/", srv.URL+"/"
+	t.Cleanup(func() { ytAPI, ytUpload = saved, savedUp })
 	// A signed-in laptop: a valid stored token, so no refresh and no login.
 	writeCreds(t, "http://127.0.0.1:1/token")
 	b, _ := json.Marshal(M{"token": "good", "refresh_token": "r",

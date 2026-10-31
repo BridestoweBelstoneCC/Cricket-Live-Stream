@@ -1051,6 +1051,34 @@ func (c *ctx) doGET() {
 		ok, msg, text := AddChaptersToYouTube(CurrentMatchID(), true)
 		c.json(M{"ok": ok, "message": msg, "chapters": text})
 
+	case path == "/youtube/highlights":
+		// The highlights video's upload (ytafter.go): running, how it went, its link.
+		if !c.checkToken() {
+			return
+		}
+		c.json(YTHighlightsStatus())
+
+	case path == "/youtube/thumbnail":
+		// What the thumbnail looks like now (?kind=highlights for the highlights video's).
+		if !c.checkToken() {
+			return
+		}
+		kicker, name := "Live cricket", "thumbnail"
+		if c.q("kind") == "highlights" {
+			kicker, name = "Highlights", "highlights"
+		}
+		out, err := buildThumbnail(kicker, name)
+		if err != nil {
+			c.json(M{"ok": false, "error": err.Error()}, 500)
+			return
+		}
+		b, err := os.ReadFile(out)
+		if err != nil {
+			c.json(M{"ok": false, "error": err.Error()}, 500)
+			return
+		}
+		c.bytes(b, "image/jpeg")
+
 	case path == "/youtube/live":
 		// The live broadcast's video id, for the clubhouse screen to play full size.
 		if !c.checkToken() {

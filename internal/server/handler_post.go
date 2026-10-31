@@ -505,6 +505,26 @@ func (c *ctx) doPOST() {
 		ok, msg, text := AddChaptersToYouTube(CurrentMatchID(), false)
 		c.json(M{"ok": ok, "message": msg, "chapters": text})
 
+	case path == "/youtube/thumbnail":
+		ok, msg := SetMatchThumbnail(CurrentMatchID())
+		c.json(M{"ok": ok, "message": msg})
+
+	case path == "/youtube/highlights":
+		// {"force": true} uploads again even when this match's highlights are up already.
+		var d M
+		if len(body) > 0 {
+			var err error
+			if d, err = strictObject(body); err != nil {
+				c.json(M{"ok": false, "error": err.Error()}, 400)
+				return
+			}
+		}
+		if !StartHighlightsUpload(CurrentMatchID(), pyval.Truthy(d["force"])) {
+			c.json(M{"ok": false, "error": "An upload is already running"}, 409)
+			return
+		}
+		c.json(M{"ok": true})
+
 	case path == "/match/page":
 		started := StartMatchPageBuild()
 		if started {
