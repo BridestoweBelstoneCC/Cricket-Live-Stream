@@ -1,0 +1,27 @@
+#!/bin/sh
+# The clubhouse screen must reach the desktop with nobody there to sign in (the screen is
+# a kiosk in a public room; it holds no password worth guarding — its PIN does that). The
+# Raspberry Pi image's own first boot usually sets desktop auto sign-in already; this makes
+# sure, once the account Raspberry Pi Imager (or the first-boot wizard) made exists, and
+# then never runs again.
+set -u
+MARK=/var/lib/cricketstream/autologin-done
+# The image's own uid 1000 is a placeholder ("pi", no login shell) that the first boot
+# renames to the Imager's user; and with no Imager settings, the first-boot wizard signs in
+# as rpi-first-boot-wizard to make one. Neither is the club's account: try again next boot.
+entry="$(getent passwd 1000)"
+user="$(echo "$entry" | cut -d: -f1)"
+shell="$(echo "$entry" | cut -d: -f7)"
+[ -n "$user" ] || exit 0
+case "$shell" in */nologin|*/false|"") exit 0 ;; esac
+[ "$user" != "rpi-first-boot-wizard" ] || exit 0
+# The wizard still to run (its account exists until it has made the club's).
+getent passwd rpi-first-boot-wizard >/dev/null && exit 0
+if command -v raspi-config >/dev/null 2>&1; then
+  if ! grep -rqs "^autologin-user=$user\$" /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d; then
+    raspi-config nonint do_boot_behaviour B4 || exit 0
+    echo "CricketStream: the desktop now signs in as $user by itself"
+  fi
+fi
+mkdir -p "$(dirname "$MARK")"
+touch "$MARK"

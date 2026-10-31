@@ -95,6 +95,28 @@ on mains power, or it will go to sleep mid-match.
 
 ## 2. The Pi
 
+### The easy way: the CricketStream image
+
+Each release has **`CricketStream-clubhouse-pi.img.xz`**: Raspberry Pi OS (64-bit, with
+desktop) with the clubhouse screen already in it. Nothing to type on the Pi.
+
+1. Download it from the [releases](https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/releases)
+   (about 1.5 GB).
+2. Open the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) → *Choose
+   Device* (your Pi) → *Choose OS* → **Use custom** → the file you downloaded → *Choose
+   Storage* (the SD card).
+3. When it asks about OS customisation, **Edit settings**: a username and password, the
+   club's wifi (or plug in a cable), and the time zone. Save, and write the card.
+4. Put the card in the Pi and switch it on. It starts up (the first start takes a few
+   minutes and restarts once) and opens the screen full screen, ready to pair.
+
+The image signs in to the desktop by itself and opens the screen at every start. It has
+no password or account of its own — those are the ones you set in the Imager. To update
+CricketStream on it later, run the installer below once: it puts the new version in
+`~/cricketstream`, which is used from then on.
+
+### Or: install it on Raspberry Pi OS yourself
+
 1. Install **Raspberry Pi OS (64-bit) with desktop** with the
    [Raspberry Pi Imager](https://www.raspberrypi.com/software/). In the Imager's settings,
    set a username and the club's wifi (or plug in a cable).

@@ -6,6 +6,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **A ready-made Raspberry Pi image for the clubhouse screen.** Releases now include
+  `CricketStream-clubhouse-pi.img.xz`: Raspberry Pi OS with the screen built in. Flash it
+  with Raspberry Pi Imager (setting the username and wifi there) and the Pi boots
+  straight to pairing — no terminal. See
+  [CLUBHOUSE_SCREEN.md](CLUBHOUSE_SCREEN.md#2-the-pi).
 - **Score-only clubhouse screens.** A clubhouse screen can now show the score with no
   buttons at all — for the bar's TV, the pavilion or the scorebox. Tick **Let score-only
   screens show the score** on the laptop's Clubhouse screen card and pair the screen with
