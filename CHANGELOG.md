@@ -6,6 +6,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **Pair a clubhouse screen without typing.** Press **Pair from the laptop** on the screen:
+  it shows a three-digit code, the laptop's Clubhouse card shows the same code, and one
+  press there (**Match-day screen** or **Score-only screen**) pairs it. Typing the key
+  still works.
 - **Alerts on Discord.** Paste a Discord webhook into **Settings → Alerts on Discord** and
   the match-day alerts go to that channel too — the scorer's feed going quiet, OBS
   crashing, the server restarting — so whoever's at the ground hears about them on their

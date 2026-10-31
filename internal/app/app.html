@@ -220,6 +220,7 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
       <p class="hint">Optional. A touch screen in the clubhouse (a Raspberry Pi) can switch this laptop on, start
         match day, show the score and the stream, and switch the laptop off afterwards.
         <a href="https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/blob/main/CLUBHOUSE_SCREEN.md" target="_blank" rel="noopener">How to set it up</a></p>
+      <div id="ch_requests"></div>
       <label class="tick"><input type="checkbox" id="ch_enabled"><span>Let a clubhouse screen run match day on this laptop</span></label>
       <div id="ch_on" class="hidden">
         <p class="hint" style="margin:12px 0 4px">Type this pairing key on the clubhouse screen:</p>
@@ -512,8 +513,38 @@ function renderClubhouse() {
   $('ch_nowire').classList.toggle('hidden', !noWire);
   if (noWire) txt('ch_nowire', 'No network cable found — the screen can still run match day, but switching this laptop ON ' +
     'needs it plugged into the club network by cable (and Wake-on-LAN switched on: see How to set it up).');
+  renderClubhouseRequests(c);
   $('ch_error').classList.toggle('hidden', !c.error);
   txt('ch_error', c.error || '');
+}
+// Screens asking to pair ("Pair from the laptop" on the screen): the code to check against
+// the screen's, and a button for each kind of screen switched on here.
+var chReqShown = '';
+function renderClubhouseRequests(c) {
+  var reqs = c.requests || [];
+  var sig = JSON.stringify(reqs.map(function (r) { return [r.id, c.enabled, c.view_enabled]; }));
+  if (sig === chReqShown) return; // redrawn only when it changes: a press mid-redraw would be lost
+  chReqShown = sig;
+  var box = $('ch_requests'); box.textContent = '';
+  reqs.forEach(function (r) {
+    var d = document.createElement('div'); d.className = 'note';
+    var p = document.createElement('p'); p.style.margin = '0 0 8px';
+    p.appendChild(document.createTextNode('A screen is asking to pair' + (r.name ? ' (' + r.name + ', ' : ' (') + r.from + '). Its code: '));
+    var b = document.createElement('b'); b.textContent = r.code; b.style.fontSize = '1.4em'; p.appendChild(b);
+    p.appendChild(document.createTextNode(' — say yes only if the screen shows the same code.'));
+    d.appendChild(p);
+    var row = document.createElement('div'); row.className = 'actions'; row.style.margin = '0';
+    function btn(label, cls, as) {
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'btn ' + cls; x.textContent = label;
+      x.addEventListener('click', function () { chReqShown = ''; setClubhouse({answer: r.id, as: as}); });
+      row.appendChild(x);
+    }
+    if (c.enabled) btn('Match-day screen', 'primary', 'control');
+    if (c.view_enabled) btn('Score-only screen', c.enabled ? '' : 'primary', 'view');
+    btn('No', 'quiet', 'no');
+    d.appendChild(row);
+    box.appendChild(d);
+  });
 }
 function setClubhouse(body) {
   chBusy = true;

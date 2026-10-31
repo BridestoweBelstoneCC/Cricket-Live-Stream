@@ -149,6 +149,10 @@ type Screen struct {
 	pinFails    int
 	pinLockTil  time.Time
 	badgeAt     time.Time
+	asks        []askingLaptop // asking to pair, waiting for a yes on the laptop
+	askUntil    time.Time
+	askErr      string
+	askRunning  bool
 	done        chan struct{}
 }
 
@@ -572,6 +576,22 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true}, 200)
+	case "POST /ask":
+		var body struct {
+			Address string `json:"address"`
+		}
+		readJSON(r, &body)
+		if locked() {
+			return
+		}
+		if err := s.startAsking(orDefault(body.Address, s.o.Laptop)); err != nil {
+			fail(400, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true}, 200)
+	case "POST /ask/cancel":
+		s.stopAsking("")
+		writeJSON(w, map[string]any{"ok": true}, 200)
 	case "POST /wake/cancel":
 		// "Stop waiting": nothing to undo on the laptop, just the screen giving up.
 		s.mu.Lock()
@@ -674,6 +694,11 @@ func (s *Screen) status() map[string]any {
 	if !s.lastOK.IsZero() {
 		out["seen_ago"] = int(time.Since(s.lastOK).Seconds())
 	}
+	asking := []map[string]any{}
+	for _, a := range s.asks {
+		asking = append(asking, map[string]any{"code": a.code, "club": a.club})
+	}
+	out["asking"], out["ask_error"] = asking, s.askErr
 	return out
 }
 
@@ -764,6 +789,30 @@ var discover = func(wait time.Duration) []string {
 	}
 }
 
+// candidates are the laptops to try: the one at address, if given; else every laptop that
+// answers discovery, and the one this screen was paired with (discovery may be blocked).
+func (s *Screen) candidates(address string) []string {
+	if address = strings.TrimSpace(address); address != "" {
+		if _, _, err := net.SplitHostPort(address); err != nil {
+			address = net.JoinHostPort(address, strconv.Itoa(Port()))
+		}
+		return []string{address}
+	}
+	candidates := discover(2 * time.Second)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg.Host != "" {
+		hp := net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port))
+		for _, c := range candidates {
+			if c == hp {
+				return candidates
+			}
+		}
+		candidates = append(candidates, hp)
+	}
+	return candidates
+}
+
 // pair finds the laptop holding key (at address, if given; else every laptop that
 // answers discovery) and remembers it.
 func (s *Screen) pair(key, address string) (map[string]any, error) {
@@ -771,20 +820,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 	if len(key) != KeyLen {
 		return nil, errors.New("The pairing key is 8 letters and numbers — it's on the streaming laptop's match-day screen, under Clubhouse screen.")
 	}
-	var candidates []string
-	if address = strings.TrimSpace(address); address != "" {
-		if _, _, err := net.SplitHostPort(address); err != nil {
-			address = net.JoinHostPort(address, strconv.Itoa(Port()))
-		}
-		candidates = []string{address}
-	} else {
-		candidates = discover(2 * time.Second)
-		s.mu.Lock()
-		if s.cfg.Host != "" { // the laptop it was paired with, in case discovery is blocked
-			candidates = append(candidates, net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)))
-		}
-		s.mu.Unlock()
-	}
+	candidates := s.candidates(address)
 	if len(candidates) == 0 {
 		return nil, errors.New("No streaming laptop answered. Is CricketStream open on it, with the clubhouse screen switched on, " +
 			"on the same network as this screen? If the network blocks the search, type the laptop's address too.")
@@ -846,4 +882,153 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 		return nil, errors.New("A streaming laptop answered but didn't accept that key — check it on the laptop's match-day screen.")
 	}
 	return nil, errors.New("Found a laptop but couldn't pair with it — try again, or type its address.")
+}
+
+// ── Asking to pair (the laptop's side is ask.go) ──
+
+// askingLaptop is one laptop this screen has asked.
+type askingLaptop struct {
+	hp, secret, code, club string
+}
+
+// askEvery is how often the screen asks the laptops it's waiting on for their answer.
+var askEvery = 2 * time.Second
+
+// postLink sends a keyless request to a link (asking to pair).
+func (s *Screen) postLink(hp, path string, body any) (int, map[string]any, error) {
+	b, _ := json.Marshal(body)
+	resp, err := s.client.Post("http://"+hp+path, "application/json", bytes.NewReader(b))
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out)
+	return resp.StatusCode, out, nil
+}
+
+// askOne asks one laptop; its code to show, or ok false.
+func (s *Screen) askOne(hp string) (askingLaptop, bool) {
+	b := make([]byte, askSecretLen/2)
+	rand.Read(b)
+	name, _ := os.Hostname()
+	a := askingLaptop{hp: hp, secret: hex.EncodeToString(b)}
+	code, out, err := s.postLink(hp, "/clubhouse/ask", map[string]any{"secret": a.secret, "name": name})
+	if err != nil || code != 200 || out["ok"] != true {
+		return a, false
+	}
+	a.code, _ = out["code"].(string)
+	a.club, _ = out["club"].(string)
+	return a, a.code != ""
+}
+
+// startAsking asks every laptop it can find (or the one at address) to pair, and waits
+// for someone at the laptop to say yes.
+func (s *Screen) startAsking(address string) error {
+	candidates := s.candidates(address)
+	if len(candidates) == 0 {
+		return errors.New("No streaming laptop answered. Is CricketStream open on it, with the clubhouse screen switched on, " +
+			"on the same network as this screen? If the network blocks the search, type the laptop's address.")
+	}
+	var asks []askingLaptop
+	for _, hp := range candidates {
+		if a, ok := s.askOne(hp); ok {
+			asks = append(asks, a)
+		}
+	}
+	if len(asks) == 0 {
+		return errors.New("A laptop answered but didn't take the request — is CricketStream up to date on it? You can type the pairing key instead.")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asks, s.askUntil, s.askErr = asks, time.Now().Add(askFor), ""
+	if !s.askRunning {
+		s.askRunning = true
+		s.background(s.askLoop)
+	}
+	return nil
+}
+
+func (s *Screen) stopAsking(why string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asks, s.askErr = nil, why
+}
+
+func (s *Screen) askLoop() {
+	for {
+		select {
+		case <-s.done:
+			s.mu.Lock()
+			s.askRunning = false
+			s.mu.Unlock()
+			return
+		case <-time.After(askEvery):
+		}
+		more := s.askOnce()
+		// Stopped under the lock a new ask takes: one pressed just now is still asked.
+		s.mu.Lock()
+		if !more && len(s.asks) == 0 {
+			s.askRunning = false
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Unlock()
+	}
+}
+
+// askOnce asks each laptop waited on for its answer; false when there's nothing left
+// to wait for.
+func (s *Screen) askOnce() bool {
+	s.mu.Lock()
+	asks, until := append([]askingLaptop(nil), s.asks...), s.askUntil
+	s.mu.Unlock()
+	if len(asks) == 0 {
+		return false
+	}
+	if time.Now().After(until) {
+		s.stopAsking("Nobody answered on the laptop — press Pair from the laptop again.")
+		return false
+	}
+	var keep []askingLaptop
+	saidNo := false
+	for _, a := range asks {
+		code, out, err := s.postLink(a.hp, "/clubhouse/ask/poll", map[string]any{"secret": a.secret})
+		status, _ := out["status"].(string)
+		switch {
+		case err != nil || code != 200:
+			keep = append(keep, a) // off for a moment, or busy: ask again next time
+		case status == "control" || status == "view":
+			key, _ := out["key"].(string)
+			s.stopAsking("")
+			if _, err := s.pair(key, a.hp); err != nil {
+				s.stopAsking(err.Error())
+			}
+			return false
+		case status == "no":
+			saidNo = true
+		case status == "unknown":
+			// The laptop forgot it (its link restarted with new settings): ask again —
+			// with a new code, which the screen now shows.
+			if again, ok := s.askOne(a.hp); ok {
+				keep = append(keep, again)
+			}
+		default:
+			keep = append(keep, a)
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.asks == nil { // cancelled meanwhile
+		return false
+	}
+	s.asks = keep
+	if len(keep) == 0 {
+		s.askErr = "Nobody on the laptop said yes."
+		if saidNo {
+			s.askErr = "The laptop said no."
+		}
+		return false
+	}
+	return true
 }

@@ -10,7 +10,8 @@ isn't lost between match days.
 streaming laptop or takes a pairing key, and shows the score with the controls behind a
 PIN, with Scorecard, Overs and league Table views beside the score — and, paired with
 the laptop's score-only key, as a screen with no controls at all. What's below is the
-original idea, kept for the parts not built: a Pi image, and a QR code to pair.
+original idea, kept for the part not built: a Pi image. (Pairing needs no typing now:
+the screen asks and the laptop says yes.)
 
 A screen in the clubhouse (or on the boundary) showing the live score to people who aren't
 watching the stream. The club already has the hardware: a Raspberry Pi and a touch screen.
