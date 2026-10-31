@@ -591,7 +591,8 @@ body.style-franchise .lineup-body, body.style-franchise .summary-body {
 body.style-franchise #over-summary-panel, body.style-franchise #partnership-display,
 body.style-franchise #winpred-display, body.style-franchise #over-commentary-display,
 body.style-franchise #runrate-display, body.style-franchise #prematch-panel,
-body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away {
+body.style-franchise #pregame-form-home, body.style-franchise #pregame-form-away,
+body.style-franchise #league-table-panel, body.style-franchise #h2h-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
 body.style-franchise #player-card, body.style-franchise #player-card-right,
@@ -652,7 +653,8 @@ body.style-neon .lineup-body, body.style-neon .summary-body {
 body.style-neon #over-summary-panel, body.style-neon #partnership-display,
 body.style-neon #winpred-display, body.style-neon #over-commentary-display,
 body.style-neon #runrate-display, body.style-neon #prematch-panel,
-body.style-neon #pregame-form-home, body.style-neon #pregame-form-away {
+body.style-neon #pregame-form-home, body.style-neon #pregame-form-away,
+body.style-neon #league-table-panel, body.style-neon #h2h-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
 body.style-neon #player-card, body.style-neon #player-card-right,
@@ -714,7 +716,8 @@ body.style-block .lineup-body, body.style-block .summary-body {
 body.style-block #over-summary-panel, body.style-block #partnership-display,
 body.style-block #winpred-display, body.style-block #over-commentary-display,
 body.style-block #runrate-display, body.style-block #prematch-panel,
-body.style-block #pregame-form-home, body.style-block #pregame-form-away { background: rgba(17,17,17,0.95); }
+body.style-block #pregame-form-home, body.style-block #pregame-form-away,
+body.style-block #league-table-panel, body.style-block #h2h-panel { background: rgba(17,17,17,0.95); }
 body.style-block #player-card, body.style-block #player-card-right,
 body.style-block #weather-widget, body.style-block #replay-banner { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
@@ -769,7 +772,7 @@ body.style-block #replay-banner { border-left-width: 8px; }
   background:rgba(12,12,18,0.92); }
 /* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
    (defined further down), since nothing else needs to be on screen until play starts. */
-#prematch-panel, #pregame-form-home, #pregame-form-away {
+#prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px; height: auto;
   background: rgba(10,15,25,0.92);
@@ -1349,6 +1352,25 @@ body.style-block #replay-banner { border-left-width: 8px; }
   <div style="font-size:13px;color:rgba(255,255,255,0.55);margin-top:16px;" id="league-table-above-row">
     A win today moves them above <span id="league-table-above-team" style="color:#fff;font-weight:700;">—</span>
   </div>
+</div>
+
+<!-- Head to head — "the last time we played them" (GET /h2h, h2h.go): the record over the
+     last few meetings of today's two teams, and the last game's totals and stars. Shown
+     in the pre-match rotation and from the control panel's "Show head-to-head". -->
+<div class="graphic-panel" id="h2h-panel">
+  <div class="over-accent" id="h2h-accent"></div>
+  <div class="pc-label" id="h2h-label">Head to Head</div>
+  <div class="pc-name" id="h2h-title" style="font-size:26px;">Last time we met</div>
+  <div class="pc-stats" style="margin-top:12px;">
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-won">0</span><span class="pc-stat-key" id="h2h-won-key">Won</span></div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-lost">0</span><span class="pc-stat-key" id="h2h-lost-key">Lost</span></div>
+    <div class="pc-divider"></div>
+    <div class="pc-stat"><span class="pc-stat-val" id="h2h-other">0</span><span class="pc-stat-key">Drawn / no result</span></div>
+  </div>
+  <div style="font-size:15px;color:#fff;font-weight:700;margin-top:14px;" id="h2h-result">—</div>
+  <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:6px;" id="h2h-our"></div>
+  <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:2px;" id="h2h-their"></div>
 </div>
 
 <!-- Player card (new batter) -->
@@ -2013,6 +2035,7 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
+    if (cmds.show_h2h) { _h2hRequested = false; loadH2H(function () { if (fillH2HPanel()) queueGraphic('h2h-panel', 12000); }); }
     // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
     if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
     if (cmds.show_player_cards && prev && prev.batter1 && prev.batter1.name) {
@@ -3412,6 +3435,50 @@ function fillLeagueTablePanel() {
     // Already top of the table -- nothing to move up past.
     aboveRow.style.display = 'none';
   }
+  return true;
+}
+
+// ── Head to head (GET /h2h) ──
+var _h2h = null;            // the last usable answer
+var _h2hRequested = false;
+function loadH2H(then) {
+  if (_h2hRequested) { if (then) then(); return; }
+  _h2hRequested = true;
+  var tries = 0;
+  (function attempt() {
+    fetch(SERVER + '/h2h').then(function(r){ return r.json(); }).then(function(d) {
+      if (d && d.ready === false && tries < 20) { tries++; setTimeout(attempt, 3000); return; }
+      if (d && d.ready && d.usable) _h2h = d;
+      if (then) then();
+    }).catch(function(){ if (then) then(); });
+  })();
+}
+
+function h2hSide(s) {
+  if (!s) return '';
+  var bits = [];
+  if (s.top_bat) bits.push(s.top_bat);
+  if (s.best_bowl) bits.push(s.best_bowl);
+  return (s.team || '') + ' ' + (s.total || '') + (s.overs ? ' (' + s.overs + ' ov)' : '') +
+    (bits.length ? ' — ' + bits.join(', ') : '');
+}
+
+// Fills #h2h-panel from _h2h; false when there's nothing to show (first meeting, no
+// PlayCricket key, or not built yet).
+function fillH2HPanel() {
+  if (!_h2h || !_h2h.last) return false;
+  var rec = _h2h.record || {}, last = _h2h.last;
+  el('h2h-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('h2h-label').textContent = 'Head to Head · last ' + (rec.played || 0) + ' meeting' + (rec.played === 1 ? '' : 's');
+  el('h2h-title').textContent = (cfg.home_team || _h2h.us || 'Us') + ' v ' + (cfg.away_team || _h2h.them || 'Them');
+  el('h2h-won').textContent = rec.won || 0;
+  el('h2h-lost').textContent = rec.lost || 0;
+  el('h2h-other').textContent = (rec.drawn || 0) + (rec.tied || 0) + (rec.no_result || 0);
+  el('h2h-won-key').textContent = (cfg.home_abbrev || 'Home') + ' won';
+  el('h2h-lost-key').textContent = (cfg.away_abbrev || 'Away') + ' won';
+  el('h2h-result').textContent = 'Last time (' + (last.date || '?') + '): ' + (last.result || 'no result recorded');
+  el('h2h-our').textContent = h2hSide(last.our);
+  el('h2h-their').textContent = h2hSide(last.their);
   return true;
 }
 

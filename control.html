@@ -613,6 +613,7 @@
       <button class="btn btn-test" onclick="hideWeather()" style="flex:1;background:#3a1a1a;">&#10005; Hide weather</button>
       <button class="btn btn-test" onclick="showScorecard()" style="flex:1;">&#9783; Show scorecard</button>
       <button class="btn btn-test" onclick="showPlayerCards()" style="flex:1;">&#9786; Show player cards</button>
+      <button class="btn btn-test" onclick="showH2H()" style="flex:1;">&#8644; Show head-to-head</button>
     </div>
     <div id="weather-preview" style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:5px;font-size:12px;color:var(--accent);">Click "Show weather" to fetch current conditions</div>
   </div>
@@ -3142,6 +3143,15 @@ async function showScorecard() {
   try {
     await apiFetch('/scorecard/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     showStatus('Scorecard showing on overlay','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function showH2H() {
+  try {
+    const d = await (await apiFetch('/h2h')).json();
+    if (d.ready === false) { showStatus('Looking up past meetings on PlayCricket — try again in a few seconds', 'ok'); return; }
+    if (!d.usable) { showStatus(d.reason || 'No head-to-head to show', 'err'); return; }
+    await apiFetch('/h2h/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('Head-to-head showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 async function showPlayerCards() {
