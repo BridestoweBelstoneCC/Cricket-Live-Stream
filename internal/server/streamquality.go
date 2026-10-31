@@ -322,7 +322,10 @@ func backOnAirNote(st M) string {
 	return " â€” stream restarted at the old quality"
 }
 
-var streamEnded = func() { time.AfterFunc(60*time.Second, matchPageAfterStreamEnd) } // swappable for tests
+var streamEnded = func() { // swappable for tests
+	time.AfterFunc(60*time.Second, matchPageAfterStreamEnd)
+	time.AfterFunc(90*time.Second, chaptersAfterStreamEnd)
+}
 
 // ApplyStreamQualityStep: stop â†’ wait â†’ set the SimpleOutput bitrate â†’ start, verified
 // at each step. Serialised: a panel press and the auto path must never interleave two
