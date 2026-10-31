@@ -5,13 +5,13 @@ isn't lost between match days.
 
 ## Clubhouse scoreboard (Raspberry Pi + touch screen)
 
-*Partly built:* the optional clubhouse screen ([`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md),
+*Built:* the optional clubhouse screen ([`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md),
 `internal/clubhouse`) runs on exactly this hardware, reads `/live/view`, finds the
 streaming laptop or takes a pairing key, and shows the score with the controls behind a
 PIN, with Scorecard, Overs and league Table views beside the score — and, paired with
 the laptop's score-only key, as a screen with no controls at all. What's below is the
-original idea, kept for the part not built: a Pi image. (Pairing needs no typing now:
-the screen asks and the laptop says yes.)
+original idea, kept for the record: all of it is built now (the screen pairs without
+typing, and releases include a ready-made Pi image).
 
 A screen in the clubhouse (or on the boundary) showing the live score to people who aren't
 watching the stream. The club already has the hardware: a Raspberry Pi and a touch screen.

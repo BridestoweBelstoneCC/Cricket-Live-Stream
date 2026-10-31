@@ -1,0 +1,14 @@
+[Unit]
+Description=CricketStream clubhouse screen: sign in to the desktop by itself
+# Before the desktop starts, so a change counts from this boot; after the first boot's
+# own account setup (Raspberry Pi Imager's settings arrive through cloud-init or userconf).
+Before=display-manager.service
+After=cloud-init.target userconfig.service systemd-user-sessions.service
+ConditionPathExists=!/var/lib/cricketstream/autologin-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cricketstream-autologin
+
+[Install]
+WantedBy=multi-user.target

@@ -321,3 +321,51 @@ jobs:
             artifacts/CricketStream-linux-arm64/CricketStream-linux-arm64
             LICENSE
             THIRD_PARTY_NOTICES.txt
+
+  # The clubhouse screen's Raspberry Pi image (scripts/clubhouse/build-pi-image.sh):
+  # Raspberry Pi OS with the screen built in, so a club flashes one file and the Pi boots
+  # to pairing. A job here, not a workflow of its own: a release made with GITHUB_TOKEN
+  # doesn't start other workflows. On a tag it's attached to the release; on a manual run
+  # it's kept as an artifact for a few days, to try on a Pi.
+  pi-image:
+    needs: [build, release]
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (needs.release.result == 'success' || !startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          sparse-checkout: scripts/clubhouse
+
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: CricketStream-linux-arm64
+          path: bin
+
+      - name: Build the image
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fdisk e2fsprogs xz-utils file
+          sudo VERSION="${{ needs.build.outputs.version }}" \
+            bash scripts/clubhouse/build-pi-image.sh bin/CricketStream-linux-arm64 CricketStream-clubhouse-pi.img.xz
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+          CricketStream-clubhouse-pi.img.xz CricketStream-clubhouse-pi.img.xz.sha256
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: CricketStream-clubhouse-pi
+          path: |
+            CricketStream-clubhouse-pi.img.xz
+            CricketStream-clubhouse-pi.img.xz.sha256
+          retention-days: 3
+          compression-level: 0

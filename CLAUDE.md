@@ -390,6 +390,20 @@ problem + what to do + pause) or print and `console.Pause()`.
     reads; every start/stop/answer/power-off/woke and every POST is refused on the
     LAPTOP. Keep `viewGET` a subset of `proxyGET` with no operator reads in it. The Pi's
     `[Laptop] view_only` only decides what the page shows.
+  - **The Pi image** (`scripts/clubhouse/build-pi-image.sh`, the `pi-image` job in
+    build-executables.yml) is the official Raspberry Pi OS desktop image, SHA-256 checked,
+    plus `scripts/clubhouse/image/`: everything system-wide (`/opt/cricketstream`,
+    `/etc/xdg/autostart`), because the user doesn't exist until Raspberry Pi Imager's
+    customisation or the first-boot wizard makes it. Never bake in an account, a
+    password or a network. The autostart entry shares its file name with install-pi.sh's
+    per-user one so the user's copy overrides it, and `clubhouse-start.sh` prefers
+    `~/cricketstream/cricketstream` — re-running install-pi.sh is how an image updates.
+    Two first-boot traps, both seen inside the trixie image: uid 1000 starts as a
+    placeholder `pi` (no login shell) that first boot renames to the Imager's user, and
+    with no Imager settings the desktop first signs in as `rpi-first-boot-wizard` to run
+    piwiz. `cricketstream-autologin` waits out both (marking itself done only for a real
+    account), and `clubhouse-start.sh` never opens over the wizard. Checked by building
+    the image and chrooting into it (arm64 emulated), never booted on a Pi by CI.
   - The Pi page must be served by the Pi (the laptop is off when it's first touched); it
     talks only to its own `/api/` with a page key, never to the laptop directly. Its
     corner picture is `/preview.jpg` (cached 1.5s server-side, only fetched while shown)

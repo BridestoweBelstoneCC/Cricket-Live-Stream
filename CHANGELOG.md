@@ -6,6 +6,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **A ready-made Raspberry Pi image for the clubhouse screen.** Releases now include
+  `CricketStream-clubhouse-pi.img.xz`: Raspberry Pi OS with the screen built in. Flash it
+  with Raspberry Pi Imager (setting the username and wifi there) and the Pi boots
+  straight to pairing — no terminal. See
+  [CLUBHOUSE_SCREEN.md](CLUBHOUSE_SCREEN.md#2-the-pi).
 - **Pair a clubhouse screen without typing.** Press **Pair from the laptop** on the screen:
   it shows a three-digit code, the laptop's Clubhouse card shows the same code, and one
   press there (**Match-day screen** or **Score-only screen**) pairs it. Typing the key
