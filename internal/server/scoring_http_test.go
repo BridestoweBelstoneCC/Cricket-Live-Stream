@@ -61,6 +61,20 @@ func TestScoringFullFlowDrivesOverlayPipeline(t *testing.T) {
 	mustEq(t, rowsStr(queryRows(t, "SELECT outcome FROM balls WHERE over=0 ORDER BY ball")), "[[1] [4] [W]]")
 }
 
+// Manual scoring chosen at launch, nothing set up yet: /live must already be the scorer's
+// feed (the overlay polls it every 2.5s), not the widget (every ~20s, so the first ball
+// took up to ~23s to show).
+func TestLiveIsTheFeedWhenManualChosenBeforeSetup(t *testing.T) {
+	s := newTestServer(t, "")
+	UpdateState(func(st M) { st["use_widget"] = false }) // never PlayCricket from a test
+	_, live := s.getJSON("/live")
+	mustEq(t, live["source"], any("widget")) // no feed of any kind configured
+	t.Setenv(ManualTodayEnv, "1")
+	_, live = s.getJSON("/live")
+	mustEq(t, live["source"], any("pcs"))
+	mustEq(t, live["state"], any(nil))
+}
+
 func TestScoringUndoAndResetOverHTTP(t *testing.T) {
 	s := newTestServer(t, "")
 	setupMatch(t, s)
