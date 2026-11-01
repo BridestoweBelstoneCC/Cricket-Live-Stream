@@ -153,12 +153,12 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.Atoi(r.URL.Query().Get("since"))
 		writeJSON(w, a.status(since), 200)
 	case "POST /api/start":
-		var body struct{ Remote, Manual bool }
+		var body struct{ Remote, Manual, Practice bool }
 		if !readBody(r, &body) {
 			fail(400, "Bad request")
 			return
 		}
-		if err := a.startMatchDay(body.Remote, body.Manual); err != nil {
+		if err := a.startMatchDay(body.Remote, body.Manual, body.Practice); err != nil {
 			fail(409, err.Error())
 			return
 		}

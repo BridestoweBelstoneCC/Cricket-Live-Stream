@@ -271,7 +271,7 @@ func (h chHost) Status() map[string]any {
 
 func (h chHost) StartMatchDay(manual bool) error {
 	remote, _ := homeInfo()["remote"].(bool) // the club's saved choice for phones and tablets
-	return h.a.startMatchDay(remote, manual)
+	return h.a.startMatchDay(remote, manual, false)
 }
 
 func (h chHost) Answer(id int, yes bool, text string, dismissed bool) bool {

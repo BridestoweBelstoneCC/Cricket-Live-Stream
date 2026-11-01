@@ -491,7 +491,8 @@ func (a *App) stopBridge() {
 }
 
 // startMatchDay runs the launcher with the window's answers to its two questions.
-func (a *App) startMatchDay(remote, manual bool) error {
+// practice answers the scoring one with "a practice match" instead of manual.
+func (a *App) startMatchDay(remote, manual, practice bool) error {
 	a.mu.Lock()
 	if a.launcherOn {
 		a.mu.Unlock()
@@ -511,7 +512,7 @@ func (a *App) startMatchDay(remote, manual bool) error {
 	go func() {
 		defer close(end)
 		defer crashed()
-		code := run(launcher.Options{Remote: &remote, Manual: &manual, Interrupt: interrupt,
+		code := run(launcher.Options{Remote: &remote, Manual: &manual, Practice: practice, Interrupt: interrupt,
 			OpenPanel: a.panelReady})
 		fmt.Println()
 		fmt.Println("  Match day is over.")
