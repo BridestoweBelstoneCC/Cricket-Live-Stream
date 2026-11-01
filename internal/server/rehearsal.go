@@ -73,7 +73,7 @@ func practiceGap(prev, fr simulate.Frame, s M) float64 {
 		} else {
 			gap += 20 // the new batter walking out
 		}
-	case runs >= 4 && replays:
+	case runs >= 4 && replays && !extrasNotBoundary(prev, fr):
 		gap += 6 + clip + 5
 	}
 	// "3" or "3.0": an over just finished (not "0" — nothing bowled yet).
@@ -82,6 +82,23 @@ func practiceGap(prev, fr simulate.Frame, s M) float64 {
 		gap += 15 // the over's summary, the bowler change
 	}
 	return gap
+}
+
+// extrasNotBoundary: the ball's own ticker entry shows it wasn't a plain four or six (a
+// wide that ran away for four, "w+4", or a four off a no-ball, "4nb") — the overlay only
+// replays a plain 4 or 6 (parseBall), so there's no replay to wait for. When
+// the ticker didn't move (the over-completing write often still shows the over before the
+// final ball), runs alone decide, as they did.
+func extrasNotBoundary(prev, fr simulate.Frame) bool {
+	if fr.Data["last_ball"] == prev.Data["last_ball"] {
+		return false
+	}
+	toks := strings.Fields(fr.Data["last_ball"])
+	if len(toks) == 0 {
+		return false
+	}
+	last := toks[len(toks)-1]
+	return last != "4" && last != "6"
 }
 
 func atoiOr(s string) int {

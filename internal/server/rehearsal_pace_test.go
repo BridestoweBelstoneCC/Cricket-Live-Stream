@@ -32,10 +32,11 @@ func TestPracticeLeavesTimeForReplays(t *testing.T) {
 			if gap < realBallSec+6+18+5+20 {
 				t.Errorf("wicket at %s: %.0fs — no time for its replay and the new batter", fr.Data["overs"], gap)
 			}
-		case runs >= 4:
+		case runs >= 4 && !extrasNotBoundary(prev, fr): // the overlay replays a plain 4 or 6 only
 			seen["boundary"] = true
 			if gap < realBallSec+6+18+5 {
-				t.Errorf("boundary at %s: %.0fs — no time for its replay", fr.Data["overs"], gap)
+				t.Errorf("boundary at %s: %.0fs — no time for its replay (ticker %q → %q)", fr.Data["overs"], gap,
+					prev.Data["last_ball"], fr.Data["last_ball"])
 			}
 		case overEnd:
 			seen["over"] = true
@@ -62,6 +63,18 @@ func TestPracticeLeavesTimeForReplays(t *testing.T) {
 			}
 		}
 		t.Logf("%d overs a side: about %.0f minutes", overs, total/5/60)
+	}
+
+	// A wide that ran away for four gets no replay, so no replay's pause (seen in a real
+	// practice: 44s of nothing after "w+4").
+	w0 := simulate.Frame{Label: "ball", Data: map[string]string{"innings": "2", "runs": "9", "wickets": "0", "overs": "1", "last_ball": ". 1b 4 1 1"}}
+	w1 := simulate.Frame{Label: "ball", Data: map[string]string{"innings": "2", "runs": "14", "wickets": "0", "overs": "1", "last_ball": "w+4"}}
+	if got := practiceGap(w0, w1, s); got != realBallSec {
+		t.Errorf("w+4: %.0fs, want %.0f", got, realBallSec)
+	}
+	f1 := simulate.Frame{Label: "ball", Data: map[string]string{"innings": "2", "runs": "18", "wickets": "0", "overs": "1.1", "last_ball": "w+4 4"}}
+	if got := practiceGap(w1, f1, s); got != realBallSec+6+18+5 {
+		t.Errorf("a four after it: %.0fs", got)
 	}
 
 	// With camera 2 doing side-on replays and the walk-out, a wicket waits for both.
