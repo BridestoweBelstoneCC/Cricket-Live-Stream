@@ -352,7 +352,14 @@ func Run(o Options) int {
 	if WaitForServer(20 * time.Second) {
 		token = SessionToken(cfg)
 		PullSeasonStats(apiKey, token)
-		SelfTest()
+		scoring := ""
+		switch {
+		case practice:
+			scoring = "practice"
+		case manual:
+			scoring = "manual"
+		}
+		SelfTest(scoring)
 		openPanel(o, base()+"/control", token) // the match-day checklist is the next thing to look at
 		if practice {
 			if err := startPractice(token); err != nil {
@@ -381,7 +388,6 @@ func Run(o Options) int {
 	fmt.Printf("  Overlay:       http://127.0.0.1:%d/overlay\n", server.Port)
 	if manual {
 		fmt.Printf("  Manual scoring: http://localhost:%d/scoring  ← set the match up here\n", server.Port)
-		log("(Any PCS feed warnings in the pre-flight check above are expected today)", "")
 	}
 	if remote {
 		ts := tailscaleIP()
@@ -754,7 +760,10 @@ func num(v any) float64 {
 
 // SelfTest is the pre-flight checklist: /health as a go/no-go summary, run once the server
 // is up so problems show in the warm-up, not at the first ball. Warnings don't block.
-func SelfTest() {
+// scoring is how today's match is scored: "" (the scorer's feed), "manual" or "practice"
+// — with no feed to expect, its check says so instead of warning a new club about a
+// folder they don't need.
+func SelfTest(scoring string) {
 	fmt.Println()
 	fmt.Println("  ─── Pre-flight check ────────────────────────")
 	h, err := getJSON("/health", "", 6*time.Second)
@@ -771,6 +780,10 @@ func SelfTest() {
 		warn("Demo mode is ON — turn it off in the control panel before going live")
 	}
 	switch {
+	case scoring == "practice":
+		ok("Scorer feed: not needed — a practice match today")
+	case scoring == "manual":
+		ok("Scorer feed: not needed — scored by hand at /scoring today")
 	case pcs["folder_set"] != true:
 		warn("PCS output folder not set (control panel → PCS Pro section)")
 	case pcs["file_found"] != true:
