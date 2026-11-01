@@ -160,7 +160,7 @@ jobs:
     needs: build
     runs-on: macos-latest
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           path: artifacts
 
@@ -206,7 +206,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: CricketStream*.exe
           path: unsigned
@@ -281,7 +281,7 @@ jobs:
             release-notes/
           sparse-checkout-cone-mode: false
 
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           path: artifacts
 
@@ -340,7 +340,7 @@ jobs:
         with:
           sparse-checkout: scripts/clubhouse
 
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: CricketStream-linux-arm64
           path: bin
