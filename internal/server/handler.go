@@ -1127,15 +1127,17 @@ func (c *ctx) doGET() {
 	case path == "/remote/info":
 		// Not auth-gated, same reasoning as /health: no secrets beyond a URL, and that URL
 		// is only reachable by a device already on the right network/tunnel anyway.
-		targets := remoteTargets()
+		targets := remoteTargets(c.query.Get("page"))
 		if targets == nil {
 			targets = []M{}
 		}
-		c.json(M{"ok": len(targets) > 0, "targets": targets})
+		// manual_today: match day was started for manual scoring — the panel offers the
+		// scoring page's QR code for the scorer's phone.
+		c.json(M{"ok": len(targets) > 0, "targets": targets, "manual_today": manualToday()})
 
 	case path == "/remote/qr.png":
 		via := c.query.Get("via")
-		targets := remoteTargets()
+		targets := remoteTargets(c.query.Get("page"))
 		var target M
 		for _, t := range targets {
 			if gs(t, "via", "") == via {

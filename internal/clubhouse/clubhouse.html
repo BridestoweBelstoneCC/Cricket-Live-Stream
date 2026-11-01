@@ -145,6 +145,7 @@ p{margin:0 0 14px;max-width:62ch}
 .veil{position:fixed;inset:0;background:rgba(5,12,9,.78);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
 .dlg{background:var(--board);border:2px solid var(--edge);border-radius:18px;padding:26px;max-width:720px;width:100%}
 .dlg h2{margin-bottom:8px}
+.qr{display:block;width:240px;height:240px;margin:14px auto 6px;background:#fff;padding:10px;border-radius:10px;image-rendering:pixelated}
 .pin{font:800 54px Board,sans-serif;letter-spacing:.3em;min-height:66px;margin:6px 0 14px;text-align:center}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:420px;margin:0 auto}
 .pad button{min-height:72px;font:800 34px Board,sans-serif;border-radius:14px;border:2px solid var(--edge);background:var(--board-2)}
@@ -315,6 +316,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <ul class="list" id="get_list"></ul>
       <div class="row">
         <button class="btn" id="pc_run" type="button">Run the pre-match check</button>
+        <button class="btn hidden" id="get_qr" type="button">Scoring link (QR code)</button>
       </div>
       <p class="say" id="get_say"></p>
       <ul class="list" id="pc_list"></ul>
@@ -607,13 +609,18 @@ function render() {
   renderQuestion();
   // Started from the "off" screen: carry on to match day once the laptop is ready.
   if (pendingStart && S.reachable && L.phase === 'home' && !L.question) {
-    var m = pendingStart.manual; pendingStart = null;
+    var m = pendingStart.manual; pendingStart = null; qrDue = m;
     api('laptop/start', {manual: m}).then(function (d) { if (!d.ok) say('ready_say', d.error, 'bad'); poll(); });
   }
   if (pendingStart && Date.now() - pendingStart.at > 15 * 60000) pendingStart = null;
   // First time match day is up: straight to "Get ready" (Go live is there).
-  if (running && lastTabPhase !== 'running') { tab = S.unlocked && !S.view_only ? 'get' : 'score'; lastTabPhase = 'running'; render(); return; }
+  if (running && lastTabPhase !== 'running') {
+    tab = S.unlocked && !S.view_only ? 'get' : 'score'; lastTabPhase = 'running';
+    if (qrDue && S.unlocked && !S.view_only) { qrDue = false; setTimeout(scoringQR, 0); }
+    render(); return;
+  }
   if (!running && L.phase) lastTabPhase = L.phase;
+  if (!running && qrKnown) { qrKnown = false; show('get_qr', false); } // the next match day asks again
 }
 function mins(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
 
@@ -714,7 +721,7 @@ $('wake_again').addEventListener('click', function () { needUnlock(function () {
 $('wake_cancel').addEventListener('click', function () { pendingStart = null; api('wake/cancel', {}).then(poll); });
 $('ready_start').addEventListener('click', function () {
   needUnlock(function () {
-    $('ready_start').disabled = true; say('ready_say', '');
+    $('ready_start').disabled = true; say('ready_say', ''); qrDue = manual;
     api('laptop/start', {manual: manual}).then(function (d) {
       $('ready_start').disabled = false;
       if (!d.ok) say('ready_say', d.error, 'bad');
@@ -897,8 +904,40 @@ function renderTable() {
 var CHECK_ACTIONS = {start_obs: 1, start_replay: 1, add_camera: 1, go_live: 1};
 var checklist = null;
 function loadChecklist() {
+  if (!qrKnown) {
+    qrKnown = true;
+    api('server/remote/info?page=scoring').then(function (d) { if (d.manual_today) show('get_qr', true); else qrKnown = false; });
+  }
   return api('server/checklist').then(function (d) { if (d.items) { checklist = d; renderChecklist(); } });
 }
+
+// Manual scoring: the scoring page's QR code, for the scorer's phone. It comes up by
+// itself when match day starts "By hand"; Get ready → Scoring link brings it back.
+var qrDue = false, qrKnown = false;
+function scoringQR() {
+  var d = openDialog();
+  var h = document.createElement('h2'); h.textContent = 'Score on a phone'; d.appendChild(h);
+  var p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Checking…'; d.appendChild(p);
+  var row = document.createElement('div'); row.className = 'row'; row.style.marginTop = '16px';
+  row.appendChild(button('Done — close', 'btn', closeDialog));
+  api('server/remote/info?page=scoring').then(function (info) {
+    var t = (info.targets || []).filter(function (x) { return x.via === 'lan'; })[0] || (info.targets || [])[0];
+    if (!t) {
+      p.textContent = 'Phones can\'t reach the laptop: it was started for "Just this laptop". Score on the laptop ' +
+        '(control panel → Scoring), or next time start with phones and tablets allowed in CricketStream on the laptop.';
+      return;
+    }
+    p.textContent = 'Scan with the scorer\'s phone to open the scoring page. It asks for the club password.';
+    blob('server/remote/qr.png?page=scoring&via=' + encodeURIComponent(t.via) + '&t=' + Date.now()).then(function (b) {
+      var img = document.createElement('img'); img.className = 'qr'; img.alt = 'QR code for the scoring page';
+      img.src = URL.createObjectURL(b);
+      var u = document.createElement('p'); u.className = 'muted'; u.textContent = t.url;
+      d.insertBefore(img, row); d.insertBefore(u, row);
+    }, function () { p.textContent = 'The QR code didn\'t load. On the phone, open: ' + t.url; });
+  });
+  d.appendChild(row);
+}
+$('get_qr').addEventListener('click', function () { needUnlock(scoringQR); });
 function isLive() {
   var L = laptop();
   if (!S || !S.reachable || L.phase !== 'running' || !L.server_ready) { checklist = null; return false; }
