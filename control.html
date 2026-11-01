@@ -371,13 +371,13 @@
      z-index:9998;align-items:center;justify-content:center;" onclick="if(event.target===this)hideRemoteOverlay()">
   <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;
        width:100%;max-width:340px;text-align:center;">
-    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">
+    <div id="remote-modal-title" style="font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px;">
       REMOTE ACCESS
     </div>
     <div id="remote-modal-body">
       <p style="font-size:12px;color:var(--text-2);">Checking…</p>
     </div>
-    <button onclick="hideRemoteOverlay()"
+    <button onclick="hideRemoteOverlay()" id="remote-modal-close"
             style="margin-top:16px;background:none;border:none;font-size:11px;color:var(--muted);
                    cursor:pointer;text-decoration:underline;">
       Close
@@ -435,6 +435,10 @@
       background:var(--line); color:var(--accent); flex-shrink:0;
     "></div>
   </div>
+  <!-- Manual scoring today: the scoring page's QR code for the scorer's phone (it pops up
+       by itself once; this brings it back). -->
+  <button class="btn" id="scoring-qr-btn" style="display:none" onclick="showRemoteOverlay('scoring')"
+          title="A QR code that opens the scoring page on the scorer's phone">&#128241;<span class="long"> Scoring link</span></button>
   <button class="btn" id="precheck-alert" style="display:none" onclick="openPrecheck()"
           title="The pre-match check found a problem — click for details"></button>
   <button class="btn" id="spotter-alert" style="display:none" onclick="showTab('match')"
@@ -820,6 +824,7 @@
     <p class="hint" style="margin-top:3px;margin-bottom:10px;">
       No scorer needed: a made-up match plays through the real overlay &mdash; scorebar, wicket
       cards, boundaries, replays, the end-of-over graphics &mdash; so you can rehearse in OBS.
+      It's paced like a real match, so each replay has time to play before the next ball.
       The score source is put back afterwards and nothing is kept. Not while you're live.
       (With AI commentary on, each over uses a little of your AI credit, as a real one would.)
     </p>
@@ -836,9 +841,9 @@
       <div class="field">
         <label for="practice-overs">Overs each side</label>
         <select id="practice-overs">
-          <option value="2">2 (about 2 minutes)</option>
-          <option value="5" selected>5 (about 5 minutes)</option>
-          <option value="10">10 (about 10 minutes)</option>
+          <option value="2" selected>2 (about 15 minutes)</option>
+          <option value="5">5 (about 30 minutes)</option>
+          <option value="10">10 (about 50 minutes)</option>
         </select>
       </div>
     </div>
@@ -2525,7 +2530,7 @@ async function streamQuality(action) {
   }
 }
 
-let _remoteTargets = [];
+let _remoteTargets = [], _remotePage = '';
 const REMOTE_TAB_LABEL  = {tailscale: 'Tailscale', cloudflare: 'Cloudflare', lan: 'Same network'};
 const REMOTE_SCAN_NOTE  = {tailscale: 'over Tailscale', lan: 'on the same network',
                            cloudflare: 'over the public internet — password protected'};
@@ -2542,10 +2547,14 @@ function renderRemoteTarget(via) {
         (active ? 'var(--accent)' : 'var(--line)') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
         ';color:var(--text);">' + REMOTE_TAB_LABEL[x.via] + '</button>';
     }).join('') + '</div>';
+  const scan = _remotePage === 'scoring'
+    ? 'Scan with the scorer\'s phone or tablet to open the scoring page ' + REMOTE_SCAN_NOTE[t.via] +
+      '. It asks for the club password.'
+    : 'Scan on a phone or tablet ' + REMOTE_SCAN_NOTE[t.via] + ':';
   body.innerHTML = tabs +
-    '<p style="font-size:12px;color:var(--text-2);margin-bottom:12px;">Scan on a phone or tablet ' +
-    REMOTE_SCAN_NOTE[t.via] + ':</p>' +
-    '<img src="/remote/qr.png?via=' + t.via + '&t=' + Date.now() + '" style="width:200px;height:200px;' +
+    '<p style="font-size:12px;color:var(--text-2);margin-bottom:12px;line-height:1.5;">' + scan + '</p>' +
+    '<img src="/remote/qr.png?via=' + t.via + (_remotePage ? '&page=' + _remotePage : '') + '&t=' + Date.now() +
+    '" style="width:200px;height:200px;' +
     'background:#fff;border-radius:8px;padding:8px;" ' +
     'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
     '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
@@ -2553,15 +2562,25 @@ function renderRemoteTarget(via) {
     '<p style="font-size:11px;color:var(--muted);margin-top:12px;word-break:break-all;">' + t.url + '</p>';
 }
 
-async function showRemoteOverlay() {
+async function showRemoteOverlay(page) {
   const ov   = document.getElementById('remote-overlay');
   const body = document.getElementById('remote-modal-body');
+  _remotePage = page === 'scoring' ? 'scoring' : '';
+  document.getElementById('remote-modal-title').textContent = _remotePage ? 'SCORE ON A PHONE' : 'REMOTE ACCESS';
+  document.getElementById('remote-modal-close').textContent = _remotePage ? 'Done — close' : 'Close';
   ov.style.display = 'flex';
   body.innerHTML = '<p style="font-size:12px;color:var(--text-2);">Checking…</p>';
   try {
-    const res = await fetch('/remote/info');
+    const res = await fetch('/remote/info' + (_remotePage ? '?page=scoring' : ''));
     const d = await res.json();
     _remoteTargets = d.targets || [];
+    if (!_remoteTargets.length && _remotePage) {
+      body.innerHTML = '<p style="font-size:12px;color:var(--text-2);line-height:1.5;">' +
+        'Phones can\'t reach this laptop yet. Next match day, choose <em>Phones and tablets too</em> ' +
+        'when starting (it needs a club password), or install Tailscale.<br><br>' +
+        'Until then, score on this laptop: <a href="/scoring" target="_blank">open the scoring page</a>.</p>';
+      return;
+    }
     if (!_remoteTargets.length) {
       body.innerHTML = '<p style="font-size:12px;color:var(--text-2);line-height:1.5;">' +
         'Not reachable from another device yet — in <a href="/settings">Settings</a>, set a club ' +
@@ -2579,6 +2598,23 @@ async function showRemoteOverlay() {
 function hideRemoteOverlay() {
   document.getElementById('remote-overlay').style.display = 'none';
 }
+
+// Match day started for manual scoring: show the scoring button, and the QR code itself
+// once a day (closing it is "scanned, done"; the button brings it back). Only where the
+// panel is the operator's own — not on a phone that's already scanned it.
+function showScoringQRButton() { document.getElementById('scoring-qr-btn').style.display = ''; }
+(async function offerScoringQR() {
+  try {
+    const d = await (await fetch('/remote/info?page=scoring')).json();
+    if (!d.manual_today) return;
+    showScoringQRButton();
+    if (!window.csApp && !['localhost', '127.0.0.1'].includes(location.hostname)) return;
+    const key = 'cs-scoring-qr-' + new Date().toISOString().slice(0, 10);
+    let seen = false;
+    try { seen = localStorage.getItem(key) === '1'; localStorage.setItem(key, '1'); } catch (e) {}
+    if (!seen) showRemoteOverlay('scoring');
+  } catch (e) { /* the server's starting; the button appears with a manual feed anyway */ }
+})();
 
 // ── Security overlay — recent auth activity + session revocation ──
 function fmtAgo(ts) {
@@ -4097,6 +4133,7 @@ async function checkLiveStatus() {
       // A live manual-scoring session outranks the scorer's file — make that IMPOSSIBLE
       // to miss, or a leftover test session could silently replace the real feed
       const manualFeed = (data.feed === 'manual');
+      if (manualFeed) showScoringQRButton();
       dot.style.background = manualFeed ? '#c87800' : 'var(--ok)';
       line1.textContent=`${manualFeed ? 'MANUAL SCORING' : 'PCS'} LIVE — ${data.state.battingTeamName} ${data.state.score}-${data.state.wickets} (${data.state.overs} ov)`;
       line2.textContent = manualFeed

@@ -190,17 +190,20 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
           <strong>NV Play / PCS Pro</strong><span>The scorer's software feeds the score (on this laptop or the scorer's).</span></div></label>
         <label class="opt"><input type="radio" name="manual" value="1"><div>
           <strong>By hand</strong><span>Someone scores ball by ball on a phone or tablet.</span></div></label>
+        <label class="opt"><input type="radio" name="manual" value="practice"><div>
+          <strong>A practice match</strong><span>No scorer: a made-up match plays through OBS — the scorebar,
+          replays and graphics — so you can check it all works. 2 overs a side, about 15 minutes. Nothing is kept.</span></div></label>
       </div>
       <p class="note hidden" id="manual_note">A saved hand-scoring session is still here from last time. Starting
-        with NV Play asks whether to clear it, so it doesn't replace the scorer's feed.</p>
+        with NV Play or a practice match asks whether to clear it, so it doesn't replace the score.</p>
     </section>
     <div class="actions">
       <button class="btn primary big" type="button" id="start">Start match day</button>
       <a class="btn" href="/setup?app=1" id="home_settings">Settings</a>
       <button class="btn quiet" type="button" data-open="app">Open the CricketStream folder</button>
     </div>
-    <p class="hint" style="margin-top:14px">To rehearse without a scorer, start match day and use
-      <strong>Match day → Practice match</strong> in the control panel.</p>
+    <p class="hint" style="margin-top:14px">A practice can be stopped, or another started, from the control panel:
+      <strong>Match day → Practice match</strong>. Don't go live during one: viewers would see the made-up match.</p>
 
     <section style="margin-top:22px">
       <div class="status" style="margin:0 0 6px"><span class="light" id="pc_light"></span><h2 style="margin:0">Pre-match check</h2></div>
@@ -803,10 +806,10 @@ document.querySelectorAll('[data-role]').forEach(function (b) {
 });
 $('start').addEventListener('click', function () {
   var remote = document.querySelector('input[name=remote]:checked').value === '1';
-  var manual = document.querySelector('input[name=manual]:checked').value === '1';
+  var scoring = document.querySelector('input[name=manual]:checked').value;
   $('start').disabled = true;
   homeAgain = false;
-  api('start', {remote: remote, manual: manual}).then(function (d) {
+  api('start', {remote: remote, manual: scoring === '1', practice: scoring === 'practice'}).then(function (d) {
     $('start').disabled = false;
     if (!d.ok) alertNote(d.error);
     poll();

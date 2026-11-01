@@ -117,23 +117,28 @@ func stopCloudflareTunnel() {
 
 // remoteTargets lists ways to reach the control panel from another device, in priority
 // order — tailscale (private), cloudflare (public, opt-in), lan (same network). Empty if
-// bound to localhost only and no tunnel is running.
-func remoteTargets() []M {
+// bound to localhost only and no tunnel is running. page is the page they open: the
+// panel, or (page "scoring") the manual scoring page, for the scorer's phone.
+func remoteTargets(page string) []M {
+	path := "/control"
+	if page == "scoring" {
+		path = "/scoring"
+	}
 	targets := []M{}
 	if BindHost != "127.0.0.1" {
 		if ip := tailscaleIP(); ip != "" {
-			targets = append(targets, M{"via": "tailscale", "url": fmt.Sprintf("http://%s:%d/control", ip, Port)})
+			targets = append(targets, M{"via": "tailscale", "url": fmt.Sprintf("http://%s:%d%s", ip, Port, path)})
 		}
 	}
 	cfMu.Lock()
 	u := cfURL
 	cfMu.Unlock()
 	if u != "" {
-		targets = append(targets, M{"via": "cloudflare", "url": u + "/control"})
+		targets = append(targets, M{"via": "cloudflare", "url": u + path})
 	}
 	if BindHost != "127.0.0.1" {
 		if ip := lanIP(); ip != "" {
-			targets = append(targets, M{"via": "lan", "url": fmt.Sprintf("http://%s:%d/control", ip, Port)})
+			targets = append(targets, M{"via": "lan", "url": fmt.Sprintf("http://%s:%d%s", ip, Port, path)})
 		}
 	}
 	return targets

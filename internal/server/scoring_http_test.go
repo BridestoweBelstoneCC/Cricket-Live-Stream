@@ -75,6 +75,32 @@ func TestLiveIsTheFeedWhenManualChosenBeforeSetup(t *testing.T) {
 	mustEq(t, live["state"], any(nil))
 }
 
+// The scoring QR code: /remote/info?page=scoring says whether match day was started for
+// manual scoring (the panel and the clubhouse screen pop the code up) and its addresses
+// open /scoring, not the panel.
+func TestScoringQRLinksToTheScoringPage(t *testing.T) {
+	s := newTestServer(t, "")
+	_, d := s.getJSON("/remote/info?page=scoring")
+	mustEq(t, d["manual_today"], any(false))
+	t.Setenv(ManualTodayEnv, "1")
+	saved := BindHost
+	BindHost = "0.0.0.0"
+	t.Cleanup(func() { BindHost = saved })
+	_, d = s.getJSON("/remote/info?page=scoring")
+	mustEq(t, d["manual_today"], any(true))
+	for _, tg := range d["targets"].([]any) {
+		if u := tg.(map[string]any)["url"].(string); !strings.HasSuffix(u, "/scoring") {
+			t.Errorf("scoring QR opens %s", u)
+		}
+	}
+	_, d = s.getJSON("/remote/info")
+	for _, tg := range d["targets"].([]any) {
+		if u := tg.(map[string]any)["url"].(string); !strings.HasSuffix(u, "/control") {
+			t.Errorf("the panel's QR opens %s", u)
+		}
+	}
+}
+
 func TestScoringUndoAndResetOverHTTP(t *testing.T) {
 	s := newTestServer(t, "")
 	setupMatch(t, s)

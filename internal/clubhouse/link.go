@@ -64,6 +64,9 @@ var proxyGET = map[string]bool{
 	"/live/view": true, "/state": true, "/checklist": true, "/precheck/last": true,
 	"/stream/monitor": true, "/health": true, "/preview.jpg": true, "/youtube/live": true,
 	"/cameras/discover": true, "/match/scorecard": true, "/league/table": true,
+	// The scoring page's QR code for the scorer's phone (manual scoring): addresses only,
+	// the same ones the panel shows anyone on the network.
+	"/remote/info": true, "/remote/qr.png": true,
 }
 
 var proxyPOST = map[string]bool{

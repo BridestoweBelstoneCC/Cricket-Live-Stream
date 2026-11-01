@@ -68,7 +68,7 @@ func isConsole(f *os.File) bool {
 }
 
 func banner() {
-	targets := remoteTargets()
+	targets := remoteTargets("")
 	var info strings.Builder
 	for _, t := range targets {
 		fmt.Fprintf(&info, "\n  %s → %s", remoteLabels[gs(t, "via", "")], gs(t, "url", ""))

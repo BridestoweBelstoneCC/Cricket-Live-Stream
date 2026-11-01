@@ -19,14 +19,99 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"cricketstream/internal/pyval"
 	"cricketstream/internal/simulate"
 )
 
-// rehearsalBallSec is the pace: seconds per delivery (tests make it quick).
-var rehearsalBallSec = 2.5
+// rehearsalBallSec is the pace: seconds per delivery (tests make it quick). Everything
+// else — a replay's time, the end of an over — scales with it.
+var rehearsalBallSec = realBallSec
+
+// realBallSec: an ordinary delivery's gap. Real cricket is nearer 30-40s; 15 keeps a
+// practice short while leaving each graphic its time on screen.
+const realBallSec = 15.0
+
+// practiceGap is how long a practice frame stays before the next, in real-pace seconds:
+// a ball's own gap, plus — as at a real match — the time its replay takes (the overlay's
+// wicket/boundary replay: ~6s to save it, the clip, ~5s back; the side-on one and the
+// walk-out when camera 2 does them) and the end of an over's graphics. Without that, the
+// 2.5s-a-ball practice bowled the next ball while the replay was still on screen.
+func practiceGap(prev, fr simulate.Frame, s M) float64 {
+	switch fr.Label {
+	// Several frames each (3 pre-match, 3 at the break, 3 at each innings' end).
+	case "prematch", "prematch2":
+		return 10
+	case "break":
+		return 30
+	case "end":
+		return 20
+	}
+	gap := realBallSec
+	if prev.Data == nil || prev.Data["innings"] != fr.Data["innings"] {
+		return gap
+	}
+	clip := float64(gi(s, "replay_duration", 18))
+	cam2 := strings.TrimSpace(gs(s, "camera2_rtsp_url", "")) != ""
+	runs := atoiOr(fr.Data["runs"]) - atoiOr(prev.Data["runs"])
+	wkts := atoiOr(fr.Data["wickets"]) - atoiOr(prev.Data["wickets"])
+	replays := pyTruthy(s["replay_enabled"], true)
+	switch {
+	case wkts > 0:
+		if replays {
+			gap += 6 + clip + 5
+			if cam2 && pyTruthy(s["replay_side_on"], false) {
+				gap += clip + 5
+			}
+		}
+		if cam2 && pyTruthy(s["camera_walkout"], false) {
+			gap += float64(gi(s, "camera_walkout_hold", 35))
+		} else {
+			gap += 20 // the new batter walking out
+		}
+	case runs >= 4 && replays && !extrasNotBoundary(prev, fr):
+		gap += 6 + clip + 5
+	}
+	// "3" or "3.0": an over just finished (not "0" — nothing bowled yet).
+	if whole, part, _ := strings.Cut(fr.Data["overs"], "."); atoiOr(whole) > 0 && atoiOr(part) == 0 &&
+		fr.Data["overs"] != prev.Data["overs"] {
+		gap += 15 // the over's summary, the bowler change
+	}
+	return gap
+}
+
+// extrasNotBoundary: the ball's own ticker entry shows it wasn't a plain four or six (a
+// wide that ran away for four, "w+4", or a four off a no-ball, "4nb") — the overlay only
+// replays a plain 4 or 6 (parseBall), so there's no replay to wait for. When
+// the ticker didn't move (the over-completing write often still shows the over before the
+// final ball), runs alone decide, as they did.
+func extrasNotBoundary(prev, fr simulate.Frame) bool {
+	if fr.Data["last_ball"] == prev.Data["last_ball"] {
+		return false
+	}
+	toks := strings.Fields(fr.Data["last_ball"])
+	if len(toks) == 0 {
+		return false
+	}
+	last := toks[len(toks)-1]
+	return last != "4" && last != "6"
+}
+
+func atoiOr(s string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(s))
+	return n
+}
+
+func pyTruthy(v any, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return pyval.Truthy(v)
+}
 
 var (
 	rehearsalMu sync.Mutex
@@ -123,12 +208,12 @@ func StartRehearsal(scenario string, overs int) error {
 	say("  ▶  Practice match started (%s, %d overs)", scenario, overs)
 
 	path := filepath.Join(folder, simulate.OutputFilename)
-	// Seconds per frame in deliveries: a short look at the pre-match graphics, a pause at
-	// the innings break and the result.
-	pace := map[string]float64{"prematch": 1, "prematch2": 1, "break": 3, "end": 2, "ball": 1}
+	settings := LoadState()
+	scale := rehearsalBallSec / realBallSec
 	safeGo("practice match", func() {
 		defer close(done)
 		defer endRehearsal()
+		var prev simulate.Frame
 		for i, fr := range frames {
 			b, _ := json.Marshal(fr.Data)
 			tmp := path + ".tmp"
@@ -139,14 +224,12 @@ func StartRehearsal(scenario string, overs int) error {
 			rehearsal.frame = i + 1
 			rehearsal.score = fmt.Sprintf("%s-%s (%s ov)", fr.Data["runs"], fr.Data["wickets"], fr.Data["overs"])
 			rehearsalMu.Unlock()
-			p, ok := pace[fr.Label]
-			if !ok {
-				p = 1
-			}
+			gap := practiceGap(prev, fr, settings)
+			prev = fr
 			select {
 			case <-stop:
 				return
-			case <-time.After(time.Duration(p * rehearsalBallSec * float64(time.Second))):
+			case <-time.After(time.Duration(gap * scale * float64(time.Second))):
 			}
 		}
 		// Leave the result on screen a little before handing back.

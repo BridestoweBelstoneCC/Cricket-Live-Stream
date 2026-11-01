@@ -124,6 +124,10 @@ func ask(prompt, def string) string {
 type Options struct {
 	// Remote / Manual pre-answer the two match-day questions (nil = ask).
 	Remote, Manual *bool
+	// Practice answers the scoring question with "a practice match": a made-up match
+	// played through the real overlay once the server is up, to try the set-up with no
+	// scorer. Manual is ignored with it.
+	Practice bool
 	// OpenPanel shows the control panel once the server is up (the app's window passes
 	// its own; nil = the default browser). token is the launcher's own login, "" with no
 	// club password.
@@ -184,27 +188,42 @@ func Run(o Options) int {
 	fmt.Println()
 
 	// ── Data source ──
-	manual := false
-	if o.Manual != nil {
+	manual, practice := false, o.Practice
+	switch {
+	case practice:
+	case o.Manual != nil:
 		manual = *o.Manual
-	} else {
+	default:
 		fmt.Println("  How is today's match being scored?")
 		fmt.Println()
 		fmt.Println("    [1] NV Play / PCS Pro — the scorer's laptop writes the live feed (recommended)")
 		fmt.Println("    [2] Manual scoring — score ball-by-ball from a phone/tablet at /scoring")
+		fmt.Println("    [3] A practice match — a made-up match, to check everything works (no scorer)")
 		fmt.Println()
-		manual = ask("  Enter 1 or 2 [1]: ", "1") == "2"
+		switch ask("  Enter 1, 2 or 3 [1]: ", "1") {
+		case "2":
+			manual = true
+		case "3":
+			practice = true
+		}
 	}
 	if manual {
 		log("Manual scoring — set the match up at /scoring once the server starts", "ok")
 		log("Tip: remote access mode + Tailscale lets a volunteer score from the boundary", "")
 	} else {
+		if practice {
+			log("Practice match — it starts by itself once OBS and the server are ready", "ok")
+		}
 		// Foot-gun guard: a saved manual-scoring session OUTRANKS the scorer's feed in
 		// /live — a leftover test session would silently replace NV Play on the overlay.
 		mf := assets.Join("manual_scoring.json")
 		if _, err := os.Stat(mf); err == nil {
 			log("A saved manual-scoring session exists — it would OVERRIDE the scorer's feed!", "warn")
-			if yes, _ := console.Confirm("Clear it so NV Play drives the overlay today?", true); yes {
+			q := "Clear it so NV Play drives the overlay today?"
+			if practice {
+				q = "Clear it so the practice match can run?" // a manual session refuses one
+			}
+			if yes, _ := console.Confirm(q, true); yes {
 				if err := os.Remove(mf); err != nil {
 					log(fmt.Sprintf("Could not remove it (%v) — delete manual_scoring.json by hand", err), "err")
 				} else {
@@ -298,7 +317,11 @@ func Run(o Options) int {
 	}()
 
 	// ── The score source ──
-	checkScoreSource(state, manual)
+	if practice {
+		log("Scorer's feed checks skipped — a practice match today", "ok")
+	} else {
+		checkScoreSource(state, manual)
+	}
 
 	fmt.Println()
 	fmt.Println("  ─────────────────────────────────────────────")
@@ -331,8 +354,20 @@ func Run(o Options) int {
 		PullSeasonStats(apiKey, token)
 		SelfTest()
 		openPanel(o, base()+"/control", token) // the match-day checklist is the next thing to look at
+		if practice {
+			if err := startPractice(token); err != nil {
+				log("The practice match didn't start: "+err.Error(), "warn")
+				log("Start it from the control panel: Match day → Practice match", "")
+			} else {
+				log("Practice match started: 2 overs a side, about 15 minutes — watch it in OBS", "ok")
+				log("Stop it any time: control panel → Match day → Practice match", "")
+			}
+		}
 	} else {
 		log("Server didn't respond in time — season stats will load on the first player card", "warn")
+		if practice {
+			log("Start the practice from the control panel: Match day → Practice match", "")
+		}
 	}
 	if tel := startTelemetry(); tel != nil {
 		// Stopped with the launcher: it has no window, so a logger left behind would run
@@ -599,6 +634,28 @@ func ResumeOBSUpdates() {
 }
 
 // ── Talking to the running server ──
+
+// startPractice starts the control panel's practice match (a test seam).
+var startPractice = func(token string) error {
+	// 2 overs a side: a whole match — innings break, a result — in about 15 minutes.
+	b, _ := json.Marshal(M{"action": "start", "scenario": "full", "overs": 2})
+	req, _ := http.NewRequest("POST", base()+"/rehearsal", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	var d M
+	json.NewDecoder(resp.Body).Decode(&d)
+	if d["ok"] != true {
+		return fmt.Errorf("%s", orStr(str(d, "error"), resp.Status))
+	}
+	return nil
+}
 
 func getJSON(path, token string, timeout time.Duration) (M, error) {
 	req, _ := http.NewRequest("GET", base()+path, nil)

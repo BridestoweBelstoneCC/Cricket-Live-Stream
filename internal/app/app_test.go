@@ -361,6 +361,31 @@ func TestBridgeMachineShowsItsAddressAndToken(t *testing.T) {
 
 // ── The streaming laptop ──
 
+// "A practice match" on the home page reaches match day as the practice, not manual.
+func TestPracticeChoiceReachesMatchDay(t *testing.T) {
+	ta := newTestApp(t)
+	got := make(chan launcher.Options, 1)
+	runLauncher = func(o launcher.Options) int {
+		got <- o
+		o.OpenPanel("http://127.0.0.1:5000/control", "")
+		<-o.Interrupt
+		return 0
+	}
+	if r := ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	if r := ta.api("POST", "start", M{"remote": false, "manual": false, "practice": true}); r.status != 200 {
+		t.Fatalf("start: %d %s", r.status, r.body)
+	}
+	o := <-got
+	if !o.Practice || (o.Manual != nil && *o.Manual) {
+		t.Errorf("practice=%v manual=%v", o.Practice, o.Manual)
+	}
+	ta.waitFor("the panel", phaseIs(phRunning))
+	ta.stop()
+	ta.waitFor("stopped", phaseIs(phStopped))
+}
+
 // Match day in the window: the two questions answered by the page, the launcher's own
 // questions shown in the window, the panel shown once the server is up, and stopping.
 func TestMatchDayInTheWindow(t *testing.T) {

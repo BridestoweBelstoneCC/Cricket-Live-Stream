@@ -48,6 +48,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   (with their averages), from the PlayCricket scorecards the season stats already load —
   in the pre-match show and the break show. Control panel → On-screen extras →
   **Season leaders** turns it off.
+- **A practice match from the start.** "How is today's match being scored?" (the app's
+  home screen, and the console's match day) has a third answer, **A practice match**: match
+  day starts as usual and a 2-over made-up match plays through OBS by itself. The practice
+  is now paced like real cricket (15s a ball, plus each replay's own time after a boundary
+  or wicket, and time for the end-of-over graphics), so replays finish before the next ball.
+- **A QR code for the scorer's phone.** Match day started for manual scoring shows the
+  scoring page's QR code once, in the control panel and on the clubhouse screen; the
+  panel's **Scoring link** and the screen's **Get ready → Scoring link** bring it back.
+- **The clubhouse screen updates itself.** Started at boot, it asks for a newer release
+  before the screen opens and installs it into `~/cricketstream` (the download checked
+  against GitHub's SHA-256 for it, and run once to confirm its version), then restarts.
+  Releases only; a beta follows betas. `[Screen] auto_update = no` turns it off.
 - **Fixed:** with manual scoring, the first ball could take up to 20 seconds to reach the
   scorebar (the overlay checked slowly until the match was set up).
 - **Fixed:** finishing from the clubhouse screen (or **Stop and close**) left OBS's update
