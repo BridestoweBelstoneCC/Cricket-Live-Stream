@@ -236,13 +236,21 @@ manual`, `bitrate_kbps = manual` or `encoder = manual` to have them left alone e
 NV Play runs on Windows — on the scorer's laptop, or in a virtual machine (see "Scoring
 software on Mac" above). On that Windows machine:
 
-1. Open NV Play
-2. Go to **Tools → Configuration → Scoreboard**
-3. Tick **Enable Scoreboard Output**
-4. Leave the **Output Folder** as NV Play's own unless you have a reason to change it (in
-   a VM, point it at the shared folder — see [MAC_VM_SETUP.md](MAC_VM_SETUP.md))
-5. Click the **Template File** browse button, open NV Play's `Templates` folder and
+1. Open NV Play (PCS Pro)
+2. Go to **Tools → Configuration → Scoreboard**:
+
+   ![Tools → Configuration](docs/images/pcs-pro-scoreboard/02-tools-configuration.png)
+   ![Configuration dialog — Scoreboard tab](docs/images/pcs-pro-scoreboard/03-configuration-scoreboard-tab.png)
+
+3. Under **Output File 1**, tick **Enabled**
+4. Leave the **Output file** as NV Play's own unless you have a reason to change it (in
+   a VM, point it at the shared folder — see [MAC_VM_SETUP.md](MAC_VM_SETUP.md), which has
+   screenshots of every step below)
+5. Click the **Template file** browse button, open NV Play's `Templates` folder and
    select **`scoreboard.template`**
+
+   ![Scoreboard tab — Output File 1 enabled, with output and template file set](docs/images/pcs-pro-scoreboard/04-scoreboard-output-file1.png)
+
 6. Click OK
 
 On a separate scoring laptop, CricketStream installs `scoreboard.template` for you — see

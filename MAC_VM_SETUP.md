@@ -73,17 +73,34 @@ The shared folder will appear in Windows Explorer at:
 Or as a mapped network drive — VMware usually maps it automatically as the `Z:` drive.
 
 ### Set NV Play to output to the shared folder:
-1. Open NV Play inside the VM
-2. Go to **Tools → Configuration → Scoreboard**
-3. Tick **Enable Scoreboard Output**
-4. Set **Output Folder** to the shared folder path:
-   ```
-   Z:\
-   ```
-   Or browse to `\\vmware-host\Shared Folders\NVPlayShared\`
-5. Set **Template File** to `scoreboard.template`
-   (copy this file into the VM first — see Step 5)
-6. Click OK
+1. Open NV Play (PCS Pro) inside the VM
+
+2. Go to **Tools → Configuration**:
+
+   ![Tools menu](docs/images/pcs-pro-scoreboard/01-tools-menu.png)
+
+   Click **Configuration…**:
+
+   ![Tools → Configuration](docs/images/pcs-pro-scoreboard/02-tools-configuration.png)
+
+3. In the Configuration window, click the **Scoreboard** tab:
+
+   ![Configuration dialog — Scoreboard tab](docs/images/pcs-pro-scoreboard/03-configuration-scoreboard-tab.png)
+
+4. Under **Output File 1**, tick **Enabled**, then set:
+   - **Output file** — the shared folder path, e.g. `Z:\nvplay-scoreboard1.xml`
+     (or browse to `\\vmware-host\Shared Folders\NVPlayShared\nvplay-scoreboard1.xml`)
+   - **Template file** — `scoreboard.template` inside the same shared folder, e.g.
+     `Z:\bbcc_scoreboard.template` (copy this file into the VM first — see Step 5)
+
+   ![Scoreboard tab — Output File 1 enabled, pointed at the Z: shared drive](docs/images/pcs-pro-scoreboard/04-scoreboard-output-file1.png)
+
+   If you're browsing instead of typing the path, the shared folder shows up in the
+   sidebar as **Network Drive (Z:)**:
+
+   ![Browsing to the shared Z: drive from the file picker](docs/images/pcs-pro-scoreboard/05-browse-shared-drive.png)
+
+5. Click **OK**
 
 ---
 
