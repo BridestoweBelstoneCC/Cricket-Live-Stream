@@ -51,6 +51,9 @@ type ScreenOptions struct {
 	Laptop   string // pair with this address instead of searching (host or host:port)
 	Headless bool   // open nothing (tests)
 	Version  string
+	// Newer compares two versions (server.VersionNewer); with Kiosk, a newer release is
+	// installed before the screen opens (update.go). nil: never.
+	Newer func(a, b string) bool
 }
 
 // ScreenFile is the screen's own settings, beside the app.
@@ -170,6 +173,10 @@ func NewScreen(o ScreenOptions) *Screen {
 
 // RunScreen is `cricketstream clubhouse`. It returns the exit code.
 func RunScreen(o ScreenOptions) int {
+	// Started at boot (the start script's loop runs it again): update first, then open.
+	if o.Kiosk && !o.Headless && SelfUpdate(o.Version, o.Newer) {
+		return 0
+	}
 	s := NewScreen(o)
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(s.o.Port)))
 	if err != nil {

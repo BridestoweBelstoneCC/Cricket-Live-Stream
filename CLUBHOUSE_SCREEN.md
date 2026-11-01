@@ -111,9 +111,16 @@ desktop) with the clubhouse screen already in it. Nothing to type on the Pi.
    minutes and restarts once) and opens the screen full screen, ready to pair.
 
 The image signs in to the desktop by itself and opens the screen at every start. It has
-no password or account of its own — those are the ones you set in the Imager. To update
-CricketStream on it later, run the installer below once: it puts the new version in
-`~/cricketstream`, which is used from then on.
+no password or account of its own — those are the ones you set in the Imager.
+
+**It keeps itself up to date.** Each time the Pi starts, before the screen opens, it checks
+for a newer CricketStream release and installs it: the download is checked against the
+release's published checksum and the new version is run once before it's used. It needs the
+internet for that (without it, the screen opens as it was). A beta screen follows the betas;
+a release only ever moves to another release. To turn it off, add `auto_update = no` under
+`[Screen]` in `~/cricketstream/clubhouse.ini`. (Screens on 3.0 beta 3 or earlier don't have
+this yet: run the installer below once to bring them up to date, and they update themselves
+from then on.)
 
 ### Or: install it on Raspberry Pi OS yourself
 

@@ -56,6 +56,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - **A QR code for the scorer's phone.** Match day started for manual scoring shows the
   scoring page's QR code once, in the control panel and on the clubhouse screen; the
   panel's **Scoring link** and the screen's **Get ready → Scoring link** bring it back.
+- **The clubhouse screen updates itself.** Started at boot, it asks for a newer release
+  before the screen opens and installs it into `~/cricketstream` (the download checked
+  against GitHub's SHA-256 for it, and run once to confirm its version), then restarts.
+  Releases only; a beta follows betas. `[Screen] auto_update = no` turns it off.
 - **Fixed:** with manual scoring, the first ball could take up to 20 seconds to reach the
   scorebar (the overlay checked slowly until the match was set up).
 - **Fixed:** finishing from the clubhouse screen (or **Stop and close**) left OBS's update

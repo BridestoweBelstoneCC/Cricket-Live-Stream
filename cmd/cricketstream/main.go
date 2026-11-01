@@ -134,7 +134,7 @@ func run(cmd string, args []string) int {
 		return bridge.Run()
 	case "clubhouse":
 		fs := flag.NewFlagSet("clubhouse", flag.ExitOnError)
-		o := clubhouse.ScreenOptions{Version: version}
+		o := clubhouse.ScreenOptions{Version: version, Newer: server.VersionNewer}
 		fs.BoolVar(&o.Kiosk, "kiosk", false, "open Chromium full screen on the screen's page")
 		fs.IntVar(&o.Port, "port", clubhouse.DefaultScreenPort, "the screen page's port (loopback only)")
 		fs.StringVar(&o.Laptop, "laptop", "", "the streaming laptop's address, if the network blocks the search")
