@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -43,6 +44,8 @@ func findChrome(t *testing.T) string {
 	return ""
 }
 
+var browserHung atomic.Bool
+
 type reqLog struct {
 	mu   sync.Mutex
 	reqs []string
@@ -59,6 +62,11 @@ func (l *reqLog) all() []string {
 func renderInBrowser(t *testing.T, path string, budget time.Duration) (string, []string) {
 	t.Helper()
 	chrome := findChrome(t)
+	if browserHung.Load() {
+		// One hang has already failed the run; another 90s per page only pushes the
+		// package past go test's timeout, which hides every other result.
+		t.Skip("the browser hung on an earlier page")
+	}
 	sandbox(t, "")
 	log := &reqLog{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +85,16 @@ func renderInBrowser(t *testing.T, path string, budget time.Duration) (string, [
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run",
 		"--no-default-browser-check", "--use-mock-keychain", "--password-store=basic", "--user-data-dir="+profile, "--window-size=1920,1080",
 		"--virtual-time-budget="+strconv.Itoa(int(budget/time.Millisecond)), "--dump-dom", srv.URL+path)
+	// The timeout kills only Chrome's main process; its helpers inherit stdout and keep
+	// it open, so without WaitDelay Output() waits on them for ever — on a Mac
+	// (2026-11-01) the whole package ran into go test's 10-minute limit instead of
+	// failing at 90s.
+	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		browserHung.Store(true)
+		t.Fatalf("browser didn't finish in 90s (%s): %v", chrome, err)
+	}
 	if err != nil && len(out) == 0 {
 		t.Fatalf("browser: %v", err)
 	}
