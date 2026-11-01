@@ -90,8 +90,8 @@ Or as a mapped network drive — VMware usually maps it automatically as the `Z:
 4. Under **Output File 1**, tick **Enabled**, then set:
    - **Output file** — the shared folder path, e.g. `Z:\nvplay-scoreboard1.xml`
      (or browse to `\\vmware-host\Shared Folders\NVPlayShared\nvplay-scoreboard1.xml`)
-   - **Template file** — `scoreboard.template` inside the same shared folder, e.g.
-     `Z:\bbcc_scoreboard.template` (copy this file into the VM first — see Step 5)
+   - **Template file** — `scoreboard.template` (copy it into the VM first — see Step 5;
+     the screenshot below shows a club's own renamed copy on `Z:`, which works too)
 
    ![Scoreboard tab — Output File 1 enabled, pointed at the Z: shared drive](docs/images/pcs-pro-scoreboard/04-scoreboard-output-file1.png)
 

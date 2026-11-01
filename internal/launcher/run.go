@@ -319,7 +319,7 @@ func Run(o Options) int {
 	if remote {
 		bind = "0.0.0.0"
 	}
-	launch := func() (Proc, error) { return startServer(bind) }
+	launch := func() (Proc, error) { return startServer(bind, manual) }
 	p, err := launch()
 	if err != nil {
 		console.Die("The stream server wouldn't start", err.Error())
@@ -465,7 +465,7 @@ const StopOnEOFEnv = "CRICKETSTREAM_STOP_ON_EOF"
 
 // startServer runs this same program as `cricketstream server`, in its own process
 // group so the operator's Ctrl+C doesn't reach it.
-func startServer(bind string) (Proc, error) {
+func startServer(bind string, manual bool) (Proc, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -475,6 +475,10 @@ func startServer(bind string) (Proc, error) {
 	// restarted), not wait for an Enter nobody can type.
 	cmd.Env = append(os.Environ(), "BBCC_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir(), StopOnEOFEnv+"=1",
 		"CRICKETSTREAM_NO_PAUSE=1")
+	if manual {
+		// For this server only (a restart keeps it; tomorrow's match day asks again).
+		cmd.Env = append(cmd.Env, server.ManualTodayEnv+"=1")
+	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

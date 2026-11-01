@@ -1753,7 +1753,10 @@ func (c *ctx) live(mutate bool) {
 	// Agent mode has no local folder to check — "configured" just means the source is
 	// switched on; a missing/unreachable agent still reports "pcs" rather than falling
 	// through to the widget with the wrong label.
-	configured := gs(s, "pcs_source", "local") == "agent" || EffectivePCSFolder(s) != ""
+	// Manual scoring chosen at launch counts too: before the match is set up at /scoring
+	// there's no session yet, and the widget path below slowed the overlay to a poll
+	// every ~20s, so the first ball took up to ~23s to show (clubhouse test, 2026-11-01).
+	configured := gs(s, "pcs_source", "local") == "agent" || EffectivePCSFolder(s) != "" || manualToday()
 	switch {
 	case pcsState != nil:
 		pcsState = shallow(pcsState) // the feed reader may hand back its cached map

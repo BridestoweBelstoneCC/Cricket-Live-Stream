@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.4 — more from the ground (2026-11-01)
 
 - **More from a second camera** (all optional, and nothing changes with one camera):
   - **Side-on wicket replays.** A wicket replays twice: camera 1 as before, then camera
@@ -48,6 +48,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   (with their averages), from the PlayCricket scorecards the season stats already load —
   in the pre-match show and the break show. Control panel → On-screen extras →
   **Season leaders** turns it off.
+- **Fixed:** with manual scoring, the first ball could take up to 20 seconds to reach the
+  scorebar (the overlay checked slowly until the match was set up).
+- **Fixed:** finishing from the clubhouse screen (or **Stop and close**) left OBS's update
+  check switched off until the next match.
+- The Mac setup guide shows each step of pointing PCS Pro's scoreboard output at the
+  shared folder, with screenshots.
 
 ## v3.0.0-beta.3 — a show around the cricket (2026-10-31)
 

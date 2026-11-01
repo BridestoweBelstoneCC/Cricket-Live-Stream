@@ -9,6 +9,7 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"sync"
 
 	"cricketstream/internal/scoring"
@@ -47,6 +48,12 @@ func manualSessionLocked() *scoring.Session {
 	}
 	return manualSession
 }
+
+// ManualTodayEnv: the launcher sets it on the server it starts when match day was told
+// the match is scored by hand, so /live is the scorer's feed before the match is set up.
+const ManualTodayEnv = "CRICKETSTREAM_MANUAL_TODAY"
+
+func manualToday() bool { return os.Getenv(ManualTodayEnv) == "1" }
 
 // ManualLiveState is the overlay state from the manual session, or nil when not active.
 // Rendered through ParsePCSJSON so it is EXACTLY what the scorer's-file path would give.
