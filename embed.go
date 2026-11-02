@@ -9,6 +9,7 @@ import "embed"
 // executable overrides the built-in copy (see internal/assets).
 //
 //go:embed overlay.html control.html scoring.html scoreboard.template
+//go:embed talk.html talk_out.html talk_capture.js
 //go:embed config.example.ini match_state.example.json
 //go:embed fonts brand graphics
 //go:embed LICENSE THIRD_PARTY_NOTICES.txt

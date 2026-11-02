@@ -126,6 +126,32 @@ p{margin:0 0 14px;max-width:62ch}
 .list .txt span{color:var(--sage);font-size:16px}
 .done .mark{color:var(--good)} .todo .mark{color:var(--warn)} .bad .mark{color:var(--bad)} .busy .mark{color:var(--club)}
 
+/* Commentary: the switch, the code to scan, and who's asking. */
+.talk-head{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;max-width:980px;margin-bottom:14px}
+.talk-head h2{margin:0}
+.talk-switch{display:inline-flex;align-items:center;gap:14px;min-width:190px;justify-content:space-between}
+.talk-switch i{width:60px;height:34px;border-radius:17px;background:var(--night);border:2px solid var(--edge);position:relative;flex:none}
+.talk-switch i::after{content:"";position:absolute;left:3px;top:3px;width:24px;height:24px;border-radius:50%;background:var(--sage);transition:left .15s}
+.talk-switch[aria-checked=true]{border-color:var(--club)}
+.talk-switch[aria-checked=true] i{background:var(--club);border-color:var(--club)}
+.talk-switch[aria-checked=true] i::after{left:29px;background:var(--on-club)}
+.talk-grid{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;max-width:980px}
+/* Whole on the smallest screen (800x480): half a code doesn't scan. */
+.talk-qr{flex:none;--qr:clamp(170px,calc(100vh - 290px),280px);width:var(--qr)}
+.talk-qr img{display:block;width:var(--qr);height:var(--qr);border-radius:12px;background:#fff;image-rendering:pixelated}
+.talk-qr p{font-size:15px;margin:8px 0 0;overflow-wrap:anywhere}
+.talk-who{flex:1;min-width:300px}
+.talk-air{background:var(--board);border:2px solid var(--live);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+.talk-air .tag{background:var(--live);color:#fff;font:800 16px Board,sans-serif;padding:2px 9px;border-radius:5px;margin-right:10px}
+.talk-air b{font:600 28px Board,sans-serif}
+.talk-meter{height:10px;border-radius:5px;background:var(--night);margin:10px 0;overflow:hidden}
+.talk-meter i{display:block;height:100%;width:0;background:var(--good)}
+.talk-steps{margin:0 0 14px;padding-left:22px;color:var(--sage)}
+.talk-vol{margin-bottom:10px;gap:10px}
+.talk-vol .btn{min-width:56px}
+.talk-vol b{font:600 22px Board,sans-serif;min-width:84px;text-align:center;font-variant-numeric:tabular-nums}
+.talk-vol #talk_mute[aria-pressed=true]{background:var(--live);border-color:var(--live);color:#fff}
+
 .field{display:block;margin:0 0 16px;max-width:900px}
 .field span{display:block;color:var(--sage);font-size:16px;margin-bottom:6px}
 .field input,.field textarea{width:100%;font:22px system-ui,sans-serif;padding:14px 16px;border-radius:12px;border:2px solid var(--edge);
@@ -354,6 +380,41 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <p class="say" id="cam_say"></p>
     </section>
 
+    <section id="v-talk" class="view tab hidden">
+      <div class="talk-head">
+        <h2>Commentary from a phone</h2>
+        <button class="btn talk-switch" id="talk_switch" type="button" role="switch" aria-checked="false"><span id="talk_switch_t">Off</span><i></i></button>
+      </div>
+      <p class="muted" id="talk_off">Turn it on and a code comes up here. Anyone who scans it can ask to commentate from their phone, and you choose who goes on air.</p>
+      <div class="talk-grid hidden" id="talk_on">
+        <div class="talk-qr">
+          <img id="talk_qr" alt="QR code for the commentary page">
+          <p class="muted" id="talk_url"></p>
+        </div>
+        <div class="talk-who">
+          <div class="talk-air hidden" id="talk_air">
+            <span class="tag" id="talk_air_tag">ON AIR</span><b id="talk_air_name"></b>
+            <div class="talk-meter"><i id="talk_air_meter"></i></div>
+            <p class="muted" id="talk_air_line" style="margin-bottom:10px"></p>
+            <div class="row talk-vol">
+              <button class="btn small" id="talk_quieter" type="button" aria-label="Quieter">−</button>
+              <b id="talk_vol">Normal</b>
+              <button class="btn small" id="talk_louder" type="button" aria-label="Louder">+</button>
+              <button class="btn small" id="talk_mute" type="button">Mute</button>
+            </div>
+            <button class="btn small stop" id="talk_air_end" type="button">Take off air</button>
+          </div>
+          <ul class="list" id="talk_list"></ul>
+          <ol class="talk-steps" id="talk_steps">
+            <li>Scan the code with the phone's camera, on the club's wifi.</li>
+            <li id="talk_cert">The phone warns that the connection isn't private: it's this laptop's own certificate. Choose <b>Advanced</b> or <b>Show Details</b>, then carry on to the page.</li>
+            <li>Allow the microphone, type a name and ask to go on air. They appear here for you to say yes.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="say" id="talk_say"></p>
+    </section>
+
     <section id="v-end" class="view tab hidden center">
       <h1>End the stream</h1>
       <p class="muted">Stops the stream on YouTube, ends match day and closes OBS. Replays already saved are kept.</p>
@@ -372,6 +433,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     <button type="button" role="tab" data-tab="get" class="op">Get ready</button>
     <button type="button" role="tab" data-tab="yt" class="op">YouTube</button>
     <button type="button" role="tab" data-tab="cam" class="op">Cameras</button>
+    <button type="button" role="tab" data-tab="talk" class="op" id="tab_talk">Commentary</button>
     <button type="button" role="tab" data-tab="end" class="op">Finish</button>
   </nav>
 </div>
@@ -562,7 +624,8 @@ function render() {
     b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
     if (b.classList.contains('op')) b.classList.toggle('hidden', !S.unlocked);
   });
-  show('pv', running && !document.body.classList.contains('osk'));
+  // Not on the Commentary tab: nobody's watching the picture there, and it would sit on the code.
+  show('pv', running && v !== 'talk' && !document.body.classList.contains('osk'));
   document.body.classList.toggle('pv', running && !$('pv').classList.contains('hidden'));
   if (v === 'off') {
     txt('off_why', S.can_wake ? 'Start the stream and this screen switches it on, opens OBS and gets match day ready.'
@@ -637,7 +700,8 @@ function renderTop(v) {
   }
   var L = laptop(), chip = $('chip'), live = isLive();
   chip.className = live ? 'live' : (S.reachable ? 'good' : '');
-  chip.textContent = L.question && !S.unlocked ? 'Unlock to answer the laptop' : live ? 'On air' : !S.paired ? '' : !S.reachable ? (S.waking_for != null ? 'Waking' : 'Laptop off')
+  var asking = talkOnAirNow && talkOnAirNow.waiting && L.phase === 'running';
+  chip.textContent = L.question && !S.unlocked ? 'Unlock to answer the laptop' : asking && !S.unlocked ? 'Unlock: someone wants to commentate' : live ? 'On air' : !S.paired ? '' : !S.reachable ? (S.waking_for != null ? 'Waking' : 'Laptop off')
     : L.phase === 'running' ? 'Match day' : L.phase === 'starting' ? 'Starting' : 'Laptop on';
   show('chip', S.paired);
   show('lockbtn', S.pin_set);
@@ -765,6 +829,7 @@ function loadTab() {
   if (tab === 'get') loadChecklist();
   if (tab === 'yt') loadYouTube();
   if (tab === 'cam') loadCameras();
+  if (tab === 'talk') loadTalk();
 }
 
 // The score: what the overlay shows, read from the side-effect-free /live/view.
@@ -909,6 +974,98 @@ function loadChecklist() {
     api('server/remote/info?page=scoring').then(function (d) { if (d.manual_today) show('get_qr', true); else qrKnown = false; });
   }
   return api('server/checklist').then(function (d) { if (d.items) { checklist = d; renderChecklist(); } });
+}
+
+// ── Commentary from a phone ──
+// The switch, the QR code while it's on, and a yes or no for each person asking. Nobody's
+// heard until they get a yes here. Internal/server/talk.go has the whole picture.
+var talkData = null, talkQRFor = '', talkOnAirNow = null, talkBusy = false, talkListKey = null;
+function loadTalk() {
+  return api('server/talk/status').then(function (d) {
+    if (d.ok) { talkData = d; renderTalk(); }
+    else if (!talkBusy) say('talk_say', d.error || 'The laptop isn\'t answering.', 'bad');
+  });
+}
+function talkDo(action, id, extra) {
+  needUnlock(function () {
+    // One press at a time: a double tap on the switch would turn it on and off again, and
+    // the second "on" would be a new code.
+    if (talkBusy) return;
+    talkBusy = true;
+    var body = {action: action, id: id || ''};
+    if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+    api('server/talk/control', body).then(function (d) {
+      talkBusy = false;
+      say('talk_say', d.ok ? '' : d.error, d.ok ? '' : 'bad');
+      if (d.ok) { talkData = d; renderTalk(); }
+    });
+  });
+}
+function talkVolume(db) { return !db ? 'Normal' : (db > 0 ? '+' : '−') + Math.abs(db) + ' dB'; }
+function renderTalk() {
+  var d = talkData; if (!d) return;
+  var sw = $('talk_switch'); sw.setAttribute('aria-checked', d.on ? 'true' : 'false');
+  txt('talk_switch_t', d.on ? 'On' : 'Off');
+  show('talk_off', !d.on); show('talk_on', !!d.on);
+  if (!d.on) { talkQRFor = ''; $('talk_qr').removeAttribute('src'); say('talk_say', ''); return; }
+  if (d.url && d.url !== talkQRFor) {
+    talkQRFor = d.url;
+    blob('server/talk/qr.png?t=' + Date.now()).then(function (b) { $('talk_qr').src = URL.createObjectURL(b); },
+      function () { talkQRFor = ''; say('talk_say', 'The QR code didn\'t load. On the phone, open the address under it.', 'bad'); });
+  }
+  txt('talk_url', d.url ? d.url.split('?')[0] : '');
+  show('talk_cert', !!d.cert_warning);
+  var air = d.on_air; show('talk_air', !!air);
+  if (air) {
+    txt('talk_air_name', air.name);
+    txt('talk_air_tag', air.lost ? 'LOST' : air.muted ? 'MUTED' : 'ON AIR');
+    $('talk_air_meter').style.width = (air.level || 0) + '%';
+    txt('talk_air_line', air.lost ? 'Lost touch with their phone. They come back by themselves if they\'re back within two minutes.'
+      : air.muted ? 'Muted: viewers can\'t hear them. The meter still shows them talking.'
+      : air.hearing ? mins(air.for_sec) + ' on air' : 'Nothing coming from the phone: muted, or the signal has dropped.');
+    txt('talk_vol', talkVolume(air.gain_db));
+    $('talk_quieter').disabled = !air.can_quieter; $('talk_louder').disabled = !air.can_louder;
+    $('talk_mute').textContent = air.muted ? 'Unmute' : 'Mute';
+    $('talk_mute').setAttribute('aria-pressed', air.muted ? 'true' : 'false');
+  }
+  // Drawn again only when it changes: this runs every second, and a button replaced between
+  // a finger going down and coming up never gets its press.
+  var listKey = JSON.stringify([(d.waiting || []).map(function (w) { return w.id; }), air ? air.name : '']);
+  var ul = $('talk_list');
+  if (listKey !== talkListKey) { talkListKey = listKey; ul.textContent = ''; (d.waiting || []).forEach(function (w) {
+    var li = document.createElement('li');
+    var t = document.createElement('div'); t.className = 'txt';
+    var b = document.createElement('b'); b.textContent = w.name;
+    var s = document.createElement('span'); s.textContent = air ? 'Wants to take over from ' + air.name : 'Wants to go on air';
+    t.appendChild(b); t.appendChild(s); li.appendChild(t);
+    li.appendChild(button(air ? 'Swap' : 'Put on air', 'btn small go', function () { talkDo('approve', w.id); }));
+    li.appendChild(button('No', 'btn small', function () { talkDo('refuse', w.id); }));
+    ul.appendChild(li);
+  }); }
+  show('talk_steps', !air && !(d.waiting || []).length);
+  var problem = d.error || (d.obs && !d.obs.ready ? d.obs.note : '') || (!d.url ? 'The laptop isn\'t on a network, so a phone can\'t reach it.' : '');
+  say('talk_say', problem, d.error ? 'bad' : '');
+}
+$('talk_switch').addEventListener('click', function () {
+  if (talkData && talkData.on && talkData.on_air) {
+    confirmDialog('Take ' + talkData.on_air.name + ' off air?', 'Turning commentary off takes them off air, and the code stops working.', 'Turn it off', 'stop', function () { talkDo('off'); });
+    return;
+  }
+  talkDo(talkData && talkData.on ? 'off' : 'on');
+});
+$('talk_air_end').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('end', talkData.on_air.id); });
+$('talk_quieter').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('volume', talkData.on_air.id, {step: -1}); });
+$('talk_louder').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('volume', talkData.on_air.id, {step: 1}); });
+$('talk_mute').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('mute', talkData.on_air.id, {muted: !talkData.on_air.muted}); });
+// Shown wherever the screen is: someone's asking, and only an unlocked screen can answer.
+function loadTalkBadge() {
+  if (S.view_only) return;
+  api('server/talk/onair').then(function (d) {
+    if (d.on === undefined) return;
+    talkOnAirNow = d;
+    var n = d.waiting || 0;
+    txt('tab_talk', n ? 'Commentary (' + n + ')' : 'Commentary');
+  });
 }
 
 // Manual scoring: the scoring page's QR code, for the scorer's phone. It comes up by
@@ -1232,7 +1389,10 @@ setInterval(function () {
   if (!(S && S.reachable && L.phase === 'running' && L.server_ready)) return;
   loadScore(); loadChecklist(); // the checklist also says whether it's on air
   if (tab === 'score') loadSV(false);
+  loadTalkBadge();
 }, 3000);
+// Quick while it's showing: a yes or no shouldn't wait, and the meter is live.
+setInterval(function () { if (tab === 'talk' && S && S.unlocked && laptop().phase === 'running') loadTalk(); }, 1000);
 setInterval(function () { loadPreview(false); }, 2000);
 </script>
 </body>

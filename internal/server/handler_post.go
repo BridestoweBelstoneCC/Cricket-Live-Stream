@@ -257,6 +257,15 @@ func (c *ctx) doPOST() {
 	case path == "/settings/open_folder":
 		c.settingsOpenFolder(body)
 
+	case path == "/talk/control":
+		d := jsonObject(body)
+		talkNoteLocalIP(c.r.Header.Get(talkLocalIPHeader)) // before "on" makes its certificate
+		if err := TalkControl(str(d, "action", ""), str(d, "id", ""), gi(d, "step", 0), d["muted"] == true); err != nil {
+			c.json(M{"ok": false, "error": err.Error()}, 409)
+			return
+		}
+		c.json(TalkStatus())
+
 	case path == "/rehearsal":
 		d := jsonObject(body)
 		switch str(d, "action", "") {

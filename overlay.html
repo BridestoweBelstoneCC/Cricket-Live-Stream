@@ -1038,6 +1038,23 @@ body.style-block #replay-banner { border-left-width: 8px; }
    centered content up out of the strap's reserved space, instead of the two overlapping. */
 .sponsor-space-reserved { padding-bottom: var(--sponsor-strap-h) !important; }
 
+/* Whoever's commentating from a phone (talk.go): their own words, so their own name.
+   Top right, just left of the weather and the replay banner: clubs put their sponsors' logos
+   in OBS's top left, and this sat on them in the first real test. */
+#talk-strap {
+  position: absolute; top: 60px; right: 286px; z-index: 11;
+  display: flex; align-items: center; gap: 12px; max-width: 370px;
+  background: rgba(10,15,25,0.86); border-left: 5px solid #e04a3a; border-radius: 6px;
+  padding: 10px 20px 10px 14px; color: #fff;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none;
+}
+#talk-strap.show { opacity: 1; }
+#talk-strap svg { width: 26px; height: 26px; flex: none; fill: #e04a3a; }
+/* Without this a flex child won't shrink, so a long name runs out over the weather. */
+#talk-strap > div { min-width: 0; }
+#talk-strap small { display: block; font-size: 15px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.65); text-transform: uppercase; }
+#talk-strap b { display: block; font-size: 30px; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* Partnership display */
 #partnership-display {
   position: absolute; top: 0; left: 0; right: 0; bottom: 72px;
@@ -1643,6 +1660,9 @@ body.style-block #replay-banner { border-left-width: 8px; }
   <div class="over-moment" id="over-moment"></div>
 </div>
 
+<!-- Who is commentating from a phone (pollTalkStrap). -->
+<div id="talk-strap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a4 4 0 0 0 4-4V5a4 4 0 0 0-8 0v6a4 4 0 0 0 4 4zm7-4a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A7 7 0 0 0 19 11z"/></svg><div><small>Commentary</small><b id="talk-strap-name"></b></div></div>
+
 <!-- Weekend sponsor — persistent strap along the bottom of the over-summary/partnership/AI
      commentary panels (see nextGraphic()). Only shown when a sponsor name is set. -->
 <div id="sponsor-strap">
@@ -2217,6 +2237,21 @@ async function pollCommands() {
 // replay/scorecard commands the real OBS overlay was meant to receive.
 if (new URLSearchParams(location.search).get('preview') !== '1') {
   setInterval(pollCommands, 3000);
+}
+
+// ── Who's commentating from a phone ───────────────────────
+// A read with no side effects, and textContent only: the name is whatever they typed.
+async function pollTalkStrap() {
+  try {
+    var r = await fetch(SERVER + '/talk/onair');
+    var d = await r.json();
+    if (d.on_air) el('talk-strap-name').textContent = d.name;
+    el('talk-strap').classList.toggle('show', !!d.on_air);
+  } catch (e) {}
+}
+if (new URLSearchParams(location.search).get('preview') !== '1') {
+  setInterval(pollTalkStrap, 4000);
+  pollTalkStrap();
 }
 
 

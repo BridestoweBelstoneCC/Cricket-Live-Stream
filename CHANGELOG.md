@@ -4,6 +4,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Commentary from a phone.** A new **Commentary** tab on the clubhouse screen: turn it on,
+  a QR code comes up, and whoever scans it can ask to commentate from their phone, with
+  nothing to install. You choose who goes on air. Viewers see their name in the corner, and
+  the ground's sound dips under their voice by itself. Volume and mute on both the screen
+  and the phone. See CLUBHOUSE_SCREEN.md.
+
+---
+
 ## v3.0.0-beta.4 — more from the ground (2026-11-01)
 
 - **More from a second camera** (all optional, and nothing changes with one camera):

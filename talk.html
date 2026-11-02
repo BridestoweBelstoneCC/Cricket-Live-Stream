@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d1f17">
+<title>Commentary</title>
+<style>
+:root{--night:#0d1f17;--board:#163327;--board-2:#1e4233;--edge:#2f5a47;--cream:#efe7d2;--sage:#9fb5a8;
+  --gold:#c8a24a;--live:#e04a3a;--good:#6fd39a;--bad:#ff7a6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--night);color:var(--cream);
+  font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;min-height:100dvh;padding:20px 16px max(20px,env(safe-area-inset-bottom))}
+.hidden{display:none !important}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:3px solid var(--gold);padding-bottom:10px;margin-bottom:22px}
+#club{font-size:20px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header span{color:var(--sage);font-size:14px;flex:none}
+section{flex:1;display:flex;flex-direction:column}
+h1{font-size:30px;line-height:1.1;margin:0 0 10px}
+p{margin:0 0 14px}
+.muted{color:var(--sage)}
+label{display:block;color:var(--sage);font-size:15px;margin:10px 0 6px}
+input{width:100%;font:inherit;font-size:20px;padding:14px;border-radius:12px;border:2px solid var(--edge);background:var(--board);color:var(--cream)}
+input:focus{outline:0;border-color:var(--gold)}
+button{font:inherit;font-weight:700;font-size:20px;width:100%;min-height:60px;padding:14px;border-radius:14px;border:2px solid var(--edge);
+  background:var(--board-2);color:var(--cream);margin-top:12px}
+button.go{background:var(--gold);border-color:var(--gold);color:#14140f}
+button.stop{background:#5b1f19;border-color:var(--live);color:#fff}
+button:disabled{opacity:.5}
+.note{background:var(--board);border-radius:12px;padding:12px 14px;font-size:15px;color:var(--sage);margin:14px 0 0}
+.bad{color:var(--bad)}
+.grow{flex:1}
+.meter{height:14px;border-radius:7px;background:var(--board);overflow:hidden;margin:14px 0 6px}
+.meter i{display:block;height:100%;width:0;background:var(--good);transition:width .08s linear}
+.air{align-self:flex-start;background:var(--live);color:#fff;font-weight:800;letter-spacing:.06em;border-radius:8px;padding:6px 14px;margin-bottom:14px}
+.air.muted-now{background:var(--board-2);color:var(--sage)}
+#a_name{font-size:34px;font-weight:800;line-height:1.1;margin:0 0 8px;overflow-wrap:anywhere}
+.vol{display:flex;align-items:center;gap:12px;margin-top:8px}
+.vol button{flex:none;width:72px;margin:0;font-size:30px;line-height:1}
+.vol div{flex:1;text-align:center}
+.vol b{display:block;font-size:22px}
+.vol span{font-size:14px;color:var(--sage)}
+.spin{display:inline-block;width:20px;height:20px;border:3px solid var(--edge);border-top-color:var(--gold);border-radius:50%;
+  animation:s 1s linear infinite;vertical-align:-3px;margin-right:10px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header><div id="club">Commentary</div><span>Commentary</span></header>
+
+<!-- Before anything: name, what this is, and the tap a browser needs before it gives up the microphone. -->
+<section id="v-name" class="hidden">
+  <h1>Commentate on the match</h1>
+  <p class="muted">Talk into this phone and viewers hear you on the live stream.</p>
+  <label for="name">Your name</label>
+  <input id="name" maxlength="24" autocomplete="name" enterkeyhint="go" placeholder="As viewers will see it">
+  <button class="go" id="join" type="button">Ask to go on air</button>
+  <p class="bad" id="join_say" style="margin-top:10px"></p>
+  <div class="grow"></div>
+  <p class="note">Everyone watching can hear what you say, and the video stays on YouTube. Nothing is sent until the clubhouse says yes.</p>
+</section>
+
+<section id="v-wait" class="hidden">
+  <h1><span class="spin"></span>Asking the clubhouse</h1>
+  <p class="muted">They'll see your name on the clubhouse screen. Stay on this page.</p>
+  <p class="muted" style="margin:14px 0 0">Say something to check your microphone. This isn't being sent yet.</p>
+  <div class="meter"><i id="w_meter"></i></div>
+  <button class="go hidden" id="w_back" type="button">Tap to bring your microphone back</button>
+  <div class="grow"></div>
+  <button id="w_cancel" type="button">Cancel</button>
+</section>
+
+<section id="v-air" class="hidden">
+  <div class="air" id="a_tag">ON AIR</div>
+  <p id="a_name"></p>
+  <p class="muted" id="a_line">Viewers can hear you now.</p>
+  <div class="meter"><i id="a_meter"></i></div>
+  <p class="bad" id="a_net"></p>
+  <button class="go hidden" id="a_back" type="button">Tap to bring your microphone back</button>
+  <div class="vol">
+    <button id="a_quieter" type="button" aria-label="Quieter">−</button>
+    <div><b id="a_vol">Normal</b><span>Your volume</span></div>
+    <button id="a_louder" type="button" aria-label="Louder">+</button>
+  </div>
+  <div class="grow"></div>
+  <p class="note">Keep this page open and the phone unlocked. Don't play the stream out loud near the phone: you'd hear yourself back, seconds late.</p>
+  <button id="a_mute" type="button">Mute</button>
+  <button class="stop" id="a_leave" type="button">Stop commentating</button>
+</section>
+
+<section id="v-end" class="hidden">
+  <h1 id="e_title"></h1>
+  <p class="muted" id="e_text"></p>
+  <button class="go hidden" id="e_again" type="button">Ask again</button>
+</section>
+
+<script>
+'use strict';
+// Phones lock, take calls, lose the wifi and reload pages, so most of this is about coming
+// back from those: the mic is watched and restarted, every request has a time limit, and a
+// reloaded page picks up where it was. The laptop keeps someone's place on air for two
+// minutes (talk.go), so a blip never needs the clubhouse to say yes again.
+var KEY = new URLSearchParams(location.search).get('k') || '';
+var me = null, ctx = null, stream = null, node = null, lock = null;
+var queue = [], inFlight = 0, seq = 0, muted = false, state = '', fails = 0, sent = 0;
+var pollTimer = null, MOST_BEHIND = 8, IN_FLIGHT = 2, heldByClubhouse = false;
+var wantMic = false, micDown = false, recovering = false, autoTries = 0, recoverAt = 0;
+var lastChunk = 0, lastSound = 0, lastReply = 0;
+var NO_CONTACT = 3000, GIVE_UP = 3 * 60000;
+window.talkDebug = function () {
+  return {state: state, sent: sent, fails: fails, queued: queue.length, rate: ctx && ctx.sampleRate, micDown: micDown,
+    contact: Date.now() - lastReply < NO_CONTACT, ctx: ctx && ctx.state, track: stream && stream.getAudioTracks()[0] && stream.getAudioTracks()[0].readyState};
+};
+function $(id) { return document.getElementById(id); }
+function view(v) { ['name', 'wait', 'air', 'end'].forEach(function (k) { $('v-' + k).classList.toggle('hidden', k !== v); }); }
+function remember() {
+  try { if (me) sessionStorage.setItem('talk_me', JSON.stringify({k: KEY, id: me.id, secret: me.secret, name: me.name})); else sessionStorage.removeItem('talk_me'); } catch (e) {}
+}
+function end(title, text, again) {
+  stopMic(); me = null; state = ''; remember();
+  $('e_title').textContent = title; $('e_text').textContent = text;
+  $('e_again').classList.toggle('hidden', !again); view('end');
+}
+// A request on a dying network can hang for a minute or more, with audio queueing behind it.
+function timedFetch(url, opts, ms) {
+  if (!window.AbortController) return fetch(url, opts);
+  var ac = new AbortController(), t = setTimeout(function () { ac.abort(); }, ms);
+  opts.signal = ac.signal;
+  return fetch(url, opts).then(function (r) { clearTimeout(t); return r; }, function (e) { clearTimeout(t); throw e; });
+}
+function post(path, body, ms) {
+  return timedFetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}, ms || 5000)
+    .then(function (r) { return r.json(); });
+}
+function micSorry(e) {
+  var n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'This phone said no to the microphone. Allow it for this page (the icon by the address, or the phone\'s settings for this browser), then try again.';
+  if (n === 'NotFoundError') return 'This phone didn\'t offer a microphone.';
+  if (n === 'NotReadableError') return 'Something else is using the microphone. Close it (a call, the camera) and try again.';
+  return 'The microphone wouldn\'t start: ' + (e && e.message || n || 'unknown');
+}
+function startMic() {
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return Promise.reject({message: 'This browser won\'t allow the microphone here. Open this page in Safari or Chrome itself (not inside another app), by scanning the code on the clubhouse screen with the camera.'});
+  }
+  if (!AC || !AC.prototype || !('audioWorklet' in AC.prototype)) {
+    return Promise.reject({message: 'This browser is too old for this. Update it, or use another phone.'});
+  }
+  // In the tap itself, before any waiting: an iPhone only starts audio straight from a tap.
+  // Not waiting on resume() either: on a phone that isn't ready it may never answer.
+  var c = new AC({latencyHint: 'interactive'}), mine = null;
+  ctx = c;
+  c.resume().catch(function () {});
+  // Echo, noise and level handling are the phone's own: it's a boundary, and windy.
+  return navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}, video: false}).then(function (s) {
+    mine = s; stream = s;
+    var t = s.getAudioTracks()[0];
+    if (t) t.onended = function () { lastChunk = 0; watch(); };
+    return c.audioWorklet.addModule('/talk/capture.js');
+  }).then(function () {
+    node = new AudioWorkletNode(c, 'talk-capture', {numberOfOutputs: 1, outputChannelCount: [1]});
+    node.port.onmessage = function (e) { onChunk(e.data); };
+    // Silent, but a node with nowhere to go isn't run on every phone.
+    var hush = c.createGain(); hush.gain.value = 0;
+    c.createMediaStreamSource(mine).connect(node); node.connect(hush); hush.connect(c.destination);
+    c.resume().catch(function () {});
+    lastChunk = Date.now();
+    wantMic = true;
+    keepAwake();
+  }, function (e) {
+    if (mine) mine.getTracks().forEach(function (t) { t.stop(); });
+    try { c.close(); } catch (x) {}
+    if (ctx === c) { ctx = null; stream = null; }
+    throw e;
+  });
+}
+function closeMic() {
+  if (stream) stream.getTracks().forEach(function (t) { t.onended = null; t.stop(); });
+  if (ctx) ctx.close().catch(function () {});
+  stream = ctx = node = null;
+}
+function stopMic() {
+  wantMic = false; micDown = false; recovering = false; autoTries = 0;
+  closeMic();
+  if (lock) lock.release().catch(function () {});
+  lock = null; queue = []; clearTimeout(pollTimer);
+}
+// The screen going off is what stops a phone's microphone: and a phone drops this lock each
+// time the page is hidden, so it's asked for again on the way back.
+function keepAwake() {
+  if (!navigator.wakeLock || lock || !wantMic || document.hidden) return;
+  navigator.wakeLock.request('screen').then(function (l) {
+    lock = l; l.addEventListener('release', function () { if (lock === l) lock = null; });
+  }, function () {});
+}
+function recoverMic() {
+  if (recovering) return;
+  recovering = true; recoverAt = Date.now();
+  closeMic();
+  startMic().then(function () { recovering = false; }, function () { recovering = false; micDown = true; drawAir(); });
+}
+// Once a second: is the microphone still giving us anything? Is the laptop still answering?
+function watch() {
+  var now = Date.now();
+  if (wantMic && !document.hidden) {
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(function () {});
+    var t = stream && stream.getAudioTracks()[0];
+    if (!t || t.readyState === 'ended' || now - lastChunk > 2500) {
+      micDown = true;
+      // A few tries by itself, which a call ending or an unlock needs. After that it waits for
+      // the button: an iPhone may need a tap, and mustn't be asked over and over.
+      if (!recovering && autoTries < 3 && now - recoverAt > 5000) { autoTries++; recoverMic(); }
+    }
+  }
+  if (me && lastReply && now - lastReply > GIVE_UP) {
+    end('Lost the clubhouse', 'This phone couldn\'t reach the laptop for a few minutes. Check the wifi, then scan the code again.', false);
+    return;
+  }
+  drawAir();
+}
+function onChunk(d) {
+  var now = Date.now();
+  lastChunk = now;
+  if (d.peak > 0.0005) lastSound = now;
+  if (micDown) { micDown = false; autoTries = 0; drawAir(); }
+  var pct = Math.min(100, Math.round(Math.sqrt(d.peak) * 100));
+  $('w_meter').style.width = pct + '%';
+  $('a_meter').style.width = (muted ? 0 : pct) + '%';
+  if (state !== 'on_air' || muted) return; // not a sample leaves the phone until it's on air
+  // The polls find out when the laptop's back. Old audio piling up meanwhile would only play late.
+  if (now - lastReply > NO_CONTACT) { queue = []; return; }
+  queue.push(d.pcm);
+  if (queue.length > MOST_BEHIND) queue.splice(0, queue.length - MOST_BEHIND); // behind: skip on, don't lag
+  pump();
+}
+function pump() {
+  while (queue.length && inFlight < IN_FLIGHT && me) send(queue.shift());
+}
+function send(pcm) {
+  inFlight++;
+  var id = me.id;
+  timedFetch('/talk/audio?seq=' + (seq++), {method: 'POST', headers: {'Content-Type': 'application/octet-stream', 'X-Talk-Id': id, 'X-Talk-Secret': me.secret}, body: pcm}, 4000)
+    .then(function (r) { return r.json(); })
+    .then(function (d) { fails = 0; sent++; if (d.state && me && me.id === id) onReply(d); },
+      function () { fails++; })
+    .then(function () { inFlight--; pump(); });
+}
+var END_WHY = {
+  clubhouse: 'The clubhouse has taken you off air. Thanks for commentating.',
+  handover: 'Someone else has taken over. Thanks for commentating.',
+  lost: 'This phone was out of touch for too long. Ask again when you\'re ready.',
+  off: 'Commentary has been turned off for now.'
+};
+function onState(s, why) {
+  if (s === state) return;
+  var was = state; state = s;
+  if (s === 'waiting') view('wait');
+  else if (s === 'on_air') {
+    seq = 0; muted = false; heldByClubhouse = false;
+    $('a_name').textContent = me.name; view('air');
+  } else if (s === 'refused') end('Not this time', 'The clubhouse said no. Have a word with them and try again.', true);
+  else if (s === 'ended') end('You\'re off air', END_WHY[why] || (was === 'on_air' ? 'Thanks for commentating.' : 'That request has finished.'), why !== 'off');
+}
+// Every answer from the laptop says how they're being heard, so the phone can't disagree
+// with the clubhouse for long.
+function onReply(d) {
+  lastReply = Date.now();
+  onState(d.state, d.why);
+  if (d.state !== 'on_air') { drawAir(); return; }
+  $('a_vol').textContent = !d.gain_db ? 'Normal' : (d.gain_db > 0 ? '+' : '−') + Math.abs(d.gain_db) + ' dB';
+  $('a_quieter').disabled = d.can_quieter === false;
+  $('a_louder').disabled = d.can_louder === false;
+  heldByClubhouse = !!d.clubhouse_muted;
+  drawAir();
+}
+function pollLoop() {
+  clearTimeout(pollTimer);
+  if (!me) return;
+  // On air, the audio's answers bring the news. The moment they stop, for whatever reason (a
+  // dead mic, muted, no wifi), the phone asks for itself: it must always find out.
+  if (state === 'on_air' && !muted && !micDown && Date.now() - lastReply < 1500) { pollTimer = setTimeout(pollLoop, 500); return; }
+  var id = me.id;
+  post('/talk/poll', {id: id, secret: me.secret}, 4000).then(function (d) { if (d.state && me && me.id === id) onReply(d); }, function () {})
+    .then(function () { if (me && me.id === id) pollTimer = setTimeout(pollLoop, 1000); });
+}
+function drawAir() {
+  var now = Date.now(), lost = !!me && !!lastReply && now - lastReply > NO_CONTACT;
+  var off = muted || heldByClubhouse;
+  $('a_mute').textContent = muted ? 'Unmute' : 'Mute';
+  $('a_tag').textContent = lost ? 'RECONNECTING' : micDown ? 'MIC STOPPED' : off ? 'MUTED' : 'ON AIR';
+  $('a_tag').classList.toggle('muted-now', off || lost || micDown);
+  $('a_line').textContent = lost ? 'Can\'t reach the clubhouse. Viewers can\'t hear you. Trying to get back: stay where the wifi is good.'
+    : micDown ? 'Your microphone has stopped. Viewers can\'t hear you.'
+    : heldByClubhouse ? 'The clubhouse has muted you. They can bring you back.'
+    : muted ? 'Viewers can\'t hear you.' : 'Viewers can hear you now.';
+  if (muted) $('a_meter').style.width = '0';
+  var showBack = micDown && !recovering;
+  $('a_back').classList.toggle('hidden', !showBack);
+  $('w_back').classList.toggle('hidden', !showBack);
+  $('a_net').textContent = !lost && !micDown && !off && fails > 3 ? 'The signal is struggling. Viewers may not be hearing all of it.'
+    : !lost && !micDown && !off && state === 'on_air' && lastSound && now - lastSound > 6000 ? 'Your microphone isn\'t picking anything up. Is something covering it?' : '';
+}
+function stepVolume(step) {
+  if (me) post('/talk/level', {id: me.id, secret: me.secret, step: step}).then(function (d) { if (d.state) onReply(d); }, function () {});
+}
+function join() {
+  var name = $('name').value.trim();
+  $('join_say').textContent = '';
+  if (!name) { $('join_say').textContent = 'Type your name first.'; $('name').focus(); return; }
+  $('join').disabled = true;
+  try { localStorage.setItem('talk_name', name); } catch (e) {}
+  startMic().then(function () {
+    return post('/talk/join', {k: KEY, name: name}, 8000);
+  }).then(function (d) {
+    $('join').disabled = false;
+    if (!d.ok) {
+      stopMic();
+      if (d.off) { end('Commentary is off', 'It isn\'t on at the moment. If the clubhouse has just switched it on, scan the new code.', false); return; }
+      $('join_say').textContent = d.error || 'That didn\'t work. Try again.';
+      return;
+    }
+    me = {id: d.id, secret: d.secret, name: d.name}; sent = 0; fails = 0; state = ''; lastSound = Date.now();
+    remember();
+    onReply(d); pollLoop();
+  }, function (e) {
+    $('join').disabled = false; stopMic();
+    $('join_say').textContent = e && e.name && e.name !== 'AbortError' && e.name !== 'TypeError' ? micSorry(e)
+      : (e && e.message && !e.name) ? e.message : 'Couldn\'t reach the clubhouse. Check the phone is on the club\'s wifi.';
+  });
+}
+function leave() {
+  if (me) post('/talk/leave', {id: me.id, secret: me.secret}).catch(function () {});
+  end('You\'re off air', 'Thanks for commentating.', true);
+}
+$('join').addEventListener('click', join);
+$('name').addEventListener('keydown', function (e) { if (e.key === 'Enter') join(); });
+$('w_cancel').addEventListener('click', function () {
+  if (me) post('/talk/leave', {id: me.id, secret: me.secret}).catch(function () {});
+  stopMic(); me = null; state = ''; remember(); view('name');
+});
+$('a_mute').addEventListener('click', function () { muted = !muted; if (muted) queue = []; drawAir(); });
+$('a_leave').addEventListener('click', leave);
+$('a_quieter').addEventListener('click', function () { stepVolume(-1); });
+$('a_louder').addEventListener('click', function () { stepVolume(1); });
+$('e_again').addEventListener('click', function () { view('name'); });
+function tapBack() { autoTries = 0; recoverAt = 0; recoverMic(); drawAir(); }
+$('a_back').addEventListener('click', tapBack);
+$('w_back').addEventListener('click', tapBack);
+// Back from being hidden, locked, or a call: everything may have changed while we were away.
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) return;
+  keepAwake(); autoTries = 0; lastChunk = Math.max(lastChunk, Date.now() - 2000); pollLoop(); watch();
+});
+setInterval(watch, 1000);
+// No "leave" as the page goes: a reload or an iPhone clearing a background tab looks the same
+// as closing it, and they'd lose their place on air. The laptop notices a phone that's gone.
+try { $('name').value = localStorage.getItem('talk_name') || ''; } catch (e) {}
+function freshStart() {
+  fetch('/talk/info?k=' + encodeURIComponent(KEY)).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.ok === false) { end('Commentary is off', 'It isn\'t on at the moment. If the clubhouse has just switched it on, scan the new code.', false); return; }
+    if (d.club) $('club').textContent = d.club;
+    view('name');
+  }, function () { view('name'); });
+}
+// A reloaded page, or one the phone threw away while it was hidden: pick up where it was.
+(function () {
+  var saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem('talk_me') || 'null'); } catch (e) {}
+  if (!saved || saved.k !== KEY) { freshStart(); return; }
+  post('/talk/poll', {id: saved.id, secret: saved.secret}, 5000).then(function (d) {
+    if (d.state !== 'waiting' && d.state !== 'on_air') { me = null; remember(); freshStart(); return; }
+    me = {id: saved.id, secret: saved.secret, name: saved.name}; state = ''; lastSound = Date.now();
+    wantMic = true; micDown = true; lastChunk = 0;
+    onReply(d); pollLoop(); watch();
+  }, freshStart);
+  fetch('/talk/info?k=' + encodeURIComponent(KEY)).then(function (r) { return r.json(); }).then(function (d) { if (d.club) $('club').textContent = d.club; }, function () {});
+})();
+</script>
+</body>
+</html>

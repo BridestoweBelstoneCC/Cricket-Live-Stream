@@ -55,6 +55,12 @@ func (Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" { // absolute-form request
 		raw = u.EscapedPath()
 	}
+	// The commentary phone's own routes, with the tunnel's real certificate (talk.go): a key,
+	// not a login, and nothing but those exact paths.
+	if talkPhonePaths[raw] {
+		talkPhoneHandler{}.ServeHTTP(w, r)
+		return
+	}
 	c := &ctx{w: w, r: r, path: raw, query: r.URL.Query(), method: r.Method}
 	defer func() {
 		if p := recover(); p != nil {
@@ -1160,6 +1166,49 @@ func (c *ctx) doGET() {
 
 	case path == "/live" || path == "/live/view":
 		c.live(path == "/live")
+
+	case path == "/talk/status":
+		// Holds the QR code's key.
+		if !c.checkToken() {
+			return
+		}
+		talkNoteLocalIP(c.r.Header.Get(talkLocalIPHeader))
+		c.json(TalkStatus())
+
+	case path == "/talk/qr.png":
+		if !c.checkToken() {
+			return
+		}
+		talkNoteLocalIP(c.r.Header.Get(talkLocalIPHeader))
+		u, _ := talkURL()
+		var png []byte
+		if u != "" {
+			png = qrPNG(u)
+		}
+		if png == nil {
+			c.notFound()
+			return
+		}
+		c.bytes(png, "image/png")
+
+	case path == "/talk/onair":
+		// The overlay's strap, and the screen's "someone's asking": a name and a count.
+		c.json(TalkOnAir())
+
+	case path == "/talk/out":
+		// OBS's browser source. It hears whoever's on air, so: this machine, nothing proxied.
+		if !c.trustedLoopback() {
+			c.notFound()
+			return
+		}
+		c.asset("talk_out.html", "text/html; charset=utf-8", true)
+
+	case path == "/talk/out/ws":
+		if !c.trustedLoopback() {
+			c.notFound()
+			return
+		}
+		talkOutWS(c.w, c.r)
 
 	// /commentary/over/generate and /commentary/test are POST-only.
 

@@ -46,6 +46,8 @@ func Start() {
 	StartOverlayWatch()
 	StartPCSBridgeSync()
 	StartSideCam()
+	StartTalkWatch()
+	TalkResume() // only after a crash: a clean stop leaves nothing to pick up
 	if CloudflareTunnel {
 		if ClubPassword == "" {
 			say("  ✗  Cloudflare Tunnel is enabled in config.ini but club_password is blank.")
@@ -156,6 +158,7 @@ func Run(opts Options) error {
 	err = srv.Serve(ln)
 	stopCloudflareTunnel()
 	StopSideCam()
+	TalkOff()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

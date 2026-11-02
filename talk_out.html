@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Commentary</title>
+<style>html,body{margin:0;background:transparent}</style>
+</head>
+<body>
+<script>
+// OBS's "Commentary" browser source: nothing to see, and the sound of whoever's on air.
+// A short cushion evens out the wifi; a phone that falls behind is caught up rather than
+// left talking about the ball before last. Internal/server/talk.go has the whole picture.
+'use strict';
+var RATE = 24000, CUSHION = 0.25, MOST = 1.2, QUIET = 330; // about -40 dB
+var ctx = new AudioContext({sampleRate: RATE, latencyHint: 'interactive'});
+var next = 0, ws = null;
+window.talkStats = {chunks: 0, dropped: 0};
+
+function play(buf) {
+  window.talkStats.chunks++;
+  var pcm = new Int16Array(buf), n = pcm.length;
+  if (!n) return;
+  var now = ctx.currentTime;
+  if (next < now + 0.02) next = Math.ceil((now + CUSHION) * RATE) / RATE; // starting, or ran dry
+  else if (next > now + MOST) { window.talkStats.dropped++; return; }
+  else if (next > now + CUSHION + 0.2) {
+    // Behind since a burst after a wifi blip: without this it stays that late for the rest
+    // of the match. A silent moment skipped is one nobody hears go.
+    var peak = 0;
+    for (var j = 0; j < n; j++) peak = Math.max(peak, Math.abs(pcm[j]));
+    if (peak < QUIET) { window.talkStats.dropped++; return; }
+  }
+  var ab = ctx.createBuffer(1, n, RATE), f = ab.getChannelData(0);
+  for (var i = 0; i < n; i++) f[i] = pcm[i] / 32768;
+  var src = ctx.createBufferSource();
+  src.buffer = ab; src.connect(ctx.destination); src.start(next);
+  next += n / RATE;
+}
+function report() {
+  if (ctx.state !== 'running') ctx.resume();
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({audio: ctx.state}));
+}
+function connect() {
+  ws = new WebSocket('ws://' + location.host + '/talk/out/ws');
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = report;
+  ws.onmessage = function (e) { if (typeof e.data !== 'string') play(e.data); };
+  ws.onclose = function () { setTimeout(connect, 1500); }; // the server restarted: wait for it
+}
+ctx.onstatechange = report;
+setInterval(report, 2000);
+connect();
+</script>
+</body>
+</html>

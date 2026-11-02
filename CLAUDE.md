@@ -53,6 +53,7 @@ works with no rebuild. Everything the app writes lives beside the binary too
 | `internal/scoring` | the scorer's-book engine + event-sourced session | `scoring_engine.py` |
 | `internal/obs`, `internal/obsws` | OBS prep (closed) + setup (WebSocket); the WebSocket client and a fake OBS | `obs_prep.py`, `obs_setup.py` |
 | `internal/agent`, `internal/bridge`, `internal/scorerfile` | scorer's-laptop roles; finding NV Play's output | `scorer_agent.py`, `nvplay_bridge.py` |
+| `internal/server/talk.go`, `talktls.go`, root `talk.html`, `talk_out.html`, `talk_capture.js` | commentary from a phone (the screen's Commentary tab, CLUBHOUSE_SCREEN.md) | — (Go edition only) |
 | `internal/clubhouse` | the optional clubhouse touch screen: the laptop's link (`link.go`, run by `internal/app`), the Pi's `cricketstream clubhouse` (`screen.go`, `clubhouse.html`), Wake-on-LAN, power-off — see CLUBHOUSE_SCREEN.md | — (Go edition only) |
 | `internal/simulate` | match simulator | `simulate_match.py` |
 | `internal/tools` | telemetry, camera encoder, refresh-cam, quality-ladder test | the four standalone tools |
@@ -107,7 +108,7 @@ go build -o dist/ ./cmd/cricketstream
   (0 = any), `CRICKETSTREAM_NO_WEBVIEW=1` (the browser instead of the window — the
   no-WebView2 fallback, by choice), `CRICKETSTREAM_HOME`, `CRICKETSTREAM_PORT`, `CRICKETSTREAM_OBS_PORTABLE`,
   `CRICKETSTREAM_OBS_WS_PORT`, `CRICKETSTREAM_DEVTOOLS=1` (right-click → Inspect in the
-  window), `CRICKETSTREAM_CLUBHOUSE_PORT` (the clubhouse screen's link, default 5096). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
+  window), `CRICKETSTREAM_CLUBHOUSE_PORT` (the clubhouse screen's link, default 5096), `CRICKETSTREAM_TALK_PORT` (the commentary phone's HTTPS port, default 5095). `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` lets a
   script drive the real window over CDP.
 
 **No path may exit without pausing first.** A double-clicked exe owns its console window,
@@ -429,6 +430,48 @@ problem + what to do + pause) or print and `console.Pause()`.
     talks only to its own `/api/` with a page key, never to the laptop directly. Its
     corner picture is `/preview.jpg` (cached 1.5s server-side, only fetched while shown)
     — deliberately not a second video encode on the streaming laptop.
+- **Commentary from a phone (`talk.go`).** Phone → HTTPS POSTs → server → WebSocket → OBS's
+  `Commentary` browser source. Its rules, each with a test:
+  - **A phone only gives a page its microphone on HTTPS**, and the panel is plain HTTP. So
+    while it's on there's a second listener (port 5095, `CRICKETSTREAM_TALK_PORT`), with a
+    self-signed certificate, serving ONLY `talkPhonePaths`. Keep it that way: a phone that
+    clicked through the warning must reach nothing else. It binds every card even when the
+    panel is "Just this laptop", on purpose. The tunnel's URL wins when it's running (real
+    certificate), which is why the main handler passes the same exact paths through.
+  - **Audio goes up as POSTs, not a WebSocket:** iOS Safari is known for refusing `wss://`
+    to a self-signed certificate even once the page is accepted (not yet checked on an
+    iPhone here). Don't "simplify" that until someone has.
+  - **`/talk/out` and `/talk/out/ws` are loopback only** (`trustedLoopback`), and never on the
+    clubhouse's allowlist. `/talk/status` and `/talk/qr.png` hold the QR code's key: login
+    needed, and on the screen they're `watchedReads`, which need an unlock but don't renew
+    it (the tab polls; a renewal would keep a public screen unlocked for ever).
+  - **Nobody's heard until the operator says yes**, and the key is new at every switch-on.
+    Commentary is off at every normal start: `talk_session.json` (the key and who's on air,
+    git-ignored) is deleted by a clean stop, so only a crash leaves one for `TalkResume`,
+    and only for 12 hours.
+  - **A phone keeps its place on air for 2 minutes without contact**, but comes off the strap
+    after 20s (`lost()`). Everything on the phone's page assumes it can be interrupted: every
+    request has a time limit, the mic is watched and restarted, a reload picks up from
+    `sessionStorage`, and it polls the moment audio replies stop (it once didn't, and a phone
+    with a dead mic said ON AIR for ever). There's deliberately no "leave" on `pagehide`: a
+    reload looks the same as closing. The server treats a sequence number far behind as a
+    reloaded page, not late audio.
+  - **The QR code's address is the card the screen reached the laptop on** (`X-Talk-Local-Ip`
+    from the link), because a laptop's route to the internet may be a VPN or a camera LAN.
+  - **Volume and mute act on the samples in the server, not on OBS's fader or mute**, so
+    nothing's left turned down in OBS for next week, and a muted voice stops ducking.
+  - **The ground dips by a sidechain compressor** on each camera, keyed on `Commentary`, not
+    by changing a volume: a phone that crashes can't leave the sound down. Measured on real
+    OBS: a voice at about -23 dB takes the ground down 12 dB.
+  - **`Commentary` must be in every match scene incl. Replay**, or it falls silent there.
+    `talkEnsureOBS` makes it at the first switch-on, so a club that never turns it on never
+    gets it, and re-checks every 15s while on. OBS's load-once trap applies (see overlaywatch): a page that
+    hasn't connected gets `refreshnocache`, up to 3 times.
+  - `internal/integration/talk_windows_test.go` is the proof: real Chrome through the real
+    certificate warning, the Pi's page, real OBS, levels measured on the recording. Reading
+    OBS's output needs the camera under the overlay: a source added by a test lands on top
+    and hides it. `demo_mode` in the example config means no `/live` polls in that test.
+    Not covered anywhere yet: an iPhone, a real microphone, the real Cloudflare tunnel.
 - **Scene stacking: move cameras DOWN, never lift graphics UP.** `obs.CoveringPictures()`
   lists the picture sources (cameras, video, screen capture — `obs.PictureKinds`) above a
   graphic; OBS setup moves each, lowest first, to just beneath it, which keeps two cameras'
