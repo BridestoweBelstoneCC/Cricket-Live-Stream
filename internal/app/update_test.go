@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -87,13 +88,23 @@ func (ta *testApp) updateTo(t *testing.T, version string) map[string]any {
 	if st := ta.upd.status(); st == nil || st["can_update"] != true {
 		t.Fatalf("no update offered: %v", st)
 	}
+	// "restarting" goes up just before the new copy is started, and that can still fail, so
+	// it's only an answer once the start has been accepted.
+	inner := relaunch
+	defer func() { relaunch = inner }()
+	var started atomic.Bool
+	relaunch = func(p string) error {
+		err := inner(p)
+		started.Store(err == nil)
+		return err
+	}
 	if r := ta.api("POST", "update", M{}); r.status != 200 {
 		t.Fatalf("update: %d %s", r.status, r.body)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		st := ta.upd.status()
-		if st["state"] == "restarting" || st["state"] == "failed" || time.Now().After(deadline) {
+		if (st["state"] == "restarting" && started.Load()) || st["state"] == "failed" || time.Now().After(deadline) {
 			return st
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -189,7 +200,9 @@ func TestUpdateUnsignedBetaAndRollback(t *testing.T) {
 	stubChecks(t)
 	newFakeRelease(t, "v3.0.0-beta.2", "UNSIGNED|v=3.0.0-beta.2")
 	exe, _ := installed(t, ta, "UNSIGNED|v=3.0.0-beta.1")
-	relaunch = func(string) error { return errors.New("blocked") }
+	// The wait keeps "restarting" on show for a while before it turns into "failed", which
+	// is what a real start taking its time does.
+	relaunch = func(string) error { time.Sleep(100 * time.Millisecond); return errors.New("blocked") }
 	st := ta.updateTo(t, "3.0.0-beta.1")
 	if st["state"] != "failed" || !strings.Contains(fmt.Sprint(st["error"]), "back as it was") {
 		t.Fatalf("state %v %v", st["state"], st["error"])
