@@ -20,6 +20,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -47,7 +48,60 @@ func talkTLSConfig() (*tls.Config, error) {
 			return nil, err
 		}
 	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+	// Chosen per connection, not fixed, because the address can move while it's on, and an
+	// iPhone refuses a certificate without the address in it. No Certificates here: Go only
+	// asks GetCertificate about a connection to a bare address when that list is empty.
+	c := &talkCertPicker{}
+	if err := c.add(cert); err != nil {
+		return nil, err
+	}
+	return &tls.Config{GetCertificate: c.pick, MinVersion: tls.VersionTLS12}, nil
+}
+
+// talkCertPicker holds every certificate made since the port opened. Older ones are kept
+// because a phone that accepted one is only trusted with that one: a new certificate for a
+// new address mustn't lock out a phone that's on air on the old address.
+type talkCertPicker struct {
+	mu    sync.Mutex
+	certs []tls.Certificate // newest last
+	leafs []*x509.Certificate
+}
+
+func (c *talkCertPicker) add(cert tls.Certificate) error {
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return err
+	}
+	c.certs, c.leafs = append(c.certs, cert), append(c.leafs, leaf)
+	return nil
+}
+
+func (c *talkCertPicker) pick(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	newest := &c.certs[len(c.certs)-1]
+	if hello.Conn == nil {
+		return newest, nil
+	}
+	addr, ok := hello.Conn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return newest, nil
+	}
+	// Oldest first: a new certificate names every address the laptop has, the old ones too,
+	// and a phone already on one of those has only accepted the one it was given.
+	for i := range c.leafs {
+		if c.leafs[i].VerifyHostname(addr.IP.String()) == nil {
+			return &c.certs[i], nil
+		}
+	}
+	cert, err := talkMakeCert(addr.IP)
+	if err != nil {
+		return newest, nil // the phone gets an error it can't click through; nothing better to offer
+	}
+	if err := c.add(cert); err != nil {
+		return newest, nil
+	}
+	return &c.certs[len(c.certs)-1], nil
 }
 
 // talkLoadCert is the saved certificate, if it's still right for this network.
@@ -73,7 +127,8 @@ func talkLoadCert() (tls.Certificate, error) {
 	return cert, nil
 }
 
-func talkMakeCert() (tls.Certificate, error) {
+// talkMakeCert makes a certificate for every address the laptop has now, and any others given.
+func talkMakeCert(extra ...net.IP) (tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -82,7 +137,7 @@ func talkMakeCert() (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	ips := talkLocalIPs()
+	ips := append(talkLocalIPs(), extra...)
 	if ip := net.ParseIP(talkWantIP()); ip != nil {
 		ips = append(ips, ip)
 	}

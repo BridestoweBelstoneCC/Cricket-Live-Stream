@@ -448,7 +448,8 @@ problem + what to do + pause) or print and `console.Pause()`.
   - **Nobody's heard until the operator says yes**, and the key is new at every switch-on.
     Commentary is off at every normal start: `talk_session.json` (the key and who's on air,
     git-ignored) is deleted by a clean stop, so only a crash leaves one for `TalkResume`,
-    and only for 12 hours.
+    and only within 5 minutes. A flat battery leaves one too, so `talkTick` keeps its time
+    fresh, or they'd be back on air hours later on a yes from this morning.
   - **A phone keeps its place on air for 2 minutes without contact**, but comes off the strap
     after 20s (`lost()`). Everything on the phone's page assumes it can be interrupted: every
     request has a time limit, the mic is watched and restarted, a reload picks up from
@@ -458,6 +459,16 @@ problem + what to do + pause) or print and `console.Pause()`.
     reloaded page, not late audio.
   - **The QR code's address is the card the screen reached the laptop on** (`X-Talk-Local-Ip`
     from the link), because a laptop's route to the internet may be a VPN or a camera LAN.
+    That's a guess too (a Pi on the cameras' switch, phones on the wifi), so the tab's **Try
+    ...** button lets the operator choose from `talkCards` (real cards only, not WSL's or a
+    VPN's), and `talkWantIP` believes that first. The address
+    can change while it's on, so the port picks its certificate per connection
+    (`talkCertPicker`): an iPhone refuses one without the address in it, and old ones are
+    kept because a phone that accepted one trusts only that one. It needs an empty
+    `Certificates`: Go only asks `GetCertificate` about a bare address when that's empty.
+  - **The strap comes down for a dead mic, not for a mute.** `micDead`: no audio for 8s while
+    the phone's still polling. A phone's own mute sends nothing either, so its polls say
+    `muted`, or it'd read as a dead mic.
   - **Volume and mute act on the samples in the server, not on OBS's fader or mute**, so
     nothing's left turned down in OBS for next week, and a muted voice stops ducking.
   - **The ground dips by a sidechain compressor** on each camera, keyed on `Commentary`, not

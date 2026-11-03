@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -143,6 +144,31 @@ func TestTalkListOnlyRedrawsWhenItChanges(t *testing.T) {
 	fn := grabFunc(t, pageScript(t), "renderTalk")
 	if !strings.Contains(fn, "listKey !== talkListKey") {
 		t.Error("the waiting list is rebuilt on every poll")
+	}
+}
+
+// The button under the steps goes round the laptop's cards. It's for a laptop on more than
+// one network, and for a code that's on something that isn't a real card, like a VPN.
+func TestTalkAddressButton(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	test := grabFunc(t, pageScript(t), "talkNextCard") + `
+var eth = {ip: '10.0.0.5', card: 'Ethernet'}, wifi = {ip: '192.168.1.73', card: 'WiFi'};
+function next(address, list) { var n = talkNextCard({address: address, addresses: list}); return n && n.card; }
+var cases = [
+  ['no choice with one card', next('192.168.1.73', [wifi]), null],
+  ['round from the first', next('10.0.0.5', [eth, wifi]), 'WiFi'],
+  ['round from the last', next('192.168.1.73', [eth, wifi]), 'Ethernet'],
+  ['the code on a VPN, one real card', next('100.64.0.1', [wifi]), 'WiFi'],
+  ['the tunnel: nothing listed', next('', []), null],
+  ['an older server: no list', talkNextCard({address: 'x'}), null]
+];
+cases.forEach(function (c) { if (c[1] !== c[2]) throw new Error(c[0] + ': got ' + c[1]); });
+`
+	if out, err := exec.Command(bin, "-e", test).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }
 

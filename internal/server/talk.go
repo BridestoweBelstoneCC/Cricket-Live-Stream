@@ -81,8 +81,10 @@ var (
 	talkGoneFor    = 20 * time.Second // on air but silent: off the strap, place kept
 	talkLostFor    = 2 * time.Minute  // and then off air
 	talkWaitGone   = 30 * time.Second // asking, and no longer answering
+	talkMicGone    = 8 * time.Second  // on air, polling, but no audio: a dead mic, so off the strap
 	talkForgetFor  = time.Minute
-	talkSessionFor = 12 * time.Hour   // how old a crashed server's session may be to pick up
+	talkSaveEvery  = 30 * time.Second // talk_session.json touched this often: it's how a restart knows how long it's been
+	talkSessionFor = 5 * time.Minute  // a restart picks up after this long at most; the launcher's take seconds, a hung server's about a minute
 	talkOBSEvery   = 15 * time.Second // source and filters re-checked: this often till ready, then half as
 	talkReloadWait = 15 * time.Second // the page has this long to connect before a reload
 )
@@ -102,9 +104,11 @@ type talkPhone struct {
 	why              string // why it ended, for the phone to say
 	joined, seen     time.Time
 	onAirAt, lastPCM time.Time
-	level            int  // the last chunk's peak, 0-100, for the screen's meter
-	gainDB           int  // the volume: 0 is as the phone sends it
-	muted            bool // by the clubhouse; the phone's own mute just stops sending
+	micFrom          time.Time // when audio could first be expected: put on air, or a restart
+	level            int       // the last chunk's peak, 0-100, for the screen's meter
+	gainDB           int       // the volume: 0 is as the phone sends it
+	muted            bool      // by the clubhouse
+	phoneMuted       bool      // by the phone, which then sends no audio: its polls say so, or it'd look like a dead mic
 	nextSeq          int64
 	started          bool
 	held             map[int64][]byte
@@ -135,6 +139,8 @@ var talk = struct {
 	obsNote   string
 	obsBusy   bool
 	localIP   string // the card the clubhouse screen reached this laptop on
+	chosenIP  string // the card the operator picked for the QR code, which beats any guess
+	savedAt   time.Time
 }{phones: map[string]*talkPhone{}, outs: map[*talkOut]bool{}}
 
 // talkLANIP is the address in the QR code. Swappable for tests.
@@ -176,11 +182,101 @@ func talkIsLocal(ip net.IP) bool {
 	return false
 }
 
+// talkCard is one address a phone might reach this laptop on, named for the operator.
+type talkCard struct{ IP, Name string }
+
+// talkCards is the laptop's network cards, for the operator to choose from. Swappable for
+// tests. Only real ones on a private network: a self-assigned address has no network behind
+// it, and offering "vEthernet (WSL (Hyper-V firewall))" to a volunteer with a queue of
+// phones, as the first version did, is no help at all.
+var talkCards = func() []talkCard {
+	var out []talkCard
+	ifaces, _ := net.Interfaces()
+	for _, i := range ifaces {
+		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 || talkCardIsVirtual(i.Name, i.HardwareAddr) {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil && n.IP.IsPrivate() {
+				out = append(out, talkCard{n.IP.String(), i.Name})
+			}
+		}
+	}
+	return out
+}
+
+// talkCardList is talkCards, kept for a few seconds: reading them takes about 30ms on
+// Windows, and the tab asks every second on the laptop that's encoding the stream.
+func talkCardList() []talkCard {
+	talkCardCache.Lock()
+	defer talkCardCache.Unlock()
+	if time.Since(talkCardCache.at) > 5*time.Second {
+		talkCardCache.list, talkCardCache.at = talkCards(), time.Now()
+	}
+	return talkCardCache.list
+}
+
+func talkForgetCards() {
+	talkCardCache.Lock()
+	talkCardCache.at = time.Time{}
+	talkCardCache.Unlock()
+}
+
+var talkCardCache struct {
+	sync.Mutex
+	at   time.Time
+	list []talkCard
+}
+
+// The start of a hardware address says who made the card, and these only make virtual ones:
+// VirtualBox, Hyper-V, VMware, Parallels, Docker, TAP. Windows calls VirtualBox's adapter
+// "Ethernet 3", so the name alone doesn't catch it.
+var talkVirtualMACs = []string{"0a:00:27", "08:00:27", "00:15:5d", "00:50:56", "00:0c:29", "00:05:69", "00:1c:42", "02:42", "00:ff"}
+
+// talkCardIsVirtual: an adapter that exists only inside this laptop, or a VPN's. No phone at
+// the ground is on the other side of one.
+func talkCardIsVirtual(name string, mac net.HardwareAddr) bool {
+	for _, p := range talkVirtualMACs {
+		if strings.HasPrefix(mac.String(), p) {
+			return true
+		}
+	}
+	n := strings.ToLower(name)
+	for _, s := range []string{"vethernet", "virtualbox", "vboxnet", "vmware", "vmnet", "wsl", "hyper-v", "docker", "veth", "virbr",
+		"tailscale", "zerotier", "wireguard", "vpn", "bluetooth", "loopback", "awdl", "llw", "utun"} {
+		if strings.Contains(n, s) {
+			return true
+		}
+	}
+	for _, p := range []string{"tun", "tap", "wg", "br-"} {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func talkHasCard(ip string) bool {
+	for _, c := range talkCardList() {
+		if c.IP == ip {
+			return true
+		}
+	}
+	return false
+}
+
 // talkWantIP is the address to put in the QR code, checked again every time: DHCP moves.
+// The screen's card is usually the club's network, but not always: the guide has the laptop
+// on the cameras' switch, and a Pi on that cable would point phones on the wifi at a network
+// they can't reach. So the operator can choose, and that's believed over any guess.
 func talkWantIP() string {
 	talk.Lock()
-	hint := talk.localIP
+	chosen, hint := talk.chosenIP, talk.localIP
 	talk.Unlock()
+	if chosen != "" && talkHasCard(chosen) {
+		return chosen
+	}
 	if ip := net.ParseIP(hint); ip != nil && talkIsLocal(ip) {
 		return hint
 	}
@@ -330,6 +426,14 @@ func talkURL() (string, string) {
 // and only for a screen that's unlocked.
 func TalkStatus() M {
 	u, via := talkURL()
+	addresses := []M{}
+	address := ""
+	if via == "lan" { // the tunnel's address works from anywhere: nothing to choose
+		address = talkWantIP()
+		for _, c := range talkCardList() {
+			addresses = append(addresses, M{"ip": c.IP, "card": c.Name})
+		}
+	}
 	talk.Lock()
 	defer talk.Unlock()
 	waiting := []M{}
@@ -347,7 +451,7 @@ func TalkStatus() M {
 			}
 			onAir = M{"id": p.id, "name": p.name, "for_sec": int(t.Sub(p.onAirAt).Seconds()), "hearing": hearing, "level": level,
 				"lost":    p.lost(t),
-				"gain_db": p.gainDB, "muted": p.muted, "can_louder": p.gainDB < talkGainMax, "can_quieter": p.gainDB > talkGainMin}
+				"gain_db": p.gainDB, "muted": p.muted, "phone_muted": p.phoneMuted, "can_louder": p.gainDB < talkGainMax, "can_quieter": p.gainDB > talkGainMin}
 		}
 	}
 	// Longest wait first, whatever order the map gives.
@@ -365,7 +469,7 @@ func TalkStatus() M {
 		note = "OBS is loading the commentary…"
 	}
 	return M{"ok": true, "on": talk.on, "url": u, "via": via, "cert_warning": via == "lan",
-		"error": talk.listenErr, "waiting": waiting, "on_air": onAir,
+		"address": address, "addresses": addresses, "error": talk.listenErr, "waiting": waiting, "on_air": onAir,
 		"obs": M{"ready": talk.obsReady && playing, "note": note}}
 }
 
@@ -381,8 +485,10 @@ func TalkOnAir() M {
 			n++
 		case talkOnAir:
 			// A phone that's gone quiet keeps its place, but viewers shouldn't be told
-			// someone's commentating when nobody can hear them.
-			if !p.lost(time.Now()) {
+			// someone's commentating when nobody can hear them. A mute keeps the strap: it's
+			// usually a cough or a word with someone, and the strap flicking off and on looks
+			// worse than a few seconds' silence.
+			if t := time.Now(); !p.lost(t) && !p.micDead(t) {
 				out["on_air"], out["name"] = true, p.name
 			}
 		}
@@ -400,9 +506,19 @@ func TalkControl(action, id string, step int, muted bool) error {
 	case "off":
 		TalkOff()
 		return nil
+	case "address":
+		// Here id is the address. Someone on air stays on: the port listens on every card.
+		talkForgetCards()
+		if !talkHasCard(id) {
+			return fmt.Errorf("That address isn't on this laptop any more.")
+		}
+		talk.Lock()
+		talk.chosenIP = id
+		talk.Unlock()
+		return nil
 	case "approve", "refuse", "end", "volume", "mute":
 	default:
-		return fmt.Errorf("action must be on, off, approve, refuse, end, volume or mute")
+		return fmt.Errorf("action must be on, off, address, approve, refuse, end, volume or mute")
 	}
 	talk.Lock()
 	defer talk.Unlock()
@@ -419,12 +535,13 @@ func TalkControl(action, id string, step int, muted bool) error {
 		// One voice at a time: whoever's on hands over.
 		for _, o := range talk.phones {
 			if o.state == talkOnAir {
-				o.state, o.why = talkEnded, "handover"
+				// seen is now: a phone out of signal still has to find out why it finished.
+				o.state, o.why, o.seen = talkEnded, "handover", time.Now()
 				say("  🎙  Commentary: %s handed over", o.name)
 			}
 		}
 		// Everyone starts as themselves: the last phone's volume isn't this one's.
-		p.state, p.onAirAt, p.seen, p.gainDB, p.muted = talkOnAir, time.Now(), time.Now(), 0, false
+		p.state, p.onAirAt, p.micFrom, p.seen, p.gainDB, p.muted, p.phoneMuted = talkOnAir, time.Now(), time.Now(), time.Now(), 0, false, false
 		say("  🎙  Commentary: %s is on air", p.name)
 	case "volume":
 		if p.state != talkOnAir {
@@ -442,9 +559,9 @@ func TalkControl(action, id string, step int, muted bool) error {
 			say("  🎙  Commentary: %s unmuted", p.name)
 		}
 	case "refuse":
-		p.state = talkRefused
+		p.state, p.seen = talkRefused, time.Now()
 	case "end":
-		p.state, p.why = talkEnded, "clubhouse"
+		p.state, p.why, p.seen = talkEnded, "clubhouse", time.Now()
 		say("  🎙  Commentary: %s is off air", p.name)
 	}
 	return nil
@@ -547,10 +664,11 @@ func (talkPhoneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			ID     string `json:"id"`
 			Secret string `json:"secret"`
+			Muted  bool   `json:"muted"`
 		}
 		b, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
 		json.Unmarshal(b, &body)
-		talkJSON(w, talkTouch(body.ID, body.Secret, path == "/talk/leave"), 200)
+		talkJSON(w, talkTouch(body.ID, body.Secret, path == "/talk/leave", body.Muted), 200)
 	case "/talk/level":
 		// Their own volume, up or down, while on air. Not the clubhouse's mute: that stays
 		// the clubhouse's.
@@ -640,6 +758,19 @@ func (p *talkPhone) lost(t time.Time) bool {
 	return p.state == talkOnAir && t.Sub(p.seen) > talkGoneFor
 }
 
+// micDead: on air and not muted, but no audio's coming, though the phone may still be
+// answering. Audio keeps coming in silence, so this isn't someone pausing for thought.
+func (p *talkPhone) micDead(t time.Time) bool {
+	if p.state != talkOnAir || p.muted || p.phoneMuted {
+		return false
+	}
+	last := p.micFrom
+	if p.lastPCM.After(last) {
+		last = p.lastPCM
+	}
+	return t.Sub(last) > talkMicGone
+}
+
 // stepGain moves the volume one step up (step > 0) or down, within its range. Locked by
 // the caller.
 func (p *talkPhone) stepGain(step int) {
@@ -669,7 +800,7 @@ func talkGain(pcm []byte, db int) []byte {
 
 // talkTouch is a phone saying it's still there; what it needs to know, for the page. A
 // phone the server doesn't know has ended: the page stops its microphone.
-func talkTouch(id, secret string, leave bool) M {
+func talkTouch(id, secret string, leave, muted bool) M {
 	talk.Lock()
 	defer talk.Unlock()
 	p := talkFind(id, secret)
@@ -677,6 +808,7 @@ func talkTouch(id, secret string, leave bool) M {
 		return M{"ok": true, "state": talkEnded, "why": "off"} // a phone from before the switch went off
 	}
 	p.seen = time.Now()
+	p.phoneMuted = muted
 	if leave && (p.state == talkWaiting || p.state == talkOnAir) {
 		if p.state == talkOnAir {
 			say("  🎙  Commentary: %s left", p.name)
@@ -712,6 +844,7 @@ func talkAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.seen = time.Now()
+	p.phoneMuted = false // it's sending, so it isn't muted
 	if p.state == talkOnAir {
 		p.takeChunk(seq, body)
 	}
@@ -883,6 +1016,9 @@ func talkTick() {
 			}
 		}
 	}
+	if t.Sub(talk.savedAt) >= talkSaveEvery {
+		talkSaveLocked()
+	}
 	every := talkOBSEvery
 	if talk.obsReady {
 		every *= 2 // nothing wrong: a connection to OBS less often
@@ -946,6 +1082,8 @@ func talkEnsureOBS() (bool, string) {
 	if !obsIsLocal(s) {
 		return false, "OBS is on another computer, and commentary only reaches an OBS on this laptop."
 	}
+	// Each obsCall is a new connection, on the laptop that's encoding the stream: the reads go
+	// together, and a healthy pass makes two. A change, which is rare, is one more each.
 	call := func(typ string, data any) M {
 		r := obsCall(s, []obsws.Req{{Type: typ, Data: data}}, 6*time.Second)
 		if len(r) == 0 {
@@ -953,10 +1091,12 @@ func talkEnsureOBS() (bool, string) {
 		}
 		return r[0]
 	}
-	sl, il := call("GetSceneList", nil), call("GetInputList", nil)
-	if sl == nil || il == nil {
-		return false, "OBS isn't open yet. Commentary joins by itself when it is."
+	notOpen := "OBS isn't open yet. Commentary joins by itself when it is."
+	first := obsCall(s, []obsws.Req{{Type: "GetSceneList"}, {Type: "GetInputList"}}, 6*time.Second)
+	if len(first) != 2 || first[0] == nil || first[1] == nil {
+		return false, notOpen
 	}
+	sl, il := first[0], first[1]
 	existing := map[string]bool{}
 	for _, sc := range toMs(gl(sl, "scenes")) {
 		existing[gs(sc, "sceneName", "")] = true
@@ -982,46 +1122,78 @@ func talkEnsureOBS() (bool, string) {
 	pageURL := fmt.Sprintf("http://127.0.0.1:%d/talk/out", Port)
 	settings := M{"url": pageURL, "width": 16, "height": 16, "fps": 5, "fps_custom": true,
 		"shutdown": false, "restart_when_active": false, "reroute_audio": true, "css": ""}
-	fresh := ""
-	if !inputs[TalkSource] {
-		if call("CreateInput", M{"sceneName": scenes[0], "inputName": TalkSource, "inputKind": "browser_source",
-			"inputSettings": settings, "sceneItemEnabled": true}) == nil {
-			return false, "OBS wouldn't add the commentary source."
-		}
-		fresh = scenes[0]
-		say("  🎙  Commentary: added its source to OBS")
-	} else if got := call("GetInputSettings", M{"inputName": TalkSource}); got != nil {
-		if is, _ := got["inputSettings"].(M); gs(is, "url", "") != pageURL || is["reroute_audio"] != true {
-			call("SetInputSettings", M{"inputName": TalkSource, "inputSettings": settings, "overlay": true})
+	// Everything else it needs to know, read together. A read OBS refused is nil, which isn't
+	// the same as "it isn't there": taking it for that would add a second Commentary to the
+	// scene for good.
+	var reads []obsws.Req
+	for _, sc := range scenes {
+		reads = append(reads, obsws.Req{Type: "GetSceneItemList", Data: M{"sceneName": sc}})
+	}
+	var camsHere []string
+	for _, cam := range cameras {
+		if inputs[cam] {
+			camsHere = append(camsHere, cam)
+			reads = append(reads, obsws.Req{Type: "GetSourceFilterList", Data: M{"sourceName": cam}})
 		}
 	}
-	for _, sc := range scenes {
-		present := sc == fresh
-		var id any
-		for _, it := range toMs(gl(call("GetSceneItemList", M{"sceneName": sc}), "sceneItems")) {
-			if gs(it, "sourceName", "") == TalkSource {
-				present, id = true, it["sceneItemId"]
+	if inputs[TalkSource] {
+		reads = append(reads, obsws.Req{Type: "GetInputSettings", Data: M{"inputName": TalkSource}},
+			obsws.Req{Type: "GetInputMute", Data: M{"inputName": TalkSource}})
+	}
+	got := obsCall(s, reads, 6*time.Second)
+	if len(got) != len(reads) {
+		return false, notOpen
+	}
+	sceneItems, filterLists := got[:len(scenes)], got[len(scenes):len(scenes)+len(camsHere)]
+	var muteReply M
+	fresh, freshID := "", any(nil)
+	if !inputs[TalkSource] {
+		r := call("CreateInput", M{"sceneName": scenes[0], "inputName": TalkSource, "inputKind": "browser_source",
+			"inputSettings": settings, "sceneItemEnabled": true})
+		if r == nil {
+			return false, "OBS wouldn't add the commentary source."
+		}
+		fresh, freshID = scenes[0], r["sceneItemId"]
+		say("  🎙  Commentary: added its source to OBS")
+	} else {
+		cfg := got[len(got)-2]
+		muteReply = got[len(got)-1]
+		if cfg != nil {
+			if is, _ := cfg["inputSettings"].(M); gs(is, "url", "") != pageURL || is["reroute_audio"] != true {
+				call("SetInputSettings", M{"inputName": TalkSource, "inputSettings": settings, "overlay": true})
 			}
+		}
+	}
+	for i, sc := range scenes {
+		// OBS puts a new source on top. Nothing shows from this one, but the bottom is where
+		// it can't get in the way of anything the club moves about.
+		if sc == fresh {
+			if freshID != nil {
+				call("SetSceneItemIndex", M{"sceneName": sc, "sceneItemId": freshID, "sceneItemIndex": 0})
+			}
+			continue
+		}
+		if sceneItems[i] == nil {
+			continue // next time
+		}
+		present := false
+		for _, it := range toMs(gl(sceneItems[i], "sceneItems")) {
+			present = present || gs(it, "sourceName", "") == TalkSource
 		}
 		if !present {
 			r := call("CreateSceneItem", M{"sceneName": sc, "sourceName": TalkSource, "sceneItemEnabled": true})
 			if r == nil {
 				continue // not fatal: it plays in the scenes it's in
 			}
-			id = r["sceneItemId"]
-			// OBS puts a new source on top. Nothing shows from this one, but the bottom is
-			// where it can't get in the way of anything the club moves about.
-			call("SetSceneItemIndex", M{"sceneName": sc, "sceneItemId": id, "sceneItemIndex": 0})
-		} else if sc == fresh && id != nil {
-			call("SetSceneItemIndex", M{"sceneName": sc, "sceneItemId": id, "sceneItemIndex": 0})
+			call("SetSceneItemIndex", M{"sceneName": sc, "sceneItemId": r["sceneItemId"], "sceneItemIndex": 0})
 		}
 	}
-	for _, cam := range cameras {
-		if !inputs[cam] {
-			continue
+	for i, cam := range camsHere {
+		if filterLists[i] == nil {
+			continue // next time
 		}
 		has := false
-		for _, f := range toMs(gl(call("GetSourceFilterList", M{"sourceName": cam}), "filters")) {
+		for _, f := range toMs(gl(filterLists[i], "filters")) {
 			has = has || gs(f, "filterName", "") == talkDuckFilter
 		}
 		if !has {
@@ -1050,7 +1222,7 @@ func talkEnsureOBS() (bool, string) {
 	if current != "" && !seen[current] {
 		return false, fmt.Sprintf("OBS is showing the scene \"%s\", which doesn't have the commentary in it. It's heard on your match scenes.", current)
 	}
-	if m := call("GetInputMute", M{"inputName": TalkSource}); m != nil && m["inputMuted"] == true {
+	if muteReply != nil && muteReply["inputMuted"] == true {
 		return false, "Commentary is muted in OBS's mixer, so viewers can't hear it. Unmute it in OBS."
 	}
 	return true, ""
@@ -1060,7 +1232,10 @@ func talkEnsureOBS() (bool, string) {
 
 // talkSession is what a server the launcher restarts needs to carry on. Only a crash leaves
 // it behind: a clean stop goes through TalkOff, which deletes it, so commentary is still off
-// at the start of the next match day.
+// at the start of the next match day. So does a flat battery or a Windows restart, though,
+// and coming back on air from one of those, hours later and with nobody's say-so, would be
+// wrong. So it's kept fresh while commentary's on (talkSaveEvery), and only a restart within
+// talkSessionFor picks it up.
 type talkSession struct {
 	Key   string    `json:"key"`
 	At    time.Time `json:"at"`
@@ -1082,6 +1257,7 @@ func talkSaveLocked() {
 		os.Remove(talkSessionFile())
 		return
 	}
+	talk.savedAt = time.Now()
 	sess := talkSession{Key: talk.key, At: time.Now()}
 	for _, p := range talk.phones {
 		if p.state == talkOnAir {
@@ -1126,7 +1302,7 @@ func TalkResume() {
 	name := ""
 	if q := sess.Phone; q != nil {
 		talk.phones[q.ID] = &talkPhone{id: q.ID, secret: q.Secret, name: q.Name, state: talkOnAir, joined: q.OnAirAt, seen: time.Now(),
-			onAirAt: q.OnAirAt, gainDB: q.GainDB, muted: q.Muted, held: map[int64][]byte{}}
+			micFrom: time.Now(), onAirAt: q.OnAirAt, gainDB: q.GainDB, muted: q.Muted, held: map[int64][]byte{}}
 		name = q.Name
 	}
 	talk.Unlock()

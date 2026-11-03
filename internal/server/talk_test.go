@@ -517,11 +517,23 @@ func TestTalkCertificateSuitsAPhone(t *testing.T) {
 	saved := talkLANIP
 	t.Cleanup(func() { talkLANIP = saved })
 	talkLANIP = func() string { return "192.0.2.50" }
+	served := func(cfg *tls.Config) []byte {
+		t.Helper()
+		c, err := cfg.GetCertificate(&tls.ClientHelloInfo{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Certificate[0]
+	}
 	cfg, err := talkTLSConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	der := cfg.Certificates[0].Certificate[0]
+	// Go only asks GetCertificate about a connection to a bare address when this is empty.
+	if len(cfg.Certificates) != 0 {
+		t.Error("a fixed certificate: the address couldn't move while it's on")
+	}
+	der := served(cfg)
 	leaf, err := x509.ParseCertificate(der)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +558,7 @@ func TestTalkCertificateSuitsAPhone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(cfg2.Certificates[0].Certificate[0], der) {
+	if !bytes.Equal(served(cfg2), der) {
 		t.Error("made a new certificate for no reason")
 	}
 	// ...until the laptop's address changes.
@@ -555,8 +567,349 @@ func TestTalkCertificateSuitsAPhone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(cfg3.Certificates[0].Certificate[0], der) {
+	if bytes.Equal(served(cfg3), der) {
 		t.Error("kept a certificate that doesn't name the new address")
+	}
+}
+
+// A connection to an address, for the certificate to be chosen by.
+type talkConnOn struct {
+	net.Conn
+	ip string
+}
+
+func (c talkConnOn) LocalAddr() net.Addr { return &net.TCPAddr{IP: net.ParseIP(c.ip), Port: 5095} }
+
+// The laptop's address moves mid-match. The QR code follows it, and an iPhone refuses a
+// certificate without the address in it, so a new address gets one that has it. A phone on
+// the old address trusts only the certificate it accepted, so it keeps getting that one.
+func TestTalkCertificateFollowsTheAddress(t *testing.T) {
+	sandbox(t, "pw")
+	saved := talkLANIP
+	t.Cleanup(func() { talkLANIP = saved })
+	talkLANIP = func() string { return "192.0.2.50" }
+	cfg, err := talkTLSConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := func(ip string) (*x509.Certificate, []byte) {
+		t.Helper()
+		c, err := cfg.GetCertificate(&tls.ClientHelloInfo{Conn: talkConnOn{ip: ip}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaf, err := x509.ParseCertificate(c.Certificate[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return leaf, c.Certificate[0]
+	}
+	_, first := on("192.0.2.50")
+
+	leaf, moved := on("192.0.2.77")
+	if err := leaf.VerifyHostname("192.0.2.77"); err != nil {
+		t.Fatalf("a phone on the new address: %v", err)
+	}
+	if _, again := on("192.0.2.77"); !bytes.Equal(again, moved) {
+		t.Error("a new certificate on every connection")
+	}
+	if _, old := on("192.0.2.50"); !bytes.Equal(old, first) {
+		t.Error("the phone already on air on the old address got a certificate it hasn't accepted")
+	}
+}
+
+// The Pi may be on the cameras' switch with phones on the wifi: the operator's choice beats
+// the screen's card, and it's made from a real list.
+func TestTalkOperatorChoosesTheAddress(t *testing.T) {
+	ts := talkSandbox(t, "pw")
+	auth := ts.bearer("pw")
+	saved := talkCards
+	t.Cleanup(func() {
+		talkCards = saved
+		talkForgetCards()
+		talk.Lock()
+		talk.chosenIP = ""
+		talk.Unlock()
+	})
+	talkCards = func() []talkCard {
+		return []talkCard{{"192.0.2.10", "Ethernet"}, {"198.51.100.7", "Wi-Fi"}}
+	}
+	talkForgetCards()
+	ts.postJSON("/talk/control", M{"action": "on"}, auth)
+	_, s := ts.getJSON("/talk/status", auth)
+	if l, _ := s["addresses"].([]any); len(l) != 2 {
+		t.Fatalf("the screen wasn't offered the cards: %v", s["addresses"])
+	}
+	if r, _ := ts.postJSON("/talk/control", M{"action": "address", "id": "203.0.113.9"}, auth); r != 409 {
+		t.Errorf("chose an address that isn't this laptop's: %d", r)
+	}
+	_, j := phonePost(t, talkPhoneBase(t), "/talk/join", M{"k": talkKey(), "name": "Sam"})
+	ts.postJSON("/talk/control", M{"action": "approve", "id": j["id"]}, auth)
+	key := talkKey()
+
+	_, s = ts.postJSON("/talk/control", M{"action": "address", "id": "198.51.100.7"}, auth)
+	if !strings.Contains(fmt.Sprint(s["url"]), "https://198.51.100.7:") || s["address"] != "198.51.100.7" {
+		t.Errorf("the code didn't move: %v", s)
+	}
+	if key != talkKey() {
+		t.Error("choosing an address changed the key")
+	}
+	if a := TalkOnAir(); a["on_air"] != true {
+		t.Errorf("choosing an address took them off air: %v", a)
+	}
+	// Believed over the screen's card...
+	talk.Lock()
+	talk.localIP = "127.0.0.1"
+	talk.Unlock()
+	if ip := talkWantIP(); ip != "198.51.100.7" {
+		t.Errorf("the screen's card beat the operator: %s", ip)
+	}
+	// ...until that card has gone.
+	talkCards = func() []talkCard { return []talkCard{{"192.0.2.10", "Ethernet"}} }
+	talkForgetCards()
+	if ip := talkWantIP(); ip == "198.51.100.7" {
+		t.Error("the code still points at a card that's gone")
+	}
+	talk.Lock()
+	talk.localIP = ""
+	talk.Unlock()
+
+	// The tunnel's address works from anywhere: nothing to choose.
+	cfMu.Lock()
+	cfURL = "https://example.trycloudflare.com"
+	cfMu.Unlock()
+	_, s = ts.getJSON("/talk/status", auth)
+	if l, _ := s["addresses"].([]any); len(l) != 0 {
+		t.Errorf("offered a choice with the tunnel running: %v", l)
+	}
+}
+
+func TestTalkCardsLeaveOutVirtualAdapters(t *testing.T) {
+	for name, virtual := range map[string]bool{
+		"Wi-Fi": false, "Ethernet": false, "Ethernet 2": false, "en0": false, "eth0": false, "wlan0": false,
+		"Local Area Connection": false, "Network Bridge": false,
+		"vEthernet (WSL (Hyper-V firewall))": true, "VirtualBox Host-Only Network": true, "VMware Network Adapter VMnet8": true,
+		"Tailscale": true, "ZeroTier One": true, "OpenVPN TAP-Windows6": true, "Bluetooth Network Connection": true,
+		"docker0": true, "tun0": true, "wg0": true, "utun3": true, "br-1a2b": true, "vboxnet0": true,
+	} {
+		if talkCardIsVirtual(name, nil) != virtual {
+			t.Errorf("%q: virtual should be %v", name, virtual)
+		}
+	}
+	// Windows calls VirtualBox's adapter "Ethernet 3": only its hardware address gives it away.
+	for mac, virtual := range map[string]bool{
+		"0a:00:27:00:00:04": true, "08:00:27:12:34:56": true, "00:15:5d:26:5e:6e": true, "00:50:56:c0:00:08": true, "00:ff:4f:51:e5:88": true,
+		"a8:a1:59:8d:87:ed": false, "14:18:c3:3f:8f:36": false,
+	} {
+		m, err := net.ParseMAC(mac)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if talkCardIsVirtual("Ethernet 3", m) != virtual {
+			t.Errorf("%s: virtual should be %v", mac, virtual)
+		}
+	}
+}
+
+// Still polling, but no audio: a dead mic, so viewers aren't told someone's commentating. A
+// mute is different, from either end: the strap stays.
+func TestTalkStrapForADeadMicButNotAMute(t *testing.T) {
+	ts := talkSandbox(t, "pw")
+	auth := ts.bearer("pw")
+	savedGone := talkMicGone
+	t.Cleanup(func() { talkMicGone = savedGone })
+	ts.postJSON("/talk/control", M{"action": "on"}, auth)
+	base := talkPhoneBase(t)
+	_, j := phonePost(t, base, "/talk/join", M{"k": talkKey(), "name": "Sam"})
+	ts.postJSON("/talk/control", M{"action": "approve", "id": j["id"]}, auth)
+	poll := func(muted bool) {
+		t.Helper()
+		phonePost(t, base, "/talk/poll", M{"id": j["id"], "secret": j["secret"], "muted": muted})
+	}
+	strap := func() bool { return TalkOnAir()["on_air"] == true }
+	if !strap() {
+		t.Fatal("no strap in the moment before the first audio arrives")
+	}
+
+	talkMicGone = 10 * time.Millisecond
+	time.Sleep(30 * time.Millisecond)
+	poll(false)
+	if strap() {
+		t.Error("the strap stayed up for a phone polling with a dead mic")
+	}
+	if _, s := ts.getJSON("/talk/status", auth); s["on_air"] == nil {
+		t.Error("a dead mic took them off the screen: they're still on air")
+	}
+	// Muted on the phone: no audio is what's meant to happen.
+	poll(true)
+	if !strap() {
+		t.Error("the strap came down for a mute on the phone")
+	}
+	_, s := ts.getJSON("/talk/status", auth)
+	if air, _ := s["on_air"].(M); air == nil || air["phone_muted"] != true {
+		t.Errorf("the screen wasn't told it's a mute: %v", s["on_air"])
+	}
+	poll(false)
+	if strap() {
+		t.Error("unmuted with no audio: that's a dead mic again")
+	}
+	// Muted from the screen.
+	ts.postJSON("/talk/control", M{"action": "mute", "id": j["id"], "muted": true}, auth)
+	if !strap() {
+		t.Error("the strap came down for a mute from the screen")
+	}
+	ts.postJSON("/talk/control", M{"action": "mute", "id": j["id"], "muted": false}, auth)
+	// Audio's back: so is the strap.
+	talkMicGone = time.Minute
+	phoneAudio(t, base, j["id"], j["secret"], 0, []byte{1, 0})
+	if !strap() {
+		t.Error("the strap didn't come back with the audio")
+	}
+	// Audio coming means it isn't muted, whatever it last said.
+	poll(true)
+	phoneAudio(t, base, j["id"], j["secret"], 1, []byte{1, 0})
+	if _, s := ts.getJSON("/talk/status", auth); s["on_air"].(M)["phone_muted"] != false {
+		t.Error("sending audio but still marked muted")
+	}
+}
+
+// A phone that's out of signal and then finished by the operator must still hear why when it
+// gets back. Forgotten too soon, it's told commentary is off, with no way to ask again.
+func TestTalkFinishedPhoneHearsWhy(t *testing.T) {
+	ts := talkSandbox(t, "pw")
+	auth := ts.bearer("pw")
+	ts.postJSON("/talk/control", M{"action": "on"}, auth)
+	base := talkPhoneBase(t)
+	finish := map[string]func(id any){
+		"clubhouse": func(id any) { ts.postJSON("/talk/control", M{"action": "end", "id": id}, auth) },
+		"handover": func(id any) {
+			_, n := phonePost(t, base, "/talk/join", M{"k": talkKey(), "name": "Jo"})
+			ts.postJSON("/talk/control", M{"action": "approve", "id": n["id"]}, auth)
+		},
+	}
+	for why, do := range finish {
+		_, j := phonePost(t, base, "/talk/join", M{"k": talkKey(), "name": "Sam"})
+		ts.postJSON("/talk/control", M{"action": "approve", "id": j["id"]}, auth)
+		// Out of signal for longer than a finished phone's record is kept, though not so long
+		// it would have lost its place.
+		talk.Lock()
+		talk.phones[fmt.Sprint(j["id"])].seen = time.Now().Add(-talkForgetFor - 10*time.Second)
+		talk.Unlock()
+		do(j["id"])
+		talkTick()
+		_, p := phonePost(t, base, "/talk/poll", M{"id": j["id"], "secret": j["secret"]})
+		if p["state"] != "ended" || p["why"] != why {
+			t.Errorf("%s: told %v", why, p)
+		}
+		ts.postJSON("/talk/control", M{"action": "off"}, auth)
+		ts.postJSON("/talk/control", M{"action": "on"}, auth)
+		base = talkPhoneBase(t)
+	}
+}
+
+// A flat battery leaves the session behind just as a crash does. The file stays fresh while
+// commentary's on, so a restart can tell seconds from hours, and only seconds pick it up.
+func TestTalkSessionIsOnlyForAQuickRestart(t *testing.T) {
+	ts := talkSandbox(t, "pw")
+	auth := ts.bearer("pw")
+	if talkSessionFor > 10*time.Minute {
+		t.Errorf("picks up a session %v old: long enough to be back on air after a flat battery", talkSessionFor)
+	}
+	savedEvery := talkSaveEvery
+	t.Cleanup(func() { talkSaveEvery = savedEvery })
+	ts.postJSON("/talk/control", M{"action": "on"}, auth)
+	at := func() time.Time {
+		t.Helper()
+		b, err := os.ReadFile(talkSessionFile())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var s talkSession
+		if err := json.Unmarshal(b, &s); err != nil {
+			t.Fatal(err)
+		}
+		return s.At
+	}
+	before := at()
+	talkSaveEvery = time.Hour
+	time.Sleep(5 * time.Millisecond)
+	talkTick()
+	if !at().Equal(before) {
+		t.Error("saved on every tick")
+	}
+	// Nothing's changed for a long time, and it still says how recently it was running.
+	talkSaveEvery = time.Millisecond
+	time.Sleep(5 * time.Millisecond)
+	talkTick()
+	if !at().After(before) {
+		t.Error("the session's time wasn't kept fresh, so a restart can't tell how long it's been")
+	}
+}
+
+// OBS refusing one read isn't OBS saying there's nothing there: taking it for that added a
+// second Commentary to the scene, saved in the club's collection for good.
+func TestTalkDoesntAddASecondSourceOnAFailedRead(t *testing.T) {
+	talkSandbox(t, "pw")
+	f := newTalkFakeOBS("Main", "Replay")
+	f.inputs["Cricket Camera"] = M{}
+	f.filters["Cricket Camera"] = []M{{"filterName": talkDuckFilter}}
+	f.inputs[TalkSource] = M{"url": fmt.Sprintf("http://127.0.0.1:%d/talk/out", Port), "reroute_audio": true}
+	f.items["Main"] = []string{TalkSource}
+	f.items["Replay"] = []string{TalkSource}
+	refuse := ""
+	obsCall = func(st M, reqs []obsws.Req, d time.Duration) []map[string]any {
+		out := f.call(st, reqs, d)
+		for i, r := range reqs {
+			if r.Type == refuse {
+				out[i] = nil
+			}
+		}
+		return out
+	}
+	for _, read := range []string{"GetSceneItemList", "GetSourceFilterList"} {
+		refuse, f.writes = read, nil
+		talkEnsureOBS()
+		if len(f.writes) != 0 {
+			t.Errorf("%s refused: changed OBS anyway: %v", read, f.writes)
+		}
+	}
+	// The connection dropping part way: nothing's known, so nothing's changed.
+	refuse, f.writes = "", nil
+	n := 0
+	obsCall = func(st M, reqs []obsws.Req, d time.Duration) []map[string]any {
+		if n++; n > 1 {
+			return nil
+		}
+		return f.call(st, reqs, d)
+	}
+	if ok, _ := talkEnsureOBS(); ok {
+		t.Error("ready, with half the reads missing")
+	}
+	if len(f.writes) != 0 {
+		t.Errorf("a dropped connection changed OBS: %v", f.writes)
+	}
+}
+
+// Every obsCall is a new connection, on the laptop that's encoding the stream, every 30s.
+func TestTalkHealthyPassIsFewConnections(t *testing.T) {
+	talkSandbox(t, "pw")
+	f := newTalkFakeOBS("Main", "Main-Bowler", "Replay")
+	f.inputs["Cricket Camera"] = M{}
+	f.inputs["Bowler End Camera"] = M{}
+	obsCall = f.call
+	if ok, note := talkEnsureOBS(); !ok {
+		t.Fatalf("setting up: %s", note)
+	}
+	n := 0
+	obsCall = func(st M, reqs []obsws.Req, d time.Duration) []map[string]any {
+		n++
+		return f.call(st, reqs, d)
+	}
+	if ok, note := talkEnsureOBS(); !ok {
+		t.Fatalf("second pass: %s", note)
+	}
+	if n > 2 {
+		t.Errorf("%d connections to OBS on a pass with nothing to do", n)
 	}
 }
 
@@ -1292,6 +1645,159 @@ muted = false; micDown = true; pollLoop(); if (polls !== 3) throw new Error('mic
 	}
 	if strings.Contains(page, "sendBeacon") {
 		t.Error("a reload mustn't take them off air")
+	}
+}
+
+// A stand-in for what the phone's page needs to start a microphone, for the two tests below.
+const talkPageFakes = `
+var ctx = null, stream = null, node = null, lock = null, wantMic = false, micDown = false, recovering = false;
+var autoTries = 0, queue = [], pollTimer = 0, lastChunk = 0, micTurn = 0, MIC_STOPPED = {};
+var clearTimeout = function () {};
+var closed = 0, stopped = 0, nodes = 0, nodeThrows = false, grants = [], micsAsked = 0;
+function AC() { this.audioWorklet = {addModule: function () { return Promise.resolve(); }}; this.destination = {}; }
+AC.prototype.audioWorklet = true;
+AC.prototype.resume = function () { return Promise.resolve(); };
+AC.prototype.close = function () { closed++; return Promise.resolve(); };
+AC.prototype.createGain = function () { return {gain: {}, connect: function () {}}; };
+AC.prototype.createMediaStreamSource = function () { return {connect: function () {}}; };
+var window = {AudioContext: AC, isSecureContext: true};
+var navigator = {mediaDevices: {getUserMedia: function () {
+  micsAsked++;
+  return new Promise(function (ok) { grants.push(ok); });
+}}};
+function AudioWorkletNode() { if (nodeThrows) throw new Error('no'); nodes++; this.port = {}; this.connect = function () {}; }
+function fakeStream() {
+  var t = {stop: function () { stopped++; }, readyState: 'live'};
+  return {getAudioTracks: function () { return [t]; }, getTracks: function () { return [t]; }};
+}
+function keepAwake() {} function watch() {}
+`
+
+// Stopped while the phone was still being asked for the microphone: "You're off air", with
+// the microphone left open and nothing to close it.
+func TestTalkPageDoesntLeaveTheMicOpen(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	page := talkAsset(t, "talk.html")
+	var fns string
+	for _, name := range []string{"startMic", "closeMic", "stopMic"} {
+		fn := regexp.MustCompile(`(?s)function ` + name + `\(\) \{.*?\n\}\n`).FindString(page)
+		if fn == "" {
+			t.Fatalf("no %s in talk.html", name)
+		}
+		fns += fn
+	}
+	// In a function of its own: node has a global navigator that a fake can't replace.
+	test := `(function () {` + talkPageFakes + fns + `
+(async function () {
+  // Stopped while it waits for the phone to give up the microphone.
+  var p = startMic();
+  stopMic();
+  grants.shift()(fakeStream());
+  await p;
+  if (stopped !== 1) throw new Error('the microphone was left open after being stopped');
+  if (wantMic) throw new Error('still wants the microphone after being stopped');
+  if (stream) throw new Error('kept a stream it was told to stop');
+  if (nodes) throw new Error('built the audio path after being stopped');
+
+  // A restart under way doesn't count as stopping the new one.
+  stopped = 0;
+  var a = startMic();
+  closeMic();
+  var b = startMic();
+  grants.shift()(fakeStream());
+  grants.shift()(fakeStream());
+  await a; await b;
+  if (stopped !== 1 || !wantMic || !stream || nodes !== 1) throw new Error('restart: stopped ' + stopped + ', nodes ' + nodes);
+  stopMic();
+
+  // The audio path failing to build closes what's open, and says so.
+  stopped = 0; nodeThrows = true;
+  var c = startMic();
+  grants.shift()(fakeStream());
+  var failed = false;
+  await c.catch(function () { failed = true; });
+  if (!failed) throw new Error('a real failure was swallowed');
+  if (stopped !== 1) throw new Error('the microphone was left open after the audio path failed');
+})().catch(function (e) { console.error(e.message); process.exit(1); });
+})();
+`
+	if out, err := exec.Command(bin, "-e", test).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// Enter on the phone's keyboard comes in as well as the button. A second go would start a
+// second microphone and send everything twice.
+func TestTalkPageAsksOnlyOnce(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	page := talkAsset(t, "talk.html")
+	fn := regexp.MustCompile(`(?s)function join\(\) \{.*?\n\}\n`).FindString(page)
+	if fn == "" {
+		t.Fatal("no join in talk.html")
+	}
+	test := `
+var els = {name: {value: 'Sam'}, join: {disabled: false}, join_say: {}};
+function $(id) { return els[id]; }
+var localStorage = {setItem: function () {}};
+var started = 0, KEY = 'k';
+function startMic() { started++; return new Promise(function () {}); }
+` + fn + `
+join(); join();
+if (started !== 1) throw new Error('started ' + started + ' microphones');
+`
+	if out, err := exec.Command(bin, "-e", test).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// Someone mutes for a private word and the page reloads: they still think they're muted.
+// Only a page coming back keeps it: going on air afresh is always unmuted.
+func TestTalkPageKeepsItsMuteThroughAReload(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	page := talkAsset(t, "talk.html")
+	var fns string
+	for _, name := range []string{"remember", "onState"} {
+		fn := regexp.MustCompile(`(?s)function ` + name + `\(.*?\) \{.*?\n\}\n`).FindString(page)
+		if fn == "" {
+			t.Fatalf("no %s in talk.html", name)
+		}
+		fns += fn
+	}
+	if !strings.Contains(page, "muted = keepMute = d.state === 'on_air' && !!saved.muted") {
+		t.Error("a reloaded page doesn't take its mute back from what it saved")
+	}
+	test := `
+var saved = {};
+var sessionStorage = {setItem: function (k, v) { saved[k] = v; }, removeItem: function (k) { delete saved[k]; }};
+var KEY = 'k', me = {id: 'a', secret: 's', name: 'Sam'}, muted = true, keepMute = false, state = '', seq = 5, heldByClubhouse = false;
+function $() { return {}; } function view() {} function end() {}
+var END_WHY = {};
+` + fns + `
+remember();
+if (JSON.parse(saved.talk_me).muted !== true) throw new Error('the mute was not saved');
+
+// The page coming back with it.
+muted = keepMute = true; state = '';
+onState('on_air');
+if (!muted) throw new Error('a reloaded page came back live');
+if (keepMute) throw new Error('kept for the next time as well');
+
+// Going on air afresh, later: unmuted.
+state = 'ended';
+onState('on_air');
+if (muted) throw new Error('someone new went on air muted');
+`
+	if out, err := exec.Command(bin, "-e", test).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }
 
