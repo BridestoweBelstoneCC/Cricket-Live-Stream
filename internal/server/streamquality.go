@@ -2,11 +2,11 @@ package server
 
 // Adaptive stream quality: two tiers of defence against a struggling upload.
 //  1. OBS's own Dynamic Bitrate (enabled by OBS setup) nudges the encoder bitrate up and
-//     down seamlessly â€” no disconnect, no operator action.
+//     down seamlessly — no disconnect, no operator action.
 //  2. This sentinel watches the stream's congestion + dropped-frame counters while live.
-//     On sustained trouble it can step the configured bitrate DOWN a ladder â€” from the
-//     panel, or automatically when the operator enables auto mode. A step means stop â†’
-//     reconfigure â†’ start (~5-10s ingest gap), so it's rate-limited.
+//     On sustained trouble it can step the configured bitrate DOWN a ladder — from the
+//     panel, or automatically when the operator enables auto mode. A step means stop →
+//     reconfigure → start (~5-10s ingest gap), so it's rate-limited.
 //  3. In auto mode it also steps back UP, one rung at a time: after a long clean spell
 //     at the current rung, only while the line is really carrying that bitrate (Dynamic
 //     Bitrate can be quietly holding it lower), and only at a break in play. A step up
@@ -82,7 +82,7 @@ func newStreamMon() M {
 		"dynamic_bitrate": nil, // OBS's own Dynamic Bitrate setting (nil = not yet read)
 		"simple_mode":     nil, // the ladder needs Simple output mode
 		// VBitrate as OBS is CURRENTLY configured, read every tick whatever the live/step
-		// state â€” unlike baseline_kbps, which only latches while live. The pre-flight
+		// state — unlike baseline_kbps, which only latches while live. The pre-flight
 		// bitrate check needs it to catch a leftover downshift BEFORE going live.
 		"configured_kbps": nil,
 		"clean_since":     0.0, // start of the current clean spell; 0 = not clean now
@@ -144,7 +144,7 @@ func streamWindow(samples []StreamSample, now float64) ([]StreamSample, float64,
 	return recent, sum / float64(len(recent)), dropped
 }
 
-// StreamClean: the last minute was clean enough to count towards a step up â€” next to no
+// StreamClean: the last minute was clean enough to count towards a step up — next to no
 // congestion or drops, and the line really carried the current bitrate (OBS's Dynamic
 // Bitrate lowers what it sends without telling the ladder, so a quiet congestion figure
 // alone could just mean it has already backed off). No byte count = not proven clean.
@@ -178,7 +178,7 @@ func EvaluateUpshift(cleanSince, now, wait float64, atBreak bool, breakWhy strin
 		return false, fmt.Sprintf("stepping up after %d more clean minutes", int(left+59)/60)
 	}
 	if !atBreak {
-		return false, "line is clean â€” stepping up at the next break in play"
+		return false, "line is clean — stepping up at the next break in play"
 	}
 	return true, fmt.Sprintf("clean for %d minutes (%s)", int(now-cleanSince)/60, breakWhy)
 }
@@ -308,18 +308,18 @@ func replayBackNote(st M) string {
 			return ""
 		}
 	}
-	watchdogLogFix("The replay buffer didn't restart after a quality change â€” the next replay will try again")
+	watchdogLogFix("The replay buffer didn't restart after a quality change — the next replay will try again")
 	return " (the replay buffer didn't restart; the next replay will try again)"
 }
 
 // backOnAirNote restarts the stream at the bitrate it had, and says how that went.
 func backOnAirNote(st M) string {
 	if started, stayed := backOnAir(st); !started {
-		return ", and the stream DID NOT restart â€” press Start Streaming in OBS now"
+		return ", and the stream DID NOT restart — press Start Streaming in OBS now"
 	} else if !stayed {
-		return ", and the stream did not STAY up after restarting â€” check OBS and YouTube now"
+		return ", and the stream did not STAY up after restarting — check OBS and YouTube now"
 	}
-	return " â€” stream restarted at the old quality"
+	return " — stream restarted at the old quality"
 }
 
 var streamEnded = func() { // swappable for tests
@@ -327,12 +327,12 @@ var streamEnded = func() { // swappable for tests
 	time.AfterFunc(90*time.Second, afterStreamYouTube) // chapters, thumbnail, highlights (ytafter.go)
 }
 
-// ApplyStreamQualityStep: stop â†’ wait â†’ set the SimpleOutput bitrate â†’ start, verified
+// ApplyStreamQualityStep: stop → wait → set the SimpleOutput bitrate → start, verified
 // at each step. Serialised: a panel press and the auto path must never interleave two
 // stop/start cycles.
 func ApplyStreamQualityStep(newStep int, reason, mode string) (bool, string) {
 	if !qualityShift.TryLock() {
-		return false, "A quality change is already in progress â€” wait for it to finish"
+		return false, "A quality change is already in progress — wait for it to finish"
 	}
 	defer qualityShift.Unlock()
 	return applyQualityStepLocked(newStep, reason, mode)
@@ -393,7 +393,7 @@ func resumeLadderLocked(st M, vbitrate int, t float64) bool {
 	streamMon["step"], streamMon["baseline_kbps"], streamMon["current_kbps"] = step, baseline, kbps
 	// As if it had just stepped: the restart's own blip mustn't count against the line.
 	streamMon["last_shift_at"], streamMon["last_dir"], streamMon["clean_since"] = t, "down", 0.0
-	say("  ðŸ“¶  Quality ladder picked up where it was before the restart: %d kbps (%d%% of %d)",
+	say("  📶  Quality ladder picked up where it was before the restart: %d kbps (%d%% of %d)",
 		kbps, int(StreamLadder[step]*100), baseline)
 	return true
 }
@@ -454,7 +454,7 @@ func noteSentLocked(t float64, vbitrate int) {
 		w := fmt.Sprintf("OBS is sending %d kbps, far more than the %d kbps it's set to. Either the setting hasn't "+
 			"reached the encoder (stop the stream and the replay buffer, then start them again), or the picture is "+
 			"too detailed for this bitrate and the hardware encoder is sending what it must: a busy video or "+
-			"animated source can do this, a camera picture hasn't in testing (OBS Settings â†’ Output â†’ Encoder: "+
+			"animated source can do this, a camera picture hasn't in testing (OBS Settings → Output → Encoder: "+
 			"x264 holds its bitrate, at the cost of a blockier picture).", sent, set)
 		streamMon["bitrate_warning"] = w
 		say("  âš   %s", w)
@@ -505,7 +505,7 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	baseline := gi(streamMon, "baseline_kbps", 0)
 	streamMonMu.Unlock()
 	if baseline == 0 {
-		return false, "No baseline bitrate recorded yet â€” is the stream live?"
+		return false, "No baseline bitrate recorded yet — is the stream live?"
 	}
 	newStep = max(0, min(newStep, len(StreamLadder)-1))
 	target := streamLadderKbps(baseline, newStep)
@@ -515,22 +515,22 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	if status == nil || status[0] == nil {
 		return false, "Could not reach OBS"
 	}
-	// The ladder writes SimpleOutput/VBitrate â€” ignored in Advanced output mode, so a
+	// The ladder writes SimpleOutput/VBitrate — ignored in Advanced output mode, so a
 	// shift would restart the stream for NO quality change. Refuse instead.
 	if m := gsOr(status[1], "parameterValue", "Simple"); m != "Simple" {
-		return false, "OBS is in Advanced output mode â€” the quality ladder only supports " +
+		return false, "OBS is in Advanced output mode — the quality ladder only supports " +
 			"the default Simple mode (OBS's own dynamic bitrate still works). " +
-			"Change the bitrate manually in OBS Settings â†’ Output."
+			"Change the bitrate manually in OBS Settings → Output."
 	}
 	// OBS only reads the bitrate when it builds the encoder, and it only builds it when no
 	// output is using it. The replay buffer shares the stream's encoder and runs all match
-	// day, so restarting the stream alone changed nothing â€” measured on a real OBS 33: set
+	// day, so restarting the stream alone changed nothing — measured on a real OBS 33: set
 	// to 2000 or 4000, it went on sending the 6000 it started with. Every step, down or
 	// up, restarted the stream for no change at all. So the buffer stops for the step too
 	// (its last few seconds are lost; a replay in that moment is skipped). A recording
 	// would have to be split in two, so that's left to the operator.
 	if len(status) > 3 && gb(status[3], "outputActive", false) {
-		return false, "OBS is recording â€” it only takes a new bitrate with the recording stopped, " +
+		return false, "OBS is recording — it only takes a new bitrate with the recording stopped, " +
 			"so no quality change made. Stop the recording to let the quality ladder work."
 	}
 	// No answer about the buffer is "maybe running": skipping the stop on a guess left the
@@ -548,31 +548,31 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	// success. So: stop, wait for the output to go inactive, reconfigure, start.
 	if wasLive {
 		// Once a stop is under way the picture is off air whatever happens next, so a stop
-		// is waited out and the change made, never abandoned. On a congested line â€” which
-		// is when a step down happens â€” OBS flushes its backlog first and a stop can take
+		// is waited out and the change made, never abandoned. On a congested line — which
+		// is when a step down happens — OBS flushes its backlog first and a stop can take
 		// half a minute (measured: over 30s on a real OBS, throttled). Giving up after 10s
 		// and restarting at the old quality cost a restart for nothing, again every check,
 		// and a stop that finished later left the stream down (stress test: a dozen in a
 		// few minutes).
 		polls := 120 // up to a minute
 		if r := obsCall(st, []obsws.Req{{Type: "StopStream"}}, 8*time.Second); r == nil || r[0] == nil {
-			// Refused, or no answer â€” which isn't proof nothing happened. Still live a few
+			// Refused, or no answer — which isn't proof nothing happened. Still live a few
 			// seconds on: nothing changed and nothing was interrupted.
 			polls = 6
 		}
 		if stopped, known := waitStopped(st, polls); !stopped {
 			if polls == 6 {
 				if known {
-					return false, "Could not stop the stream â€” no quality change made"
+					return false, "Could not stop the stream — no quality change made"
 				}
-				return false, "Could not stop the stream â€” no quality change made, but OBS has stopped answering: check OBS that the stream is still live"
+				return false, "Could not stop the stream — no quality change made, but OBS has stopped answering: check OBS that the stream is still live"
 			}
 			if !known {
-				return false, "OBS isn't answering after stopping the stream for a quality change â€” check OBS now: the stream may be down"
+				return false, "OBS isn't answering after stopping the stream for a quality change — check OBS now: the stream may be down"
 			}
 			// Still live a minute after an accepted stop: OBS never did it. The stream is
 			// up; something in OBS is wrong, so it's left to a person.
-			return false, "OBS didn't stop the stream for the quality change â€” no change made; check OBS now"
+			return false, "OBS didn't stop the stream for the quality change — no change made; check OBS now"
 		}
 	}
 	if rbWas {
@@ -586,9 +586,9 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 			if wasLive {
 				note = backOnAirNote(st)
 			}
-			return false, "OBS's replay buffer wouldn't stop, and OBS only takes a new bitrate with it stopped â€” no quality change made" + note
+			return false, "OBS's replay buffer wouldn't stop, and OBS only takes a new bitrate with it stopped — no quality change made" + note
 		}
-		// Stopped now: start it again afterwards if it was running â€” known, or OBS
+		// Stopped now: start it again afterwards if it was running — known, or OBS
 		// accepting the stop (it refuses one for a buffer that isn't running). Neither, and
 		// it was most likely off already; a refused stop of a running buffer is the rare
 		// case, and the replay trigger starts a buffer it finds stopped.
@@ -597,29 +597,29 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	if r := obsCall(st, []obsws.Req{{Type: "SetProfileParameter", Data: M{"parameterCategory": "SimpleOutput",
 		"parameterName": "VBitrate", "parameterValue": strconv.Itoa(target)}}}, 8*time.Second); r == nil || r[0] == nil {
 		if wasLive {
-			// This used to try StartStream once and report "restarted" whatever OBS said â€”
+			// This used to try StartStream once and report "restarted" whatever OBS said —
 			// found by the stress test: refused once (OBS still settling after the stop), it
 			// left the stream down for the rest of the day while saying it was up.
-			return false, "Could not set the new bitrate â€” no quality change made" + backOnAirNote(st)
+			return false, "Could not set the new bitrate — no quality change made" + backOnAirNote(st)
 		}
-		return false, "Could not set the new bitrate â€” no quality change made"
+		return false, "Could not set the new bitrate — no quality change made"
 	}
 	// Every output is still stopped: the only time OBS lets the resolution change.
 	resNote := applyLadderResolution(st, newStep)
 	if wasLive {
 		started, stayed := backOnAir(st)
 		if !started {
-			// The bitrate DID change â€” record it so the ladder/restore stay truthful even
+			// The bitrate DID change — record it so the ladder/restore stay truthful even
 			// though the operator has to press Start Streaming themselves.
 			recordStep(newStep, target)
-			return false, fmt.Sprintf("Bitrate set to %d kbps but the stream DID NOT restart â€” press Start Streaming in OBS now", target)
+			return false, fmt.Sprintf("Bitrate set to %d kbps but the stream DID NOT restart — press Start Streaming in OBS now", target)
 		}
 		if !stayed {
 			recordStep(newStep, target)
 			return false, fmt.Sprintf("Bitrate set to %d kbps and OBS restarted, but the stream did not STAY up. "+
 				"If YouTube shows the broadcast as ENDED, OBS's connected-account auto-stop ended it on "+
-				"StopStream â€” stream with a persistent stream key instead (YouTube Studio â†’ copy key â†’ OBS "+
-				"Settings â†’ Stream), which survives quality changes.", target)
+				"StopStream — stream with a persistent stream key instead (YouTube Studio → copy key → OBS "+
+				"Settings → Stream), which survives quality changes.", target)
 		}
 	}
 	streamMonMu.Lock()
@@ -648,10 +648,10 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	saveLadder(newStep, baseline, target, baseRes)
 	tail := ""
 	if wasLive {
-		tail = " â€” stream restarted"
+		tail = " — stream restarted"
 	}
 	msg = fmt.Sprintf("Stream bitrate %s to %d kbps (%d%% of baseline)%s%s", verb, target, int(StreamLadder[newStep]*100), resNote, tail)
-	say("  ðŸ“¶  %s [%s: %s]", msg, mode, reason)
+	say("  📶  %s [%s: %s]", msg, mode, reason)
 	return true, msg
 }
 
@@ -691,7 +691,7 @@ func streamMonitorTick() (int, string) {
 	s0 := res[0]
 	live := gb(s0, "outputActive", false)
 	if gb(streamMon, "streaming", false) && !live {
-		// The stream just ended: build the match page a minute later â€” if it's still off
+		// The stream just ended: build the match page a minute later — if it's still off
 		// then. (The ladder's own stop/start, or an operator restarting the stream, also
 		// reads as an end here for one tick.)
 		streamEnded()
@@ -709,7 +709,7 @@ func streamMonitorTick() (int, string) {
 		if n := gi(streamMon, "foreign_ticks", 0) + 1; n < 2 {
 			streamMon["foreign_ticks"] = n
 		} else {
-			say("  ðŸ“¶  OBS's bitrate was changed outside the quality ladder (now %d kbps): the ladder starts again from there", vbitrate)
+			say("  📶  OBS's bitrate was changed outside the quality ladder (now %d kbps): the ladder starts again from there", vbitrate)
 			streamMon["step"], streamMon["foreign_ticks"], streamMon["last_dir"] = 0, 0, ""
 			streamMon["upshift_wait"], streamMon["clean_since"] = StreamUpshiftAfter, 0.0
 			step = 0
@@ -738,7 +738,7 @@ func streamMonitorTick() (int, string) {
 	// A step up the line can't take is undone on the first full window of evidence, not
 	// after the cooldown: that wait was 2-3 minutes of dropped frames on air per failed
 	// try (stress test, steady weak line). The cooldown is there so a shift's own restart
-	// blip can't trigger the next â€” and samples start afresh after every shift anyway.
+	// blip can't trigger the next — and samples start afresh after every shift anyway.
 	lastShift := gf(streamMon, "last_shift_at", 0)
 	if gs(streamMon, "last_dir", "") == "up" && t-lastShift < StreamUpshiftFailSec {
 		lastShift = 0
