@@ -138,6 +138,24 @@ problem + what to do + pause) or print and `console.Pause()`.
   `Overlay` source (`refreshnocache`) when OBS is local and reachable but no `/live` poll
   has come for 30s — at most 3 times between polls. `/live/view` doesn't count as the
   overlay; keep it that way.
+- **The way back from a replay is one request, so something has to watch for it failing.** If
+  the server dies mid-replay, or OBS doesn't answer at that moment, nothing else cuts back:
+  on a real OBS, a killed server was back in 3s and OBS still sat on Replay 75s later.
+  `replaywatch.go` cuts back when the Replay scene is live on air, two checks running, with no
+  replay meant to be on (`noteReplay`). So anything new that puts the Replay scene on air
+  must call `noteReplay` for as long as it means to be there, or it gets cut away from. Of two
+  replays close together, the newest owns the way back (`replayLatest`).
+- **A login lasts the match day, not the server process.** The launcher hands every server it
+  runs the same `CRICKETSTREAM_SESSION_EPOCH`. When each start made a new one, a crash restart
+  logged the clubhouse link out for the rest of the match: it has only the login the window
+  got at the start and can't type a password, so someone on air couldn't be taken off. "Log
+  everyone out" is kept through a crash in `session_epoch.txt`; a server started by hand still
+  makes a new one each start.
+- **`internal/integration/matchday_windows_test.go` is the fault test** (opt-in,
+  `CRICKETSTREAM_MATCHDAY=1`, about 30 minutes): the real app on a portable OBS, with everything
+  on, measuring the bytes that reach a local receiver while the server's killed and hung, OBS
+  crashes and freezes, the line drops and slows, and the scorer's file goes bad. Run it before a
+  beta. Cameras are looping files there, so it says nothing about RTSP.
 - **`overlay.html` JS brace balance baseline is 4** (it isn't zero — there are intentional
   unmatched braces in template strings). Don't "fix" it to zero.
 - **A match keeps one id when it changes mid-innings.** `CurrentMatchID()` is the
