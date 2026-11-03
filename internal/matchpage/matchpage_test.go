@@ -44,6 +44,48 @@ func TestMissingPartsAreLeftOut(t *testing.T) {
 	}
 }
 
+func TestMomentsLinkIntoTheVideo(t *testing.T) {
+	inn := Innings{Team: "Home CC", Total: "33-1 (5 ov)",
+		FOW:     []FOW{{Score: "7-1", Batter: "P Smith", URL: "https://youtu.be/abc?t=2705"}, {Score: "9-2", Batter: "Jones"}},
+		Moments: []Moment{{Clock: "45:05", Text: "Wicket: P Smith 3, 7/1 (2.1 ov)", URL: "https://youtu.be/abc?t=2705"}}}
+	page := Render(Data{Innings: []Innings{inn}})
+	for _, want := range []string{
+		`<a href="https://youtu.be/abc?t=2705">7-1 (P Smith)</a>`,
+		"9-2 (Jones)",
+		`<a href="https://youtu.be/abc?t=2705"><span class=clock>&#9654; 45:05</span> Wicket: P Smith 3, 7/1 (2.1 ov)</a>`,
+		"Watch it back", ".moments {"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page has no %q", want)
+		}
+	}
+	if strings.Contains(page, `9-2 (Jones)</a>`) {
+		t.Error("a wicket with no moment shouldn't be a link")
+	}
+}
+
+// What's typed by a scorer, and an address from an API, can't break out of the link.
+func TestMomentsAreEscaped(t *testing.T) {
+	inn := Innings{FOW: []FOW{{Score: "1-1", Batter: "A", URL: `https://youtu.be/x" onclick="evil`}},
+		Moments: []Moment{{Clock: "<b>", Text: "<script>alert(1)</script>", URL: `https://youtu.be/x" onmouseover="evil`}}}
+	page := Render(Data{Innings: []Innings{inn}})
+	for _, bad := range []string{`" onclick="`, `" onmouseover="`, "<script>alert", "<b>"} {
+		if strings.Contains(page, bad) {
+			t.Errorf("page contains %q", bad)
+		}
+	}
+}
+
+// No video, or no moments: nothing of this on the page, styles included. That's what keeps
+// such a page byte for byte the Python original's (TestDifferentialAgainstPython).
+func TestNoMomentsLeavesNoTrace(t *testing.T) {
+	page := Render(Data{Title: "Home v Away", Innings: innings})
+	for _, absent := range []string{"Watch it back", ".moments", "class=clock", "<a href"} {
+		if strings.Contains(page, absent) {
+			t.Errorf("page contains %q", absent)
+		}
+	}
+}
+
 func TestReportMarkdownHeadingsAreDropped(t *testing.T) {
 	page := Render(Data{Report: "# Headline\nFirst para\n\nSecond para"})
 	if strings.Contains(page, "Headline") || !strings.Contains(page, "<p>First para</p>") {

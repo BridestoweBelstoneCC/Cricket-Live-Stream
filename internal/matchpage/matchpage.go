@@ -36,6 +36,12 @@ type Bowler struct {
 type FOW struct {
 	Score  string `json:"score"`
 	Batter string `json:"batter"`
+	URL    string `json:"url,omitempty"` // that wicket in the match video, when it's known
+}
+
+// Moment is one thing to watch back, at its place in the match video.
+type Moment struct {
+	Clock, Text, URL string
 }
 
 type Innings struct {
@@ -44,6 +50,7 @@ type Innings struct {
 	Batters []Batter
 	Bowlers []Bowler
 	FOW     []FOW
+	Moments []Moment
 }
 
 // Point is (over, cumulative runs).
@@ -147,7 +154,11 @@ func inningsTable(inn Innings) string {
 	}
 	var fow []string
 	for _, f := range inn.FOW {
-		fow = append(fow, fmt.Sprintf("%s (%s)", E(f.Score), E(f.Batter)))
+		one := fmt.Sprintf("%s (%s)", E(f.Score), E(f.Batter))
+		if f.URL != "" {
+			one = `<a href="` + E(f.URL) + `">` + one + `</a>`
+		}
+		fow = append(fow, one)
 	}
 	s := fmt.Sprintf(`<section class=card><h3>%s <span class=total>%s</span></h3>`+
 		`<table><thead><tr><th>Batting</th><th class=num>R</th><th class=num>B</th></tr></thead>`+
@@ -159,8 +170,25 @@ func inningsTable(inn Innings) string {
 	if len(fow) > 0 {
 		s += `<p class=muted>Fall of wickets: ` + strings.Join(fow, ", ") + `</p>`
 	}
+	if len(inn.Moments) > 0 {
+		s += `<h4>Watch it back</h4><ul class=moments>`
+		for _, m := range inn.Moments {
+			s += `<li><a href="` + E(m.URL) + `"><span class=clock>&#9654; ` + E(m.Clock) + `</span> ` + E(m.Text) + `</a></li>`
+		}
+		s += `</ul>`
+	}
 	return s + "</section>"
 }
+
+// momentsCSS is only on a page with something to watch back: a page without any comes out
+// byte for byte as the Python original's does.
+const momentsCSS = `.card p a { color:inherit }
+h4 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:14px 0 4px; font-weight:600 }
+.moments { list-style:none; margin:0; padding:0 }
+.moments a { display:block; padding:8px 4px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none }
+.moments a:hover { background:var(--line) }
+.clock { color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; margin-right:6px; white-space:nowrap }
+`
 
 func or(s, def string) string {
 	if s == "" {
@@ -198,9 +226,17 @@ func Render(d Data) string {
 	}
 	var labels []string
 	var innings strings.Builder
+	extraCSS := ""
 	for _, i := range d.Innings {
 		labels = append(labels, i.Team)
 		innings.WriteString(inningsTable(i))
+		linked := len(i.Moments) > 0
+		for _, f := range i.FOW {
+			linked = linked || f.URL != ""
+		}
+		if linked {
+			extraCSS = momentsCSS
+		}
 	}
 	worm := wormSVG(d.Worm, colours, labels)
 	var meta []string
@@ -245,7 +281,7 @@ th { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(-
             background:#fff; border-radius:12px; padding:16px; margin-top:24px }
 .sponsors img { max-height:52px; max-width:150px; object-fit:contain }
 footer { text-align:center; margin-top:18px }
-</style></head>
+` + extraCSS + `</style></head>
 <body><main>
 <header>` + crest + `<div><h1>` + E(d.Title) + `</h1>
 <div class=muted>` + E(strings.Join(meta, " · ")) + `</div>

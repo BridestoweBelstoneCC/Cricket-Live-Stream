@@ -71,6 +71,159 @@ func TestMatchPageBuiltFromTheMatch(t *testing.T) {
 		"Fall of wickets: 7-1 (P Smith)", "Runs by over")
 }
 
+// The moments of a match, each linked to its place in the video: the match's own video, not
+// just today's, and 25s before the scorer entered it, to open on the delivery.
+func TestMatchPageLinksMomentsIntoTheVideo(t *testing.T) {
+	matchPageSandbox(t)
+	start := time.Date(2026, 10, 2, 13, 0, 0, 0, time.UTC)
+	add := func(key, kind, text string, after time.Duration) {
+		t.Helper()
+		withDBExec(t, "INSERT INTO moments(match_id,key,ts,kind,text) VALUES(?,?,?,?,?)", "mp1", key, ts(start.Add(after)), kind, text)
+	}
+	add("i0", "innings", "Before the stream", -time.Hour) // not an innings on the page, and no footage
+	add("i1", "innings", "Home CC batting", 10*time.Second)
+	add("w1-1", "wicket", "Wicket: P Smith 3, 7/1 (2.1 ov)", 45*time.Minute)
+	add("m1-Smith-50", "milestone", "Smith 50", time.Hour+30*time.Minute+25*time.Second)
+	add("i2", "innings", "Rival CC batting", 2*time.Hour)
+	add("w2-9", "wicket", "After the stream stopped", 9*time.Hour)
+
+	saved := pageMatchVideo
+	t.Cleanup(func() { pageMatchVideo = saved })
+	var asked []Moment
+	pageMatchVideo = func(m []Moment) (string, time.Time, time.Time) {
+		asked = m
+		return "vid1", start, start.Add(4 * time.Hour)
+	}
+	ok, msg, path := BuildMatchPage()
+	if !ok {
+		t.Fatal(msg)
+	}
+	if len(asked) != 6 {
+		t.Errorf("the video was found from %d moments, not all 6", len(asked))
+	}
+	contains(t, msg, "(4 moments link to the video)")
+	b, _ := os.ReadFile(path)
+	page := string(b)
+	contains(t, page,
+		`<a class=watch href="https://youtu.be/vid1">`,
+		// The start can't go before the video begins.
+		`<a href="https://youtu.be/vid1?t=0"><span class=clock>&#9654; 0:00</span> Home CC batting</a>`,
+		`<a href="https://youtu.be/vid1?t=2675"><span class=clock>&#9654; 44:35</span> Wicket: P Smith 3, 7/1 (2.1 ov)</a>`,
+		`<a href="https://youtu.be/vid1?t=5400"><span class=clock>&#9654; 1:30:00</span> Smith 50</a>`,
+		`<a href="https://youtu.be/vid1?t=7175"><span class=clock>&#9654; 1:59:35</span> Rival CC batting</a>`,
+		// The scorecard's own wicket goes to the same place.
+		`<a href="https://youtu.be/vid1?t=2675">7-1 (P Smith)</a>`)
+	for _, bad := range []string{"Before the stream", "After the stream stopped"} {
+		if strings.Contains(page, bad) {
+			t.Errorf("a moment with no footage is on the page: %q", bad)
+		}
+	}
+	// In their own innings: the first innings' wicket comes before the reply starts.
+	if strings.Index(page, "Wicket: P Smith") > strings.Index(page, "Rival CC batting") {
+		t.Error("moments are in the wrong innings")
+	}
+}
+
+// The real thing end to end: frames through the real loggers, the real facts from the DB.
+// The moments and the fall of wickets are logged separately, so this is what shows their
+// keys still meet: a mismatch would lose the scorecard's links with nothing to say so.
+func TestMatchPageLinksFromRealFrames(t *testing.T) {
+	matchPageSandbox(t)
+	saved, savedNow, savedVideo := pageDBFacts, momentNow, pageMatchVideo
+	momentsPrev = momentsPrevT{}
+	livePrev = livePrevT{}
+	t.Cleanup(func() {
+		pageDBFacts, momentNow, pageMatchVideo = saved, savedNow, savedVideo
+		momentsPrev = momentsPrevT{}
+		livePrev = livePrevT{}
+	})
+	pageDBFacts = MatchFactsFromDB
+	start := time.Date(2026, 6, 6, 13, 0, 0, 0, time.UTC)
+	at := start
+	momentNow = func() time.Time { return at }
+	pageMatchVideo = func([]Moment) (string, time.Time, time.Time) { return "vid1", start, start.Add(6 * time.Hour) }
+	step := func(d time.Duration, f M) {
+		at = at.Add(d)
+		LogLiveFigures(f)
+		LogMoments(f)
+	}
+	step(time.Minute, momentFrame(1, 1, 0, 0.1, "Smith", 1, "Jones", 0, "Patel", 0))
+	step(10*time.Minute, momentFrame(1, 40, 0, 6, "Smith", 31, "Jones", 9, "Patel", 0))
+	step(time.Minute, momentFrame(1, 41, 1, 6.2, "Smith", 32, "Brown", 0, "Khan", 1)) // Jones out
+	step(10*time.Minute, momentFrame(1, 70, 1, 10, "Smith", 52, "Brown", 8, "Khan", 1))
+	step(time.Minute, momentFrame(2, 3, 0, 0.3, "Ali", 3, "Cole", 0, "Smith", 0))
+	step(time.Minute, momentFrame(2, 4, 1, 0.5, "Ali", 4, "Hart", 0, "Smith", 1)) // Cole out
+
+	ok, msg, path := BuildMatchPage()
+	if !ok {
+		t.Fatal(msg)
+	}
+	b, _ := os.ReadFile(path)
+	page := string(b)
+	// 12 minutes in, less the lead: 11:35. And the reply's, 24 minutes in: 23:35.
+	contains(t, page, `<a href="https://youtu.be/vid1?t=695">41-1 (Jones)</a>`,
+		`<a href="https://youtu.be/vid1?t=1415">4-1 (Cole)</a>`,
+		`<span class=clock>&#9654; 21:35</span> Smith 50`)
+	// Each innings has its own wicket 1, and the fall of wickets didn't cross them.
+	first, second := strings.Index(page, "41-1 (Jones)"), strings.Index(page, "4-1 (Cole)")
+	if first < 0 || second < first {
+		t.Errorf("the innings' wickets are out of order: %d %d", first, second)
+	}
+}
+
+// YouTube being signed out, or down, costs the links and never the page. It falls back to
+// the stream link it always had.
+func TestMatchPageWithoutTheVideoHasNoLinks(t *testing.T) {
+	matchPageSandbox(t)
+	withDBExec(t, "INSERT INTO moments(match_id,key,ts,kind,text) VALUES(?,?,?,?,?)", "mp1", "w1-1", 1000.0, "wicket", "Wicket: P Smith")
+	saved := pageMatchVideo
+	t.Cleanup(func() { pageMatchVideo = saved })
+	for name, find := range map[string]func([]Moment) (string, time.Time, time.Time){
+		"no video": func([]Moment) (string, time.Time, time.Time) { return "", time.Time{}, time.Time{} },
+		"a panic":  func([]Moment) (string, time.Time, time.Time) { panic("x") },
+	} {
+		pageMatchVideo = find
+		ok, msg, path := BuildMatchPage()
+		if !ok {
+			t.Fatalf("%s: %s", name, msg)
+		}
+		b, _ := os.ReadFile(path)
+		page := string(b)
+		contains(t, page, "https://youtu.be/abc", "Fall of wickets: 7-1 (P Smith)")
+		if strings.Contains(page, "Watch it back") || strings.Contains(page, "?t=") {
+			t.Errorf("%s: links with no video to link to", name)
+		}
+	}
+}
+
+func TestMomentInVideo(t *testing.T) {
+	start := time.Date(2026, 6, 6, 13, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	for _, c := range []struct {
+		name  string
+		after time.Duration
+		noEnd bool
+		at    time.Duration
+		ok    bool
+	}{
+		{name: "before the video", after: -time.Second},
+		{name: "after the video", after: time.Hour + time.Second},
+		{name: "right at the start", after: 5 * time.Second, at: 0, ok: true},
+		{name: "in the middle", after: 30 * time.Minute, at: 30*time.Minute - chapterLead, ok: true},
+		{name: "the last moment", after: time.Hour, at: time.Hour - chapterLead, ok: true},
+		{name: "a video still going", after: 3 * time.Hour, noEnd: true, at: 3*time.Hour - chapterLead, ok: true},
+	} {
+		e := end
+		if c.noEnd {
+			e = time.Time{}
+		}
+		at, ok := momentInVideo(Moment{TS: ts(start.Add(c.after))}, start, e)
+		if ok != c.ok || at != c.at {
+			t.Errorf("%s: %v %v, want %v %v", c.name, at, ok, c.at, c.ok)
+		}
+	}
+}
+
 func TestMatchPageChartStopsAtInningsOwnOvers(t *testing.T) {
 	matchPageSandbox(t)
 	_, page := buildPage(t)
