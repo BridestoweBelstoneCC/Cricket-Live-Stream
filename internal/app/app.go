@@ -13,6 +13,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -149,7 +150,7 @@ func Run(o Options) int {
 
 	srv := &http.Server{Handler: a, ReadHeaderTimeout: 20 * time.Second}
 	go srv.Serve(ln)
-	defer srv.Close()
+	defer closeServer(srv)
 	fmt.Printf("  CricketStream %s — app page %s/\n", versionText(o.Version), a.base)
 	if os.Getenv(UpdatedEnv) == "1" {
 		fmt.Printf("  ✓ Updated to %s\n", versionText(o.Version))
@@ -569,6 +570,20 @@ func (a *App) stop() {
 	}
 	a.stopAgent()
 	a.stopBridge()
+}
+
+// closeWait is the most a reply on its way out may hold up the app's exit.
+var closeWait = 2 * time.Second
+
+// closeServer lets replies on their way out finish. The Close button replies and then quits,
+// so a plain Close could cut its own reply off: the page, and a CI run on a fast machine, saw
+// an error for a close that had worked.
+func closeServer(srv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+	defer cancel()
+	if srv.Shutdown(ctx) != nil {
+		srv.Close()
+	}
 }
 
 // quit closes the window (and with it the app).
