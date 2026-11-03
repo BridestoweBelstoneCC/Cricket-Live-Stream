@@ -128,8 +128,10 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   caption ready to paste. Download them from the panel on your phone.
 - **Match page** *(new)* — about a minute after the stream ends, a one-page match report is
   built automatically: result, result card, AI report, runs-by-over chart, both scorecards,
-  a link to the full stream on YouTube, and your sponsors. One self-contained file, ready
-  for the club website or the WhatsApp group.
+  a link to the full stream on YouTube, and your sponsors. With YouTube signed in, every
+  wicket and milestone links straight to that moment in the video, so the scorecard is
+  something you can watch. One self-contained file, ready for the club website or the
+  WhatsApp group.
 - **Sponsor airtime** — how long the weekend sponsor was on screen while live, and an
   estimate of viewer-minutes from YouTube's live viewer count, ready to send to the sponsor.
 

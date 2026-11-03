@@ -11,6 +11,9 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   nothing to install. You choose who goes on air. Viewers see their name in the corner, and
   the ground's sound dips under their voice by itself. Volume and mute on both the screen
   and the phone. See CLUBHOUSE_SCREEN.md.
+- **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
+  wickets and milestones, each one a link to that moment in the match video, and the
+  scorecard's fall of wickets links there too.
 
 ---
 

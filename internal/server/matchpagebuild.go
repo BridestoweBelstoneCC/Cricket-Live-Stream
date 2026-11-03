@@ -85,11 +85,89 @@ var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Swappable for tests: the parts the page is gathered from.
 var (
-	pageDBFacts  = MatchFactsFromDB
-	pageCard     = BuildInstagramImage
-	pageVideoURL = todaysStreamURL
-	startPageJob = StartMatchPageBuild
+	pageDBFacts    = MatchFactsFromDB
+	pageCard       = BuildInstagramImage
+	pageVideoURL   = todaysStreamURL
+	pageMatchVideo = theMatchVideo
+	startPageJob   = StartMatchPageBuild
 )
+
+// theMatchVideo is the broadcast holding this match's moments and when it ran, or "" if
+// YouTube isn't signed in or can't say. Unlike todaysStreamURL it can't pick the morning's
+// match when there were two today, and the links need the start time anyway.
+func theMatchVideo(moments []Moment) (string, time.Time, time.Time) {
+	if len(moments) == 0 || !fileExists(YTCredsFile) || !fileExists(YTTokenFile) {
+		return "", time.Time{}, time.Time{}
+	}
+	yt, _ := ytService(false)
+	if yt == nil {
+		return "", time.Time{}, time.Time{}
+	}
+	id, start, end, err := matchVideo(yt, moments)
+	if err != nil {
+		return "", time.Time{}, time.Time{}
+	}
+	return id, start, end
+}
+
+// momentInVideo is where to start watching a moment, if the video has it at all. A moment
+// is logged when the scorer enters it, so it starts chapterLead earlier to open on the
+// delivery. Unlike a chapter it doesn't need nudging clear of its neighbours: two wickets
+// in a ball can share a place.
+func momentInVideo(m Moment, start, end time.Time) (time.Duration, bool) {
+	t := time.Unix(0, int64(m.TS*1e9))
+	if t.Before(start) || (!end.IsZero() && t.After(end)) {
+		return 0, false // the stream started late or stopped early: no footage to show
+	}
+	at := t.Sub(start) - chapterLead
+	if at < 0 {
+		at = 0
+	}
+	return at, true
+}
+
+var momentInningsRe = regexp.MustCompile(`^[a-z](\d+)(?:-|$)`)
+
+// addMomentLinks puts the moments in their innings on the page, and links each wicket in
+// the fall of wickets to its own: the score there is "runs-wicket", and a wicket's moment is
+// keyed "w<innings>-<wicket>". It says how many it linked. Moments go by their key, so an
+// innings gets only its own.
+func addMomentLinks(innings []matchpage.Innings, keys []string, moments []Moment, id string, start, end time.Time) int {
+	if id == "" {
+		return 0
+	}
+	n := 0
+	byKey := map[string]string{}
+	listed := map[string][]matchpage.Moment{}
+	for _, m := range moments {
+		at, ok := momentInVideo(m, start, end)
+		key := momentInningsRe.FindStringSubmatch(m.Key)
+		if !ok || key == nil {
+			continue
+		}
+		link := fmt.Sprintf("https://youtu.be/%s?t=%d", url.PathEscape(id), int(at.Seconds()))
+		byKey[m.Key] = link
+		listed[key[1]] = append(listed[key[1]], matchpage.Moment{Clock: clock(at), Text: m.Text, URL: link})
+		n++
+	}
+	for i, inn := range keys {
+		innings[i].Moments = listed[inn]
+		for j, f := range innings[i].FOW {
+			if _, wicket, ok := cutLast(f.Score, "-"); ok {
+				innings[i].FOW[j].URL = byKey["w"+inn+"-"+wicket]
+			}
+		}
+	}
+	return n
+}
+
+func cutLast(s, sep string) (string, string, bool) {
+	i := strings.LastIndex(s, sep)
+	if i < 0 {
+		return s, "", false
+	}
+	return s[:i], s[i+len(sep):], true
+}
 
 // BuildMatchPage gathers everything and writes the page: (ok, message, path).
 func BuildMatchPage() (bool, string, string) {
@@ -103,7 +181,8 @@ func BuildMatchPage() (bool, string, string) {
 	sides := toMs(gl(facts, "sides"))
 	dbInn := gm(db, "innings")
 	var innings []matchpage.Innings
-	for i, key := range sortedKeys(dbInn) {
+	inningsKeys := sortedKeys(dbInn)
+	for i, key := range inningsKeys {
 		rec := dbInn[key].(M)
 		team := gs(rec, "batting_team", "")
 		if i < len(sides) && gs(sides[i], "club", "") != "" {
@@ -123,6 +202,21 @@ func BuildMatchPage() (bool, string, string) {
 			}
 		}
 		innings = append(innings, inn)
+	}
+	// Every moment linked into the match video. Optional like every part here: YouTube being
+	// signed out or down costs the links, not the page.
+	videoURL, linked := "", 0
+	func() {
+		defer func() { recover() }()
+		moments := MatchMoments(mid)
+		id, start, end := pageMatchVideo(moments)
+		if id != "" {
+			videoURL = "https://youtu.be/" + id
+			linked = addMomentLinks(innings, inningsKeys, moments, id, start, end)
+		}
+	}()
+	if videoURL == "" {
+		videoURL = pageVideoURL()
 	}
 	// The worm — never past the innings' own overs: a re-scored or replayed innings can
 	// leave balls logged beyond where it finished.
@@ -202,7 +296,7 @@ func BuildMatchPage() (bool, string, string) {
 	html := matchpage.Render(matchpage.Data{Club: gs(cfg, "home_team", ""), Title: title, Date: date,
 		Competition: gs(facts, "competition", ""), Result: resultSentence(facts), Report: report,
 		Innings: innings, Worm: worm, Colours: []string{accent, "#d9534f"}, CardPNGB64: card,
-		CrestB64: crest, SponsorsB64: sponsors, VideoURL: pageVideoURL(), Accent: accent})
+		CrestB64: crest, SponsorsB64: sponsors, VideoURL: videoURL, Accent: accent})
 	if err := os.MkdirAll(MatchPagesDir, 0o755); err != nil {
 		return false, err.Error(), ""
 	}
@@ -215,7 +309,11 @@ func BuildMatchPage() (bool, string, string) {
 	if err := os.WriteFile(path, []byte(html), 0o644); err != nil {
 		return false, err.Error(), ""
 	}
-	return true, "Match page saved: " + path, path
+	msg := "Match page saved: " + path
+	if linked > 0 {
+		msg += fmt.Sprintf(" (%d moments link to the video)", linked)
+	}
+	return true, msg, path
 }
 
 // StartMatchPageBuild builds in the background unless a build is already running

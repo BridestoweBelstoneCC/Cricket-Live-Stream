@@ -564,6 +564,11 @@ problem + what to do + pause) or print and `console.Pause()`.
   they'd be written, from the `moments` table (`LogMoments()` on each /live poll; POST
   writes them into the video's description, which also happens 90s after the stream ends).
   The video is the broadcast whose actualStart/End holds most of the match's moments.
+  The match page uses the same moments and video for its **Watch it back** links
+  (`addMomentLinks`, `momentInVideo`): a moment with no footage has no link, and a fall of
+  wickets entry `runs-wicket` meets its moment by the key `w<innings>-<wicket>`. Everything
+  it adds to the page, CSS too, appears only when there's a link, which is what keeps a page
+  without any byte-identical to the Python original's.
 - `http://localhost:5000/highlights/status` — outcome of the last background highlights
   compile (clips are auto-tagged at replay time via the `clips` DB table; the reel gets
   captions + a chapters description file).
