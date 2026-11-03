@@ -114,6 +114,13 @@ func saveScreenConfig(c screenConfig) error {
 	f.Set("Screen", "pin_salt", c.PinSalt)
 	f.Set("Screen", "pin_hash", c.PinHash)
 	f.Set("Screen", "wake_wait", strconv.Itoa(c.WakeFor))
+	// Set by hand and read at start-up (update.go), so not in screenConfig: rewriting the file
+	// on a new PIN or club name must not switch the updates back on.
+	if old, err := ini.Load(ScreenFile()); err == nil {
+		if v := old.Get("Screen", "auto_update", ""); v != "" {
+			f.Set("Screen", "auto_update", v)
+		}
+	}
 	data := append([]byte("# CricketStream clubhouse screen — paired with the streaming laptop.\n"+
 		"# Holds the pairing key: keep it private.\n\n"), f.Bytes()...)
 	tmp := ScreenFile() + ".tmp"
@@ -452,7 +459,12 @@ func (s *Screen) touch() {
 // publicReads: what a locked screen may show — the match and the stream.
 var publicReads = map[string]bool{"/live/view": true, "/state": true, "/preview.jpg": true,
 	"/youtube/live": true, "/checklist": true, "/stream/monitor": true, "/health": true,
-	"/match/scorecard": true, "/league/table": true}
+	"/match/scorecard": true, "/league/table": true, "/talk/onair": true}
+
+// watchedReads need the screen unlocked, but aren't a person at work: the Commentary tab
+// polls its status, and an unlock that this renewed would never run out on a public screen
+// left showing that tab, with Start and Finish a touch away.
+var watchedReads = map[string]bool{"/talk/status": true, "/talk/qr.png": true}
 
 func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/api")
@@ -480,7 +492,12 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 			s.forward(w, r, "/clubhouse/server"+strings.TrimPrefix(r.URL.EscapedPath(), "/api/server"))
 			return
 		}
-		if r.Method == "POST" || !(publicReads[path] || strings.HasPrefix(path, "/logo/")) {
+		if r.Method == "GET" && watchedReads[path] {
+			if !s.unlocked() {
+				fail(401, "Unlock the screen first.")
+				return
+			}
+		} else if r.Method == "POST" || !(publicReads[path] || strings.HasPrefix(path, "/logo/")) {
 			if locked() {
 				return
 			}

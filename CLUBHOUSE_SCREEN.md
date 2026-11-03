@@ -15,6 +15,8 @@ An **optional** touch screen in the clubhouse that runs the stream for you:
   own figures), **Overs** (the last six, ball by ball) and the league **Table** (with the
   club's row picked out; shown when today's match is in a league). Anyone can look; after
   a minute and a half untouched the screen goes back to the score.
+- **Commentary** lets someone on the boundary commentate from their phone: turn it on, they
+  scan the code, you choose who goes on air. See [Commentary from a phone](#commentary-from-a-phone).
 - **Finish** ends the stream, ends match day, closes OBS and offers to switch the laptop off.
 
 Anyone can see the score and the stream. Everything that changes anything needs the
@@ -173,6 +175,65 @@ and stop the stream.
 
 The laptop's own window still works throughout: anything done on one shows on the other.
 
+## Commentary from a phone
+
+Anyone with a phone can commentate, with nothing to buy or install. It's off until someone
+turns it on, every match day.
+
+1. On the screen: **Commentary** → turn the switch **On**. A QR code comes up.
+2. The commentator scans it with their phone's camera, on the club's wifi. **The phone warns
+   that the connection isn't private**: phones only allow the microphone on a secure page,
+   and a laptop at a cricket ground can't get a proper certificate. They choose **Advanced**
+   (Android) or **Show Details** (iPhone) and carry on. The phone may ask again on a later day.
+3. They allow the microphone, type their name and press **Ask to go on air**.
+4. Their name comes up on the screen. **Put on air**, or **No**. Nothing leaves their phone
+   until you say yes. A bar shows they're being heard.
+
+While they're on, viewers see *Commentary: their name* in the corner of the stream, and the
+ground's sound dips under their voice by itself and comes back when they stop.
+
+| | |
+|---|---|
+| **− / +** | The volume, on the screen or on their phone (either one, and both show it). Each press is 3 dB. |
+| **Mute** | On the screen: viewers can't hear them, and the ground's sound comes back. They can't undo it from the phone. On the phone: their own mute, for a cough. |
+| **Take off air** | They're off, and their phone says so. |
+| **Swap** | Someone else is asking while one's on: one voice at a time. |
+| **The switch, Off** | Everyone's off, and that QR code stops working. The next one is new, so a photo of today's code does nothing next week. |
+
+Each new commentator starts at normal volume, not muted.
+
+**Tell your commentators:**
+
+- **Everyone watching can hear them, and the video stays on YouTube.** The page says so too.
+- **Keep the page open and the phone unlocked.** A locked phone stops sending. Their name comes
+  off the stream after 20 seconds, but they keep their place for two minutes: go back to the
+  page and they carry on. If the page asks, tap the button to bring the microphone back.
+- **Don't play the stream out loud near the phone.** They'd hear themselves back seconds late.
+- **Standing near a camera?** Its microphone hears them too. There's no howling (nothing plays
+  back into a microphone), but viewers may hear a faint second voice just behind the first.
+  The ground's sound dipping makes it quieter, and standing further from the camera should
+  help too.
+- **Wind** is the enemy of any phone. Standing with their back to it helps.
+
+**Good to know**
+
+- It's **one** voice at a time.
+- If the laptop's server crashes and match day restarts it, commentary carries on with the
+  same code, and whoever was on air stays on.
+- It needs about 0.4 Mbit/s of wifi at the commentator's end. If their signal struggles, their
+  phone says so.
+- OBS gets a source called **Commentary** in its mixer (with its own fader) the first time
+  this is turned on, and a *Commentary duck* filter on each camera. A club that never turns
+  it on never gets either. If the ground's sound comes from something other than the
+  cameras' own sound, it won't dip.
+- With the [Cloudflare tunnel](README.md) running, the QR code uses that instead: no warning
+  on the phone, and it works on mobile data as well as the club's wifi.
+- The laptop opens **port 5095** while this is on, and only then. That port serves the
+  commentary page and nothing else, even when the control panel is set to "Just this
+  laptop". Windows Firewall may ask once: allow CricketStream on **private** networks.
+- Locked, the screen hides the code and the buttons, and its chip says when someone's asking.
+  A score-only screen has none of this.
+
 ## Score-only screens
 
 A score-only screen shows the score, the Scorecard, Overs and Table views and the stream
@@ -231,6 +292,9 @@ the match-day screen's key is separate and carries on.
 | *The laptop doesn't accept this screen's pairing key any more* | Someone pressed **New key** on the laptop. On the screen: ⚙ → **Pair again**, and type the new key. |
 | A screen shows *No match on* and no buttons | It's paired with the score-only key. For the match-day buttons: ⚙ → **Pair again** with the other key. |
 | *No streaming laptop answered* when pairing | CricketStream open on the laptop, the clubhouse screen ticked, both on the same network. Windows Firewall may ask the first time — allow CricketStream on **private** networks. Or type the laptop's address. |
+| A phone can't open the page after scanning | It must be on the same network as the laptop (club wifi, not mobile data). Guest wifi often keeps devices apart: use the club's own network, or the Cloudflare tunnel. Check Windows Firewall allows CricketStream. |
+| *This phone said no to the microphone* on the phone | Allow it for this page: the icon by the address, or the phone's settings for its browser. Then press **Ask to go on air** again. |
+| On air, but viewers can't hear them | Look at the Commentary tab: a message under the code says if OBS isn't ready. In OBS, check the **Commentary** fader. The bar not moving means nothing's arriving from the phone. |
 | The stream picture is black | OBS isn't showing anything yet (no camera added), or OBS is closed — see **Get ready**. |
 | Full screen shows the small picture, not YouTube | The stream isn't live on YouTube yet, or YouTube isn't connected on the laptop. |
 

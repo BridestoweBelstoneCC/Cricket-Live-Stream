@@ -67,11 +67,14 @@ var proxyGET = map[string]bool{
 	// The scoring page's QR code for the scorer's phone (manual scoring): addresses only,
 	// the same ones the panel shows anyone on the network.
 	"/remote/info": true, "/remote/qr.png": true,
+	// The Commentary tab. NOT /talk/out: that's OBS's own feed, loopback only. Nor the
+	// phone's routes: a phone goes straight to the laptop.
+	"/talk/status": true, "/talk/qr.png": true, "/talk/onair": true,
 }
 
 var proxyPOST = map[string]bool{
 	"/checklist/action": true, "/precheck": true, "/cameras/use": true, "/obs/add_camera": true,
-	"/camera/scene": true, "/youtube/update": true,
+	"/camera/scene": true, "/youtube/update": true, "/talk/control": true,
 }
 
 // viewGET: what a score-only screen may read — the score, the scorecard and table, the
@@ -536,6 +539,13 @@ func (l *Link) proxy(w http.ResponseWriter, r *http.Request, path, rawPath strin
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("X-Forwarded-For", remoteIP(r))
+	// The card this screen reached the laptop on is the club's network: that's the address
+	// a phone needs in the commentary QR code, of however many this laptop has.
+	if strings.HasPrefix(path, "/talk/") {
+		if ip := localIPFor(r); ip != "" {
+			req.Header.Set("X-Talk-Local-Ip", ip)
+		}
+	}
 	resp, err := proxyClient.Do(req)
 	if err != nil {
 		writeJSON(w, map[string]any{"ok": false, "error": "The stream server didn't answer: " + err.Error()}, 502)
