@@ -2,6 +2,8 @@ package launcher
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,7 +52,11 @@ var timeNow = time.Now // swappable for tests
 var (
 	hungCheckEvery  = 20 * time.Second
 	hungAfterMisses = 4
-	serverAnswers   = func() bool { // swappable for tests
+	// A server that has never answered is given this long to start, then it counts as hung
+	// too. Waiting for ever let one that hung within its first check (20s) sit there for the
+	// rest of the match: no graphics, and no OBS crash recovery either (seen on a real OBS).
+	hungStartLimit = 2 * time.Minute
+	serverAnswers  = func() bool { // swappable for tests
 		resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(base() + "/health")
 		if err != nil {
 			return false
@@ -65,6 +71,7 @@ var (
 func watchHung(p Proc, done, stop <-chan struct{}) {
 	tick := time.NewTicker(hungCheckEvery)
 	defer tick.Stop()
+	started := time.Now()
 	answered, missed := false, 0
 	for {
 		select {
@@ -79,7 +86,12 @@ func watchHung(p Proc, done, stop <-chan struct{}) {
 			continue
 		}
 		if !answered {
-			continue // still starting; WaitForServer has its say about that
+			if time.Since(started) < hungStartLimit {
+				continue // still starting
+			}
+			log(fmt.Sprintf("The server hasn't answered since it started (%d seconds) — restarting it", int(hungStartLimit.Seconds())), "warn")
+			p.Kill()
+			return
 		}
 		if missed++; missed >= hungAfterMisses {
 			log(fmt.Sprintf("The server stopped answering (%d checks in a row) — restarting it", missed), "warn")
@@ -342,6 +354,7 @@ func Run(o Options) int {
 	if remote {
 		bind = "0.0.0.0"
 	}
+	sessionEpoch = newSessionEpoch() // a new match day: everything from the last one is logged out
 	launch := func() (Proc, error) { return startServer(bind, manual) }
 	p, err := launch()
 	if err != nil {
@@ -484,12 +497,33 @@ type Proc interface {
 
 type osProc struct {
 	cmd   *exec.Cmd
-	done  chan error
+	done  chan struct{} // closed when it's exited; err is set by then
+	err   error
 	stdin io.Closer
 }
 
-func (p *osProc) Wait() error { return <-p.done }
+// Wait can be called any number of times. The restart loop waits on the old process again
+// when a relaunch fails: on a channel with one value in it, that second wait never returned,
+// so one failed relaunch ended the restarts for the rest of the match, with no error shown.
+func (p *osProc) Wait() error { <-p.done; return p.err }
 func (p *osProc) Kill()       { p.cmd.Process.Kill() }
+
+// watchProc starts waiting for a process that's been started.
+func watchProc(cmd *exec.Cmd, stdin io.Closer) *osProc {
+	p := &osProc{cmd: cmd, done: make(chan struct{}), stdin: stdin}
+	go func() { p.err = cmd.Wait(); close(p.done) }()
+	return p
+}
+
+// sessionEpoch is this match day's, for every server it runs: a crash restart mustn't log
+// the window, the clubhouse screen and the report out (server/auth.go).
+var sessionEpoch string
+
+func newSessionEpoch() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // Terminate asks the server to stop by closing its stdin: it then stops cleanly (a
 // practice match puts the score source back) on every platform, where a Windows
@@ -515,7 +549,7 @@ func startServer(bind string, manual bool) (Proc, error) {
 	// Its stdin is how it's told to stop; a fatal problem in it must exit (and be
 	// restarted), not wait for an Enter nobody can type.
 	cmd.Env = append(os.Environ(), "BBCC_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir(), StopOnEOFEnv+"=1",
-		"CRICKETSTREAM_NO_PAUSE=1")
+		"CRICKETSTREAM_NO_PAUSE=1", server.SessionEpochEnv+"="+sessionEpoch)
 	if manual {
 		// For this server only (a restart keeps it; tomorrow's match day asks again).
 		cmd.Env = append(cmd.Env, server.ManualTodayEnv+"=1")
@@ -529,9 +563,7 @@ func startServer(bind string, manual bool) (Proc, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &osProc{cmd: cmd, done: make(chan error, 1), stdin: stdin}
-	go func() { p.done <- cmd.Wait() }()
-	return p, nil
+	return watchProc(cmd, stdin), nil
 }
 
 // RunServerWithRestarts waits on the server, relaunching it (capped) if it exits on its

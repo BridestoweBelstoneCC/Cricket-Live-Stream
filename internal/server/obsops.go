@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"cricketstream/internal/assets"
@@ -166,6 +167,7 @@ func ObsTriggerReplay(state M, reason string) {
 		say("  🏷  Tagged: %s", caption)
 	}
 	send("SetInputSettings", M{"inputName": "ReplayClip", "inputSettings": M{"local_file": clip}})
+	gen := replayLatest.Add(1)
 	send("SetCurrentProgramScene", M{"sceneName": replay})
 	say("  ▶  Switched to %s scene", replay)
 	replaySleep(time.Duration(duration) * time.Second)
@@ -184,11 +186,31 @@ func ObsTriggerReplay(state M, reason string) {
 			replaySleep(time.Duration(duration) * time.Second)
 		}
 	}
-	send("SetCurrentProgramScene", M{"sceneName": main})
-	say("  ◀  Returned to %s scene", main)
+	// A newer replay has the scene now, and its own end cuts back: going back from this one
+	// would cut away from it part way through.
+	if replayLatest.Load() != gen {
+		return
+	}
+	if send("SetCurrentProgramScene", M{"sceneName": main}) {
+		say("  ◀  Returned to %s scene", main)
+		return
+	}
+	// This socket has been open for the whole clip, and it's the only thing that would ever
+	// cut back: try again on a new one. Past that, the replay watch (replaywatch.go) has it.
+	for i := 0; i < 3; i++ {
+		if cutToScene(state, main) {
+			say("  ◀  Returned to %s scene", main)
+			return
+		}
+		replaySleep(time.Second)
+	}
+	say("  ✗  Couldn't return to the %s scene: will try again shortly", main)
 }
 
 var replaySleep = time.Sleep // swappable for tests
+
+// replayLatest counts replays cutting to the Replay scene: the newest one owns the way back.
+var replayLatest atomic.Int64
 
 // graphicsSources must always sit above any camera.
 var graphicsSources = []string{"Overlay", "ReplayClip"}
