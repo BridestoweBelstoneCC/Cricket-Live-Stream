@@ -471,6 +471,42 @@ func TestPhoneCommentaryOnTheRecording(t *testing.T) {
 		t.Fatalf("the QR code's address: %+v", st)
 	}
 	t.Logf("the QR code opens %s", regexp.MustCompile(`k=.*`).ReplaceAllString(st.URL, "k=..."))
+	// A laptop on more than one network: the button moves the code through them, and each
+	// address really is served a certificate naming it. Back to where it was, for the phone.
+	if n, _ := screen.eval(`((talkData.addresses||[]).length)`).(float64); n > 1 {
+		start := screen.eval(`talkData.address`)
+		screen.waitFor("the button to choose an address", screen.visible("talk_addr_btn"), 5*time.Second)
+		screen.picture(shot("pi-2-addresses.png"))
+		screen.send("Emulation.setDeviceMetricsOverride", map[string]any{"width": 800, "height": 480, "deviceScaleFactor": 1, "mobile": false})
+		time.Sleep(300 * time.Millisecond)
+		screen.eval(`document.getElementById('talk_addr_btn').scrollIntoView()`)
+		screen.waitFor("the button on a small screen", `(function(){var r=document.getElementById('talk_addr_btn').getBoundingClientRect();return r.width>0&&r.right<=800&&r.bottom<=document.getElementById('tabs').getBoundingClientRect().top;})()`, 3*time.Second)
+		screen.picture(shot("pi-2-addresses-800x480.png"))
+		screen.send("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1280, "height": 720, "deviceScaleFactor": 1, "mobile": false})
+		time.Sleep(300 * time.Millisecond)
+		for i := 0; i < int(n); i++ {
+			before := screen.eval(`talkData.address`)
+			screen.click("talk_addr_btn")
+			screen.waitFor("the code to move", fmt.Sprintf(`talkData.address!==%q`, fmt.Sprint(before)), 5*time.Second)
+			addr := fmt.Sprint(screen.eval(`talkData.address`))
+			if !strings.Contains(fmt.Sprint(screen.eval(`talkData.url`)), "https://"+addr+":") {
+				t.Errorf("the code doesn't point at %s", addr)
+			}
+			c, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", addr, talkPort), &tls.Config{InsecureSkipVerify: true})
+			if err != nil {
+				t.Errorf("connecting on %s: %v", addr, err)
+				continue
+			}
+			if err := c.ConnectionState().PeerCertificates[0].VerifyHostname(addr); err != nil {
+				t.Errorf("the certificate on %s: %v", addr, err)
+			}
+			c.Close()
+		}
+		if now := screen.eval(`talkData.address`); now != start {
+			t.Errorf("all the way round ended on %v, not %v", now, start)
+		}
+		// The phone below opens the URL read above, so nothing else has to change.
+	}
 	if shots != "" {
 		os.WriteFile(shot("qr-url.txt"), []byte(st.URL), 0o644)
 		if r, err := http.Get(base + "/talk/qr.png"); err == nil {
@@ -533,10 +569,15 @@ func TestPhoneCommentaryOnTheRecording(t *testing.T) {
 	t.Cleanup(func() { stopRec() })
 	time.Sleep(6 * time.Second)
 
-	phone.click("join")
+	// The button and Enter together, as a thumb might: one request, one microphone.
+	phone.eval(`document.getElementById('join').click(); document.getElementById('name').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}))`)
 	phone.waitFor("asking the clubhouse", phone.visible("w_cancel"), 15*time.Second)
 	phone.picture(shot("phone-2-waiting.png"))
 	screen.waitFor("their name on the screen", `document.getElementById('talk_list').textContent.indexOf('Sam Bell')>=0`, 10*time.Second)
+	time.Sleep(1500 * time.Millisecond) // a second request would be on the list by now
+	if n := screen.eval(`document.querySelectorAll('#talk_list li').length`); fmt.Sprint(n) != "1" {
+		t.Errorf("%v requests on the screen from one person", n)
+	}
 	screen.picture(shot("pi-3-asking.png"))
 	// Waiting isn't on air: 5 seconds of the phone's microphone running, and not a sound of it.
 	waitFrom := recAt()
@@ -659,6 +700,35 @@ func TestPhoneCommentaryOnTheRecording(t *testing.T) {
 	phone.eval(`stream.getTracks()[0].stop()`)
 	phone.waitFor("the phone to notice the mic has stopped", `window.talkDebug().micDown||window.talkDebug().track==='live'`, 6*time.Second)
 	heardAgain("mic stopped", "audio flowing again")
+	// Muted, and the page reloads: they still think they're muted, so they still are, the mic
+	// restarting by itself with nobody looking at the phone.
+	strapUp := func() bool {
+		t.Helper()
+		var v struct {
+			OnAir bool `json:"on_air"`
+		}
+		r, err := http.Get(base + "/talk/onair")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		json.NewDecoder(r.Body).Decode(&v)
+		return v.OnAir
+	}
+	phone.click("a_mute")
+	phone.waitFor("the phone to say it's muted", `document.getElementById('a_tag').textContent==='MUTED'`, 5*time.Second)
+	phone.send("Page.reload", nil)
+	phone.waitFor("the page back, still muted", `!!document.getElementById('a_leave')&&document.getElementById('a_leave').offsetParent!==null&&document.getElementById('a_tag').textContent==='MUTED'`, 20*time.Second)
+	phone.waitFor("the mic restarted under the mute", `(function(){var d=talkDebug();return d.track==='live'&&d.ctx==='running'&&!d.micDown;})()`, 30*time.Second)
+	time.Sleep(10 * time.Second) // longer than a dead mic takes to bring the strap down
+	if v, _ := phone.eval(`window.talkDebug().sent`).(float64); v != 0 {
+		t.Errorf("a reloaded page that was muted sent %v chunks", v)
+	}
+	if !strapUp() {
+		t.Error("the strap came down for a mute")
+	}
+	phone.click("a_mute")
+	heardAgain("muted reload", "audio flowing again")
 	// The page reloads (an iPhone throwing away a background tab): back where they were.
 	phone.send("Page.reload", nil)
 	phone.waitFor("the page back, still on air", phone.visible("a_leave"), 20*time.Second)

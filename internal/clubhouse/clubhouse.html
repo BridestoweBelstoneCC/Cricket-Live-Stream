@@ -410,6 +410,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
             <li id="talk_cert">The phone warns that the connection isn't private: it's this laptop's own certificate. Choose <b>Advanced</b> or <b>Show Details</b>, then carry on to the page.</li>
             <li>Allow the microphone, type a name and ask to go on air. They appear here for you to say yes.</li>
           </ol>
+          <p class="row muted hidden" id="talk_addr" style="gap:10px;margin:0">Phone can't open the page? <button class="btn small" id="talk_addr_btn" type="button"></button></p>
         </div>
       </div>
       <p class="say" id="talk_say"></p>
@@ -1002,6 +1003,11 @@ function talkDo(action, id, extra) {
   });
 }
 function talkVolume(db) { return !db ? 'Normal' : (db > 0 ? '+' : '−') + Math.abs(db) + ' dB'; }
+function talkNextCard(d) {
+  var list = (d && d.addresses) || [];
+  for (var i = 0; i < list.length; i++) if (list[i].ip === d.address) return list.length > 1 ? list[(i + 1) % list.length] : null;
+  return list[0] || null; // the code's on something not listed, like a VPN's address: offer a real card
+}
 function renderTalk() {
   var d = talkData; if (!d) return;
   var sw = $('talk_switch'); sw.setAttribute('aria-checked', d.on ? 'true' : 'false');
@@ -1022,7 +1028,8 @@ function renderTalk() {
     $('talk_air_meter').style.width = (air.level || 0) + '%';
     txt('talk_air_line', air.lost ? 'Lost touch with their phone. They come back by themselves if they\'re back within two minutes.'
       : air.muted ? 'Muted: viewers can\'t hear them. The meter still shows them talking.'
-      : air.hearing ? mins(air.for_sec) + ' on air' : 'Nothing coming from the phone: muted, or the signal has dropped.');
+      : air.phone_muted ? 'They\'ve muted themselves on their phone: viewers can\'t hear them.'
+      : air.hearing ? mins(air.for_sec) + ' on air' : 'Nothing coming from the phone: the signal or the microphone has dropped.');
     txt('talk_vol', talkVolume(air.gain_db));
     $('talk_quieter').disabled = !air.can_quieter; $('talk_louder').disabled = !air.can_louder;
     $('talk_mute').textContent = air.muted ? 'Unmute' : 'Mute';
@@ -1043,6 +1050,10 @@ function renderTalk() {
     ul.appendChild(li);
   }); }
   show('talk_steps', !air && !(d.waiting || []).length);
+  // Which of the laptop's networks the code points at. Only worth asking with more than one.
+  var nextCard = talkNextCard(d);
+  show('talk_addr', !!nextCard);
+  if (nextCard) txt('talk_addr_btn', 'Try ' + nextCard.card);
   var problem = d.error || (d.obs && !d.obs.ready ? d.obs.note : '') || (!d.url ? 'The laptop isn\'t on a network, so a phone can\'t reach it.' : '');
   say('talk_say', problem, d.error ? 'bad' : '');
 }
@@ -1053,6 +1064,7 @@ $('talk_switch').addEventListener('click', function () {
   }
   talkDo(talkData && talkData.on ? 'off' : 'on');
 });
+$('talk_addr_btn').addEventListener('click', function () { var n = talkNextCard(talkData); if (n) talkDo('address', n.ip); });
 $('talk_air_end').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('end', talkData.on_air.id); });
 $('talk_quieter').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('volume', talkData.on_air.id, {step: -1}); });
 $('talk_louder').addEventListener('click', function () { if (talkData && talkData.on_air) talkDo('volume', talkData.on_air.id, {step: 1}); });

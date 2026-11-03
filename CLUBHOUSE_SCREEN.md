@@ -207,7 +207,8 @@ Each new commentator starts at normal volume, not muted.
 - **Everyone watching can hear them, and the video stays on YouTube.** The page says so too.
 - **Keep the page open and the phone unlocked.** A locked phone stops sending. Their name comes
   off the stream after 20 seconds, but they keep their place for two minutes: go back to the
-  page and they carry on. If the page asks, tap the button to bring the microphone back.
+  page and they carry on. If the page asks, tap the button to bring the microphone back. Their
+  name also comes off if their microphone stops, but not for a mute.
 - **Don't play the stream out loud near the phone.** They'd hear themselves back seconds late.
 - **Standing near a camera?** Its microphone hears them too. There's no howling (nothing plays
   back into a microphone), but viewers may hear a faint second voice just behind the first.
@@ -219,7 +220,9 @@ Each new commentator starts at normal volume, not muted.
 
 - It's **one** voice at a time.
 - If the laptop's server crashes and match day restarts it, commentary carries on with the
-  same code, and whoever was on air stays on.
+  same code, and whoever was on air stays on. If the laptop was off for more than a few
+  minutes (a flat battery, a Windows restart), commentary comes back off: turn it on again,
+  with a new code.
 - It needs about 0.4 Mbit/s of wifi at the commentator's end. If their signal struggles, their
   phone says so.
 - OBS gets a source called **Commentary** in its mixer (with its own fader) the first time
@@ -292,7 +295,7 @@ the match-day screen's key is separate and carries on.
 | *The laptop doesn't accept this screen's pairing key any more* | Someone pressed **New key** on the laptop. On the screen: ⚙ → **Pair again**, and type the new key. |
 | A screen shows *No match on* and no buttons | It's paired with the score-only key. For the match-day buttons: ⚙ → **Pair again** with the other key. |
 | *No streaming laptop answered* when pairing | CricketStream open on the laptop, the clubhouse screen ticked, both on the same network. Windows Firewall may ask the first time — allow CricketStream on **private** networks. Or type the laptop's address. |
-| A phone can't open the page after scanning | It must be on the same network as the laptop (club wifi, not mobile data). Guest wifi often keeps devices apart: use the club's own network, or the Cloudflare tunnel. Check Windows Firewall allows CricketStream. |
+| A phone can't open the page after scanning | It must be on the same network as the laptop (club wifi, not mobile data). If the laptop is on more than one network, such as a cable to the cameras and the club's wifi, the code may point at the wrong one: press **Try ...** on the Commentary tab, and scan the new code. Someone already on air stays on. Guest wifi often keeps devices apart: use the club's own network, or the Cloudflare tunnel. Check Windows Firewall allows CricketStream. |
 | *This phone said no to the microphone* on the phone | Allow it for this page: the icon by the address, or the phone's settings for its browser. Then press **Ask to go on air** again. |
 | On air, but viewers can't hear them | Look at the Commentary tab: a message under the code says if OBS isn't ready. In OBS, check the **Commentary** fader. The bar not moving means nothing's arriving from the phone. |
 | The stream picture is black | OBS isn't showing anything yet (no camera added), or OBS is closed — see **Get ready**. |
