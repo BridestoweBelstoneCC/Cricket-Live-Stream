@@ -264,7 +264,7 @@ flowchart LR
 |---|---|---|
 | `internal/server` | HTTP surface, ingest, ball DB (pure-Go SQLite), OBS control, background services, auth | no |
 | `internal/scoring` | Deterministic scorer's book: strike rotation, extras, dismissals, figures, frame rendering; the event-sourced session | yes |
-| `internal/winpredict` | DLS-shaped resources × this season's scoring, normal-distribution totals; `Backtest()` | yes |
+| `internal/winpredict` | DLS-shaped resources × this season's scoring, played ball by ball from the current state over a range of possible days; `Backtest()` | yes |
 | `internal/resultcard` | Result card PNG from facts + look (built-in fonts) | yes |
 | `internal/matchpage` | Self-contained HTML match page; everything HTML-escaped | yes |
 | `internal/socialclips` | 1080×1920 ffmpeg filter graph; text only via `textfile=` | yes (+ ffmpeg) |

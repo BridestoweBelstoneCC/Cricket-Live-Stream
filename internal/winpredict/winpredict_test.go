@@ -1,7 +1,9 @@
 package winpredict
 
 import (
+	"encoding/json"
 	"math"
+	"os"
 	"testing"
 )
 
@@ -77,6 +79,167 @@ func TestNoOversLimitNoPrediction(t *testing.T) {
 }
 
 func ip(n int) *int { return &n }
+
+// The chain and the resources curve must agree on what an innings is worth, or the projection
+// and the chance would be talking about different matches.
+func TestAnInningsIsWorthItsExpectedTotal(t *testing.T) {
+	e := newEngine(model, 40)
+	dist := finalDist(e.odds[2], e.balls, 0, int(e.total*runsCap))
+	var mean, sum float64
+	for s, p := range dist {
+		mean += float64(s) * p
+		sum += p
+	}
+	near(t, sum, 1, 1e-6)
+	near(t, mean, 200, 4)
+}
+
+func TestTheDaysSpreadTotalsLikeTheLeague(t *testing.T) {
+	var ss, mean float64
+	e := newEngine(model, 40)
+	dist := make([]float64, int(e.total*runsCap)+1)
+	for k := range e.odds {
+		for s, p := range finalDist(e.odds[k], e.balls, 0, len(dist)-1) {
+			dist[s] += e.prior[k] * p
+		}
+	}
+	for s, p := range dist {
+		mean += float64(s) * p
+	}
+	for s, p := range dist {
+		ss += (float64(s) - mean) * (float64(s) - mean) * p
+	}
+	// model: 1.2 of 5.0 an over, so 48 runs on 200.
+	near(t, math.Sqrt(ss), 48, 6)
+}
+
+func TestChaseChanceMovesTheRightWay(t *testing.T) {
+	e := newEngine(model, 40)
+	for _, c := range [][2][4]int{
+		{{200, 100, 120, 2}, {200, 80, 120, 2}},  // more runs on the board
+		{{200, 100, 120, 2}, {200, 100, 120, 6}}, // fewer wickets down
+		{{200, 100, 120, 2}, {200, 100, 90, 2}},  // more balls left
+		{{180, 100, 120, 2}, {220, 100, 120, 2}}, // a smaller target, same score
+	} {
+		a, b := c[0], c[1]
+		if pa, pb := e.chase(a[0], a[1], a[2], a[3]), e.chase(b[0], b[1], b[2], b[3]); pa <= pb {
+			t.Errorf("%v (%.3f) should beat %v (%.3f)", a, pa, b, pb)
+		}
+	}
+	if p := e.chase(200, 0, 12, 0); p != 0 {
+		t.Errorf("200 off 2 overs: %v", p)
+	}
+}
+
+// Nothing's known before a ball is bowled, so it should be close to even, and the first innings
+// and the chase should meet: a first innings that finishes on T, and the chase starting after
+// it, are the same moment.
+func TestTheInningsMeet(t *testing.T) {
+	e := newEngine(model, 40)
+	first, proj := e.firstInnings(0, 240, 0)
+	near(t, first, 0.5, 0.08)
+	near(t, proj, 200, 5)
+	for _, total := range []int{150, 200, 260} {
+		end, _ := e.firstInnings(total, 0, 5)
+		near(t, end, 1-e.chaseFromStart(total+1), 1e-9)
+	}
+}
+
+// A chase off to a flyer looks like a good day, so it's better placed than the same state
+// reached by a side that's scraped there would be; the days are what's doing that.
+func TestTheInningsSoFarSaysWhatKindOfDayItIs(t *testing.T) {
+	e := newEngine(model, 40)
+	flying := e.days(0, 150, 150, 2)
+	crawling := e.days(0, 40, 150, 2)
+	if flying[4]+flying[3] <= crawling[4]+crawling[3] {
+		t.Fatalf("%v vs %v", flying, crawling)
+	}
+	var sum float64
+	for _, w := range flying {
+		sum += w
+	}
+	near(t, sum, 1, 1e-9)
+}
+
+func TestSameStateIsNotWorkedOutTwice(t *testing.T) {
+	first := Predict(2, 77, 3, 15.2, 40, model, 201)
+	second := Predict(2, 77, 3, 15.2, 40, model, 201)
+	if first.Batting != second.Batting || *first.Need != 124 || *second.BallsLeft != 148 {
+		t.Fatalf("%+v %+v", first, second)
+	}
+	if other := Predict(2, 150, 3, 25.0, 40, model, 201); other.Batting <= first.Batting {
+		t.Fatalf("a stale answer: %+v", other)
+	}
+}
+
+func BenchmarkFirstBallOfAChase(b *testing.B) {
+	for b.Loop() {
+		e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
+		e.chaseFromStart(250)
+	}
+}
+
+func BenchmarkABallInAChase(b *testing.B) {
+	e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
+	for b.Loop() {
+		e.chase(301, 30, 270, 1)
+	}
+}
+
+func BenchmarkABallInAFirstInnings(b *testing.B) {
+	e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
+	e.startCurve()
+	for b.Loop() {
+		e.firstInnings(30, 270, 1)
+	}
+}
+
+// The old formula, kept to compare against: the score's distance from the runs left on the
+// resources curve, on a normal distribution, with no idea of the day.
+func oldChase(m Model, overs float64, target int) float64 {
+	mean, sd := m.RPO*overs, m.SDRPO*overs
+	return 1 - 0.5*(1+math.Erf((float64(target)-0.5-mean)/(sd+2)/math.Sqrt2))
+}
+
+// Against a real season, when there is one: both models, at the start of each chase, which is
+// all the history can check. Point CRICKETSTREAM_WIN_HISTORY at a season_stats_cache.json.
+func TestAgainstRealSeason(t *testing.T) {
+	path := os.Getenv("CRICKETSTREAM_WIN_HISTORY")
+	if path == "" {
+		t.Skip("set CRICKETSTREAM_WIN_HISTORY to a season_stats_cache.json")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d struct {
+		History []Innings `json:"innings_history"`
+	}
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatal(err)
+	}
+	m := LeagueModel(d.History)
+	var oldB float64
+	n := 0
+	for _, h := range d.History {
+		if h.ChaseWon == nil || h.OversLimit == 0 || h.I1Runs == nil || *h.I1Runs == 0 {
+			continue
+		}
+		won := 0.0
+		if *h.ChaseWon {
+			won = 1
+		}
+		p := oldChase(m, float64(h.OversLimit), *h.I1Runs+1)
+		oldB += (p - won) * (p - won)
+		n++
+	}
+	if n == 0 {
+		t.Fatal("no finished chases in that file")
+	}
+	bt := Backtest(d.History, &m)
+	t.Logf("%d chases: old model Brier %.3f, this one %.3f (favourite won %d%%); 0.25 is a coin toss",
+		n, oldB/float64(n), *bt.Brier, *bt.FavouriteWonPct)
+}
 
 func TestModelFallsBackWithLittleData(t *testing.T) {
 	if !LeagueModel(nil).Default {
