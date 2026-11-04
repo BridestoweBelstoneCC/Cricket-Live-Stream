@@ -639,9 +639,8 @@ body.style-franchise .sc-row .sc-out { font-size: 15px; color: #a99fd6; }
 body.style-franchise .sc-row .sc-balls { font-size: 15px; color: #8a7fc0; }
 body.style-franchise .sc-row.notout .sc-name { color: #f7c948; }
 body.style-franchise .sc-bwl { border-left-color: rgba(247,201,72,0.18); }
-body.style-franchise #event-flash { border-radius: 3px; text-transform: uppercase; letter-spacing: 2px; }
-body.style-franchise #event-flash.boundary { background: #1e88e5; }
-body.style-franchise #event-flash.six      { background: #f7c948; color: #1a0e3d; }
+body.style-franchise #event-flash.four { --fx-accent: #1e88e5; }
+body.style-franchise #event-flash.six  { --fx-accent: #f7c948; --fx-tile: #f7c948; }
 
 /* ── Neon panels: black glass, a neon rule, glowing lime numbers, cyan labels ──────── */
 body.style-neon { font-family: 'Bahnschrift', 'CS Barlow Condensed', 'Segoe UI', sans-serif; }
@@ -705,9 +704,10 @@ body.style-neon .sc-header #sc-total { color: #d4ff00; text-shadow: 0 0 10px rgb
 body.style-neon .sc-row.notout .sc-name { color: #d4ff00; }
 body.style-neon .sc-bwl-row .sc-figs { color: #00e5ff; }
 body.style-neon .sc-bwl { border-left-color: rgba(0,229,255,0.15); }
-body.style-neon #event-flash { border-radius: 24px; background: rgba(5,5,9,0.9); border: 2px solid #fff; }
-body.style-neon #event-flash.boundary { background: rgba(5,5,9,0.9); border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 18px rgba(0,229,255,0.6); }
-body.style-neon #event-flash.six      { background: rgba(5,5,9,0.9); border-color: #ff2bd6; color: #ff6be3; box-shadow: 0 0 18px rgba(255,43,214,0.6); }
+body.style-neon #event-flash { --fx-band: #050509; --fx-font: 'Bahnschrift', 'CS Barlow Condensed', 'Segoe UI', sans-serif; }
+body.style-neon #event-flash.four { --fx-accent: #00e5ff; --fx-tile: #00e5ff; }
+body.style-neon #event-flash.six  { --fx-accent: #ff2bd6; --fx-tile: #ff2bd6; --fx-tile-ink: #fff; }
+body.style-neon #event-flash .fx-band { box-shadow: 0 0 28px var(--fx-accent); }
 
 /* ── Block panels: flat black, yellow numbers, square corners, heavy capitals ─────── */
 body.style-block { font-family: 'Segoe UI', Arial, sans-serif; }
@@ -755,9 +755,11 @@ body.style-block .sc-header #sc-team, body.style-block .sc-header #sc-total { co
 body.style-block .sc-row .sc-name, body.style-block .sc-bwl-row .sc-name { font-weight: 700; text-transform: uppercase; }
 body.style-block .sc-row.notout .sc-name { color: #ffde00; }
 body.style-block .sc-bwl { border-left: 2px solid #333; }
-body.style-block #event-flash { border-radius: 0; text-transform: uppercase; }
-body.style-block #event-flash.boundary { background: #0057ff; }
-body.style-block #event-flash.six      { background: #111; color: #ffde00; border: 3px solid #ffde00; }
+body.style-block #event-flash { --fx-skew: 0deg; --fx-font: 'Segoe UI Black', 'Segoe UI', 'Arial Black', Arial, sans-serif; }
+body.style-block #event-flash.four { --fx-accent: #0057ff; --fx-tile: #0057ff; --fx-tile-ink: #fff; --fx-word: 80px; --fx-num: 100px; --fx-w: 560px; }
+body.style-block #event-flash.six  { --fx-word: 118px; --fx-num: 140px; --fx-w: 600px; }
+body.style-block #flash-team { color: #fff; }
+body.style-block #event-flash.six  { --fx-accent: #ffde00; --fx-tile: #ffde00; }
 body.style-block #replay-banner { border-left-width: 8px; }
 
 /* ═══════════════════════════
@@ -870,13 +872,6 @@ body.style-block #replay-banner { border-left-width: 8px; }
 .over-moment.on { display: block; }
 
 /* ── v2.1: broadcast animation polish ──────────────────── */
-@keyframes flashSweep {
-  0%   { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
-  18%  { transform: translateX(0) skewX(-12deg);     opacity: 1; }
-  82%  { transform: translateX(0) skewX(-12deg);     opacity: 1; }
-  100% { transform: translateX(120%) skewX(-12deg);  opacity: 0; }
-}
-#event-flash.sweep { animation: flashSweep 2.4s cubic-bezier(.25,.9,.3,1) both; }
 @keyframes scorePulse { 0%{transform:scale(1)} 35%{transform:scale(1.18)} 100%{transform:scale(1)} }
 .score-pulse { animation: scorePulse .5s ease; display: inline-block; }
 
@@ -1215,16 +1210,136 @@ body.style-block #replay-banner { border-left-width: 8px; }
   color: rgba(255,255,255,0.78); font-size: 14px; font-weight: 600;
   white-space: nowrap; display: none;
 }
+/* The four and six graphics. Above the replay transition (z-index 100), which starts on the
+   same ball and used to bury them. The band is dark whatever the club's colours, so white
+   text always reads; the colours are accents. Transform and opacity only, bar the six's
+   arc: this runs in OBS on the laptop that's encoding the stream. */
 #event-flash {
-  position: absolute; bottom: 78px; left: 50%; transform: translateX(-50%);
-  padding: 8px 32px; border-radius: 5px;
-  font-size: 22px; font-weight: 900; letter-spacing: 1px;
-  color: #fff; white-space: nowrap;
-  opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  --fx-accent: var(--bat-lift, #4da3ff); --fx-tile: #fff; --fx-tile-ink: #0b0f17;
+  --fx-band: #0b0f17; --fx-skew: -10deg; --fx-dur: 3s;
+  --fx-font: 'CS Barlow Condensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --fx-w: 520px; --fx-h: 126px; --fx-num: 118px; --fx-word: 104px; --fx-tile-w: 136px;
+  position: absolute; left: 0; right: 0; bottom: 92px; height: 0; z-index: 110;
+  display: none; pointer-events: none; color: #fff; font-family: var(--fx-font);
 }
-#event-flash.show { opacity: 1; }
-#event-flash.boundary { background: #1a5fa8; }
-#event-flash.six      { background: #7c3ab5; }
+#event-flash.show { display: block; }
+#event-flash.six {
+  --fx-accent: #f5c842; --fx-tile: #f5c842; --fx-dur: 3.8s;
+  --fx-w: 570px; --fx-h: 172px; --fx-num: 170px; --fx-word: 150px; --fx-tile-w: 180px;
+}
+#event-flash i { display: block; position: absolute; font-style: normal; }
+.fx-band {
+  position: absolute; left: 50%; bottom: 0; width: var(--fx-w); height: var(--fx-h);
+  margin-left: calc(var(--fx-w) / -2); display: flex; align-items: stretch; overflow: hidden;
+  background: var(--fx-band); border-top: 5px solid var(--fx-accent); box-sizing: border-box;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.55); opacity: 0;
+  animation: fxBand var(--fx-dur) linear both;
+}
+.fx-tile {
+  flex: 0 0 var(--fx-tile-w); display: flex; align-items: center; justify-content: center;
+  background: var(--fx-tile); color: var(--fx-tile-ink); box-shadow: 14px 0 0 var(--bat, #2a6496);
+  animation: fxSlam .42s .1s cubic-bezier(.2,1.5,.4,1) both;
+}
+#flash-num {
+  font-size: var(--fx-num); font-weight: 900; line-height: 1;
+  transform: skewX(calc(var(--fx-skew) * -1));
+}
+.fx-copy {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center;
+  padding-left: 46px; transform: skewX(calc(var(--fx-skew) * -1));
+  animation: fxWord .34s .22s cubic-bezier(.2,.9,.3,1) both;
+}
+#flash-word { font-size: var(--fx-word); font-weight: 900; line-height: .86; letter-spacing: 3px; }
+#flash-team {
+  font-size: 22px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; line-height: 1.2;
+  color: var(--fx-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;
+}
+#flash-team:empty { display: none; }
+#event-flash .fx-shine {
+  top: 0; bottom: 0; left: 0; width: 34%;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.32), rgba(255,255,255,0));
+  animation: fxShine .8s .62s ease-in-out both;
+}
+#event-flash .fx-rope {
+  left: 50%; bottom: -5px; width: 1100px; height: 4px; margin-left: -550px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), #fff 18%, #fff 82%, rgba(255,255,255,0));
+  animation: fxRope var(--fx-dur) linear both;
+}
+/* A four: the ball racing across the outfield, ahead of the band. */
+.fx-streaks { position: absolute; left: 50%; bottom: 0; height: 126px; width: 0; }
+#event-flash .fx-streaks i {
+  left: 0; width: 300px; height: 7px; background: linear-gradient(90deg, rgba(255,255,255,0), var(--fx-accent) 60%, #fff);
+  animation: fxStreak .62s cubic-bezier(.3,.7,.5,1) both;
+}
+#event-flash .fx-streaks i:nth-child(1) { top: 12px; animation-delay: 0s; }
+#event-flash .fx-streaks i:nth-child(2) { top: 46px; animation-delay: .07s; width: 420px; }
+#event-flash .fx-streaks i:nth-child(3) { top: 78px; animation-delay: .03s; width: 240px; }
+#event-flash .fx-streaks i:nth-child(4) { top: 110px; animation-delay: .11s; }
+/* A six: up and over, then the burst behind the band. A four has neither. */
+.fx-arc, .fx-burst { display: none; }
+#event-flash.six .fx-streaks { display: none; }
+#event-flash.six .fx-arc {
+  display: block; position: absolute; left: 210px; bottom: 40px; width: 1500px; height: 640px; overflow: visible;
+}
+.fx-arc path {
+  fill: none; stroke: var(--fx-accent); stroke-width: 6; stroke-linecap: round;
+  stroke-dasharray: .34 1; filter: drop-shadow(0 0 8px var(--fx-accent));
+  animation: fxTrail 1s cubic-bezier(.35,.1,.6,1) both;
+}
+.fx-arc circle {
+  fill: #fff; filter: drop-shadow(0 0 10px var(--fx-accent));
+  offset-path: path('M60 640 C 420 40, 1050 -40, 1500 300'); offset-rotate: 0deg;
+  animation: fxFlight 1s cubic-bezier(.35,.1,.6,1) both;
+}
+/* Clipped at the band's foot: the burst goes up behind it and never over the scorebar. */
+#event-flash.six .fx-burst {
+  display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 900px; overflow: hidden;
+}
+#event-flash .fx-rays {
+  left: calc(50% - 360px); bottom: -274px; width: 720px; height: 720px; border-radius: 50%;
+  background: repeating-conic-gradient(var(--fx-accent) 0 7deg, rgba(0,0,0,0) 7deg 24deg);
+  -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,0) 22%, #000 36%, rgba(0,0,0,0) 70%);
+  mask-image: radial-gradient(circle, rgba(0,0,0,0) 22%, #000 36%, rgba(0,0,0,0) 70%);
+  animation: fxRays 1.7s .2s ease-out both;
+}
+#event-flash .fx-ring {
+  left: calc(50% - 130px); bottom: -44px; width: 260px; height: 260px; border-radius: 50%; box-sizing: border-box;
+  border: 10px solid var(--fx-accent); animation: fxRing .85s .2s cubic-bezier(.2,.7,.3,1) both;
+}
+#event-flash .fx-ring.two { border-color: #fff; border-width: 5px; animation-delay: .34s; }
+#flash-sparks { position: absolute; left: 50%; bottom: 86px; width: 0; height: 0; }
+#flash-sparks i {
+  left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 2px; background: var(--fx-accent);
+  animation: fxSpark 1.2s var(--d) cubic-bezier(.15,.7,.3,1) both;
+}
+#flash-sparks i:nth-child(3n) { background: #fff; }
+@keyframes fxBand {
+  0%   { opacity: 0; transform: translateX(-760px) skewX(var(--fx-skew)); }
+  3%   { opacity: 1; }
+  11%  { opacity: 1; transform: translateX(16px) skewX(var(--fx-skew)); }
+  16%  { opacity: 1; transform: translateX(0) skewX(var(--fx-skew)); }
+  90%  { opacity: 1; transform: translateX(0) skewX(var(--fx-skew)); }
+  100% { opacity: 0; transform: translateX(760px) skewX(var(--fx-skew)); }
+}
+@keyframes fxSlam { 0% { transform: scale(1.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes fxWord { 0% { transform: translateX(-46px) skewX(calc(var(--fx-skew) * -1)); opacity: 0; } 100% { transform: translateX(0) skewX(calc(var(--fx-skew) * -1)); opacity: 1; } }
+@keyframes fxShine { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+@keyframes fxRope {
+  0%, 6% { transform: scaleX(0); opacity: 1; } 18% { transform: scaleX(1); opacity: 1; }
+  88% { transform: scaleX(1); opacity: .9; } 96%, 100% { transform: scaleX(1); opacity: 0; }
+}
+@keyframes fxStreak {
+  0% { transform: translateX(-960px) skewX(-24deg); opacity: 0; } 15% { opacity: 1; }
+  80% { opacity: 1; } 100% { transform: translateX(860px) skewX(-24deg); opacity: 0; }
+}
+@keyframes fxTrail { 0% { stroke-dashoffset: .34; opacity: 1; } 80% { opacity: 1; } 100% { stroke-dashoffset: -.66; opacity: 0; } }
+@keyframes fxFlight { 0% { offset-distance: 0%; opacity: 1; } 88% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+@keyframes fxRays { 0% { transform: scale(.35) rotate(0); opacity: 0; } 18% { opacity: .85; } 100% { transform: scale(1.12) rotate(38deg); opacity: 0; } }
+@keyframes fxRing { 0% { transform: scale(.25); opacity: 0; } 4% { opacity: 1; } 100% { transform: scale(2.7); opacity: 0; } }
+@keyframes fxSpark {
+  0% { transform: translate(0, 0) rotate(0); opacity: 0; } 4% { opacity: 1; } 70% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(280deg) scale(.5); opacity: 0; }
+}
 </style>
 </head>
 <body>
@@ -1705,7 +1820,17 @@ body.style-block #replay-banner { border-left-width: 8px; }
   Need <span id="runs-required">—</span> off <span id="balls-remaining">—</span>
 </div>
 <div id="vs-badge"></div>
-<div id="event-flash"></div>
+<div id="event-flash">
+  <svg class="fx-arc" viewBox="0 0 1500 640" aria-hidden="true"><path pathLength="1" d="M60 640 C 420 40, 1050 -40, 1500 300"/><circle r="13"/></svg>
+  <div class="fx-streaks"><i></i><i></i><i></i><i></i></div>
+  <div class="fx-burst"><i class="fx-rays"></i><i class="fx-ring"></i><i class="fx-ring two"></i><span id="flash-sparks"></span></div>
+  <div class="fx-band">
+    <div class="fx-tile"><span id="flash-num">4</span></div>
+    <div class="fx-copy"><span id="flash-team"></span><span id="flash-word"></span></div>
+    <i class="fx-shine"></i>
+  </div>
+  <i class="fx-rope"></i>
+</div>
 
 <script>
 // Must match whatever host/port this page was actually loaded from -- a hardcoded host here
@@ -1861,6 +1986,9 @@ function applyColours(home, away, homeBatting) {
     // already uses for exactly this problem, rather than a second rule that does the same job.
     sb.style.setProperty('--bat-lift', wormColour(bat));
     sb.style.setProperty('--bowl-lift', wormColour(bowl));
+    // The four/six graphic sits outside the bar, so it needs them too.
+    var fx = el('event-flash');
+    if (fx) { fx.style.setProperty('--bat', bat); fx.style.setProperty('--bat-lift', wormColour(bat)); }
   }
   el('seg-batting-team').style.background = bat;
   el('seg-bowling-team').style.background = bowl;
@@ -1891,15 +2019,36 @@ function applyColours(home, away, homeBatting) {
 
 // ── Event flash ───────────────────────────────────────────
 let flashTimer = null;
-function showFlash(type, text) {
+const FLASH = {
+  four: { num: '4', word: 'FOUR', ms: 3100 },
+  six:  { num: '6', word: 'SIX',  ms: 3900 },
+};
+function showFlash(kind) {
   if (!cfg.graphics_boundary_flash) return;
   if (flashTimer) clearTimeout(flashTimer);
-  const f = el('event-flash');
-  f.textContent = text;
-  f.className = '';                 // restart the CSS animation from frame 0
-  void f.offsetWidth;               // force reflow so re-adding the class re-triggers it
-  f.className = 'show sweep ' + type;
-  flashTimer = setTimeout(() => { f.className = ''; }, 3500);
+  const f = el('event-flash'), g = FLASH[kind];
+  if (!_flashSparksMade) makeFlashSparks();
+  el('flash-num').textContent = g.num;
+  el('flash-word').textContent = g.word;
+  const team = el('batting-team-name');
+  el('flash-team').textContent = team ? team.textContent.trim() : '';
+  f.className = '';                 // restart the CSS animations from frame 0
+  void f.offsetWidth;               // force reflow so re-adding the class re-triggers them
+  f.className = 'show ' + kind;
+  flashTimer = setTimeout(() => { f.className = ''; }, g.ms);
+}
+// The six's sparks: evenly round the burst, every other one further out, so it looks the
+// same on every six rather than sometimes lopsided.
+var _flashSparksMade = false;
+function makeFlashSparks() {
+  _flashSparksMade = true;
+  var html = '';
+  for (var i = 0; i < 18; i++) {
+    var a = i / 18 * Math.PI * 2, r = i % 2 ? 300 : 430;
+    html += '<i style="--dx:' + Math.round(Math.cos(a) * r * 1.5) + 'px;--dy:' + Math.round(Math.sin(a) * r * 0.8) +
+            'px;--d:' + (0.2 + (i % 3) * 0.05).toFixed(2) + 's"></i>';
+  }
+  el('flash-sparks').innerHTML = html;
 }
 
 // ── Replay banner ─────────────────────────────────────────
@@ -3127,8 +3276,8 @@ function processPCSData(state) {
     var newBalls = tickerChanged
       ? newTickerBalls(parsed, tickerOver, _lastBallOver, _lastBallCount) : [];
     newBalls.forEach(function(newBall) {
-      if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('boundary','FOUR!'); triggerReplay('Boundary'); }
-      else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six','SIX!'); triggerReplay('Six'); }
+      if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('four'); triggerReplay('Boundary'); }
+      else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six'); triggerReplay('Six'); }
     });
     // v2.2: hat-trick chain feeds off the same new-token stream, plus a wickets-delta
     // fallback inside for the over-completing wicket the ticker didn't show. Run on the
@@ -4025,7 +4174,7 @@ function runDemoTick(home,away) {
       ],extras:'12'}]
     );
   }
-  else if (tick===6) { showFlash('boundary','FOUR!'); showReplayBanner('Boundary'); }
+  else if (tick===6) { showFlash('four'); showReplayBanner('Boundary'); }
 }
 
 // ── Main poll ─────────────────────────────────────────────
@@ -4187,8 +4336,8 @@ function startPreview(styleOverride) {
 // through the same function the live overlay uses, with fixed demo figures. None of them
 // makes a request (see startPreview's cfg).
 var PREVIEW_GRAPHICS = {
-  four: function() { cfg.graphics_boundary_flash = true; showFlash('four', 'FOUR!'); },
-  six: function() { cfg.graphics_boundary_flash = true; showFlash('six', 'SIX!'); },
+  four: function() { cfg.graphics_boundary_flash = true; showFlash('four'); },
+  six: function() { cfg.graphics_boundary_flash = true; showFlash('six'); },
   wicket: function() {
     cfg.graphics_fow = true;
     triggerFOW('J Hatton', 48, 31, 'c Smith b Ewen', 137, 5);

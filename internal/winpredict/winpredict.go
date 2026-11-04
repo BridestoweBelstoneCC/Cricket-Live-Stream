@@ -1,6 +1,6 @@
 // Package winpredict is the live win probability for limited-overs club cricket.
 //
-// Two ingredients:
+// Three ingredients:
 //   - How much batting is left: a DLS-style "resources" curve — the fraction of a full
 //     innings' runs a side can still expect, from the balls left and the wickets in hand.
 //     Same shape as Duckworth-Lewis (Z0·F(w)·(1 - e^(-b·u/F(w)))): late overs are worth
@@ -8,12 +8,11 @@
 //     remain.
 //   - How this league scores: the average and spread of first-innings totals from this
 //     season's real scorecards (the season-stats download), as runs per over so
-//     different formats (40, 45, 50 overs…) pool together.
-//
-// First innings: P(batting side wins) = P(the chase falls short of the projected total).
-// Second innings: P(chasing side gets the runs still needed from the resources left).
-// Both treat innings scores as normally distributed — a simple, honest model; Backtest()
-// reports how it does on the league's own results.
+//     different formats (40, 45, 50 overs…) pool together, and its wickets.
+//   - Ball by ball from here, on a range of possible days (engine.go): the second innings is
+//     the chance of getting the runs from this state, the first every total it could reach
+//     against the chance of that total being chased. Backtest() reports how it does on the
+//     league's own results.
 package winpredict
 
 import (
@@ -32,8 +31,6 @@ const (
 	Curve             = 1.6 // how strongly scoring accelerates late in an innings
 	WicketPower       = 1.3 // F(w) = (wickets in hand / 10) ** 1.3
 )
-
-func phi(x float64) float64 { return 0.5 * (1 + math.Erf(x/math.Sqrt2)) }
 
 // Resources is the fraction (0..1) of a full innings' expected runs still to come.
 func Resources(ballsLeft, wicketsLost, totalBalls int) float64 {
@@ -58,6 +55,7 @@ type Innings struct {
 type Model struct {
 	RPO     float64 `json:"rpo"`
 	SDRPO   float64 `json:"sd_rpo"`
+	Wkts    float64 `json:"wkts,omitempty"` // first-innings wickets, on average (0: DefaultWkts)
 	Matches int     `json:"matches"`
 	Default bool    `json:"default"`
 }
@@ -66,9 +64,15 @@ type Model struct {
 // limit. Falls back to club-cricket defaults with little data.
 func LeagueModel(history []Innings) Model {
 	var rates []float64
+	var wkts float64
+	wn := 0
 	for _, m := range history {
 		if m.OversLimit != 0 && m.I1Runs != nil && *m.I1Runs > 0 {
 			rates = append(rates, float64(*m.I1Runs)/float64(m.OversLimit))
+			if m.I1Wkts != nil {
+				wkts += float64(*m.I1Wkts)
+				wn++
+			}
 		}
 	}
 	if len(rates) < MinMatches {
@@ -84,7 +88,11 @@ func LeagueModel(history []Innings) Model {
 		ss += (r - mean) * (r - mean)
 	}
 	sd := math.Sqrt(ss / float64(len(rates)-1))
-	return Model{RPO: mean, SDRPO: math.Max(sd, mean*0.08), Matches: len(rates)}
+	out := Model{RPO: mean, SDRPO: math.Max(sd, mean*0.08), Matches: len(rates)}
+	if wn >= MinMatches {
+		out.Wkts = wkts / float64(wn)
+	}
+	return out
 }
 
 // Balls turns "22.3" or 22.3 into 135 balls (the digit after the point is balls).
@@ -122,32 +130,28 @@ func Predict(innings, score, wickets int, overs any, oversLimit float64, model M
 	}
 	// The limit can be fractional (balls bowled + balls left, over 6); like the original,
 	// the ball count truncates it but the expected total uses it as is.
-	totalBalls := int(oversLimit) * 6
+	totalBalls := max(int(oversLimit)*6, 6)
 	ballsLeft := max(totalBalls-Balls(overs), 0)
-	mean := model.RPO * oversLimit
-	sd := model.SDRPO * oversLimit
-	r := Resources(ballsLeft, wickets, totalBalls)
-	var p float64
-	out := &Prediction{}
-	if innings >= 2 && target != 0 {
-		need := target - score
-		switch {
-		case need <= 0:
-			p = 1
-		case ballsLeft == 0 || wickets >= 10:
-			p = 0
-		default:
-			mu := mean * r
-			sigma := sd*math.Sqrt(math.Max(r, 1e-6)) + 2.0
-			p = 1 - phi((float64(need)-0.5-mu)/sigma)
+	chasing := innings >= 2 && target != 0
+	key := predictKey{innings, score, wickets, ballsLeft, target, oversLimit, model}
+	engineMu.Lock()
+	defer engineMu.Unlock()
+	if !lastSet || lastKey != key {
+		e := engineFor(model, oversLimit)
+		if chasing {
+			lastChance, lastProj = e.chase(target, score, ballsLeft, wickets), 0
+		} else {
+			lastChance, lastProj = e.firstInnings(score, ballsLeft, wickets)
 		}
+		lastKey, lastSet = key, true
+	}
+	p := lastChance
+	out := &Prediction{}
+	if chasing {
 		n, bl := max(target-score, 0), ballsLeft
 		out.Need, out.BallsLeft = &n, &bl
 	} else {
-		projected := float64(score) + mean*r
-		sigma1 := sd * math.Sqrt(math.Max(r, 0))
-		p = phi((projected - mean) / math.Sqrt(sd*sd+sigma1*sigma1))
-		pr := int(math.RoundToEven(projected))
+		pr := int(math.RoundToEven(lastProj))
 		out.Projected = &pr
 	}
 	pct := int(math.RoundToEven(p * 100))
