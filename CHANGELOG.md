@@ -14,6 +14,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
   wickets and milestones, each one a link to that moment in the match video, and the
   scorecard's fall of wickets links there too.
+- **New four and six graphics.** Bigger, in the batting side's colours and each scorebar
+  style's look: a four races across the outfield, a six goes up and over with a burst behind
+  it. **Fixed:** the old one sat off-centre, and the replay's black transition, which starts on
+  the same ball, covered it for most of its first second.
 
 ---
 
