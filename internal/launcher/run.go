@@ -31,15 +31,22 @@ const banner = `
 ╚══════════════════════════════════════════════════════╝
 `
 
-// ServerMaxRestarts caps the crash-restart loop: the server never exits on its own in
-// normal operation, so an exit is a crash — but a broken config mustn't loop forever.
+// ServerMaxRestarts is how many quick restarts the crash-restart loop tries: the server
+// never exits on its own in normal operation, so an exit is a crash. After these it slows
+// to one try every serverRetryEvery.
 const ServerMaxRestarts = 3
 
-// serverSettledAfter: a server that ran this long before it died was working, so the
-// crashes before it don't count towards the cap. Without this, three crashes hours apart
-// on a long match day ended the graphics for the rest of the match — a crash loop dies
-// within seconds of starting, every time.
-const serverSettledAfter = 10 * time.Minute
+var (
+	// serverRetryEvery: giving up here used to end the graphics for the rest of the match, and
+	// left a replay on air, when there may be nobody at the ground to open the app again. So
+	// it never stops trying; a fault that can't fix itself (a port in use) costs one failed
+	// start a minute, and the window says what's going on.
+	serverRetryEvery = time.Minute
+	// serverSettledAfter: a server that ran this long was working, so the crashes before it
+	// no longer count. Three crashes hours apart aren't a crash loop, which dies within
+	// seconds of starting, every time. It's also when the club is told the server's back.
+	serverSettledAfter = 10 * time.Minute
+)
 
 var timeNow = time.Now // swappable for tests
 
@@ -67,8 +74,9 @@ var (
 )
 
 // watchHung kills p if it stops answering after having answered once. It returns when
-// done closes (p exited) or stop does (the restart loop is moving on without it).
-func watchHung(p Proc, done, stop <-chan struct{}) {
+// done closes (p exited) or stop does (the restart loop is moving on without it). It closes
+// answering the first time p answers.
+func watchHung(p Proc, done, stop <-chan struct{}, answering chan<- struct{}) {
 	tick := time.NewTicker(hungCheckEvery)
 	defer tick.Stop()
 	started := time.Now()
@@ -82,6 +90,9 @@ func watchHung(p Proc, done, stop <-chan struct{}) {
 		case <-tick.C:
 		}
 		if serverAnswers() {
+			if !answered {
+				close(answering)
+			}
 			answered, missed = true, 0
 			continue
 		}
@@ -144,6 +155,9 @@ type Options struct {
 	// its own; nil = the default browser). token is the launcher's own login, "" with no
 	// club password.
 	OpenPanel func(url, token string)
+	// ServerDown says the quick restarts ran out (true) and a later try answered (false), so
+	// the window can stop showing a control panel that isn't there.
+	ServerDown func(down bool)
 	// Interrupt stops match day (the app's window sends on it); nil = Ctrl+C.
 	Interrupt <-chan os.Signal
 }
@@ -430,6 +444,10 @@ func Run(o Options) int {
 		defer signal.Stop(ch)
 		interrupt = ch
 	}
+	if o.ServerDown != nil {
+		serverDown = o.ServerDown
+		defer func() { serverDown = func(bool) {} }()
+	}
 	return RunServerWithRestarts(p, launch, token, ServerMaxRestarts, 2*time.Second, time.Sleep, interrupt)
 }
 
@@ -566,37 +584,101 @@ func startServer(bind string, manual bool) (Proc, error) {
 	return watchProc(cmd, stdin), nil
 }
 
-// RunServerWithRestarts waits on the server, relaunching it (capped) if it exits on its
-// own, and handles Ctrl+C: the sponsor airtime and match report are offered while the
-// server is STILL RUNNING, then it's stopped. Everything it touches is injected, so a test
-// can drive it with fake processes and no real waiting.
+// sayServerKeepsCrashing is said once per crash loop: the "keeps crashing" line is what the
+// window turns into a notification and a post to the club's Discord channel.
+func sayServerKeepsCrashing(maxRestarts int) {
+	log(fmt.Sprintf("The server keeps crashing (restarted it %d times)", maxRestarts), "err")
+	for _, l := range []string{
+		"The stream carries on, but the score and graphics won't update and replays won't run.",
+		"CricketStream keeps trying every minute until you stop match day.",
+		"Whatever stopped it is in the lines above. Common causes:",
+		fmt.Sprintf("  - Port %d already in use (another copy still running? on a Mac,", server.Port),
+		"    AirPlay Receiver: System Settings → General → AirDrop & Handoff)",
+		"  - A setting in config.ini the server can't read",
+		"If it isn't obvious, please open an issue with those lines:",
+		"  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues",
+	} {
+		fmt.Println("    " + l)
+	}
+}
+
+// cutBackFromReplay takes viewers off a replay nothing is left to end. A panic here would take
+// match day down with it, for the sake of a scene change.
+func cutBackFromReplay(leave func() (string, bool)) {
+	defer func() { recover() }()
+	if main, cut := leave(); cut {
+		log("OBS was left on the replay scene with no server to end it — cut back to "+main, "warn")
+	}
+}
+
+// RunServerWithRestarts waits on the server, relaunching it if it exits on its own: quickly
+// at first, then once every serverRetryEvery for as long as it takes. It handles Ctrl+C: the
+// sponsor airtime and match report are offered while the server is STILL RUNNING, then it's
+// stopped. Everything it touches is injected, so a test can drive it with fake processes and
+// no real waiting.
 func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, maxRestarts int,
 	backoff time.Duration, sleep func(time.Duration), interrupt <-chan os.Signal) int {
-	restarts := 0
+	restarts, tries := 0, 0
+	// told: the club has heard it keeps crashing, and hasn't yet heard it's back. down: the
+	// window is saying the server's not there.
+	told, down := false, false
+	// noServer is the end of match day with no server to ask for the report.
+	noServer := func() {
+		fmt.Println("\n  The server isn't running, so there's no match report or sponsor airtime for now.")
+		fmt.Println("  Both are in the control panel (After the match) the next time it's running.")
+		resumeOBSUpdates()
+	}
 	for {
 		started := timeNow()
 		exited := make(chan struct{})
 		go func(p Proc) { p.Wait(); close(exited) }(p)
-		stopWatch, watchDone := make(chan struct{}), make(chan struct{})
-		go func(p Proc) { watchHung(p, exited, stopWatch); close(watchDone) }(p)
+		stopWatch, watchDone, answered := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		go func(p Proc) { watchHung(p, exited, stopWatch, answered); close(watchDone) }(p)
 		// Every way out of this round ends its watcher first: one left running would
 		// check (and could kill) whatever answers on the port next.
 		endWatch := func() { close(stopWatch); <-watchDone }
-		select {
-		case <-interrupt:
-			offerMatchReport(token)
-			fmt.Println("\n  Shutting down server...")
-			p.Terminate()
+		var answering <-chan struct{}
+		if down {
+			answering = answered
+		}
+		var settled <-chan time.Time
+		if told {
+			settled = time.After(serverSettledAfter)
+		}
+	wait:
+		for {
 			select {
+			case <-interrupt:
+				if !down {
+					offerMatchReport(token)
+				}
+				fmt.Println("\n  Shutting down server...")
+				p.Terminate()
+				select {
+				case <-exited:
+				case <-time.After(5 * time.Second):
+					p.Kill()
+				}
+				endWatch()
+				if down {
+					noServer()
+					return 0
+				}
+				fmt.Println("  Server stopped. Bye!")
+				resumeOBSUpdates()
+				return 0
+			case <-answering:
+				answering = nil
+				down = false
+				serverDown(false)
+				log("The server is answering again", "ok")
+			case <-settled:
+				settled = nil
+				told, restarts, tries = false, 0, 0
+				log(fmt.Sprintf("Server's been running again for %d minutes", int(serverSettledAfter.Minutes())), "ok")
 			case <-exited:
-			case <-time.After(5 * time.Second):
-				p.Kill()
+				break wait
 			}
-			endWatch()
-			fmt.Println("  Server stopped. Bye!")
-			resumeOBSUpdates()
-			return 0
-		case <-exited:
 		}
 		endWatch()
 		// The server exited on its own — a crash, not a shutdown.
@@ -604,16 +686,33 @@ func RunServerWithRestarts(p Proc, launch func() (Proc, error), token string, ma
 			restarts = 0
 		}
 		if restarts >= maxRestarts {
-			dieFn(fmt.Sprintf("The server keeps crashing (restarted it %d times)", maxRestarts), "",
-				"Whatever killed it is printed above this box — scroll up; the",
-				"last few lines before each restart are the useful ones.", "",
-				"Common causes:",
-				fmt.Sprintf("  - Port %d already in use (another copy still running? on a Mac,", server.Port),
-				"    AirPlay Receiver: System Settings → General → AirDrop & Handoff)",
-				"  - A setting in config.ini the server can't read", "",
-				"If it isn't obvious, please open an issue with those lines:",
-				"  https://github.com/BridestoweBelstoneCC/Cricket-Live-Stream/issues")
-			return 1
+			if !told {
+				told = true
+				sayServerKeepsCrashing(maxRestarts)
+			}
+			if !down {
+				down = true
+				serverDown(true)
+			}
+			// Every time round, as OBS may not have answered the last time. On its own goroutine:
+			// a frozen OBS mustn't hold up Stop or the next try. No server is running here, and
+			// the next isn't started for a minute, so this can't cut away from a real replay.
+			go cutBackFromReplay(leaveReplay)
+			select {
+			case <-interrupt:
+				noServer()
+				return 0
+			case <-time.After(serverRetryEvery):
+			}
+			tries++
+			log(fmt.Sprintf("Trying to start the server again (every minute, %d so far)", tries), "warn")
+			np, err := launch()
+			if err != nil {
+				log("Couldn't start the server: "+err.Error(), "err")
+				continue
+			}
+			p = np
+			continue
 		}
 		restarts++
 		log(fmt.Sprintf("Server stopped unexpectedly — restarting (attempt %d/%d)", restarts, maxRestarts), "warn")
@@ -648,9 +747,10 @@ func AlreadyRunning() bool {
 
 // Swappable for tests: the shutdown steps that talk to the real server and OBS.
 var (
-	dieFn            = console.Die
 	offerMatchReport = OfferMatchReport
 	resumeOBSUpdates = ResumeOBSUpdates
+	serverDown       = func(bool) {}
+	leaveReplay      = server.LeaveReplay
 )
 
 // ResumeOBSUpdates puts OBS's update check back after the match (OBS prep paused it).

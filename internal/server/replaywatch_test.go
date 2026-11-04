@@ -53,6 +53,37 @@ func TestReplayLeftOnAirIsCutBack(t *testing.T) {
 	}
 }
 
+// With no server, there's no replay it could be, so the first look is enough.
+func TestLeaveReplayCutsBackAtTheFirstLook(t *testing.T) {
+	cuts := replayWatchRig(t, "Replay", true)
+	if main, cut := LeaveReplay(); !cut || main != "Main" {
+		t.Fatal(main, cut)
+	}
+	if len(*cuts) != 1 || (*cuts)[0] != "Main" {
+		t.Fatalf("cuts: %v", *cuts)
+	}
+}
+
+func TestLeaveReplayLeavesEverythingElseAlone(t *testing.T) {
+	for _, c := range []struct {
+		scene string
+		live  bool
+	}{{"Replay", false}, {"Main", true}, {"Main-Bowler", true}} {
+		cuts := replayWatchRig(t, c.scene, c.live)
+		if _, cut := LeaveReplay(); cut || len(*cuts) != 0 {
+			t.Fatalf("%v: cut %v, cuts %v", c, cut, *cuts)
+		}
+	}
+}
+
+func TestLeaveReplayWithOBSNotAnswering(t *testing.T) {
+	cuts := replayWatchRig(t, "Replay", true)
+	obsCall = func(M, []obsws.Req, time.Duration) []map[string]any { return nil }
+	if _, cut := LeaveReplay(); cut || len(*cuts) != 0 {
+		t.Fatal(cut, *cuts)
+	}
+}
+
 func TestReplayRunningIsLeftAlone(t *testing.T) {
 	cuts := replayWatchRig(t, "Replay", true)
 	noteReplay(60)

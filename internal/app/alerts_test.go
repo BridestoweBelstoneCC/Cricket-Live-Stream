@@ -135,7 +135,17 @@ func TestLogLineNotice(t *testing.T) {
 		t.Fatal("restart not noticed")
 	}
 	if n := logLineNotice("The server keeps crashing (restarted it 5 times)"); n == nil {
-		t.Fatal("give-up not noticed")
+		t.Fatal("crash loop not noticed")
+	}
+	if n := logLineNotice("  ✓ Server's been running again for 10 minutes"); n == nil || n.Warn {
+		t.Fatal("recovery not noticed")
+	}
+	// Said every minute during a crash loop: one of these a minute would flood the club's Discord.
+	if n := logLineNotice("  ⚠ Trying to start the server again (every minute, 7 so far)"); n != nil {
+		t.Fatalf("%v", n)
+	}
+	if n := logLineNotice("  ✓ The server is answering again"); n != nil {
+		t.Fatalf("%v", n)
 	}
 	if n := logLineNotice("  ✓ Server started"); n != nil {
 		t.Fatalf("%v", n)

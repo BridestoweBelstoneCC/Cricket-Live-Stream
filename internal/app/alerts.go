@@ -136,7 +136,10 @@ func logLineNotice(line string) *notice {
 		return &notice{"CricketStream restarted its server", "It stopped unexpectedly and was restarted — the graphics carry on.", true, false}
 	}
 	if strings.Contains(line, "keeps crashing") {
-		return &notice{"CricketStream needs attention", "The server keeps stopping — see the Activity log.", true, false}
+		return &notice{"CricketStream needs attention", "The server keeps stopping, so the score and graphics aren't updating. It's trying again every minute. The stream carries on. See the Activity log.", true, false}
+	}
+	if strings.Contains(line, "Server's been running again") {
+		return &notice{"CricketStream's server is back", "It's been running without a problem for a while now.", false, false}
 	}
 	return nil
 }

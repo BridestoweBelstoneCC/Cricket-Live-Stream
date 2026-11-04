@@ -151,6 +151,13 @@ problem + what to do + pause) or print and `console.Pause()`.
   got at the start and can't type a password, so someone on air couldn't be taken off. "Log
   everyone out" is kept through a crash in `session_epoch.txt`; a server started by hand still
   makes a new one each start.
+- **Match day never gives up on the server.** After `ServerMaxRestarts` quick restarts,
+  `RunServerWithRestarts` tries once every `serverRetryEvery` until someone stops match day. The
+  line with "keeps crashing" becomes a Discord post (`logLineNotice`), so it's printed once per
+  crash loop, and the retry lines must never contain that or "Server stopped unexpectedly".
+  `replaywatch.go` dies with the server, so here the launcher does its job (`server.LeaveReplay`,
+  at each try, only with no server running). Tests must stub `leaveReplay` (`stubShutdown` does):
+  it talks to whatever OBS is on the machine.
 - **`internal/integration/matchday_windows_test.go` is the fault test** (opt-in,
   `CRICKETSTREAM_MATCHDAY=1`, about 30 minutes): the real app on a portable OBS, with everything
   on, measuring the bytes that reach a local receiver while the server's killed and hung, OBS

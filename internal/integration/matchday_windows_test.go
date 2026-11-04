@@ -999,7 +999,7 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 	}
 	report("10 screen and phone gone")
 
-	// ── 11. A server that keeps crashing: the restarts run out, but the stream mustn't care ──
+	// ── 11. A server that keeps crashing: the quick restarts run out, and it keeps trying ──
 	for i := 0; i < 4; i++ {
 		var p int
 		for w := 0; w < 40 && p == 0; w++ {
@@ -1011,22 +1011,56 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 			t.Logf("  no server to kill on round %d", i+1)
 			break
 		}
+		if i == 3 { // the last straw, with a replay left on air and nothing to end it
+			tryOBS("SetCurrentProgramScene", map[string]any{"sceneName": "Replay"})
+		}
 		t.Logf("  crash loop: killing pid %d", p)
 		if pr, err := os.FindProcess(p); err == nil {
 			pr.Kill()
 		}
 		time.Sleep(3 * time.Second)
 	}
-	// With CRICKETSTREAM_NO_PAUSE there's nobody to read the window's explanation, so the app
-	// ends once it's given up; a real one waits with the explanation on screen.
-	until("the restarts run out", 60*time.Second, func() bool {
-		select {
-		case <-appDone:
-			return true
-		default:
-			return false
+	if !until("the window says the server's gone", 60*time.Second, func() bool { return appStatus()["server_gone"] == true }) {
+		t.Errorf("FAILED: the window didn't say the server keeps stopping")
+	}
+	if !until("OBS is cut back from the replay with the server down", 20*time.Second, func() bool {
+		s := scene()
+		return s == "Main" || s == "Main-Bowler"
+	}) {
+		t.Errorf("FAILED: stuck on scene %q with the server down", scene())
+	}
+	// A fault that can't fix itself: something else holds the port, so a try fails.
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Logf("  couldn't hold the server's port: %v", err)
+	} else {
+		failed := func() bool { return strings.Contains(log.String(), "(every minute, 1 so far)") }
+		if !until("a try with the port taken", 90*time.Second, failed) {
+			t.Errorf("FAILED: no try a minute after the restarts ran out")
 		}
-	})
+		time.Sleep(15 * time.Second) // it fails to bind and exits
+		if appStatus()["server_gone"] != true {
+			t.Errorf("FAILED: the window stopped saying the server's gone while it couldn't start")
+		}
+		ln.Close()
+	}
+	if !until("a later try brings the server back", 100*time.Second, func() bool { st, _ := do("GET", base+"/health", nil, nil); return st == 200 }) {
+		t.Errorf("FAILED: the server never came back after the crash loop")
+	}
+	if !until("the window notices it's back", 60*time.Second, func() bool { return appStatus()["server_gone"] == false }) {
+		t.Errorf("FAILED: the window still says the server's gone")
+	}
+	if !until("the overlay polls again", 90*time.Second, overlayPolling) {
+		t.Errorf("FAILED: the overlay didn't come back after the crash loop")
+	}
+	select {
+	case <-appDone:
+		t.Errorf("FAILED: the app ended during a crash loop")
+	default:
+	}
+	if n := strings.Count(log.String(), "The server keeps crashing"); n != 1 {
+		t.Errorf("FAILED: said it keeps crashing %d times; that's a Discord post each", n)
+	}
 	if !lineMoving() || !streaming() {
 		t.Errorf("FAILED: the stream stopped over a server crash loop")
 	}

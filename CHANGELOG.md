@@ -11,6 +11,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   nothing to install. You choose who goes on air. Viewers see their name in the corner, and
   the ground's sound dips under their voice by itself. Volume and mute on both the screen
   and the phone. See CLUBHOUSE_SCREEN.md.
+- **Match day no longer gives up on the server.** After three quick restarts it keeps trying
+  once a minute until you stop match day. The window says what's happening, and the club's
+  Discord hears once when it starts and once when the server's been back for 10 minutes. A
+  replay on air when it happens is cut back to the live picture rather than left there.
 - **A new win predictor underneath the same panel.** It now works through the match ball by
   ball from the current state, as WASP does, over a range of possible days, and what's
   happened so far says which day this looks like. It's more decisive than the old one once a
