@@ -11,6 +11,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   nothing to install. You choose who goes on air. Viewers see their name in the corner, and
   the ground's sound dips under their voice by itself. Volume and mute on both the screen
   and the phone. See CLUBHOUSE_SCREEN.md.
+- **Match day no longer gives up on the server.** After three quick restarts it keeps trying
+  once a minute until you stop match day. The window says what's happening, and the club's
+  Discord hears once when it starts and once when the server's been back for 10 minutes. A
+  replay on air when it happens is cut back to the live picture rather than left there.
 - **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
   wickets and milestones, each one a link to that moment in the match video, and the
   scorecard's fall of wickets links there too.

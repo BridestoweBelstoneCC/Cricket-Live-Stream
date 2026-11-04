@@ -836,6 +836,43 @@ func TestPrecheckFromTheHomeScreen(t *testing.T) {
 	}
 }
 
+// The page's status says when the server's gone, and stops once it's back or match day ends.
+func TestStatusSaysWhenTheServerIsGone(t *testing.T) {
+	ta := newTestApp(t)
+	ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"})
+	saved := runLauncher
+	t.Cleanup(func() { runLauncher = saved })
+	report := make(chan func(bool), 1)
+	block := make(chan struct{})
+	runLauncher = func(o launcher.Options) int {
+		o.OpenPanel("http://127.0.0.1:5000/control", "")
+		report <- o.ServerDown
+		<-block
+		return 0
+	}
+	ta.api("POST", "start", M{})
+	ta.waitFor("running", phaseIs(phRunning))
+	down := <-report
+	gone := func() any { return ta.status()["server_gone"] }
+	if gone() != false {
+		t.Fatal("gone before anything happened")
+	}
+	down(true)
+	if gone() != true {
+		t.Fatal("not gone")
+	}
+	down(false)
+	if gone() != false {
+		t.Fatal("still gone after it came back")
+	}
+	down(true)
+	close(block)
+	ta.waitFor("stopped", phaseIs(phStopped))
+	if gone() != false {
+		t.Fatal("still gone after match day ended")
+	}
+}
+
 // The check, run the way the home screen runs it, in an app folder of its own, sees
 // config.ini's keys (seeded into the state as match day would) — with a stand-in check
 // in place of the real ones, so no test talks to PlayCricket.

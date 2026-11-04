@@ -33,30 +33,31 @@ type realExitedProc struct{ *osProc }
 
 // A relaunch that fails is tried again, on a process that has really gone.
 func TestAFailedRelaunchIsTriedAgain(t *testing.T) {
-	_, died := stubShutdown(t)
+	stubShutdown(t)
+	retrySoon(t, time.Millisecond)
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	first := watchProc(cmd, nil)
+	sig := make(chan os.Signal, 1)
 	launches := 0
 	launch := func() (Proc, error) {
-		launches++
+		if launches++; launches == 6 { // past the quick restarts, into the slow ones
+			sig <- os.Interrupt
+		}
 		return nil, errors.New("couldn't start it")
 	}
 	code := make(chan int, 1)
 	go func() {
-		code <- RunServerWithRestarts(realExitedProc{first}, launch, "", 3, 0, func(time.Duration) {}, make(chan os.Signal))
+		code <- RunServerWithRestarts(realExitedProc{first}, launch, "", 3, 0, func(time.Duration) {}, sig)
 	}()
 	select {
 	case c := <-code:
-		if c != 1 || !*died {
-			t.Fatalf("code %d, gave up: %v", c, *died)
+		if c != 0 {
+			t.Fatalf("code %d", c)
 		}
 	case <-time.After(30 * time.Second):
-		t.Fatalf("stopped trying after %d relaunch(es), with nothing said", launches)
-	}
-	if launches != 3 {
-		t.Errorf("%d relaunches, want 3", launches)
+		t.Fatal("stopped trying, with nothing said")
 	}
 }

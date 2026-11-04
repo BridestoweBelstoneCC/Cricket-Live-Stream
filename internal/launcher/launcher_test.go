@@ -5,11 +5,13 @@ package launcher
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -201,39 +203,232 @@ func (p *fakeProc) Terminate() {
 }
 func (p *fakeProc) Kill() { p.kill = true }
 
-func stubShutdown(t *testing.T) (*[]string, *bool) {
+func stubShutdown(t *testing.T) *[]string {
 	t.Helper()
 	var reports []string
-	died := false
-	sd, sr, so, sa := dieFn, offerMatchReport, resumeOBSUpdates, serverAnswers
-	t.Cleanup(func() { dieFn, offerMatchReport, resumeOBSUpdates, serverAnswers = sd, sr, so, sa })
-	dieFn = func(string, ...string) { died = true }
+	sr, so, sa, sd, sl := offerMatchReport, resumeOBSUpdates, serverAnswers, serverDown, leaveReplay
+	t.Cleanup(func() {
+		offerMatchReport, resumeOBSUpdates, serverAnswers, serverDown, leaveReplay = sr, so, sa, sd, sl
+	})
 	serverAnswers = func() bool { return true } // never the real port 5000
 	offerMatchReport = func(tok string) { reports = append(reports, tok) }
 	// Shutdown puts OBS's update check back — in the REAL OBS folder. Never from a test.
 	resumeOBSUpdates = func() {}
-	return &reports, &died
+	// The same for this: left alone, it would talk to whatever OBS is on this machine.
+	leaveReplay = func() (string, bool) { return "Main", false }
+	return &reports
 }
 
-func TestRestartsUpToTheCapThenGivesUp(t *testing.T) {
-	reports, died := stubShutdown(t)
-	var launched []*fakeProc
+// retrySoon shortens the wait between tries; capture collects what's printed.
+func retrySoon(t *testing.T, every time.Duration) {
+	t.Helper()
+	old := serverRetryEvery
+	t.Cleanup(func() { serverRetryEvery = old })
+	serverRetryEvery = every
+}
+
+func capture(t *testing.T) func() string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	out := make(chan string)
+	go func() { b, _ := io.ReadAll(r); out <- string(b) }()
+	done := false
+	finish := func() string {
+		if done {
+			return ""
+		}
+		done = true
+		os.Stdout = old
+		w.Close()
+		return <-out
+	}
+	t.Cleanup(func() { finish() })
+	return finish
+}
+
+func TestKeepsTryingAfterTheQuickRestartsRunOut(t *testing.T) {
+	reports := stubShutdown(t)
+	retrySoon(t, time.Millisecond)
+	var downs []bool
+	serverDown = func(d bool) { downs = append(downs, d) }
 	var sleeps []time.Duration
-	launch := func() (Proc, error) { p := newFake(true); launched = append(launched, p); return p, nil }
-	code := RunServerWithRestarts(newFake(true), launch, "", 3, 0, func(d time.Duration) { sleeps = append(sleeps, d) }, make(chan os.Signal))
-	if code != 1 || !*died {
-		t.Fatal("didn't give up", code)
+	sig := make(chan os.Signal, 1)
+	launched := 0
+	launch := func() (Proc, error) {
+		if launched++; launched == 20 {
+			sig <- os.Interrupt
+			return newFake(false), nil
+		}
+		return newFake(true), nil
 	}
-	if len(launched) != 3 || len(sleeps) != 3 { // relaunched exactly up to the cap, backing off each time
-		t.Fatal(len(launched), len(sleeps))
+	said := capture(t)
+	code := RunServerWithRestarts(newFake(true), launch, "", 3, 0, func(d time.Duration) { sleeps = append(sleeps, d) }, sig)
+	text := said()
+	if code != 0 || launched != 20 {
+		t.Fatal("stopped trying", code, launched)
 	}
-	if len(*reports) != 0 { // no Ctrl+C happened
+	if len(sleeps) != 3 { // the quick restarts back off; the rest wait a minute instead
+		t.Fatal(len(sleeps))
+	}
+	if n := strings.Count(text, "keeps crashing"); n != 1 { // one post to Discord, not one a minute
+		t.Fatalf("said %d times:\n%s", n, text)
+	}
+	if n := strings.Count(text, "Server stopped unexpectedly"); n != 3 {
+		t.Fatalf("restart notices %d:\n%s", n, text)
+	}
+	if len(downs) != 1 || !downs[0] {
+		t.Fatal(downs)
+	}
+	if len(*reports) != 0 { // that last server never answered: nothing to ask for a report
 		t.Fatal(*reports)
 	}
 }
 
+// A replay on air has nothing to end it while the server's down. It's looked at only when no
+// server is running, and again at each try, in case OBS didn't answer the first time.
+func TestAReplayIsCutBackFromOnceTheQuickRestartsRunOut(t *testing.T) {
+	stubShutdown(t)
+	retrySoon(t, time.Millisecond)
+	var launched, looks, tooEarly atomic.Int32
+	leaveReplay = func() (string, bool) {
+		if launched.Load() < 3 {
+			tooEarly.Add(1)
+		}
+		looks.Add(1)
+		return "Main", false
+	}
+	sig := make(chan os.Signal, 1)
+	launch := func() (Proc, error) {
+		if launched.Add(1) == 8 {
+			sig <- os.Interrupt
+			return newFake(false), nil
+		}
+		return newFake(true), nil
+	}
+	RunServerWithRestarts(newFake(true), launch, "", 3, 0, func(time.Duration) {}, sig)
+	for w := 0; w < 200 && looks.Load() < 2; w++ {
+		time.Sleep(10 * time.Millisecond) // they run on their own goroutines
+	}
+	if looks.Load() < 2 {
+		t.Fatalf("looked %d times; once per try was the plan", looks.Load())
+	}
+	if tooEarly.Load() != 0 {
+		t.Fatal("looked during the quick restarts: the next server was seconds away, and its own watch does this")
+	}
+}
+
+// A frozen OBS can take seconds to not answer, and Stop has to work meanwhile.
+func TestAFrozenOBSDoesntHoldUpStop(t *testing.T) {
+	stubShutdown(t)
+	retrySoon(t, time.Hour)
+	release := make(chan struct{})
+	defer close(release)
+	sig := make(chan os.Signal, 1)
+	serverDown = func(d bool) {
+		if d {
+			sig <- os.Interrupt
+		}
+	}
+	leaveReplay = func() (string, bool) { <-release; return "Main", false }
+	done := make(chan int)
+	go func() {
+		done <- RunServerWithRestarts(newFake(true), func() (Proc, error) { return newFake(true), nil }, "", 3, 0, func(time.Duration) {}, sig)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stop waited for OBS")
+	}
+}
+
+func TestCuttingBackFromAReplayIsSaidAndCantStopMatchDay(t *testing.T) {
+	said := capture(t)
+	cutBackFromReplay(func() (string, bool) { return "Main", true })
+	cutBackFromReplay(func() (string, bool) { return "Main", false })
+	cutBackFromReplay(func() (string, bool) { panic("no") })
+	text := said()
+	if n := strings.Count(text, "cut back to Main"); n != 1 {
+		t.Fatalf("said %d times:\n%s", n, text)
+	}
+	// These lines become Discord posts, once per crash loop or restart: not this one.
+	if strings.Contains(text, "keeps crashing") || strings.Contains(text, "Server stopped unexpectedly") {
+		t.Fatal(text)
+	}
+}
+
+func TestStopWorksWhileWaitingToTryAgain(t *testing.T) {
+	reports := stubShutdown(t)
+	retrySoon(t, time.Hour)
+	resumed := false
+	resumeOBSUpdates = func() { resumed = true }
+	sig := make(chan os.Signal, 1)
+	serverDown = func(d bool) {
+		if d {
+			sig <- os.Interrupt
+		}
+	}
+	launched := 0
+	done := make(chan int)
+	go func() {
+		done <- RunServerWithRestarts(newFake(true), func() (Proc, error) { launched++; return newFake(true), nil }, "", 3, 0, func(time.Duration) {}, sig)
+	}()
+	select {
+	case code := <-done:
+		if code != 0 || launched != 3 || !resumed || len(*reports) != 0 {
+			t.Fatal(code, launched, resumed, *reports)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stop didn't end the wait")
+	}
+}
+
+func TestServerComingBackIsNoticedAndTheCountStartsAgain(t *testing.T) {
+	reports := stubShutdown(t)
+	retrySoon(t, time.Millisecond)
+	every, settled := hungCheckEvery, serverSettledAfter
+	t.Cleanup(func() { hungCheckEvery, serverSettledAfter = every, settled })
+	hungCheckEvery, serverSettledAfter = time.Millisecond, 200*time.Millisecond
+	var mu sync.Mutex
+	var downs []bool
+	sig := make(chan os.Signal, 1)
+	serverDown = func(d bool) { mu.Lock(); downs = append(downs, d); mu.Unlock() }
+	launched := 0
+	good := newFake(false)
+	launch := func() (Proc, error) {
+		if launched++; launched == 4 { // past the 3 quick restarts: this one stays up
+			go func() {
+				time.Sleep(500 * time.Millisecond) // past serverSettledAfter
+				sig <- os.Interrupt
+			}()
+			return good, nil
+		}
+		return newFake(true), nil
+	}
+	said := capture(t)
+	RunServerWithRestarts(newFake(true), launch, "tok", 3, 0, func(time.Duration) {}, sig)
+	text := said()
+	if len(downs) != 2 || !downs[0] || downs[1] {
+		t.Fatal(downs)
+	}
+	if !strings.Contains(text, "Server's been running again") {
+		t.Fatal(text)
+	}
+	if !good.terminated {
+		t.Fatal("left it running")
+	}
+	eq(t, *reports, []string{"tok"}, "the server's back, so the report's offered")
+}
+
 func TestCrashesHoursApartDontUseUpTheCap(t *testing.T) {
-	_, died := stubShutdown(t)
+	stubShutdown(t)
+	retrySoon(t, time.Hour)
+	var downs []bool
+	serverDown = func(d bool) { downs = append(downs, d) }
 	clock := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	old := timeNow
 	t.Cleanup(func() { timeNow = old })
@@ -249,8 +444,8 @@ func TestCrashesHoursApartDontUseUpTheCap(t *testing.T) {
 		return newFake(true), nil
 	}
 	RunServerWithRestarts(newFake(true), launch, "", 3, 0, func(time.Duration) {}, sig)
-	if *died || launched != 6 {
-		t.Fatal("gave up on crashes hours apart", *died, launched)
+	if len(downs) != 0 || launched != 6 {
+		t.Fatal("slowed down on crashes hours apart", downs, launched)
 	}
 }
 
@@ -336,7 +531,7 @@ type killOnce struct {
 func (k *killOnce) Kill() { k.fakeProc.Kill(); k.once.Do(func() { close(k.killed) }) }
 
 func TestCtrlCOnFirstWaitShutsDownCleanlyNoRestart(t *testing.T) {
-	reports, _ := stubShutdown(t)
+	reports := stubShutdown(t)
 	launched := 0
 	p := newFake(false)
 	sig := make(chan os.Signal, 1)

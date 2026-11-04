@@ -48,3 +48,20 @@ func replayWatchTick() {
 }
 
 func StartReplayWatch() { loop("Replay watch", replayWatchPollSec*time.Second, replayWatchTick) }
+
+// LeaveReplay is the launcher's, for when no server is running: the watch above lives in the
+// server, so through a crash loop a replay stayed on air for as long as the server was down
+// (91 of 94 seconds in the fault test). No server means no replay can be running or starting,
+// so one look is enough. It says whether it cut, and to which scene.
+func LeaveReplay() (main string, cut bool) {
+	st := LoadState()
+	replay, main := gs(st, "obs_replay_scene", "Replay"), gs(st, "obs_main_scene", "Main")
+	r := obsCall(st, []obsws.Req{{Type: "GetCurrentProgramScene"}, {Type: "GetStreamStatus"}}, 5*time.Second)
+	if len(r) != 2 || r[0] == nil || r[1] == nil {
+		return main, false
+	}
+	if gs(r[0], "currentProgramSceneName", "") != replay || !gb(r[1], "outputActive", false) {
+		return main, false
+	}
+	return main, cutToScene(st, main)
+}

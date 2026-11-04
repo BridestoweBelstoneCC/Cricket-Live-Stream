@@ -89,6 +89,7 @@ type App struct {
 	obsOpenAt   time.Time
 	panelURL    string
 	panelToken  string
+	serverGone  bool // match day's restarts ran out; it's trying again every minute
 	interrupt   chan os.Signal
 	launcherOn  bool
 	launcherEnd chan struct{}
@@ -514,11 +515,11 @@ func (a *App) startMatchDay(remote, manual, practice bool) error {
 		defer close(end)
 		defer crashed()
 		code := run(launcher.Options{Remote: &remote, Manual: &manual, Practice: practice, Interrupt: interrupt,
-			OpenPanel: a.panelReady})
+			OpenPanel: a.panelReady, ServerDown: a.serverDown})
 		fmt.Println()
 		fmt.Println("  Match day is over.")
 		a.mu.Lock()
-		a.launcherOn, a.exitCode = false, code
+		a.launcherOn, a.exitCode, a.serverGone = false, code, false
 		a.phase, a.panelURL = phStopped, ""
 		a.mu.Unlock()
 		a.showOwnPage()
@@ -545,6 +546,20 @@ func (a *App) panelReady(url, token string) {
 	a.phase, a.panelURL, a.panelToken = phRunning, url, token
 	a.mu.Unlock()
 	a.showPanel()
+}
+
+// serverDown is the launcher's ServerDown. The control panel is an error page with no server
+// behind it, so the window shows its own page, which says what's going on and has Stop.
+func (a *App) serverDown(down bool) {
+	a.mu.Lock()
+	a.serverGone = down
+	inWindow := a.win != nil
+	a.mu.Unlock()
+	if down {
+		a.showOwnPage()
+	} else if inWindow { // in a browser, showPanel opens a new tab each time
+		a.showPanel()
+	}
 }
 
 // stop ends whatever this computer is doing: match day (the launcher's own shutdown —
@@ -746,7 +761,7 @@ func (a *App) status(since int) map[string]any {
 	out := map[string]any{"phase": a.phase, "role": setup.Role(), "version": a.opts.Version,
 		"os": goos(), "window": a.win != nil, "log": lines, "next": next, "panel_url": a.panelURL,
 		"log_file": LogFile(), "app_folder": assets.Dir(),
-		"start_line": a.startLine, "update": a.upd.status()}
+		"start_line": a.startLine, "update": a.upd.status(), "server_gone": a.serverGone}
 	phase := a.phase
 	agentRun, folder, how, agentErr := a.agentRun, a.agentFolder, a.agentHow, a.agentErr
 	bridgeRun, bridgeErr := a.bridgeRun, a.bridgeErr
