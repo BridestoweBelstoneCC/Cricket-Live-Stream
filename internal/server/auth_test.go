@@ -81,6 +81,73 @@ func TestEpochRotationInvalidatesAll(t *testing.T) {
 	}
 }
 
+// A crash restart in the same match day keeps everyone logged in: the clubhouse screen has only
+// the login the window got at the start, and no way of typing a password.
+func TestALoginSurvivesARestartInTheSameMatchDay(t *testing.T) {
+	sandbox(t, "")
+	withToken(t)
+	saved := sessionEpoch
+	t.Cleanup(func() { sessionEpoch = saved })
+	t.Setenv(SessionEpochEnv, "matchday1")
+	loadSessionEpoch()
+	tok := mustToken(t)
+	sessionEpoch = randHex(8) // a new server process's own value
+	if verifySessionToken(tok) {
+		t.Fatal("the test can't tell: a new epoch should refuse it")
+	}
+	loadSessionEpoch() // ...which then reads match day's
+	if !verifySessionToken(tok) {
+		t.Fatal("a crash restart logged the window out")
+	}
+	t.Setenv(SessionEpochEnv, "matchday2")
+	loadSessionEpoch()
+	if verifySessionToken(tok) {
+		t.Fatal("yesterday's login still works")
+	}
+}
+
+// "Log everyone out" must stay done, through a crash, for the rest of the day.
+func TestLoggingEveryoneOutSurvivesACrashRestart(t *testing.T) {
+	sandbox(t, "")
+	withToken(t)
+	saved := sessionEpoch
+	t.Cleanup(func() { sessionEpoch = saved })
+	t.Setenv(SessionEpochEnv, "matchday1")
+	loadSessionEpoch()
+	old := mustToken(t)
+	rotateSessionEpoch()
+	now := mustToken(t)
+	sessionEpoch = randHex(8)
+	loadSessionEpoch()
+	if verifySessionToken(old) {
+		t.Fatal("a crash brought a logged-out session back")
+	}
+	if !verifySessionToken(now) {
+		t.Fatal("a login since then was lost")
+	}
+	// Tomorrow: the file's from another match day, so it's ignored.
+	t.Setenv(SessionEpochEnv, "matchday2")
+	loadSessionEpoch()
+	if verifySessionToken(now) {
+		t.Fatal("the file carried over to another match day")
+	}
+}
+
+// A server started by hand has no match day: every start is new, as it always was.
+func TestAServerByHandLogsEveryoneOutAtEachStart(t *testing.T) {
+	sandbox(t, "")
+	withToken(t)
+	saved := sessionEpoch
+	t.Cleanup(func() { sessionEpoch = saved })
+	t.Setenv(SessionEpochEnv, "")
+	want := randHex(8)
+	sessionEpoch = want
+	loadSessionEpoch()
+	if sessionEpoch != want {
+		t.Fatal("changed a hand-started server's own value")
+	}
+}
+
 func TestGarbageTokens(t *testing.T) {
 	withToken(t)
 	for _, bad := range []string{"", "a:b", "a:b:c", "1:2:3:4", "🏏"} {

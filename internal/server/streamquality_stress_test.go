@@ -2,7 +2,7 @@ package server
 
 // Stress test for adaptive stream quality: whole match days on a virtual clock, against a
 // modelled OBS and upload line, over many random seeds. A bad quality ladder doesn't fail
-// a unit test â€” it restarts a club's stream twenty times an afternoon, sits at a third of
+// a unit test — it restarts a club's stream twenty times an afternoon, sits at a third of
 // the quality on a line that could carry more, or leaves the stream down after a refused
 // request. Each scenario checks the rules that matter on air, every run:
 //   - a step up is one rung, never sooner than StreamUpshiftAfter after the last shift,
@@ -357,7 +357,7 @@ func runSim(t *testing.T, sc simScenario, seed int64) simResult {
 			if cur != 0 && cur != o.configured {
 				t.Fatalf("seed %d at %.0fs: the ladder thinks %d kbps, OBS is set to %d", seed, o.el(), cur, o.configured)
 			}
-			// The bottom rung at 480p, every other at the club's 720p â€” while live (a
+			// The bottom rung at 480p, every other at the club's 720p — while live (a
 			// refused resolution change is reported, and the next step puts it right).
 			if o.active && cur != 0 && (step == len(StreamLadder)-1) != (o.outH == 480) {
 				res.wrongRes++
@@ -411,7 +411,7 @@ func runSim(t *testing.T, sc simScenario, seed int64) simResult {
 			res.ups++
 			lastUp = s.t
 			if idx(s.from)-idx(s.to) != 1 {
-				t.Fatalf("seed %d at %.0fs: stepped up %d â†’ %d, more than one rung", seed, s.t-o.t0, s.from, s.to)
+				t.Fatalf("seed %d at %.0fs: stepped up %d → %d, more than one rung", seed, s.t-o.t0, s.from, s.to)
 			}
 			if i > 0 && s.t-o.sets[i-1].t < StreamUpshiftAfter {
 				t.Fatalf("seed %d at %.0fs: stepped up %.0fs after the last change", seed, s.t-o.t0, s.t-o.sets[i-1].t)

@@ -54,6 +54,11 @@ func TestMatchDayLauncherAgainstPortableOBS(t *testing.T) {
 		if obs.Running() && !obs.Close(30*time.Second) {
 			obs.Kill()
 		}
+		// Gone, not just closing: the next test skips itself while any OBS is open, which
+		// quietly took TestAgainstPortableOBS out of every full run.
+		for end := time.Now().Add(30 * time.Second); obs.Running() && time.Now().Before(end); {
+			time.Sleep(500 * time.Millisecond)
+		}
 	})
 
 	app := t.TempDir()

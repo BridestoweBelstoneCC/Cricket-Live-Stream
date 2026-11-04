@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -125,11 +126,42 @@ func EnsureControlToken() {
 }
 
 // Mixed into every session signature. Rotating it ("log everyone out") invalidates every
-// previously issued session instantly; a fresh value at each start does the same.
+// previously issued session instantly; a fresh value at each match day does the same.
+//
+// Each match day, not each start. The launcher hands every server it runs the same value
+// (SessionEpochEnv), because a crash restart that logged everyone out took the clubhouse
+// screen's buttons with it for the rest of the match: its link has only the login the window
+// got at the start, and no way of typing a password. So someone on air couldn't be muted or
+// taken off, and the stream couldn't be ended from it (seen on a real OBS).
 var (
 	sessionEpoch   = randHex(8)
 	sessionEpochMu sync.Mutex
 )
+
+// SessionEpochEnv is match day's own session epoch, from the launcher.
+const SessionEpochEnv = "CRICKETSTREAM_SESSION_EPOCH"
+
+// sessionEpochFile keeps a "log everyone out" across a crash restart, or the launcher's value
+// would bring those sessions back. Its first field says which match day it's from.
+func sessionEpochFile() string { return filepath.Join(appDir, "session_epoch.txt") }
+
+// loadSessionEpoch is called at server start. Without the launcher's value (a server started by
+// hand), every start is new, as it always was.
+func loadSessionEpoch() {
+	day := strings.TrimSpace(os.Getenv(SessionEpochEnv))
+	if day == "" {
+		return
+	}
+	epoch := day
+	if b, err := os.ReadFile(sessionEpochFile()); err == nil {
+		if from, rotated, ok := strings.Cut(strings.TrimSpace(string(b)), " "); ok && from == day && rotated != "" {
+			epoch = rotated
+		}
+	}
+	sessionEpochMu.Lock()
+	sessionEpoch = epoch
+	sessionEpochMu.Unlock()
+}
 
 func sign(expiry, nonce, epoch string) string {
 	mac := hmac.New(sha256.New, []byte(ControlToken+":"+epoch))
@@ -172,7 +204,12 @@ func verifySessionToken(token string) bool {
 func rotateSessionEpoch() {
 	sessionEpochMu.Lock()
 	sessionEpoch = randHex(8)
+	epoch := sessionEpoch
 	sessionEpochMu.Unlock()
+	if day := strings.TrimSpace(os.Getenv(SessionEpochEnv)); day != "" {
+		// Failing to save only matters if the server also crashes before the end of the day.
+		os.WriteFile(sessionEpochFile(), []byte(day+" "+epoch), 0o600)
+	}
 }
 
 // ── Login brute-force protection ──────────────────────────────

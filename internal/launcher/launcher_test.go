@@ -294,6 +294,38 @@ func TestStartingServerIsNotTakenForHung(t *testing.T) {
 	}
 }
 
+// One that hangs before its first answer is hung, not starting, once it's had long enough.
+func TestServerThatNeverAnswersIsRestarted(t *testing.T) {
+	stubShutdown(t)
+	every, limit := hungCheckEvery, hungStartLimit
+	t.Cleanup(func() { hungCheckEvery, hungStartLimit = every, limit })
+	hungCheckEvery, hungStartLimit = time.Millisecond, 20*time.Millisecond
+	serverAnswers = func() bool { return false }
+	hung := newFake(false)
+	killed := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	go func() { <-killed; close(hung.exit) }() // a kill ends the process
+	restarted := 0
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		RunServerWithRestarts(&killOnce{fakeProc: hung, killed: killed}, func() (Proc, error) {
+			restarted++
+			hungStartLimit = time.Hour // the new one's fine
+			sig <- os.Interrupt
+			return newFake(false), nil
+		}, "", 3, 0, func(time.Duration) {}, sig)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("a server that never answered was left running")
+	}
+	if !hung.kill || restarted != 1 {
+		t.Fatal(hung.kill, restarted)
+	}
+}
+
 // killOnce signals the first Kill.
 type killOnce struct {
 	*fakeProc
