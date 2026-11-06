@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func withSeasonHistory(t *testing.T, hist []any) {
@@ -160,9 +162,85 @@ func TestWinPredictionKnowsTodaysTeams(t *testing.T) {
 
 func TestTodayTeamsOursFirst(t *testing.T) {
 	home := M{"home_club_id": "29434", "home_team_id": "10", "away_club_id": "777", "away_team_id": "20"}
-	mustEq(t, jsonOf(todayTeams(home, "29434", "555")), `{"match_id":"555","ours":"10","theirs":"20"}`)
-	mustEq(t, jsonOf(todayTeams(home, "777", "555")), `{"match_id":"555","ours":"20","theirs":"10"}`)
+	mustEq(t, jsonOf(todayTeams(home, "29434", "555")), `{"home":"10","match_id":"555","ours":"10","theirs":"20"}`)
+	mustEq(t, jsonOf(todayTeams(home, "777", "555")), `{"home":"10","match_id":"555","ours":"20","theirs":"10"}`)
 	if todayTeams(nil, "29434", "555") != nil || todayTeams(M{"home_team_id": "10"}, "29434", "555") != nil {
 		t.Fatal("no fixture, no teams")
 	}
 }
+
+func TestSeasonPlayerDataCountsRealInnings(t *testing.T) {
+	bat := func(id, how, runs, balls string) any {
+		return M{"batsman_id": id, "how_out": how, "runs": runs, "balls": balls}
+	}
+	det := M{"match_details": []any{M{"home_team_id": "10", "away_team_id": "20",
+		"players": []any{M{"home_team": []any{M{"player_id": "1"}, M{"player_id": "2"}}},
+			M{"away_team": []any{M{"player_id": "3"}}}},
+		"innings": []any{M{"bat": []any{bat("1", "ct", "40", "50"), bat("2", "did not bat", "", ""),
+			bat("3", "", "", ""), bat("4", "", "12", "20"), bat("5", "absent", "", "")}}}}}}
+	players, xis := seasonPlayerData([]M{det, det})
+	mustEq(t, jsonOf(players), `{"1":[80,2],"4":[24,2]}`) // 2, 3 and 5 never batted
+	mustEq(t, jsonOf(xis), `{"10":[["1","2"],["1","2"]],"20":[["3"],["3"]]}`)
+}
+
+// Today's XIs: our side without its three best batters is less likely to win than our
+// usual side. Only line-ups already fetched are used; /live never fetches them itself.
+func TestWinPredictionKnowsTodaysXIs(t *testing.T) {
+	ids := func(from, to int) []any {
+		var l []any
+		for i := from; i <= to; i++ {
+			l = append(l, jsonNum(i))
+		}
+		return l
+	}
+	players := M{}
+	for i := 1; i <= 11; i++ {
+		runs := 100
+		if i <= 3 {
+			runs = 450
+		}
+		players[jsonNum(i)] = []any{runs, 10}
+	}
+	withSeasonHistory(t, winHist())
+	seasonStatsMu.Lock()
+	seasonStats["today_teams"] = M{"match_id": "555", "ours": "10", "theirs": "20", "home": "10"}
+	seasonStats["player_bat"] = players
+	seasonStats["team_xis"] = M{"10": []any{ids(1, 11), ids(1, 11)}}
+	seasonStatsMu.Unlock()
+	fetched := 0
+	saved := refreshLineupsInBackground
+	refreshLineupsInBackground = func() { fetched++ }
+	t.Cleanup(func() { refreshLineupsInBackground = saved })
+	lineup := func(l []any) {
+		var ps []any
+		for _, id := range l {
+			ps = append(ps, M{"name": "P" + id.(string), "id": id})
+		}
+		lineupsMu.Lock()
+		lineupsOut, lineupsKey, lineupsAt = M{"ok": true, "home": M{"players": ps}, "away": M{"players": []any{}}}, "555", time.Now()
+		lineupsMu.Unlock()
+	}
+	t.Cleanup(func() {
+		lineupsMu.Lock()
+		lineupsOut, lineupsKey, lineupsAt = nil, "", time.Time{}
+		lineupsMu.Unlock()
+	})
+	cfg := M{"max_overs": 40, "home_team": "Home Town CC", "pc_match_id": "555"}
+	first := M{"innings": 1, "score": 4, "wickets": 0, "overs": 1.0, "ballsRemaining": 234,
+		"battingTeamName": "Home Town CC"}
+	none := WinPrediction(first, cfg).Batting // no line-ups yet: a refresh is asked for
+	if fetched != 1 {
+		t.Fatalf("one background refresh, got %d", fetched)
+	}
+	lineup(ids(1, 11))
+	usual := WinPrediction(first, cfg).Batting
+	lineup(append(ids(21, 23), ids(4, 11)...))
+	weak := WinPrediction(first, cfg).Batting
+	mustEq(t, usual, none) // the usual XI is what the team rating already is
+	if weak >= usual {
+		t.Fatalf("without its best three: %d, usual XI %d", weak, usual)
+	}
+	mustEq(t, fetched, 1) // fresh line-ups: nothing more fetched
+}
+
+func jsonNum(i int) string { return strconv.Itoa(i) }

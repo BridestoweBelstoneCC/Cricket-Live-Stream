@@ -384,10 +384,12 @@ func todayTeams(fixture M, siteID, matchID string) M {
 	if home == "" || away == "" {
 		return nil
 	}
+	ours, theirs := home, away
 	if anyStr(fixture, "home_club_id", "") != siteID {
-		home, away = away, home
+		ours, theirs = away, home
 	}
-	return M{"match_id": matchID, "ours": home, "theirs": away}
+	// home: which of the two today's line-ups call "home" (winplayers.go).
+	return M{"match_id": matchID, "ours": ours, "theirs": theirs, "home": home}
 }
 
 var reLowerWords = regexp.MustCompile(`[^a-z ]`)
@@ -550,6 +552,8 @@ func BuildSeasonStats(force bool) M {
 				history = append(history, normalise(h))
 			}
 		}
+		// Today's XIs for the win predictor: every player's batting, every team's XIs.
+		playerBat, teamXIs := seasonPlayerData(details)
 		var errv any
 		if len(errs) > 0 {
 			errv = strings.Join(errs, "; ")
@@ -557,6 +561,7 @@ func BuildSeasonStats(force bool) M {
 		result = M{"date": today, "away_id": awayID, "away_ok": awayOK, "lookup": lookup,
 			"leaders":         seasonLeaders(details, homeFrag),
 			"innings_history": history, "today_teams": teams,
+			"player_bat": playerBat, "team_xis": teamXIs,
 			"top_scorers": M{"home": homeTop, "away": awayTop},
 			"top_bowlers": M{"home": homeBowl, "away": awayBowl}, "build_started": nil,
 			"built": true, "building": false, "matches_used": len(details), "calls": calls, "error": errv}

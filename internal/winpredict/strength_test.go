@@ -1,6 +1,8 @@
 package winpredict
 
 import (
+	"fmt"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -88,5 +90,42 @@ func TestInningsSummaryKeepsTeamsAndBalls(t *testing.T) {
 	}
 	if s := InningsSummary(match("W", "1", "Standard", "40")); s.I1Balls != nil {
 		t.Fatal("no overs, no balls")
+	}
+}
+
+func TestXIBattingAgainstTheUsualSide(t *testing.T) {
+	// Players 1-11 are the usual XI; 1-3 are its best batters. 21-23 are fill-ins.
+	rec := map[string]PlayerRecord{}
+	for i := 1; i <= 11; i++ {
+		runs := 100
+		if i <= 3 {
+			runs = 450
+		}
+		rec[fmt.Sprint(i)] = PlayerRecord{Runs: runs, Innings: 10}
+	}
+	for i := 21; i <= 23; i++ {
+		rec[fmt.Sprint(i)] = PlayerRecord{Runs: 30, Innings: 6}
+	}
+	xi := func(ids ...int) []string {
+		var s []string
+		for _, i := range ids {
+			s = append(s, fmt.Sprint(i))
+		}
+		return s
+	}
+	usual := [][]string{xi(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11), xi(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)}
+	if d := XIBatting(rec, usual, xi(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)); math.Abs(d) > 1e-9 {
+		t.Fatalf("the usual XI: %v", d)
+	}
+	weak := XIBatting(rec, usual, xi(21, 22, 23, 4, 5, 6, 7, 8, 9, 10, 11))
+	if weak > -0.1 {
+		t.Fatalf("without its three best batters: %v", weak)
+	}
+	// A player nobody's seen counts as the league's average batter, not as nothing.
+	if unknown := XIBatting(rec, usual, xi(91, 92, 93, 4, 5, 6, 7, 8, 9, 10, 11)); unknown <= weak {
+		t.Fatalf("unknown players %v should be rated above known weak ones %v", unknown, weak)
+	}
+	if XIBatting(rec, usual, xi(1, 2, 3)) != 0 || XIBatting(rec, nil, xi(1, 2, 3, 4, 5, 6, 7, 8)) != 0 {
+		t.Fatal("too few players listed, or no usual XI: no change")
 	}
 }

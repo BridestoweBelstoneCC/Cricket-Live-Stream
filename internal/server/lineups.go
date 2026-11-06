@@ -56,7 +56,7 @@ func TodaysLineups() (out M) {
 				if name == "" || strings.EqualFold(name, "unsure") {
 					continue
 				}
-				players = append(players, M{"name": name, "captain": pyval.Truthy(p["captain"]),
+				players = append(players, M{"name": name, "id": anyStr(p, "player_id", ""), "captain": pyval.Truthy(p["captain"]),
 					"keeper": pyval.Truthy(p["wicket_keeper"])})
 			}
 		}
