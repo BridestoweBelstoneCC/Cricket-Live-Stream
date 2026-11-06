@@ -221,3 +221,47 @@ console.log("ok");
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// The Health tab's lines: worst first, each from the laptop's /health and /stream/monitor.
+func TestScreenPageHealthItems(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	test := grabFunc(t, pageScript(t), "mins") + grabFunc(t, pageScript(t), "healthItems") + `
+function line(items) { return items.map(function (i) { return i.state + ' ' + i.name; }).join(', '); }
+function want(got, w) { if (got !== w) throw new Error(got + "\n want " + w); }
+var good = {ok: true, pcs: {fresh: true}, overlay: {last_poll_sec_ago: 2},
+  obs_recovery: {enabled: true, restarts_recent: 0}, thermal: {available: true, throttled: false}};
+want(line(healthItems(good, {ok: true, reachable: true, streaming: true, sent_kbps: 4980, congestion: 0})),
+  'done The stream, done The score, done The graphics, done The laptop');
+var bad = {ok: true, pcs: {fresh: false}, overlay: {last_poll_sec_ago: 95},
+  obs_recovery: {enabled: true, restarts_recent: 2}, thermal: {available: true, throttled: true, speed_limit_pct: 60}};
+want(line(healthItems(bad, {ok: true, reachable: true, streaming: true, congestion: 0.4})),
+  'bad The stream, bad The score, bad The graphics, todo OBS, todo The laptop');
+want(line(healthItems(good, {ok: true, reachable: false})).split(', ')[0], 'bad OBS');
+want(line(healthItems(good, {ok: true, reachable: true, streaming: false})).split(', ')[0], 'todo The stream');
+want(line(healthItems({ok: true, pcs: {manual_scoring: true}, overlay: {}}, null)),
+  'todo The graphics, done The score');
+want(healthItems(bad, {ok: true, reachable: true, streaming: true, congestion: 0.4})[2].detail.indexOf('1:35') >= 0, true);
+console.log("ok");
+`
+	f := filepath.Join(t.TempDir(), "health.js")
+	os.WriteFile(f, []byte(test), 0o644)
+	out, err := exec.Command(bin, f).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "ok" {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// The last pre-match check needs the unlock and reading it renews it: only opening the tab
+// reads it. Polled, a public screen left on Health would never lock itself.
+func TestScreenPageHealthDoesNotKeepItUnlocked(t *testing.T) {
+	js := pageScript(t)
+	if strings.Count(js, "loadHealth(true)") != 1 || !strings.Contains(grabFunc(t, js, "loadTab"), "loadHealth(true)") {
+		t.Fatal("only opening the tab may read the last pre-match check")
+	}
+	if strings.Count(js, "server/precheck/last") != 1 || !strings.Contains(grabFunc(t, js, "loadHealth"), "if (withCheck)") {
+		t.Fatal("the last pre-match check must be read only with withCheck")
+	}
+}

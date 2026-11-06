@@ -118,6 +118,8 @@ p{margin:0 0 14px;max-width:62ch}
 #tabs{display:flex;background:var(--board);border-top:2px solid var(--edge)}
 #tabs button{flex:1;border:0;background:none;padding:14px 6px;font:600 22px Board,sans-serif;color:var(--sage);min-height:64px}
 #tabs button[aria-selected=true]{color:var(--cream);box-shadow:inset 0 4px 0 var(--club);background:var(--board-2)}
+/* Seven tabs on the smallest screen (800 wide): one line each. */
+@media (max-width:860px){#tabs button{font-size:18px;padding:14px 2px;white-space:nowrap}}
 
 .list{list-style:none;margin:0 0 18px;padding:0;max-width:900px}
 .list li{display:flex;gap:14px;align-items:center;background:var(--board);border-radius:10px;padding:12px 16px;margin-bottom:8px}
@@ -425,6 +427,17 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <p class="say" id="talk_say"></p>
     </section>
 
+    <!-- How everything's getting on: the stream, the scorer's feed, OBS and the laptop. -->
+    <section id="v-health" class="view tab hidden">
+      <h2>How it's going</h2>
+      <ul class="list" id="health_list"></ul>
+      <h2>Last pre-match check</h2>
+      <p class="muted" id="health_pc_when"></p>
+      <ul class="list" id="health_pc"></ul>
+      <h2>On the laptop</h2>
+      <div class="log" id="health_log"></div>
+    </section>
+
     <section id="v-end" class="view tab hidden center">
       <h1>End the stream</h1>
       <p class="muted">Stops the stream on YouTube, ends match day and closes OBS. Replays already saved are kept.</p>
@@ -444,6 +457,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     <button type="button" role="tab" data-tab="yt" class="op">YouTube</button>
     <button type="button" role="tab" data-tab="cam" class="op">Cameras</button>
     <button type="button" role="tab" data-tab="talk" class="op" id="tab_talk">Commentary</button>
+    <button type="button" role="tab" data-tab="health" class="op" id="tab_health">Health</button>
     <button type="button" role="tab" data-tab="end" class="op">Finish</button>
   </nav>
 </div>
@@ -635,7 +649,8 @@ function render() {
     if (b.classList.contains('op')) b.classList.toggle('hidden', !S.unlocked);
   });
   // Not on the Commentary tab: nobody's watching the picture there, and it would sit on the code.
-  show('pv', running && v !== 'talk' && !document.body.classList.contains('osk'));
+  // Nor on Health: it would sit on the text.
+  show('pv', running && v !== 'talk' && v !== 'health' && !document.body.classList.contains('osk'));
   document.body.classList.toggle('pv', running && !$('pv').classList.contains('hidden'));
   if (v === 'off') {
     txt('off_why', S.can_wake ? 'Start the stream and this screen switches it on, opens OBS and gets match day ready.'
@@ -843,6 +858,7 @@ function loadTab() {
   if (tab === 'yt') loadYouTube();
   if (tab === 'cam') loadCameras();
   if (tab === 'talk') loadTalk();
+  if (tab === 'health') loadHealth(true);
 }
 
 // The score: what the overlay shows, read from the side-effect-free /live/view.
@@ -1164,6 +1180,78 @@ $('pc_run').addEventListener('click', function () {
   });
 });
 
+// ── Health: how everything's getting on ──
+// /health and /stream/monitor are public reads, polled while the tab shows. The last
+// pre-match check needs the unlock, and reading it renews it, so it's read once each time
+// the tab opens: polled, a screen left on this tab would never lock itself.
+var health = null, monitor = null;
+function loadHealth(withCheck) {
+  api('server/health').then(function (d) { if (d.ok) { health = d; renderHealth(); } });
+  api('server/stream/monitor').then(function (d) { if (d.ok) { monitor = d; renderHealth(); } });
+  if (withCheck) api('server/precheck/last').then(renderLastCheck);
+}
+// healthItems: one line each, worst first: {state: done|todo|bad, name, detail}.
+function healthItems(h, m) {
+  var out = [];
+  var add = function (state, name, detail) { out.push({state: state, name: name, detail: detail}); };
+  if (m && m.reachable === false) add('bad', 'OBS', 'The laptop can\'t reach OBS. It may have closed or frozen.');
+  else if (m && m.streaming) {
+    var cong = typeof m.congestion === 'number' ? m.congestion : 0;
+    var kb = m.sent_kbps ? Math.round(m.sent_kbps) + ' kbps' : '';
+    if (cong >= 0.25) add('bad', 'The stream', 'On air, but the line is struggling' + (kb ? ' (' + kb + ')' : '') + '. Viewers may see it stutter.');
+    else if (cong >= 0.1) add('todo', 'The stream', 'On air, a little congested' + (kb ? ' (' + kb + ')' : '') + '.');
+    else add('done', 'The stream', 'On air' + (kb ? ', sending ' + kb : '') + '.');
+  } else if (m) add('todo', 'The stream', 'Not on air.');
+  if (h) {
+    var p = h.pcs || {};
+    if (h.demo_mode) add('todo', 'The score', 'Demo mode: the score is made up.');
+    else if (p.manual_scoring) add('done', 'The score', 'Scored on a phone.');
+    else if (p.fresh) add('done', 'The score', 'The scorer\'s file is up to date.');
+    else add('bad', 'The score', 'No new score from the scorer for over two minutes. Is the scoring laptop on and scoring?');
+    var o = h.overlay || {};
+    if (o.last_poll_sec_ago == null) add('todo', 'The graphics', 'OBS hasn\'t asked for the score yet.');
+    else if (o.last_poll_sec_ago > 30) add('bad', 'The graphics', 'OBS stopped asking for the score ' + mins(o.last_poll_sec_ago) + ' ago. The laptop is reloading them.');
+    else add('done', 'The graphics', 'Showing on the stream.');
+    var r = h.obs_recovery || {};
+    if (r.enabled) {
+      if (r.gave_up) add('bad', 'OBS', 'OBS kept crashing and the laptop has stopped reopening it. Look at the laptop.');
+      else if (r.frozen_for_sec > 0) add('bad', 'OBS', 'OBS hasn\'t answered for ' + mins(r.frozen_for_sec) + '.');
+      else if (r.restarts_recent > 0) add('todo', 'OBS', 'OBS crashed and was reopened ' + (r.restarts_recent === 1 ? 'once' : r.restarts_recent + ' times') + ' recently.');
+    }
+    var th = h.thermal || {};
+    if (th.available && th.throttled) add('todo', 'The laptop', 'Slowed down to ' + th.speed_limit_pct + '% of its speed: off its charger, or too hot.');
+    else if (th.available) add('done', 'The laptop', 'Running at full speed.');
+  }
+  var rank = {bad: 0, todo: 1, done: 2};
+  return out.sort(function (a, b) { return rank[a.state] - rank[b.state]; });
+}
+function healthLine(ul, state, name, detail) {
+  var li = document.createElement('li'); li.className = state;
+  var m = document.createElement('span'); m.className = 'mark'; m.textContent = {done: '✓', todo: '⚠', bad: '✗'}[state] || '•';
+  var t = document.createElement('div'); t.className = 'txt';
+  var b = document.createElement('b'); b.textContent = name; var s = document.createElement('span'); s.textContent = detail;
+  t.appendChild(b); t.appendChild(s); li.appendChild(m); li.appendChild(t); ul.appendChild(li);
+}
+function renderHealth() {
+  var ul = $('health_list'); ul.textContent = '';
+  healthItems(health, monitor).forEach(function (i) { healthLine(ul, i.state, i.name, i.detail); });
+  txt('health_log', (laptop().log || []).join('\n'));
+  var bad = healthItems(health, monitor).some(function (i) { return i.state === 'bad'; });
+  $('tab_health').textContent = bad ? 'Health ✗' : 'Health';
+}
+function renderLastCheck(d) {
+  var ul = $('health_pc'); ul.textContent = '';
+  if (!d || !d.checks || !d.checks.length) { txt('health_pc_when', 'Not run yet today. It\'s on Get ready.'); return; }
+  var when = d.ran_at ? new Date(d.ran_at) : null; // ISO, the laptop's local time
+  if (when && isNaN(when)) when = null;
+  var shown = d.checks.filter(function (c) { return c.status === 'warn' || c.status === 'bad'; });
+  txt('health_pc_when', (when ? 'At ' + ('0' + when.getHours()).slice(-2) + ':' + ('0' + when.getMinutes()).slice(-2) + '. ' : '') +
+    (shown.length ? 'What it found:' : 'Nothing wrong.'));
+  shown.forEach(function (c) {
+    healthLine(ul, c.status === 'bad' ? 'bad' : 'todo', c.name, (c.detail || '') + (c.fix ? ' ' + c.fix : ''));
+  });
+}
+
 // YouTube: the panel's own "Update YouTube broadcast", with the title filled in.
 var privacy = 'unlisted', ytLoaded = false, stateCache = null;
 function loadState() { return api('server/state').then(function (d) { if (d.home_team !== undefined) stateCache = d; return stateCache; }); }
@@ -1413,6 +1501,7 @@ setInterval(function () {
   if (!(S && S.reachable && L.phase === 'running' && L.server_ready)) return;
   loadScore(); loadChecklist(); // the checklist also says whether it's on air
   if (tab === 'score') loadSV(false);
+  if (tab === 'health') loadHealth(false);
   loadTalkBadge();
 }, 3000);
 // Quick while it's showing: a yes or no shouldn't wait, and the meter is live.

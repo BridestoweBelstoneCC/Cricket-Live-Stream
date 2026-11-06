@@ -175,6 +175,12 @@ and stop the stream.
 
 The laptop's own window still works throughout: anything done on one shows on the other.
 
+**Health** (unlocked, like the other operator tabs) shows how everything's getting on,
+worst first: the stream (on air, how congested the line is), the scorer's feed, whether the
+graphics are reaching OBS, OBS crashes, and the laptop slowing down when it's hot or off its
+charger. Below that, what the last pre-match check found and the laptop's latest activity.
+The tab reads **Health ✗** when something's wrong.
+
 If the laptop's server keeps crashing mid-match, the screen says **The graphics have
 stopped** (a score-only screen says *The score is paused*). The stream carries on, but its
 score and graphics are frozen. The laptop keeps trying once a minute by itself, and the

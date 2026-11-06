@@ -6,6 +6,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **A Health tab on the clubhouse screen.** How everything's getting on, worst first: the
+  stream and its line, the scorer's feed, the graphics reaching OBS, OBS crashes, and the
+  laptop slowing down. Then what the last pre-match check found, and the laptop's latest
+  activity. The tab reads **Health ✗** when something's wrong.
+
 - **Commentary from a phone.** A new **Commentary** tab on the clubhouse screen: turn it on,
   a QR code comes up, and whoever scans it can ask to commentate from their phone, with
   nothing to install. You choose who goes on air. Viewers see their name in the corner, and
