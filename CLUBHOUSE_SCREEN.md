@@ -175,6 +175,11 @@ and stop the stream.
 
 The laptop's own window still works throughout: anything done on one shows on the other.
 
+If the laptop's server keeps crashing mid-match, the screen says **The graphics have
+stopped** (a score-only screen says *The score is paused*). The stream carries on, but its
+score and graphics are frozen. The laptop keeps trying once a minute by itself, and the
+screen goes back to normal as soon as they're back.
+
 ## Commentary from a phone
 
 Anyone with a phone can commentate, with nothing to buy or install. It's off until someone

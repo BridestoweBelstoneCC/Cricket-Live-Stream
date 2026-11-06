@@ -207,6 +207,11 @@ want({paired: true, view_only: true, reachable: true, laptop: {phase: 'running',
 want({paired: true, reachable: false, laptop: null}, 'off');
 want({paired: true, reachable: true, laptop: {phase: 'home'}}, 'ready');
 want({paired: true, reachable: true, laptop: {phase: 'running', server_ready: true}}, 'get');
+// The server down mid-match (match day trying once a minute): its own screen, not
+// "Getting match day ready" with the log of a start that finished hours ago.
+want({paired: true, reachable: true, laptop: {phase: 'running', server_ready: false, server_gone: true}}, 'servergone');
+want({paired: true, reachable: true, laptop: {phase: 'running', server_ready: false}}, 'starting');
+want({paired: true, view_only: true, reachable: true, laptop: {phase: 'running', server_ready: false, server_gone: true}}, 'idle');
 console.log("ok");
 `
 	f := filepath.Join(t.TempDir(), "scoreonly.js")

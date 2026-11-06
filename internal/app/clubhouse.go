@@ -240,11 +240,14 @@ const chLogTail = 8
 func (h chHost) Status() map[string]any {
 	a := h.a
 	a.mu.Lock()
-	phase, startLine, panel := a.phase, a.startLine, a.panelURL
+	phase, startLine, panel, gone := a.phase, a.startLine, a.panelURL, a.serverGone
 	a.mu.Unlock()
 	info := homeInfo()
+	// server_gone: match day's quick restarts ran out and it's trying once a minute. The
+	// panel's URL is still set then, so without it the screen kept its tabs, all failing.
 	out := map[string]any{"phase": phase, "version": a.opts.Version, "club": info["club"],
-		"manual_session": info["manual_session"], "server_ready": phase == phRunning && panel != ""}
+		"manual_session": info["manual_session"], "server_ready": phase == phRunning && panel != "" && !gone,
+		"server_gone": phase == phRunning && gone}
 	if q := a.ask.Current(); q != nil {
 		out["question"] = q
 	} else {

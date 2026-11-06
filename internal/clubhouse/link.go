@@ -128,7 +128,7 @@ func ViewAllowed(method, path string) bool {
 
 // viewStatus: the parts of the window's status a score-only screen sees — never the
 // question showing or the activity log.
-var viewStatus = []string{"phase", "club", "version", "server_ready"}
+var viewStatus = []string{"phase", "club", "version", "server_ready", "server_gone"}
 
 // Link is the running link.
 type Link struct {
