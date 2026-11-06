@@ -149,7 +149,7 @@ jobs:
           grep -q "CricketStream Setup" setup.html
           grep -q "streaming laptop" setup.html
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.out }}
           path: dist/${{ matrix.out }}
@@ -183,7 +183,7 @@ jobs:
           chmod +x CricketStream.command
           zip CricketStream-mac.zip CricketStream CricketStream.command
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: CricketStream-mac
           path: dist/CricketStream-mac.zip
@@ -214,7 +214,7 @@ jobs:
 
       - name: Upload the unsigned builds for SignPath
         id: unsigned
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-unsigned
           path: unsigned/*.exe
@@ -255,7 +255,7 @@ jobs:
           (& signed/CricketStream.exe agent --check-template | Out-String) -match 'bundled: yes' | Out-Null
           if (-not $?) { throw "signed build lost its built-in files" }
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-signed
           path: signed/*.exe
@@ -360,7 +360,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber
           CricketStream-clubhouse-pi.img.xz CricketStream-clubhouse-pi.img.xz.sha256
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: "!startsWith(github.ref, 'refs/tags/')"
         with:
           name: CricketStream-clubhouse-pi
