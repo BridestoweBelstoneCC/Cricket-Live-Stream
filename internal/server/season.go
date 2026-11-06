@@ -349,18 +349,45 @@ func pcIsPastMatch(m M) bool {
 
 // pcMatchIDs is a club's completed match ids this season. One API call.
 func pcMatchIDs(key, siteID, season string) (map[string]bool, error) {
+	ids, _, err := pcMatchList(key, siteID, season, "")
+	return ids, err
+}
+
+// pcMatchList is pcMatchIDs, and the list's entry for the match with id want (today's
+// fixture isn't past, so it's never among the ids).
+func pcMatchList(key, siteID, season, want string) (map[string]bool, M, error) {
 	out := map[string]bool{}
 	list, err := pcGetJSON(fmt.Sprintf("https://play-cricket.com/api/v2/matches.json?api_token=%s&site_id=%s&season=%s", key, siteID, season), 15*time.Second)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var found M
 	for _, rm := range gl(list, "matches") {
 		m, _ := rm.(map[string]any)
+		if want != "" && pyval.Str(m["id"]) == want {
+			found = m
+		}
 		if pcIsPastMatch(m) && pyval.Truthy(m["id"]) {
 			out[pyval.Str(m["id"])] = true
 		}
 	}
-	return out, nil
+	return out, found, nil
+}
+
+// todayTeams is today's two team ids from the fixture's list entry, ours first: the win
+// predictor's team strength (winpred.go). Nil when there's no fixture for today.
+func todayTeams(fixture M, siteID, matchID string) M {
+	if fixture == nil {
+		return nil
+	}
+	home, away := anyStr(fixture, "home_team_id", ""), anyStr(fixture, "away_team_id", "")
+	if home == "" || away == "" {
+		return nil
+	}
+	if anyStr(fixture, "home_club_id", "") != siteID {
+		home, away = away, home
+	}
+	return M{"match_id": matchID, "ours": home, "theirs": away}
 }
 
 var reLowerWords = regexp.MustCompile(`[^a-z ]`)
@@ -443,10 +470,13 @@ func BuildSeasonStats(force bool) M {
 		var errs []string
 		calls := 0
 		ids := map[string]bool{}
-		if h, err := pcMatchIDs(key, siteID, season); err != nil {
+		matchID := trim(gs(cfg, "pc_match_id", ""))
+		var teams M
+		if h, fixture, err := pcMatchList(key, siteID, season, matchID); err != nil {
 			errs = append(errs, fmt.Sprintf("home list failed: %v", err))
 		} else {
 			calls++
+			teams = todayTeams(fixture, siteID, matchID)
 			for id := range h {
 				ids[id] = true
 			}
@@ -526,9 +556,9 @@ func BuildSeasonStats(force bool) M {
 		}
 		result = M{"date": today, "away_id": awayID, "away_ok": awayOK, "lookup": lookup,
 			"leaders":         seasonLeaders(details, homeFrag),
-			"innings_history": history,
-			"top_scorers":     M{"home": homeTop, "away": awayTop},
-			"top_bowlers":     M{"home": homeBowl, "away": awayBowl}, "build_started": nil,
+			"innings_history": history, "today_teams": teams,
+			"top_scorers": M{"home": homeTop, "away": awayTop},
+			"top_bowlers": M{"home": homeBowl, "away": awayBowl}, "build_started": nil,
 			"built": true, "building": false, "matches_used": len(details), "calls": calls, "error": errv}
 		result = normalise(result).(map[string]any)
 		seasonStatsMu.Lock()

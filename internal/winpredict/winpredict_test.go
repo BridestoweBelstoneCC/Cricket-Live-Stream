@@ -122,11 +122,11 @@ func TestChaseChanceMovesTheRightWay(t *testing.T) {
 		{{180, 100, 120, 2}, {220, 100, 120, 2}}, // a smaller target, same score
 	} {
 		a, b := c[0], c[1]
-		if pa, pb := e.chase(a[0], a[1], a[2], a[3]), e.chase(b[0], b[1], b[2], b[3]); pa <= pb {
+		if pa, pb := e.chase(a[0], a[1], a[2], a[3], Matchup{}), e.chase(b[0], b[1], b[2], b[3], Matchup{}); pa <= pb {
 			t.Errorf("%v (%.3f) should beat %v (%.3f)", a, pa, b, pb)
 		}
 	}
-	if p := e.chase(200, 0, 12, 0); p != 0 {
+	if p := e.chase(200, 0, 12, 0, Matchup{}); p != 0 {
 		t.Errorf("200 off 2 overs: %v", p)
 	}
 }
@@ -136,12 +136,12 @@ func TestChaseChanceMovesTheRightWay(t *testing.T) {
 // it, are the same moment.
 func TestTheInningsMeet(t *testing.T) {
 	e := newEngine(model, 40)
-	first, proj := e.firstInnings(0, 240, 0)
+	first, proj := e.firstInnings(0, 240, 0, Matchup{})
 	near(t, first, 0.5, 0.08)
 	near(t, proj, 200, 5)
 	for _, total := range []int{150, 200, 260} {
-		end, _ := e.firstInnings(total, 0, 5)
-		near(t, end, 1-e.chaseFromStart(total+1), 1e-9)
+		end, _ := e.firstInnings(total, 0, 5, Matchup{})
+		near(t, end, 1-e.chaseFromStart(total+1, Matchup{}), 1e-9)
 	}
 }
 
@@ -175,14 +175,14 @@ func TestSameStateIsNotWorkedOutTwice(t *testing.T) {
 func BenchmarkFirstBallOfAChase(b *testing.B) {
 	for b.Loop() {
 		e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
-		e.chaseFromStart(250)
+		e.chaseFromStart(250, Matchup{})
 	}
 }
 
 func BenchmarkABallInAChase(b *testing.B) {
 	e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
 	for b.Loop() {
-		e.chase(301, 30, 270, 1)
+		e.chase(301, 30, 270, 1, Matchup{})
 	}
 }
 
@@ -190,7 +190,7 @@ func BenchmarkABallInAFirstInnings(b *testing.B) {
 	e := newEngine(Model{RPO: 5, SDRPO: 1.2}, 50)
 	e.startCurve()
 	for b.Loop() {
-		e.firstInnings(30, 270, 1)
+		e.firstInnings(30, 270, 1, Matchup{})
 	}
 }
 

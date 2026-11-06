@@ -29,6 +29,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   one. Checked again on 101 real club chases at every fall of wicket, it was too quick to
   write off a side that had lost early wickets, so it's now slower to decide: it matches or
   beats the old one at every stage of a chase, and is clearly better in the last third.
+  It now knows how strong today's two sides are, from their games this season: a 1st XI top
+  of the division batting against a side at the bottom starts well above 50%, not at it.
+  On 484 Devon league matches, each predicted from only the games before it, that made the
+  first innings's chances clearly better; a chase barely changes, as the target already
+  says most of it.
 - **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
   wickets and milestones, each one a link to that moment in the match video, and the
   scorecard's fall of wickets links there too.

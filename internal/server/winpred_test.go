@@ -113,3 +113,56 @@ func TestWinPredictorPanelIsInTheOverSequence(t *testing.T) {
 	}
 	contains(t, html, "try { return _fillWinPredictor(); }")
 }
+
+// Team strength: our side (team 10) beats theirs (team 20) all season. Batting first,
+// before a ball, the predictor says so; the same frame for another match, or before the
+// fixture's teams are known, is the league average.
+func TestWinPredictionKnowsTodaysTeams(t *testing.T) {
+	hist := winHist()
+	for i := 0; i < 8; i++ {
+		hist = append(hist,
+			M{"overs_limit": 40, "i1_runs": 280, "i1_wkts": 5, "i1_balls": 240, "i1_team": "10",
+				"i2_runs": 140, "i2_wkts": 10, "i2_balls": 200, "i2_team": "30", "chase_won": false},
+			M{"overs_limit": 40, "i1_runs": 130, "i1_wkts": 10, "i1_balls": 190, "i1_team": "20",
+				"i2_runs": 131, "i2_wkts": 3, "i2_balls": 160, "i2_team": "30", "chase_won": true})
+	}
+	withSeasonHistory(t, hist)
+	setTeams := func(teams M) {
+		seasonStatsMu.Lock()
+		seasonStats["today_teams"] = teams
+		seasonStatsMu.Unlock()
+	}
+	cfg := M{"max_overs": 40, "home_team": "Home Town CC", "pc_match_id": "555"}
+	first := M{"innings": 1, "score": 4, "wickets": 0, "overs": 1.0, "ballsRemaining": 234,
+		"battingTeamName": "Home Town CC 1st XI"}
+	avg := WinPrediction(first, cfg).Batting
+	setTeams(M{"match_id": "555", "ours": "10", "theirs": "20"})
+	ours := WinPrediction(first, cfg).Batting
+	if ours < avg+10 {
+		t.Fatalf("our strong side batting first: %d, average %d", ours, avg)
+	}
+	first["battingTeamName"] = "Rivals CC"
+	if theirs := WinPrediction(first, cfg).Batting; theirs > avg-10 {
+		t.Fatalf("their weak side batting first: %d, average %d", theirs, avg)
+	}
+	// Chasing: the side batting now is the chaser.
+	chase := chaseState(M{"battingTeamName": "Home Town CC", "overs": 0.1, "score": 1, "wickets": 0,
+		"ballsRemaining": 239, "runsRequired": 200})
+	ourChase := WinPrediction(chase, cfg).Batting
+	chase["battingTeamName"] = "Rivals CC"
+	if theirChase := WinPrediction(chase, cfg).Batting; ourChase <= theirChase {
+		t.Fatalf("chasing 200: ours %d, theirs %d", ourChase, theirChase)
+	}
+	setTeams(M{"match_id": "999", "ours": "10", "theirs": "20"})
+	first["battingTeamName"] = "Home Town CC"
+	mustEq(t, WinPrediction(first, cfg).Batting, avg)
+}
+
+func TestTodayTeamsOursFirst(t *testing.T) {
+	home := M{"home_club_id": "29434", "home_team_id": "10", "away_club_id": "777", "away_team_id": "20"}
+	mustEq(t, jsonOf(todayTeams(home, "29434", "555")), `{"match_id":"555","ours":"10","theirs":"20"}`)
+	mustEq(t, jsonOf(todayTeams(home, "777", "555")), `{"match_id":"555","ours":"20","theirs":"10"}`)
+	if todayTeams(nil, "29434", "555") != nil || todayTeams(M{"home_team_id": "10"}, "29434", "555") != nil {
+		t.Fatal("no fixture, no teams")
+	}
+}

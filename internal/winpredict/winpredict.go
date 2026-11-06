@@ -50,6 +50,11 @@ type Innings struct {
 	I2Runs     *int  `json:"i2_runs"`
 	I2Wkts     *int  `json:"i2_wkts"`
 	ChaseWon   *bool `json:"chase_won"`
+	// For team strength (strength.go): who batted, and for how long.
+	I1Team  string `json:"i1_team,omitempty"`
+	I2Team  string `json:"i2_team,omitempty"`
+	I1Balls *int   `json:"i1_balls,omitempty"`
+	I2Balls *int   `json:"i2_balls,omitempty"`
 }
 
 type Model struct {
@@ -125,6 +130,11 @@ type Prediction struct {
 // Predict returns nil if it can't be worked out (no overs limit). target = runs needed
 // to win (innings 2 only).
 func Predict(innings, score, wickets int, overs any, oversLimit float64, model Model, target int) *Prediction {
+	return PredictMatchup(innings, score, wickets, overs, oversLimit, model, target, Matchup{})
+}
+
+// PredictMatchup is Predict knowing how strong today's two sides are (strength.go).
+func PredictMatchup(innings, score, wickets int, overs any, oversLimit float64, model Model, target int, mu Matchup) *Prediction {
 	if oversLimit == 0 {
 		return nil
 	}
@@ -133,15 +143,15 @@ func Predict(innings, score, wickets int, overs any, oversLimit float64, model M
 	totalBalls := max(int(oversLimit)*6, 6)
 	ballsLeft := max(totalBalls-Balls(overs), 0)
 	chasing := innings >= 2 && target != 0
-	key := predictKey{innings, score, wickets, ballsLeft, target, oversLimit, model}
+	key := predictKey{innings, score, wickets, ballsLeft, target, oversLimit, model, mu}
 	engineMu.Lock()
 	defer engineMu.Unlock()
 	if !lastSet || lastKey != key {
 		e := engineFor(model, oversLimit)
 		if chasing {
-			lastChance, lastProj = e.chase(target, score, ballsLeft, wickets), 0
+			lastChance, lastProj = e.chase(target, score, ballsLeft, wickets, mu), 0
 		} else {
-			lastChance, lastProj = e.firstInnings(score, ballsLeft, wickets)
+			lastChance, lastProj = e.firstInnings(score, ballsLeft, wickets, mu)
 		}
 		lastKey, lastSet = key, true
 	}
@@ -267,6 +277,20 @@ func InningsSummary(matchDetail map[string]any) *Innings {
 		v := false
 		chaseWon = &v
 	}
+	balls := func(i map[string]any) *int {
+		if !pyval.Truthy(i["overs"]) {
+			return nil
+		}
+		b := Balls(i["overs"])
+		return &b
+	}
+	team := func(i map[string]any) string {
+		if pyval.Truthy(i["team_batting_id"]) {
+			return pyval.Str(i["team_batting_id"])
+		}
+		return ""
+	}
 	return &Innings{OversLimit: limit, I1Runs: r1, I1Wkts: num(i1["wickets"]),
-		I2Runs: r2, I2Wkts: num(i2["wickets"]), ChaseWon: chaseWon}
+		I2Runs: r2, I2Wkts: num(i2["wickets"]), ChaseWon: chaseWon,
+		I1Team: team(i1), I2Team: team(i2), I1Balls: balls(i1), I2Balls: balls(i2)}
 }
