@@ -2406,6 +2406,23 @@ if (new URLSearchParams(location.search).get('preview') !== '1') {
 
 // ── Ball-by-ball ticker (scorebar only) ──────────────────
 let _fetchErrors = 0;
+
+// The overlay's memory of the last ball outlives a gap in the score (the server down or
+// hung, OBS frozen). On the first frame back every ball from the gap read as new: each four
+// and six flashed and asked for a replay, one after another, and a wicket from minutes ago
+// got its card and a replay of footage the replay buffer no longer held. The scorer's file
+// has no time per ball, so the gap is the measure: after more than CATCH_UP_AFTER_MS with
+// no score, the first frame back only brings the scorebar up to date.
+const CATCH_UP_AFTER_MS = 60000;
+let _lastLiveAt = 0;
+let _catchingUp = false;
+function noteLiveFrame(now) {
+  _catchingUp = _lastLiveAt > 0 && now - _lastLiveAt > CATCH_UP_AFTER_MS;
+  if (_catchingUp) console.log('[catch-up] no score for ' + Math.round((now - _lastLiveAt) / 1000) +
+                               's: the scorebar catches up, what was missed is not replayed');
+  _lastLiveAt = now;
+  return _catchingUp;
+}
 let _currentOverBalls = [];
 let _lastOvers = -1;
 
@@ -3211,13 +3228,14 @@ function processPCSData(state) {
     const figs = finishedBowler.overs
       ? `${finishedBowler.overs}-${finishedBowler.maidens||0}-${finishedBowler.runs||0}-${finishedBowler.wickets||0}`
       : '';
-    showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
+    // After a gap (noteLiveFrame) this "over" may be several, and long gone: no summary or cut.
+    if (!_catchingUp) showOverSummary(_lastPCSovers + 1, overRuns, bowlerName, figs, overBalls);
     // Camera auto-cut at the over boundary -- independent of the over-summary panel's own
     // on/off toggle (graphics_over_summary), but shares its "a replay already covers this"
     // suppression: an over-ending wicket already triggers FOW + an instant replay, and
     // cutting to the bowler-end camera at the same moment would fight the replay's own
     // scene transition.
-    if (_lastWicketOver !== (_lastPCSovers + 1)) {
+    if (_lastWicketOver !== (_lastPCSovers + 1) && !_catchingUp) {
       try { autoCutCameraForOver(); } catch(e) { console.warn('camera auto-cut error:', e); }
     }
     _overRunHistory.push(overRuns);
@@ -3226,8 +3244,10 @@ function processPCSData(state) {
     const wktsThisOver = Math.max(0, parseInt(state.wickets||0) - (_rrData.prevWickets||0));
     try { updateSpell(bowlerName, _lastPCSovers + 1, overRuns, wktsThisOver); }
     catch(e){ console.warn('spell error:', e); }
-    try { overExtras(state, _lastPCSovers + 1, overRuns); }
-    catch(e){ console.warn('overExtras error:', e); }
+    if (!_catchingUp) {
+      try { overExtras(state, _lastPCSovers + 1, overRuns); }
+      catch(e){ console.warn('overExtras error:', e); }
+    }
   }
   // Clear the ticker the moment the over completes, not on the first ball of the next one.
   // The ticker string can't be used to detect this: NV Play does NOT reliably blank last_ball
@@ -3268,6 +3288,11 @@ function processPCSData(state) {
   var tickerChanged = (overStr !== _lastBallSig);
   if (_lastBallOver < 0) {
     if (tickerChanged) _htPrevWickets = parseInt(state.wickets || 0);   // first poll: seed, never fire
+  } else if (_catchingUp) {
+    // Back after a gap (noteLiveFrame): reseed like a first poll. A wicket chain can't be
+    // followed across balls nobody saw.
+    _hatTrick = { bowler: '', count: 0 };
+    _htPrevWickets = parseInt(state.wickets || 0);
   } else if (tickerChanged || _oversIncreased) {
     // Inspect every ball added since the last poll, not just the newest one. If NV Play's
     // file advances by more than one ball between polls (a quick sequence, or a slow/missed
@@ -3401,22 +3426,28 @@ function detectEvents(state, allInnings) {
     // It may lag the wicket by a poll or two while the scorer enters the dismissal, so if it's
     // not there yet we keep checking via _pendingFOW below.
     howOut = (state.lastWicketHowOut || '').trim();
-    triggerFOW(dismissed || '', runs, balls, howOut, score, wickets);
-    if (!howOut && dismissed) {
-      _pendingFOW = {batter: dismissed, runs: runs, balls: balls,
-                     score: score, wkts: wickets, checks: 0};
-    }
     _lastWicketOver = Math.floor(parseFloat(overs));
-    if (cfg.replay_enabled) {
-      // Block player card until replay finishes
-      _wicketReplayAt = Date.now() + wicketReplayMs();
-      setTimeout(function() { triggerReplay('Wicket'); }, 6000);
+    if (_catchingUp) {
+      // Fell during a gap (noteLiveFrame): no card, replay or walk-out for it. Who's out
+      // can't even be told -- the on-strike snapshot is from before the gap.
+      _wicketReplayAt = 0;
     } else {
-      _wicketReplayAt = 0;  // no replay — show card as soon as batter enters
+      triggerFOW(dismissed || '', runs, balls, howOut, score, wickets);
+      if (!howOut && dismissed) {
+        _pendingFOW = {batter: dismissed, runs: runs, balls: balls,
+                       score: score, wkts: wickets, checks: 0};
+      }
+      if (cfg.replay_enabled) {
+        // Block player card until replay finishes
+        _wicketReplayAt = Date.now() + wicketReplayMs();
+        setTimeout(function() { triggerReplay('Wicket'); }, 6000);
+      } else {
+        _wicketReplayAt = 0;  // no replay — show card as soon as batter enters
+      }
+      // The new batter walking out, on camera 2 — once the replay's done. Not the innings'
+      // last wicket: the walk-off at the innings break covers that.
+      if (wickets < 10) walkOutCut(cfg.replay_enabled ? wicketReplayMs() : 2000, 'walk-out', state);
     }
-    // The new batter walking out, on camera 2 — once the replay's done. Not the innings'
-    // last wicket: the walk-off at the innings break covers that.
-    if (wickets < 10) walkOutCut(cfg.replay_enabled ? wicketReplayMs() : 2000, 'walk-out', state);
     prev.partnership=0; prev.partnershipMilestone=0;
     // Player card detection moved to batter-change check below
     // Clear milestones for dismissed batter
@@ -4201,6 +4232,7 @@ async function poll() {
   try {
     const liveRes=await fetch(`${SERVER}/live`);
     const liveData=await liveRes.json();
+    noteLiveFrame(Date.now());
     _lastSource = liveData.source || '';
     if (liveData.source==='pcs') {
       if (liveData.state && !isPreMatchPCS(liveData.state)){
@@ -4226,7 +4258,7 @@ async function poll() {
               // Boundaries are detected from the ball ticker in processPCSData (single source
               // of truth). The server no longer emits four/six events. Only wickets come through
               // here, to align the player-card timing with the wicket replay.
-              if (ev.type==='wicket') {
+              if (ev.type==='wicket' && !_catchingUp) {
                 // replay handled by detectEvents with 6s delay;
                 // here just update _wicketReplayAt so pending card timing is correct
                 _wicketReplayAt = Date.now() + wicketReplayMs();
