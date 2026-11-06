@@ -15,6 +15,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   once a minute until you stop match day. The window says what's happening, and the club's
   Discord hears once when it starts and once when the server's been back for 10 minutes. A
   replay on air when it happens is cut back to the live picture rather than left there.
+- **Fixed: a burst of old graphics after the score came back.** When the overlay had been
+  without a score for more than a minute (the server down, OBS frozen), the first score back
+  played every four, six and wicket it had missed, one after another, with replays of
+  footage that was long gone. Now the scorebar just catches up. A gap of under a minute
+  still plays what it missed, as before.
 - **A new win predictor underneath the same panel.** It now works through the match ball by
   ball from the current state, as WASP does, over a range of possible days, and what's
   happened so far says which day this looks like. It's more decisive than the old one once a
