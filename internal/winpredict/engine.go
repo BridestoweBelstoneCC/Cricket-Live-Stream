@@ -22,13 +22,18 @@ const (
 	// How much of a first-innings total's difference from par is put down to the day, for
 	// the side chasing it. Set by judgement, not fitted: the rest is the two sides' bowling.
 	// There's no ball-by-ball league data here to fit it from; TestAgainstRealSeason is how
-	// to check it against a season's results.
+	// to check it against a season's results. On the mid-chase check below, anything from
+	// 0.2 to 0.5 did about as well.
 	conditionsShare = 0.35
 
 	// How far an innings' score may stray from expected before it says much about the day:
-	// variance per expected run. A plain ball's is about 2.5; this is deliberately more, as
-	// two good batters aren't the pitch.
-	evidenceVariance = 6.0
+	// variance per expected run. A plain ball's is about 2.5; this is a lot more, as two
+	// good batters (or one bad over) aren't the pitch. It was 6, by judgement, and a chase
+	// that had lost early wickets was written off too soon: on 101 real club chases
+	// (2025-26, rebuilt at each fall of wicket from PlayCricket scorecards), sides it gave
+	// 24% won 37% of the time. At 25 they won 27%, and from a third of the way in it beat
+	// the old model; it stopped improving beyond about 25.
+	evidenceVariance = 25.0
 
 	minConditions = 0.04 // the least spread of days, whatever the league says
 	maxConditions = 0.50

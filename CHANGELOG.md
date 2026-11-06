@@ -26,7 +26,9 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   ball from the current state, as WASP does, over a range of possible days, and what's
   happened so far says which day this looks like. It's more decisive than the old one once a
   chase is set. On 120 real chases, at the start of each, it was about as accurate as the old
-  one; its mid-chase figures haven't been checked against real results.
+  one. Checked again on 101 real club chases at every fall of wicket, it was too quick to
+  write off a side that had lost early wickets, so it's now slower to decide: it matches or
+  beats the old one at every stage of a chase, and is clearly better in the last third.
 - **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
   wickets and milestones, each one a link to that moment in the match video, and the
   scorecard's fall of wickets links there too.
