@@ -1,6 +1,9 @@
 package winpredict
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 // Team strength. The league model says how a typical side scores; a 1st XI top of the
 // division chasing a side at the bottom isn't typical. Each team gets a batting and a
@@ -126,6 +129,68 @@ func HistoryMatchup(history []Innings, first, second string) Matchup {
 		add(h.I2Team, h.I1Team, h.I2Runs, h.I2Wkts, h.I2Balls, h.OversLimit)
 	}
 	return MatchupFor(TeamRatings(tin), first, second)
+}
+
+// ── Today's XI ──
+// A team's rating is its usual side. When today's XI is stronger or weaker with the bat than
+// the ones it's put out this season (three of the 1st XI's best away, say), its expected
+// scoring moves with it. On the 484 league matches, batting only, at half weight, shrunk by 8
+// innings: about +0.002 Brier at every stage, small but the same way throughout. Bowlers'
+// economy was tried too and made the start of a match worse, so it isn't used.
+
+const (
+	xiShrink  = 8.0 // innings of "average" each player's runs start with
+	xiWeight  = 0.5
+	xiMinSide = 8 // players listed, for an XI to count
+	xiBatters = 7 // the top of the order is what decides a total
+)
+
+// PlayerRecord is a player's batting this season.
+type PlayerRecord struct {
+	Runs, Innings int
+}
+
+// XIBatting is how much stronger (above 0) or weaker today's XI is with the bat than the
+// team's usual XIs this season, as a shift in its log scoring rate. 0 when either isn't
+// known.
+func XIBatting(records map[string]PlayerRecord, usual [][]string, today []string) float64 {
+	if len(today) < xiMinSide {
+		return 0
+	}
+	var runs, inns int
+	for _, r := range records {
+		runs += r.Runs
+		inns += r.Innings
+	}
+	mean := 15.0
+	if inns > 0 {
+		mean = float64(runs) / float64(inns)
+	}
+	strength := func(ids []string) float64 {
+		var v []float64
+		for _, id := range ids {
+			r := records[id]
+			v = append(v, (float64(r.Runs)+xiShrink*mean)/(float64(r.Innings)+xiShrink))
+		}
+		sort.Sort(sort.Reverse(sort.Float64Slice(v)))
+		var s float64
+		for _, x := range v[:min(xiBatters, len(v))] {
+			s += x
+		}
+		return s
+	}
+	var sum float64
+	n := 0
+	for _, ids := range usual {
+		if len(ids) >= xiMinSide {
+			sum += strength(ids)
+			n++
+		}
+	}
+	if n == 0 || sum <= 0 {
+		return 0
+	}
+	return xiWeight * math.Log(strength(today)/(sum/float64(n)))
 }
 
 // MatchupFor is today's matchup from the ratings; an unrated team counts as average.

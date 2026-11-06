@@ -33,7 +33,9 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   of the division batting against a side at the bottom starts well above 50%, not at it.
   On 484 Devon league matches, each predicted from only the games before it, that made the
   first innings's chances clearly better; a chase barely changes, as the target already
-  says most of it.
+  says most of it. When the clubs have entered today's XIs on PlayCricket, it also knows
+  whether a side is stronger or weaker with the bat than usual (three of its best away,
+  say): a smaller gain, but the same way at every stage.
 - **A scorecard you can watch.** With YouTube signed in, the match page lists each innings'
   wickets and milestones, each one a link to that moment in the match video, and the
   scorecard's fall of wickets links there too.

@@ -375,10 +375,22 @@ const winModelFormatMin = 10
 
 var (
 	winHistoryMtime float64
-	winHistoryRows  []winpredict.Innings
-	winHistoryTeams M
+	winHistoryData  winSeason
 	winHistoryMu    sync.Mutex
 )
+
+// winSeason is what the predictor takes from the season build.
+type winSeason struct {
+	history []winpredict.Innings
+	teams   M // today's team ids (season.go's todayTeams)
+	players map[string]winpredict.PlayerRecord
+	xis     M // team id -> this season's listed XIs
+}
+
+func winSeasonFrom(d M) winSeason {
+	return winSeason{toInnings(gl(d, "innings_history")), gm(d, "today_teams"),
+		toPlayerRecords(gm(d, "player_bat")), gm(d, "team_xis")}
+}
 
 func toInnings(rows []any) []winpredict.Innings {
 	b, _ := json.Marshal(rows)
@@ -390,46 +402,52 @@ func toInnings(rows []any) []winpredict.Innings {
 // seasonInningsHistory is this season's innings summaries: from the in-memory season
 // stats, else straight from their cache file — which survives a restart, so the
 // predictor doesn't go quiet until someone refreshes the season stats.
-// It also returns today's two team ids (season.go's todayTeams), for team strength.
-func seasonInningsHistory() ([]winpredict.Innings, M) {
+// It also has today's two team ids and the players, for team strength and today's XIs.
+func seasonInningsHistory() winSeason {
 	seasonStatsMu.Lock()
-	rows := gl(seasonStats, "innings_history")
-	teams := gm(seasonStats, "today_teams")
+	var d winSeason
+	inMemory := len(gl(seasonStats, "innings_history")) > 0
+	if inMemory {
+		d = winSeasonFrom(seasonStats)
+	}
 	seasonStatsMu.Unlock()
-	if len(rows) > 0 {
-		return toInnings(rows), teams
+	if inMemory {
+		return d
 	}
 	mt := mtime(SeasonStatsCache)
 	if mt == 0 {
-		return nil, nil
+		return winSeason{}
 	}
 	winHistoryMu.Lock()
 	defer winHistoryMu.Unlock()
 	if winHistoryMtime != mt {
 		b, err := os.ReadFile(SeasonStatsCache)
 		if err != nil {
-			return nil, nil
+			return winSeason{}
 		}
-		var d M
-		if json.Unmarshal(b, &d) != nil {
-			return nil, nil
+		var disk M
+		if json.Unmarshal(b, &disk) != nil {
+			return winSeason{}
 		}
-		winHistoryMtime, winHistoryRows, winHistoryTeams = mt, toInnings(gl(d, "innings_history")), gm(d, "today_teams")
+		winHistoryMtime, winHistoryData = mt, winSeasonFrom(disk)
 	}
-	return append([]winpredict.Innings(nil), winHistoryRows...), winHistoryTeams
+	out := winHistoryData
+	out.history = append([]winpredict.Innings(nil), out.history...)
+	return out
 }
 
 // ResetWinHistoryCache forgets the cached history file (tests).
 func ResetWinHistoryCache() {
 	winHistoryMu.Lock()
-	winHistoryMtime, winHistoryRows, winHistoryTeams = 0, nil, nil
+	winHistoryMtime, winHistoryData = 0, winSeason{}
 	winHistoryMu.Unlock()
 }
 
 // winMatchup is today's matchup for the predictor: who batted first and second, from
 // whether our side is batting now. No matchup (the league average for both) when the
 // fixture's teams aren't known, belong to another match, or the batting side can't be told.
-func winMatchup(history []winpredict.Innings, teams, state, cfg M, innings int) winpredict.Matchup {
+func winMatchup(season winSeason, state, cfg M, innings int) winpredict.Matchup {
+	teams := season.teams
 	ours, theirs := gs(teams, "ours", ""), gs(teams, "theirs", "")
 	if ours == "" || theirs == "" || gs(teams, "match_id", "") != trim(gs(cfg, "pc_match_id", "")) {
 		return winpredict.Matchup{}
@@ -442,10 +460,17 @@ func winMatchup(history []winpredict.Innings, teams, state, cfg M, innings int) 
 	if isOurTeam(team, cfg) {
 		batting, bowling = ours, theirs
 	}
+	first, second := batting, bowling
 	if innings >= 2 {
-		return winpredict.HistoryMatchup(history, bowling, batting)
+		first, second = bowling, batting
 	}
-	return winpredict.HistoryMatchup(history, batting, bowling)
+	mu := winpredict.HistoryMatchup(season.history, first, second)
+	// Today's XIs against each team's usual ones, when the clubs have entered them.
+	if xi := todaysXIs(teams, cfg); xi != nil {
+		mu.First += winpredict.XIBatting(season.players, toXIs(season.xis[first]), xi[first])
+		mu.Second += winpredict.XIBatting(season.players, toXIs(season.xis[second]), xi[second])
+	}
+	return mu
 }
 
 // WinPrediction is the predictor's result for a /live state, or nil.
@@ -472,7 +497,8 @@ func WinPrediction(state, cfg M) *winpredict.Prediction {
 	if limit == 0 {
 		limit = float64(gi(cfg, "max_overs", 0))
 	}
-	history, teams := seasonInningsHistory()
+	season := seasonInningsHistory()
+	history := season.history
 	var same []winpredict.Innings
 	for _, h := range history {
 		if limit != 0 && float64(h.OversLimit) == math.RoundToEven(limit) {
@@ -490,6 +516,6 @@ func WinPrediction(state, cfg M) *winpredict.Prediction {
 	}
 	// Team strength from every format: a side's rating is on the same scale whatever the
 	// length of the game (strength.go's par is per format).
-	mu := winMatchup(history, teams, state, cfg, innings)
+	mu := winMatchup(season, state, cfg, innings)
 	return winpredict.PredictMatchup(innings, score, wkts, overs, limit, model, target, mu)
 }
