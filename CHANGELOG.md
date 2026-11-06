@@ -4,13 +4,12 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.5 — commentary, and staying on air (2026-11-06)
 
 - **A Health tab on the clubhouse screen.** How everything's getting on, worst first: the
   stream and its line, the scorer's feed, the graphics reaching OBS, OBS crashes, and the
   laptop slowing down. Then what the last pre-match check found, and the laptop's latest
   activity. The tab reads **Health ✗** when something's wrong.
-
 - **Commentary from a phone.** A new **Commentary** tab on the clubhouse screen: turn it on,
   a QR code comes up, and whoever scans it can ask to commentate from their phone, with
   nothing to install. You choose who goes on air. Viewers see their name in the corner, and
@@ -22,6 +21,17 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   replay on air when it happens is cut back to the live picture rather than left there.
   The clubhouse screen says so too (**The graphics have stopped**; a score-only screen
   says *The score is paused*). Before, it kept its tabs up with nothing behind them.
+- **Fixed: OBS left on the replay.** If the server stopped mid-replay, OBS stayed on the
+  Replay scene; it now cuts back after two checks with no replay meant to be on. The way
+  back also retries, and says so if it fails.
+- **Fixed: logged out after a crash.** With a club password set, a crash restart logged the
+  clubhouse screen out for the rest of the match. A login now lasts the match day, and
+  "log everyone out" holds through a crash.
+- **Fixed: a server that never answered** was never replaced, which also blocked OBS's
+  crash recovery. It's replaced after two minutes, and one failed relaunch no longer stops
+  the restarts for good.
+- **Fixed:** no "PCS output folder not set" warning before a practice match or scoring by
+  hand, and closing the app no longer cuts off its own last reply.
 - **Fixed: a burst of old graphics after the score came back.** When the overlay had been
   without a score for more than a minute (the server down, OBS frozen), the first score back
   played every four, six and wicket it had missed, one after another, with replays of
