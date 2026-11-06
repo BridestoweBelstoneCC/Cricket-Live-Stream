@@ -33,6 +33,7 @@ button{font:inherit;color:inherit}
 #chip{font:600 18px Board,sans-serif;padding:6px 14px;border-radius:999px;background:var(--board-2);color:var(--sage)}
 #chip.live{background:var(--live);color:#fff}
 #chip.good{color:var(--good)}
+#chip.warn{color:var(--warn)}
 #clock{font:600 26px Board,sans-serif;font-variant-numeric:tabular-nums;color:var(--sage)}
 #lockbtn,#setbtn{border:0;background:var(--board-2);border-radius:12px;width:56px;height:48px;font-size:22px}
 
@@ -293,6 +294,14 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <h1><span class="spin"></span>Getting match day ready</h1>
       <p class="muted">Opening OBS, fetching today's match and starting the graphics.</p>
       <div class="log" id="start_log"></div>
+    </section>
+
+    <!-- The server stopped mid-match and the laptop's trying again every minute. -->
+    <section id="v-servergone" class="view hidden">
+      <h1><span class="spin"></span>The graphics have stopped</h1>
+      <p>The stream itself carries on, but the score and graphics on it are frozen until they're back.</p>
+      <p class="muted">The laptop is bringing them back by itself, trying once a minute. There's nothing to do here; if it carries on for a long time, look at the laptop.</p>
+      <div class="log" id="gone_log"></div>
     </section>
 
     <!-- Switching off. -->
@@ -607,7 +616,7 @@ function viewName() {
   switch (L.phase) {
     case 'home': case 'stopped': return 'ready';
     case 'starting': return 'starting';
-    case 'running': return L.server_ready ? tab : 'starting';
+    case 'running': return L.server_ready ? tab : L.server_gone ? 'servergone' : 'starting';
     case 'already': return 'note-already';
     case 'welcome': return 'note-setup';
   }
@@ -660,12 +669,15 @@ function render() {
   }
   if (v === 'idle') {
     var starting = S.reachable && (L.phase === 'starting' || L.phase === 'running');
-    txt('idle_title', starting ? 'Match day is starting' : 'No match on');
-    txt('idle_why', starting ? 'The score appears here in a moment.' : 'The score appears here as soon as match day starts on the streaming laptop.');
+    var paused = S.reachable && L.phase === 'running' && L.server_gone;
+    txt('idle_title', paused ? 'The score is paused' : starting ? 'Match day is starting' : 'No match on');
+    txt('idle_why', paused ? 'The streaming laptop is bringing it back by itself. It appears here again as soon as it\'s back.'
+      : starting ? 'The score appears here in a moment.' : 'The score appears here as soon as match day starts on the streaming laptop.');
     say('idle_say', S.error, 'bad');
   }
   if (v === 'ready') renderReady(L);
   if (v === 'starting') txt('start_log', (L.log || []).join('\n'));
+  if (v === 'servergone') txt('gone_log', (L.log || []).join('\n'));
   if (v === 'poweroff') txt('off_count', mins(Math.max(0, L.power_off_in)));
   if (v === 'note-already') { txt('note_title', 'Match day is open in another window'); txt('note_text', 'CricketStream on the laptop is already running match day from another copy. Use the laptop to carry on.'); }
   if (v === 'note-setup') { txt('note_title', 'The laptop isn\'t set up yet'); txt('note_text', 'Run CricketStream\'s setup on the laptop first.'); }
@@ -700,10 +712,10 @@ function renderTop(v) {
     document.documentElement.style.setProperty('--on-club', a.lum > 0.55 ? '#14140f' : '#ffffff');
   }
   var L = laptop(), chip = $('chip'), live = isLive();
-  chip.className = live ? 'live' : (S.reachable ? 'good' : '');
+  chip.className = live ? 'live' : (S.reachable ? (L.phase === 'running' && L.server_gone ? 'warn' : 'good') : '');
   var asking = talkOnAirNow && talkOnAirNow.waiting && L.phase === 'running';
   chip.textContent = L.question && !S.unlocked ? 'Unlock to answer the laptop' : asking && !S.unlocked ? 'Unlock: someone wants to commentate' : live ? 'On air' : !S.paired ? '' : !S.reachable ? (S.waking_for != null ? 'Waking' : 'Laptop off')
-    : L.phase === 'running' ? 'Match day' : L.phase === 'starting' ? 'Starting' : 'Laptop on';
+    : L.phase === 'running' ? (L.server_gone ? 'Graphics stopped' : 'Match day') : L.phase === 'starting' ? 'Starting' : 'Laptop on';
   show('chip', S.paired);
   show('lockbtn', S.pin_set);
   show('setbtn', S.paired && !pinStep);

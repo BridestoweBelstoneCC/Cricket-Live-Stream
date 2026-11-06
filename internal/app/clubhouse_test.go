@@ -103,6 +103,20 @@ func TestClubhouseScreenRunsMatchDay(t *testing.T) {
 	if base, tok := (chHost{ta.App}).Server(); base != "http://127.0.0.1:5000" || tok != "tok" {
 		t.Fatalf("server for the proxy: %q %q", base, tok)
 	}
+	// The server down mid-match (match day trying once a minute): the screen hears it, and
+	// stops counting it as ready — the panel's URL stays set, which kept the tabs up before.
+	if _, s = screenCall(t, port, "GET", "/clubhouse/status", key, nil); s["server_ready"] != true || s["server_gone"] != false {
+		t.Fatalf("running: %v", s)
+	}
+	ta.App.mu.Lock()
+	ta.App.serverGone = true
+	ta.App.mu.Unlock()
+	if _, s = screenCall(t, port, "GET", "/clubhouse/status", key, nil); s["server_ready"] != false || s["server_gone"] != true {
+		t.Fatalf("server gone: %v", s)
+	}
+	ta.App.mu.Lock()
+	ta.App.serverGone = false
+	ta.App.mu.Unlock()
 	if ok, why := (chHost{ta.App}).ReadyToPowerOff(); ok || !strings.Contains(why, "still running") {
 		t.Fatalf("switching off mid-match: %v %q", ok, why)
 	}

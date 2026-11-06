@@ -15,6 +15,8 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   once a minute until you stop match day. The window says what's happening, and the club's
   Discord hears once when it starts and once when the server's been back for 10 minutes. A
   replay on air when it happens is cut back to the live picture rather than left there.
+  The clubhouse screen says so too (**The graphics have stopped**; a score-only screen
+  says *The score is paused*). Before, it kept its tabs up with nothing behind them.
 - **Fixed: a burst of old graphics after the score came back.** When the overlay had been
   without a score for more than a minute (the server down, OBS frozen), the first score back
   played every four, six and wicket it had missed, one after another, with replays of
