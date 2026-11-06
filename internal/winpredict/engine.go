@@ -311,8 +311,11 @@ func (e *engine) days(centre float64, score, ballsLeft, wickets int) [5]float64 
 	return w
 }
 
-func chaseCentre(target int, e *engine) float64 {
-	return conditionsShare * math.Log(math.Max(float64(target), 1)/e.total)
+// chaseCentre is where the chasing side's day starts: partly what the target says about the
+// pitch, and the chasing side's own strength (strength.go). The part of the target the two
+// sides explain (mu.First) says nothing about the pitch, so it's taken out first.
+func chaseCentre(target int, e *engine, mu Matchup) float64 {
+	return conditionsShare*(math.Log(math.Max(float64(target), 1)/e.total)-mu.First) + mu.Second
 }
 
 // startCurve is each day's chance from a chase's first ball, for every target. Slow to build
@@ -329,7 +332,7 @@ func (e *engine) startCurve() {
 }
 
 // chaseFromStart is the chase's chance before a ball's bowled.
-func (e *engine) chaseFromStart(target int) float64 {
+func (e *engine) chaseFromStart(target int, mu Matchup) float64 {
 	if target <= 0 {
 		return 1
 	}
@@ -337,7 +340,7 @@ func (e *engine) chaseFromStart(target int) float64 {
 		return 0
 	}
 	e.startCurve()
-	w := e.days(chaseCentre(target, e), 0, e.balls, 0)
+	w := e.days(chaseCentre(target, e, mu), 0, e.balls, 0)
 	var p float64
 	for k := range w {
 		p += w[k] * e.curve[k][target]
@@ -346,7 +349,7 @@ func (e *engine) chaseFromStart(target int) float64 {
 }
 
 // chase is the chasing side's chance from where it is now.
-func (e *engine) chase(target, score, ballsLeft, wickets int) float64 {
+func (e *engine) chase(target, score, ballsLeft, wickets int, mu Matchup) float64 {
 	need := target - score
 	switch {
 	case need <= 0:
@@ -357,9 +360,9 @@ func (e *engine) chase(target, score, ballsLeft, wickets int) float64 {
 		return 0 // not even all sixes
 	}
 	if ballsLeft >= e.balls && wickets == 0 && score == 0 {
-		return e.chaseFromStart(target)
+		return e.chaseFromStart(target, mu)
 	}
-	w := e.days(chaseCentre(target, e), score, ballsLeft, wickets)
+	w := e.days(chaseCentre(target, e, mu), score, ballsLeft, wickets)
 	row := need + 1
 	var p float64
 	for k := range w {
@@ -373,8 +376,8 @@ func (e *engine) chase(target, score, ballsLeft, wickets int) float64 {
 
 // firstInnings is the batting side's chance, and where it's heading, in a first innings: every
 // total it could reach, each against the chance of that total being chased.
-func (e *engine) firstInnings(score, ballsLeft, wickets int) (float64, float64) {
-	w := e.days(0, score, ballsLeft, wickets)
+func (e *engine) firstInnings(score, ballsLeft, wickets int, mu Matchup) (float64, float64) {
+	w := e.days(mu.First, score, ballsLeft, wickets)
 	maxAdd := min(6*max(ballsLeft, 0), int(e.total*runsCap)+6)
 	var p, projected float64
 	for k := range w {
@@ -387,7 +390,7 @@ func (e *engine) firstInnings(score, ballsLeft, wickets int) (float64, float64) 
 			}
 			total := score + add
 			projected += w[k] * mass * float64(total)
-			p += w[k] * mass * (1 - e.chaseFromStart(total+1))
+			p += w[k] * mass * (1 - e.chaseFromStart(total+1, mu))
 		}
 	}
 	return p, projected
@@ -399,6 +402,7 @@ type predictKey struct {
 	innings, score, wickets, ballsLeft, target int
 	overs                                      float64
 	model                                      Model
+	mu                                         Matchup
 }
 
 type engineKey struct {
