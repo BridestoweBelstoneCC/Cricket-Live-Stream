@@ -578,7 +578,8 @@ body.style-block #target-detail { color: #333 !important; font-size: 13px !impor
    the small badges above the bar) take on the scorebar's type and palette, so a style is
    the whole look, not just the bar. Only surface, type, accent colour and corner shape
    change: sizes and layout are the base panel CSS's, so nothing that fits there overflows
-   here. (Classic, Modern, Impact and Minimal keep the original panels.)
+   here. (Classic, Modern, Impact and Minimal keep the original panels. The exception is
+   the player card, which has its own look in all seven: see PLAYER CARD below.)
 ═══════════════════════════ */
 
 /* ── Franchise panels: purple surfaces, gold numbers and labels, condensed capitals ── */
@@ -596,7 +597,6 @@ body.style-franchise #league-table-panel, body.style-franchise #h2h-panel, body.
 body.style-franchise #break-panel, body.style-franchise #leaders-panel, body.style-franchise #radar-panel {
   background: radial-gradient(ellipse at 50% 35%, rgba(52,28,124,0.95) 0%, rgba(12,7,41,0.96) 70%);
 }
-body.style-franchise #player-card, body.style-franchise #player-card-right,
 body.style-franchise #weather-widget, body.style-franchise #replay-banner, body.style-franchise #club-strap {
   background: linear-gradient(180deg, rgba(42,22,104,0.95) 0%, rgba(16,9,52,0.95) 100%);
 }
@@ -658,7 +658,6 @@ body.style-neon #league-table-panel, body.style-neon #h2h-panel, body.style-neon
 body.style-neon #break-panel, body.style-neon #leaders-panel, body.style-neon #radar-panel {
   background: radial-gradient(ellipse at 50% 40%, rgba(24,14,40,0.95) 0%, rgba(4,4,8,0.97) 70%);
 }
-body.style-neon #player-card, body.style-neon #player-card-right,
 body.style-neon #weather-widget, body.style-neon #replay-banner, body.style-neon #club-strap { background: rgba(6,6,11,0.95); }
 body.style-neon #target-banner, body.style-neon #vs-badge {
   background: rgba(5,5,9,0.9); border-color: rgba(0,229,255,0.6); color: #fff;
@@ -721,7 +720,6 @@ body.style-block #runrate-display, body.style-block #prematch-panel,
 body.style-block #pregame-form-home, body.style-block #pregame-form-away,
 body.style-block #league-table-panel, body.style-block #h2h-panel, body.style-block #countdown-panel,
 body.style-block #break-panel, body.style-block #leaders-panel, body.style-block #radar-panel { background: rgba(17,17,17,0.95); }
-body.style-block #player-card, body.style-block #player-card-right,
 body.style-block #weather-widget, body.style-block #replay-banner, body.style-block #club-strap { background: rgba(17,17,17,0.97); }
 body.style-block #target-banner, body.style-block #vs-badge {
   background: #111; border: 2px solid #ffde00; border-radius: 0; color: #fff; font-weight: 800;
@@ -767,14 +765,6 @@ body.style-block #replay-banner { border-left-width: 8px; }
 ═══════════════════════════ */
 .pc-accent  { width:6px; height:100%; background:#2a8c5a;
   position:absolute; left:0; top:0; border-radius:4px 0 0 4px; }
-#player-card { padding:16px 32px 16px 26px;
-  flex-direction:column; align-items:flex-start; gap:8px;
-  background:rgba(12,12,18,0.92); }
-/* When both openers show, cards split left/right */
-#player-card.split     { right:50%; }
-#player-card-right { padding:16px 32px 16px 26px; left:50%;
-  flex-direction:column; align-items:flex-start; gap:8px;
-  background:rgba(12,12,18,0.92); }
 /* Pre-match panels — full-screen centered treatment, same shell as #over-summary-panel
    (defined further down), since nothing else needs to be on screen until play starts. */
 #prematch-panel, #pregame-form-home, #pregame-form-away, #league-table-panel, #h2h-panel, #countdown-panel, #break-panel, #leaders-panel, #radar-panel {
@@ -796,17 +786,128 @@ body.style-block #replay-banner { border-left-width: 8px; }
   letter-spacing:1.5px; color:rgba(255,255,255,0.4); }
 .pc-divider { width:1px; height:36px; background:rgba(255,255,255,0.12); }
 
-/* New-batter card: bigger photo + type than the shared .pc-* defaults above, which the
-   pregame form-guide panels (#pregame-form-home/-away) also use — scoped to #player-card/
-   #player-card-right specifically so those aren't affected. Both single- and split-mode
-   (two openers side by side, see .split above) auto-size to content height, so there's no
-   overflow risk from going bigger — verified via simulate_match.py + a browser screenshot. */
-#player-card .pc-headshot, #player-card-right .pc-headshot { width:132px; height:132px; border-width:3px; }
-#player-card .pc-name,     #player-card-right .pc-name     { font-size:42px; }
-#player-card .pc-stat-val, #player-card-right .pc-stat-val { font-size:30px; }
-#player-card .pc-stat-key, #player-card-right .pc-stat-key { font-size:11px; }
-#player-card .pc-stats,    #player-card-right .pc-stats    { gap:28px; margin-top:10px; }
-#player-card .pc-divider,  #player-card-right .pc-divider  { height:48px; }
+/* ═══════════════════════════
+   PLAYER CARD — the new batter, in the look of the chosen scorebar style. A plate the size
+   of what's on it (the picture stays visible either side), sitting flush on the bar: the
+   first card from the left edge, an opener's second card from the right edge, so two side
+   by side never meet. Everything is scoped to the two ids, because the .pc-* classes are
+   shared with the pre-match panels. A style only sets the variables below, plus its own
+   shape where it has one. applyColours() sets --pc-bat and --pc-bat-lift (the batting side's
+   colour, and that colour lightened for use on a dark surface). The base is Classic.
+═══════════════════════════ */
+#player-card, #player-card-right {
+  --pc-bat: #2a6496; --pc-bat-lift: #5b9bd5;
+  --pc-bg: #e9ebef; --pc-font: Arial, sans-serif;
+  --pc-rule: transparent; --pc-rule-h: 0px; --pc-accent: var(--pc-bat); --pc-accent-w: 8px;
+  --pc-label: var(--pc-bat); --pc-name: #0d1520; --pc-val: #0d1520; --pc-apps: var(--pc-bat);
+  --pc-key: #5a6472; --pc-div: #b8bcc4; --pc-photo-edge: #b8bcc4; --pc-photo-radius: 50%;
+  --pc-name-size: 42px; --pc-name-weight: 900; --pc-val-size: 30px; --pc-val-weight: 800;
+  display: flex; align-items: center; gap: 22px;
+  width: fit-content; max-width: 950px; left: 0; right: auto;
+  padding: 14px 40px 14px 26px;
+  background: var(--pc-bg); font-family: var(--pc-font);
+}
+#player-card-right { left: auto; right: 0; padding: 14px 26px 14px 40px; }
+#player-card::before, #player-card-right::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: var(--pc-rule-h);
+  background: var(--pc-rule);
+}
+#player-card .pc-accent, #player-card-right .pc-accent {
+  width: var(--pc-accent-w); background: var(--pc-accent); border-radius: 0;
+}
+#player-card-right .pc-accent { left: auto; right: 0; }
+#player-card .pc-headshot, #player-card-right .pc-headshot {
+  width: 120px; height: 120px; border: 3px solid var(--pc-photo-edge); border-radius: var(--pc-photo-radius);
+}
+#player-card .pc-body, #player-card-right .pc-body { min-width: 0; }
+#player-card .pc-label, #player-card-right .pc-label { font-size: 13px; letter-spacing: 2.5px; color: var(--pc-label); }
+#player-card .pc-name, #player-card-right .pc-name {
+  font-size: var(--pc-name-size); font-weight: var(--pc-name-weight); color: var(--pc-name);
+  line-height: 1.1; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#player-card .pc-stats, #player-card-right .pc-stats { gap: 22px; margin-top: 8px; }
+#player-card .pc-stat, #player-card-right .pc-stat { gap: 3px; }
+#player-card .pc-stat-val, #player-card-right .pc-stat-val {
+  font-size: var(--pc-val-size); font-weight: var(--pc-val-weight); color: var(--pc-val);
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+#player-card .pc-stat-key, #player-card-right .pc-stat-key { font-size: 11px; color: var(--pc-key); white-space: nowrap; }
+#player-card .pc-divider, #player-card-right .pc-divider { height: 40px; background: var(--pc-div); }
+#pc-club .pc-stat-val, #pc-club-right .pc-stat-val { color: var(--pc-apps); }
+
+/* Modern: the dark slab, with the team-colour rule along the top like the bar's. */
+body.style-modern #player-card, body.style-modern #player-card-right {
+  --pc-bg: linear-gradient(180deg, #17212f 0%, #0b1119 100%); --pc-font: 'Segoe UI', system-ui, Arial, sans-serif;
+  --pc-rule: var(--pc-bat-lift); --pc-rule-h: 3px; --pc-accent-w: 0px;
+  --pc-label: var(--pc-bat-lift); --pc-name: #fff; --pc-val: #fff; --pc-apps: #fff;
+  --pc-key: rgba(255,255,255,0.5); --pc-div: rgba(255,255,255,0.12); --pc-photo-edge: var(--pc-bat-lift);
+  --pc-name-weight: 800;
+}
+/* Impact: the bar's angled cut and thick team-colour edge, heavy type, and the white plate
+   the score sits on, here under the club figure. */
+body.style-impact #player-card, body.style-impact #player-card-right {
+  --pc-bg: linear-gradient(180deg, #121a25 0%, #060a10 100%); --pc-font: 'Segoe UI', system-ui, Arial, sans-serif;
+  --pc-accent: var(--pc-bat-lift); --pc-accent-w: 10px;
+  --pc-label: var(--pc-bat-lift); --pc-name: #fff; --pc-val: #fff; --pc-apps: #080d14;
+  --pc-key: rgba(255,255,255,0.55); --pc-div: rgba(255,255,255,0.14); --pc-photo-edge: #fff; --pc-photo-radius: 6px;
+  --pc-name-size: 46px; --pc-val-weight: 900;
+}
+body.style-impact #player-card { padding-right: 68px; clip-path: polygon(0 0, 100% 0, calc(100% - 30px) 100%, 0 100%); }
+body.style-impact #player-card-right { padding-left: 68px; clip-path: polygon(30px 0, 100% 0, 100% 100%, 0 100%); }
+body.style-impact #pc-club .pc-stat, body.style-impact #pc-club-right .pc-stat {
+  background: linear-gradient(180deg, #fff 0%, #dfe4ea 100%); padding: 4px 12px; border-radius: 3px;
+}
+body.style-impact #pc-club .pc-stat-key, body.style-impact #pc-club-right .pc-stat-key { color: #4b5563; }
+/* Minimal: one clean white sheet, a thin team-colour rule, and no dividers at all. */
+body.style-minimal #player-card, body.style-minimal #player-card-right {
+  --pc-bg: linear-gradient(180deg, rgba(252,253,255,0.97) 0%, rgba(238,241,246,0.97) 100%);
+  --pc-font: 'Segoe UI', system-ui, Arial, sans-serif;
+  --pc-rule: var(--pc-bat); --pc-rule-h: 3px; --pc-accent-w: 0px;
+  --pc-name: #0a1220; --pc-val: #0a1220; --pc-key: #7b8698; --pc-div: transparent; --pc-photo-edge: transparent;
+  --pc-name-weight: 700; --pc-val-weight: 700;
+}
+/* Franchise: purple and gold, condensed capitals, the gold rule and the bar's cut. */
+body.style-franchise #player-card, body.style-franchise #player-card-right {
+  --pc-bg: linear-gradient(180deg, rgba(42,22,104,0.97) 0%, rgba(16,9,52,0.97) 100%);
+  --pc-font: 'CS Barlow Condensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --pc-rule: linear-gradient(90deg, #f7c948 0%, #fff1b8 50%, #f7c948 100%); --pc-rule-h: 2px; --pc-accent-w: 0px;
+  --pc-label: #f7c948; --pc-name: #fff; --pc-val: #f7c948; --pc-apps: #fff1b8;
+  --pc-key: rgba(220,210,255,0.65); --pc-div: rgba(247,201,72,0.25); --pc-photo-edge: #f7c948;
+  --pc-name-size: 54px; --pc-name-weight: 800; --pc-val-size: 36px; --pc-val-weight: 800;
+}
+body.style-franchise #player-card { padding-right: 64px; clip-path: polygon(0 0, 100% 0, calc(100% - 26px) 100%, 0 100%); }
+body.style-franchise #player-card-right { padding-left: 64px; clip-path: polygon(26px 0, 100% 0, 100% 100%, 0 100%); }
+body.style-franchise #player-card .pc-label, body.style-franchise #player-card-right .pc-label { font-size: 16px; }
+body.style-franchise #player-card .pc-stat-key, body.style-franchise #player-card-right .pc-stat-key { font-size: 14px; letter-spacing: 1.2px; }
+/* Neon: black glass, the magenta-to-cyan rule, cyan labels and the score's glowing lime. */
+body.style-neon #player-card, body.style-neon #player-card-right {
+  --pc-bg: linear-gradient(180deg, rgba(14,14,24,0.97) 0%, rgba(5,5,9,0.97) 100%);
+  --pc-font: 'Bahnschrift', 'CS Barlow Condensed', 'Segoe UI', sans-serif;
+  --pc-rule: linear-gradient(90deg, #ff2bd6 0%, #7a5cff 50%, #00e5ff 100%); --pc-rule-h: 3px; --pc-accent-w: 0px;
+  --pc-label: #00e5ff; --pc-name: #fff; --pc-val: #d4ff00; --pc-apps: #ff6be3;
+  --pc-key: rgba(255,255,255,0.5); --pc-div: rgba(255,255,255,0.1); --pc-photo-edge: #00e5ff;
+  --pc-name-weight: 700; --pc-val-weight: 700;
+}
+body.style-neon #player-card::before, body.style-neon #player-card-right::before {
+  box-shadow: 0 0 10px rgba(255,43,214,0.7), 0 0 18px rgba(0,229,255,0.45);
+}
+body.style-neon #player-card .pc-headshot, body.style-neon #player-card-right .pc-headshot { box-shadow: 0 0 12px rgba(0,229,255,0.5); }
+body.style-neon #player-card .pc-label, body.style-neon #player-card-right .pc-label { text-shadow: 0 0 8px rgba(0,229,255,0.45); }
+body.style-neon #player-card .pc-stat-val, body.style-neon #player-card-right .pc-stat-val { text-shadow: 0 0 10px rgba(212,255,0,0.45); }
+body.style-neon #pc-club .pc-stat-val, body.style-neon #pc-club-right .pc-stat-val { text-shadow: 0 0 10px rgba(255,43,214,0.6); }
+/* Block: flat black, yellow numbers, square corners, and the label as a flat yellow tile. */
+body.style-block #player-card, body.style-block #player-card-right {
+  --pc-bg: rgba(17,17,17,0.97); --pc-font: 'Segoe UI Black', 'Segoe UI', 'Arial Black', Arial, sans-serif;
+  --pc-rule: #ffde00; --pc-rule-h: 4px; --pc-accent-w: 0px;
+  --pc-label: #111; --pc-name: #fff; --pc-val: #ffde00; --pc-apps: #111;
+  --pc-key: #c8ccd2; --pc-div: #3a3d42; --pc-photo-edge: #fff; --pc-photo-radius: 0;
+  --pc-name-size: 44px; --pc-val-weight: 900;
+}
+body.style-block #player-card .pc-label, body.style-block #player-card-right .pc-label {
+  display: inline-block; background: #ffde00; padding: 2px 8px; font-weight: 900; letter-spacing: 1.5px;
+}
+body.style-block #pc-club .pc-stat, body.style-block #pc-club-right .pc-stat { background: #ffde00; padding: 4px 12px; }
+body.style-block #pc-club .pc-stat-key, body.style-block #pc-club-right .pc-stat-key { color: #111; }
 
 .graphic-panel {
   position: absolute;
@@ -1571,27 +1672,29 @@ body.style-block #replay-banner { border-left-width: 8px; }
 <!-- Player card (new batter) -->
 <div id="player-card" class="graphic-panel">
   <div class="pc-accent" id="pc-accent"></div>
-  <div style="display:flex;align-items:center;gap:20px;">
-    <img id="pc-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
-    <div>
-      <div class="pc-label" id="pc-label">New Batter</div>
-      <div class="pc-name" id="pc-name">A. Flintoff</div>
-    </div>
-  </div>
-  <div class="pc-stats">
-    <div class="pc-stat">
-      <span class="pc-stat-val" id="pc-avg">—</span>
-      <span class="pc-stat-key">Season Avg</span>
-    </div>
-    <div class="pc-divider"></div>
-    <div class="pc-stat">
-      <span class="pc-stat-val" id="pc-hs">—</span>
-      <span class="pc-stat-key">Season Best</span>
-    </div>
-    <div class="pc-divider"></div>
-    <div class="pc-stat">
-      <span class="pc-stat-val" id="pc-inn">—</span>
-      <span class="pc-stat-key">Innings</span>
+  <img id="pc-headshot" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
+  <div class="pc-body">
+    <div class="pc-label" id="pc-label">New Batter</div>
+    <div class="pc-name" id="pc-name">—</div>
+    <div class="pc-stats">
+      <div class="pc-stat">
+        <span class="pc-stat-val" id="pc-avg">—</span>
+        <span class="pc-stat-key">Season Avg</span>
+      </div>
+      <div class="pc-divider"></div>
+      <div class="pc-stat">
+        <span class="pc-stat-val" id="pc-hs">—</span>
+        <span class="pc-stat-key">Season Best</span>
+      </div>
+      <div class="pc-divider"></div>
+      <div class="pc-stat">
+        <span class="pc-stat-val" id="pc-inn">—</span>
+        <span class="pc-stat-key">Innings</span>
+      </div>
+      <div id="pc-club" style="display:none">
+        <div class="pc-divider"></div>
+        <div class="pc-stat"><span class="pc-stat-val" id="pc-apps">—</span><span class="pc-stat-key" id="pc-apps-key">Club appearances</span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1599,19 +1702,21 @@ body.style-block #replay-banner { border-left-width: 8px; }
 <!-- Second player card (opener on right / non-striker) -->
 <div id="player-card-right" class="graphic-panel">
   <div class="pc-accent" id="pc-accent-right"></div>
-  <div style="display:flex;align-items:center;gap:20px;">
-    <img id="pc-headshot-right" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
-    <div>
-      <div class="pc-label" id="pc-label-right">New Batter</div>
-      <div class="pc-name" id="pc-name-right">—</div>
+  <img id="pc-headshot-right" class="pc-headshot" style="display:none" onerror="this.style.display='none'">
+  <div class="pc-body">
+    <div class="pc-label" id="pc-label-right">New Batter</div>
+    <div class="pc-name" id="pc-name-right">—</div>
+    <div class="pc-stats">
+      <div class="pc-stat"><span class="pc-stat-val" id="pc-avg-right">—</span><span class="pc-stat-key">Season Avg</span></div>
+      <div class="pc-divider"></div>
+      <div class="pc-stat"><span class="pc-stat-val" id="pc-hs-right">—</span><span class="pc-stat-key">Season Best</span></div>
+      <div class="pc-divider"></div>
+      <div class="pc-stat"><span class="pc-stat-val" id="pc-inn-right">—</span><span class="pc-stat-key">Innings</span></div>
+      <div id="pc-club-right" style="display:none">
+        <div class="pc-divider"></div>
+        <div class="pc-stat"><span class="pc-stat-val" id="pc-apps-right">—</span><span class="pc-stat-key" id="pc-apps-key-right">Club appearances</span></div>
+      </div>
     </div>
-  </div>
-  <div class="pc-stats">
-    <div class="pc-stat"><span class="pc-stat-val" id="pc-avg-right">—</span><span class="pc-stat-key">Season Avg</span></div>
-    <div class="pc-divider"></div>
-    <div class="pc-stat"><span class="pc-stat-val" id="pc-hs-right">—</span><span class="pc-stat-key">Season Best</span></div>
-    <div class="pc-divider"></div>
-    <div class="pc-stat"><span class="pc-stat-val" id="pc-inn-right">—</span><span class="pc-stat-key">Innings</span></div>
   </div>
 </div>
 
@@ -2001,18 +2106,11 @@ function applyColours(home, away, homeBatting) {
   el('partner-accent').style.background   = bat;
   el('lineup-accent').style.background    = bat;
   el('summary-accent').style.background   = bat;
-  // The new-batter card's accent and label were the one pair of these left on the hardcoded
-  // green (#2a8c5a) — they had no id, so they got missed when the others were wired up. It
-  // barely showed against Classic's neutral grey bar, but sitting flush on top of a
-  // team-coloured dark bar (Modern/Impact) a green stripe is the only thing on screen that
-  // belongs to no team. Lifted, not raw: a dark navy club colour as a 6px bar or as label
-  // text on the card's near-black panel is as good as invisible.
-  var pcLift = wormColour(bat);
-  ['pc-accent', 'pc-accent-right'].forEach(function(id) {
-    var e = el(id); if (e) e.style.background = pcLift;
-  });
-  ['pc-label', 'pc-label-right'].forEach(function(id) {
-    var e = el(id); if (e) e.style.color = pcLift;
+  // The player card takes both forms of the colour and each style picks: raw on a light
+  // surface, lifted on a dark one, where a navy club colour is as good as invisible.
+  ['player-card', 'player-card-right'].forEach(function(id) {
+    var e = el(id);
+    if (e) { e.style.setProperty('--pc-bat', bat); e.style.setProperty('--pc-bat-lift', wormColour(bat)); }
   });
   el('weather-widget').style.borderLeftColor = bat;
 }
@@ -3163,6 +3261,7 @@ let _lastOverShown  = -1;
 
 var _latestWinPrediction = null;   // from the last /live state, for the end-of-over panel
 function processPCSData(state) {
+  _lastBattingTeam = state.battingTeamName || _lastBattingTeam;
   _latestWinPrediction = state.winPredictor || null;
   const overs   = parseFloat(state.pcs_overs || state.overs || 0);
   const runs    = parseInt(state.score || 0);
@@ -3666,6 +3765,7 @@ var _bowlerFived        = {};  // five-for panels already shown (bowler+innings+
 // by the time an over transition is detected, state.bowler already reflects the NEXT bowler, so
 // the outgoing bowler's figures have to be captured from the previous tick instead.
 var _lastPolledBowler   = null;
+var _lastBattingTeam    = ''; // whose batter a card is showing: club appearances are ours only
 
 function _showCard(suffix, name, number) {
   var sfx = suffix || "";
@@ -3673,7 +3773,12 @@ function _showCard(suffix, name, number) {
   // (it must map to a roster player whose surname matches), so one code path serves both sides.
   var numq = number ? ("num=" + encodeURIComponent(number)) : "";
   var el_name = document.getElementById("pc-name" + sfx);
-  if (el_name) el_name.textContent = name;
+  if (el_name) {
+    el_name.textContent = name;
+    // A plate's only so wide, and half the screen is all an opener's gets: a long name comes
+    // down a size rather than lose its end.
+    el_name.style.fontSize = name.length > 20 ? "34px" : "";
+  }
   var elAvg  = document.getElementById("pc-avg"  + sfx);
   var elHs   = document.getElementById("pc-hs"   + sfx);
   var elInn  = document.getElementById("pc-inn"  + sfx);
@@ -3703,6 +3808,32 @@ function _showCard(suffix, name, number) {
       }).catch(function(){});
   }
   _loadStats();
+  // Club appearances: a home player the club's record is sure of, or nothing at all, so the
+  // card never says "—" for an opposition batter. "Since" because that's where PlayCricket's
+  // records start: a long-serving player may have played many more.
+  var elClub = document.getElementById("pc-club" + sfx);
+  var elApps = document.getElementById("pc-apps" + sfx);
+  var elAppsKey = document.getElementById("pc-apps-key" + sfx);
+  if (elClub) elClub.style.display = "none";
+  var _appsTries = 0;
+  function _loadApps() {
+    fetch("/club/career?name=" + encodeURIComponent(name) + (numq ? ("&" + numq) : "") +
+          "&team=" + encodeURIComponent(_lastBattingTeam))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!el_name || el_name.textContent !== name) return; // the next batter's card by now
+        if (d && d.ready === false && _appsTries < 15) {
+          _appsTries++;                  // first build of the record — retry shortly
+          setTimeout(_loadApps, 3000);
+          return;
+        }
+        if (!d || !d.apps || !elClub || !elApps || !elAppsKey) return;
+        elApps.textContent = d.apps;
+        elAppsKey.textContent = "Club appearances" + (d.since ? " since " + d.since : "");
+        elClub.style.display = "contents";
+      }).catch(function(){});
+  }
+  if (_lastBattingTeam) _loadApps();
 }
 
 function bId(b) {
@@ -4387,7 +4518,25 @@ var PREVIEW_GRAPHICS = {
     cfg.graphics_partnership = true;
     triggerPartnership(50, 'J Hatton', '41*', 'T Gostling', '9*');
   },
+  player: function() { previewPlayerCard('', 'J Hatton'); },
+  openers: function() {
+    previewPlayerCard('', 'J Hatton');
+    previewPlayerCard('-right', 'T Gostling');
+    el('player-card').classList.add('split');
+  },
 };
+
+// Fills the card by hand: _showCard asks the server for the player's figures and photo.
+function previewPlayerCard(sfx, name) {
+  el('pc-name' + sfx).textContent = name;
+  el('pc-avg' + sfx).textContent = '42.5';
+  el('pc-hs' + sfx).textContent = '117*';
+  el('pc-inn' + sfx).textContent = '14';
+  el('pc-apps' + sfx).textContent = '213';
+  el('pc-apps-key' + sfx).textContent = 'Club appearances since 2014';
+  el('pc-club' + sfx).style.display = 'contents';
+  el('player-card' + sfx).classList.add('show');
+}
 
 var _params = new URLSearchParams(location.search);
 if (_params.get('preview') === '1') {

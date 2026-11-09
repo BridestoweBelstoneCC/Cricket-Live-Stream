@@ -530,8 +530,20 @@ func TestPreviewModeNeverTouchesMutatingEndpoints(t *testing.T) {
 
 func TestPlayerCardAccentsAreTeamColoured(t *testing.T) {
 	overlay := page(t, "overlay.html")
-	for _, id := range []string{"pc-accent", "pc-accent-right", "pc-label", "pc-label-right"} {
+	for _, id := range []string{"player-card", "player-card-right"} {
 		contains(t, overlay, `id="`+id+`"`, "'"+id+"'")
+	}
+	contains(t, overlay, "e.style.setProperty('--pc-bat', bat)", "e.style.setProperty('--pc-bat-lift', wormColour(bat))")
+}
+
+// The card takes the look of whichever style's chosen. (Classic is the card's base CSS.)
+func TestEveryStyleHasItsOwnPlayerCard(t *testing.T) {
+	overlay, _, js, _ := scorebarStyles(t)
+	for _, s := range js {
+		if s == "classic" {
+			continue
+		}
+		contains(t, overlay, "body.style-"+s+" #player-card, body.style-"+s+" #player-card-right {\n  --pc-bg:")
 	}
 }
 

@@ -150,6 +150,8 @@ func TestPreviewDemoGraphicsMakeNoRequests(t *testing.T) {
 		"partnership": `id="partner-runs">50`,
 		"six":         `id="flash-word">SIX<`,
 		"four":        `id="flash-word">FOUR<`,
+		"player":      `id="pc-name">J Hatton<`,
+		"openers":     `id="pc-name-right">T Gostling<`,
 	} {
 		t.Run(g, func(t *testing.T) {
 			dom, reqs := renderInBrowser(t, "/overlay?preview=1&graphic="+g, 15*time.Second)
