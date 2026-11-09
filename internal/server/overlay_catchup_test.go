@@ -44,7 +44,7 @@ var _lastPolledBowler = null, _lastWicketOver = -1, _overRunHistory = [];
 var _lastBallSig = null, _lastBallCount = 0, _lastBallOver = -1;
 var _playerCardVisible = false, _cardShownAtBall = -1, _pendingFOW = null;
 var _pendingCards = [], _playerCardShown = {}, _wicketReplayAt = 0;
-var _lastLiveAt = 0, _catchingUp = false, CATCH_UP_AFTER_MS = 60000;
+var _lastLiveAt = 0, _catchingUp = false, CATCH_UP_AFTER_MS = 60000, _lastBattingTeam = '';
 var t = 1000000;
 function frame(after, overs, ticker, score, wickets, striker) {
   t += after * 1000;

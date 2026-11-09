@@ -180,6 +180,7 @@ func BuildState(cfg *ini.File, match *Match, exist M) M {
 		"playcricket_api_key": c("API", "playcricket_key", ""),
 		"anthropic_api_key":   c("API", "anthropic_key", ""),
 		"home_club_id":        c("Club", "playcricket_id", ""),
+		"former_club_ids":     c("Club", "former_ids", ""),
 		"ground_filter":       c("Scoring", "ground_filter", ""),
 		"away_club_id":        pick(awayClub, "away_club_id", ""),
 		// Operational defaults: always ready to stream

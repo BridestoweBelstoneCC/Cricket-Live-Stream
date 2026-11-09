@@ -885,6 +885,10 @@ func (c *ctx) doGET() {
 		if n := c.q("name"); n != "" {
 			lookupBy, _ := resolvePlayer(n, c.q("num"))
 			out["record"] = careerRecord(career, lookupBy)
+			// The player card asks with the batting team: appearances only for our side.
+			if apps := cardAppearances(career, LoadState(), n, c.q("num"), c.q("team")); apps > 0 {
+				out["apps"] = apps
+			}
 		}
 		c.json(out)
 
