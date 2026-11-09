@@ -4,6 +4,19 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Fixed: a relative's record on the player card.** A player whose surname matched a
+  long-serving player's could be shown that player's appearances and get their club
+  milestones, even when the squad roster gave their full name. Now a first name has to fit,
+  and a bare surname is checked against today's XIs when they're known.
+- **Relatives are harder to mix up.** "C Smith" no longer joins Charles Smith if a Chris Smith
+  is on the club's team lists, and names like Sam and Samantha no longer count as one person.
+- **Tell it who's who.** `[Club] same_players` in config.ini names players PlayCricket has
+  under more than one name, and every name then finds the one record.
+
+---
+
 ## v3.0.0-beta.5 — commentary, and staying on air (2026-11-09)
 
 - **Club appearances on the player card.** A home batter's card now shows how many games
