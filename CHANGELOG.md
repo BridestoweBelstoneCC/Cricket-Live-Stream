@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.5 — commentary, and staying on air (2026-11-06)
 
 - **Club appearances on the player card.** A home batter's card now shows how many games
   they've played for the club, today's included and counted from every past PlayCricket
@@ -15,11 +15,6 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - **A new player card.** The new batter's card now takes the look of your scorebar style, in
   all seven, and is a compact plate rather than a band across the whole screen, so it covers
   less of the picture. The setup page can show it under **Player cards**.
-
----
-
-## v3.0.0-beta.5 — commentary, and staying on air (2026-11-06)
-
 - **A Health tab on the clubhouse screen.** How everything's getting on, worst first: the
   stream and its line, the scorer's feed, the graphics reaching OBS, OBS crashes, and the
   laptop slowing down. Then what the last pre-match check found, and the laptop's latest
