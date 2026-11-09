@@ -5,7 +5,8 @@ package server
 // is added up from every past scorecard of the club's sides (all of them: 1st XI,
 // Sunday, youth), as far back as PlayCricket has them. The first build reads hundreds of
 // scorecards, gently, in the background; they're cached on disk for good (shared with
-// the head to head's cache), so later builds only fetch the latest week's.
+// the head to head's cache), so later builds only fetch the latest week's. A merged club
+// lists the clubs it was formed from in [Club] former_ids, and their scorecards count too.
 //
 // Live, LogClubMilestones checks each frame's batters and bowler against that record and
 // logs a milestone once (a moment — so it's a chapter too) and tells the overlay.
@@ -16,6 +17,12 @@ package server
 // gets a milestone; one person's runs split across two accounts would read low and
 // "pass 1,000" a second time), and the strap says since when PlayCricket has the club's
 // records.
+//
+// The same scorecards give the player card its appearances. A game counts for everyone on
+// our team list as well as everyone in our batting and bowling rows (a fielder who neither
+// batted nor bowled still played), but the team list only ever adds to a record: it can't
+// start one, so a different spelling there can't make a name look ambiguous and take a
+// player's milestones away.
 
 import (
 	"database/sql"
@@ -24,6 +31,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
@@ -45,11 +53,12 @@ type careerAcc struct {
 	name                         string
 	inn, runs, fifties, hundreds int
 	wkts, fivefors               int
+	apps                         int
 }
 
 func (a *careerAcc) record() M {
 	return M{"name": a.name, "inn": a.inn, "runs": a.runs, "fifties": a.fifties, "hundreds": a.hundreds,
-		"wkts": a.wkts, "fivefors": a.fivefors}
+		"wkts": a.wkts, "fivefors": a.fivefors, "apps": a.apps}
 }
 
 // ClubCareer is the built record, or nil while there isn't one for today yet (a build
@@ -109,54 +118,79 @@ func buildCareer(cfg M) (out M) {
 		}
 		return a
 	}
-	matches, since, empty, failed := 0, 0, 0, 0
-	for season := today.Year(); season >= careerFirstSeason; season-- {
-		list, err := h2hCached(fmt.Sprintf("matches-%s-%d.json", site, season), season < today.Year(), func() (M, error) {
-			pcSleep(200 * time.Millisecond)
-			return pcGetJSON(fmt.Sprintf("https://play-cricket.com/api/v2/matches.json?api_token=%s&site_id=%s&season=%d",
-				key, site, season), 15*time.Second)
-		})
-		if err != nil {
-			if failed++; failed > 3 {
-				out["error"] = "PlayCricket: " + err.Error()
-				return out
-			}
-			continue
-		}
-		played := 0
-		for _, m := range toMs(gl(list, "matches")) {
-			d := pcDate(gs(m, "match_date", ""))
-			if d.IsZero() || !d.Before(start) {
-				continue // today's match isn't part of the record it's measured against
-			}
-			id := anyStr(m, "id", "")
-			fresh := start.Sub(d) < careerFreshDays*24*time.Hour
-			det, err := h2hCached("detail-"+id+".json", !fresh, func() (M, error) {
+	matches, since, failed := 0, 0, 0
+	var sheets [][]string
+	for i, club := range careerClubs(cfg, site) {
+		// A former club has nothing since it stopped, so its gap only counts once its
+		// matches have started. Ours starts at today: two empty seasons is its records' start.
+		empty, counting := 0, i == 0
+		for season := today.Year(); season >= careerFirstSeason; season-- {
+			list, err := h2hCached(fmt.Sprintf("matches-%s-%d.json", club, season), season < today.Year(), func() (M, error) {
 				pcSleep(200 * time.Millisecond)
-				return pcGetJSON(fmt.Sprintf("https://play-cricket.com/api/v2/match_detail.json?api_token=%s&match_id=%s", key, id), 15*time.Second)
+				return pcGetJSON(fmt.Sprintf("https://play-cricket.com/api/v2/matches.json?api_token=%s&site_id=%s&season=%d",
+					key, club, season), 15*time.Second)
 			})
 			if err != nil {
+				if failed++; failed > 3 {
+					out["error"] = "PlayCricket: " + err.Error()
+					return out
+				}
 				continue
 			}
-			if careerMatch(firstDetail(det), m, site, acc) {
-				played++
+			played := 0
+			for _, m := range toMs(gl(list, "matches")) {
+				d := pcDate(gs(m, "match_date", ""))
+				if d.IsZero() || !d.Before(start) {
+					continue // today's match isn't part of the record it's measured against
+				}
+				id := anyStr(m, "id", "")
+				fresh := start.Sub(d) < careerFreshDays*24*time.Hour
+				det, err := h2hCached("detail-"+id+".json", !fresh, func() (M, error) {
+					pcSleep(200 * time.Millisecond)
+					return pcGetJSON(fmt.Sprintf("https://play-cricket.com/api/v2/match_detail.json?api_token=%s&match_id=%s", key, id), 15*time.Second)
+				})
+				if err != nil {
+					continue
+				}
+				if md := firstDetail(det); careerMatch(md, m, club, acc) {
+					played++
+					sheets = append(sheets, careerTeamSheet(md, m, club))
+				}
+			}
+			matches += played
+			if played == 0 {
+				if empty++; counting && empty >= careerGapSeasons && season < today.Year() {
+					break
+				}
+				continue
+			}
+			empty, counting = 0, true
+			if since == 0 || season < since {
+				since = season
 			}
 		}
-		matches += played
-		if played == 0 {
-			if empty++; empty >= careerGapSeasons && season < today.Year() {
-				break
-			}
-			continue
-		}
-		empty, since = 0, season
 	}
+	careerCountApps(accs, sheets)
 	recs := make([]M, 0, len(order))
 	for _, k := range order {
 		recs = append(recs, accs[k].record())
 	}
 	out["lookup"], out["matches"], out["since"] = careerLookup(recs), matches, since
 	return out
+}
+
+// careerClubs is the club and, after it, any former clubs it was formed from ([Club]
+// former_ids): a merged club's scorecards before the merger are under the old clubs' ids.
+func careerClubs(cfg M, site string) []string {
+	clubs := []string{site}
+	seen := map[string]bool{site: true}
+	for _, id := range strings.FieldsFunc(gs(cfg, "former_club_ids", ""), func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if isDigits(id) && !seen[id] {
+			seen[id] = true
+			clubs = append(clubs, id)
+		}
+	}
+	return clubs
 }
 
 // careerMatch adds one scorecard's home batting and bowling; false if nobody batted.
@@ -212,6 +246,105 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 		}
 	}
 	return batted
+}
+
+// careerTeamSheet is every name a played match has for our side: the team list, the batting
+// rows (a "did not bat" still played) and the bowling on the other side's innings. Old
+// scorecards often have no team list, which is why it can't be the team list alone.
+func careerTeamSheet(md, fixture M, site string) []string {
+	ours := map[string]bool{}
+	var names []string
+	for _, side := range []string{"home", "away"} {
+		if anyStr(fixture, side+"_club_id", "") != site {
+			continue
+		}
+		ours[anyStr(fixture, side+"_team_id", "")] = true
+		for _, rg := range gl(md, "players") {
+			group, _ := rg.(map[string]any)
+			for _, rp := range gl(group, side+"_team") {
+				p, _ := rp.(map[string]any)
+				names = append(names, gs(p, "player_name", ""))
+			}
+		}
+	}
+	for _, ri := range gl(md, "innings") {
+		inn, _ := ri.(map[string]any)
+		rows, field := gl(inn, "bowl"), "bowler_name"
+		if ours[anyStr(inn, "team_batting_id", "")] {
+			rows, field = gl(inn, "bat"), "batsman_name"
+		}
+		for _, rr := range rows {
+			r, _ := rr.(map[string]any)
+			names = append(names, gs(r, field, ""))
+		}
+	}
+	return names
+}
+
+// careerInitSur is a name's first initial + surname, and its first name, in careerLookup's
+// form.
+func careerInitSur(name string) (initSur, first string) {
+	toks := strings.Fields(careerLetters.ReplaceAllString(name, " "))
+	if len(toks) == 0 {
+		return "", ""
+	}
+	if len(toks) == 1 {
+		return normNameKey(toks[0]), ""
+	}
+	return normNameKey(toks[0][:1] + toks[len(toks)-1]), normNameKey(toks[0])
+}
+
+// careerCountApps gives each record one appearance per match its name is on. A name with no
+// record of its own joins one only when it can only be that player: one record with that
+// initial and surname, whose first name fits ("P Smith" or "Pete Smith" is Peter Smith; "Tom
+// Jones" isn't Tim Jones). A name that can't be placed adds nothing: reading low beats
+// crediting the wrong player.
+func careerCountApps(accs map[string]*careerAcc, sheets [][]string) {
+	byInit := map[string][]*careerAcc{}
+	for _, a := range accs {
+		k, _ := careerInitSur(a.name)
+		byInit[k] = append(byInit[k], a)
+	}
+	find := func(name string) *careerAcc {
+		if a := accs[normNameKey(name)]; a != nil {
+			return a
+		}
+		k, first := careerInitSur(name)
+		c := byInit[k]
+		if k == "" || first == "" || len(c) != 1 {
+			return nil
+		}
+		_, other := careerInitSur(c[0].name)
+		if !strings.HasPrefix(first, other) && !strings.HasPrefix(other, first) {
+			return nil
+		}
+		return c[0]
+	}
+	for _, sheet := range sheets {
+		seen := map[*careerAcc]bool{}
+		for _, name := range sheet {
+			if a := find(trim(name)); a != nil && !seen[a] {
+				seen[a] = true
+				a.apps++
+			}
+		}
+	}
+}
+
+// cardAppearances is what the player card shows, or 0 for no figure at all. Today's match
+// counts (the record never holds it, and they're out there playing it). Only ever for our
+// side: an opposition batter who shares a surname with one of ours must not get their
+// record. No record means no figure, not "1": a name that didn't match isn't a debut.
+func cardAppearances(career, cfg M, name, num, team string) int {
+	if career == nil || trim(team) == "" || !isOurTeam(team, cfg) {
+		return 0
+	}
+	lookupBy, _ := resolvePlayer(name, num)
+	rec := careerRecord(career, lookupBy)
+	if rec == nil || gi(rec, "apps", 0) == 0 {
+		return 0
+	}
+	return gi(rec, "apps", 0) + 1
 }
 
 // careerLookup files each record under its full name, its first initial + surname, and

@@ -313,6 +313,7 @@ var configStateMap = []configMapping{
 	{"Club", "abbreviation", "home_abbrev", false},
 	{"Club", "home_colour", "home_colour", false},
 	{"Club", "playcricket_id", "home_club_id", false},
+	{"Club", "former_ids", "former_club_ids", false},
 	{"Club", "motto", "replay_motto", false},
 	{"API", "playcricket_key", "playcricket_api_key", false},
 	{"API", "anthropic_key", "anthropic_api_key", false},

@@ -579,7 +579,12 @@ problem + what to do + pause) or print and `console.Pause()`.
 - `http://localhost:5000/club/career?name=SURNAME` — the club record behind the club
   milestones (`career.go`): every past PlayCricket scorecard of the home club's sides,
   today's match excluded; a name that could be two people resolves to nothing, on purpose
-  (a split account would read low and "pass 1,000" twice).
+  (a split account would read low and "pass 1,000" twice). With `&team=` (the batting team)
+  it also gives the player card's `apps`: games for the club including today's, only for our
+  side. A team list only adds to a record, never starts one, so its spelling can't cost a
+  player their milestones. `[Club] former_ids` (a merged club's old clubs) adds those clubs'
+  scorecards; `careerClubs` reads it, and a former club's two-empty-seasons stop only counts
+  once its matches have started.
 - `http://localhost:5000/h2h` — head to head with today's opposition (`h2h.go`): today's
   two TEAM ids from the fixture, meetings in the last 6 seasons' fixture lists, the last 5
   scorecards. Past seasons' lists and finished scorecards are cached for good in
