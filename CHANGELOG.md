@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.6 — keeping relatives apart (2026-11-09)
 
 - **Fixed: a relative's record on the player card.** A player whose surname matched a
   long-serving player's could be shown that player's appearances and get their club
