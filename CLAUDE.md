@@ -591,7 +591,12 @@ problem + what to do + pause) or print and `console.Pause()`.
   side. A team list only adds to a record, never starts one, so its spelling can't cost a
   player their milestones. `[Club] former_ids` (a merged club's old clubs) adds those clubs'
   scorecards; `careerClubs` reads it, and a former club's two-empty-seasons stop only counts
-  once its matches have started.
+  once its matches have started. Fielding (`ct`, `st`, `ro`) is from the OTHER side's batting
+  rows' `fielder_name` (a caught and bowled names the bowler; no name or "Unsure" is nobody's).
+  Live, a catch milestone reads the feed's last-wicket fields, which describe one wicket together
+  but can lag the wicket count and still show the last innings' final wicket: `live_fielding`
+  files each under the batter it dismissed, never re-files a batter from another innings, and
+  counts only the innings being fielded. NV Play's real spelling of those fields is unseen.
 - `http://localhost:5000/h2h` — head to head with today's opposition (`h2h.go`): today's
   two TEAM ids from the fixture, meetings in the last 6 seasons' fixture lists, the last 5
   scorecards. Past seasons' lists and finished scorecards are cached for good in

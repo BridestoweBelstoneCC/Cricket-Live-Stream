@@ -123,6 +123,11 @@ CREATE TABLE IF NOT EXISTS live_bowling (
 CREATE TABLE IF NOT EXISTS live_fow (
     match_id TEXT, innings INTEGER, wicket INTEGER, batter TEXT, score INTEGER,
     PRIMARY KEY (match_id, innings, wicket));
+-- Who took each wicket in the field (LogLiveFigures), filed under the batter it dismissed: the
+-- feed's last-wicket fields describe one wicket together, whenever they catch up with it.
+CREATE TABLE IF NOT EXISTS live_fielding (
+    match_id TEXT, innings INTEGER, batter TEXT, fielder TEXT, how TEXT,
+    PRIMARY KEY (match_id, innings, batter));
 -- Moments for the match video's chapters (chapters.go), with when they happened.
 CREATE TABLE IF NOT EXISTS moments (
     match_id TEXT, key TEXT, ts REAL, kind TEXT, text TEXT,

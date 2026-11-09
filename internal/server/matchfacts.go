@@ -51,7 +51,7 @@ var (
 // matchTables is every table keyed by match_id, for FollowMatchID. A new match-keyed
 // table must be added here or it gets left behind when the id changes.
 var matchTables = []string{"balls", "live_innings", "live_batting", "live_bowling", "live_fow",
-	"innings_totals", "batting", "bowling", "clips", "moments", "yt_uploads"}
+	"live_fielding", "innings_totals", "batting", "bowling", "clips", "moments", "yt_uploads"}
 
 var (
 	loggedMid   string
@@ -211,6 +211,16 @@ func LogLiveFigures(state M) {
 						return err
 					}
 				}
+			}
+		}
+		// The last wicket's fielder. Early in an innings the fields can still be the last
+		// innings' final wicket (the other side's fielder): a batter already dismissed in
+		// another innings is that, not a new wicket.
+		if out, fielder := trim(gs(state, "lastWicketBatter", "")), trim(gs(state, "lastWicketFielder", "")); wkts > 0 && out != "" && fielder != "" {
+			if _, err := tx.Exec("INSERT OR REPLACE INTO live_fielding(match_id,innings,batter,fielder,how) "+
+				"SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM live_fielding WHERE match_id=? AND batter=? AND innings<>?)",
+				mid, innings, out, fielder, fieldingHow(gs(state, "lastWicketType", "")), mid, out, innings); err != nil {
+				return err
 			}
 		}
 		if bowler != "" {

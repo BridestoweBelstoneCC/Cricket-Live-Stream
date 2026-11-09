@@ -53,12 +53,29 @@ type careerAcc struct {
 	name                         string
 	inn, runs, fifties, hundreds int
 	wkts, fivefors               int
+	ct, st, ro                   int // catches, stumpings, run outs in the field
 	apps                         int
 }
 
 func (a *careerAcc) record() M {
 	return M{"name": a.name, "inn": a.inn, "runs": a.runs, "fifties": a.fifties, "hundreds": a.hundreds,
-		"wkts": a.wkts, "fivefors": a.fivefors, "apps": a.apps}
+		"wkts": a.wkts, "fivefors": a.fivefors, "ct": a.ct, "st": a.st, "ro": a.ro, "apps": a.apps}
+}
+
+// fieldingHow is a dismissal's kind in the field: "ct", "st", "ro" or "" (nobody in the field
+// took it). PlayCricket says "ct", "st" and "run out"; NV Play's feed spells them out. A
+// caught and bowled is the bowler's catch.
+func fieldingHow(how string) string {
+	h := strings.ToLower(trim(how))
+	switch {
+	case h == "ct" || h == "c" || h == "c&b" || h == "c & b" || strings.HasPrefix(h, "caught"):
+		return "ct"
+	case h == "st" || strings.HasPrefix(h, "stumped"):
+		return "st"
+	case h == "ro" || h == "run out" || h == "runout" || strings.HasPrefix(h, "run out"):
+		return "ro"
+	}
+	return ""
 }
 
 // ClubCareer is the built record, or nil while there isn't one for today yet (a build
@@ -210,9 +227,10 @@ func careerClubs(cfg M, site string) []string {
 	return clubs
 }
 
-// careerMatch adds one scorecard's home batting and bowling; false if nobody batted.
+// careerMatch adds one scorecard's home batting, bowling and fielding; false if nobody batted.
 // The club's sides are the fixture's teams whose club is ours; the fielding side's
-// bowling is on the OTHER side's innings.
+// bowling and catches are on the OTHER side's innings. A dismissal with no fielder named
+// (or "Unsure") isn't anyone's.
 func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 	ours := map[string]bool{}
 	for _, side := range []string{"home", "away"} {
@@ -268,6 +286,22 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 				a.fivefors++
 			}
 			batted = true
+		}
+		for _, rb := range gl(inn, "bat") {
+			b, _ := rb.(map[string]any)
+			name := trim(gs(b, "fielder_name", ""))
+			how := fieldingHow(gs(b, "how_out", ""))
+			if name == "" || how == "" || careerNobody(name) {
+				continue
+			}
+			switch a := acc(name); how {
+			case "ct":
+				a.ct++
+			case "st":
+				a.st++
+			case "ro":
+				a.ro++
+			}
 		}
 	}
 	return batted
@@ -433,6 +467,9 @@ func (a *careerAcc) add(from *careerAcc) {
 	a.hundreds += from.hundreds
 	a.wkts += from.wkts
 	a.fivefors += from.fivefors
+	a.ct += from.ct
+	a.st += from.st
+	a.ro += from.ro
 }
 
 // careerJoinNamed applies [Club] same_players. The first name of each group is the one the
@@ -794,8 +831,37 @@ func clubMilestones(rec M, runsToday, wktsToday int, batting bool) []string {
 	return out
 }
 
+// catchMilestones is what today's catches add to a fielder's club record.
+func catchMilestones(rec M, catchesToday int) []string {
+	if m := crossed(gi(rec, "ct", 0), gi(rec, "ct", 0)+catchesToday, wicketMarks); m > 0 {
+		return []string{fmt.Sprintf("%s: %d catches for the club", gs(rec, "name", ""), m)}
+	}
+	return nil
+}
+
+// catchesToday counts the catches this fielder's name has in this innings so far: the innings
+// we're fielding in. The other innings' catches are the other side's.
+func catchesToday(mid string, innings int, fielder string) int {
+	n := 0
+	withDB(func(tx *sql.Tx) error {
+		rows, err := tx.Query("SELECT fielder FROM live_fielding WHERE match_id=? AND innings=? AND how='ct'", mid, innings)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var f string
+			if rows.Scan(&f) == nil && normNameKey(f) == normNameKey(fielder) {
+				n++
+			}
+		}
+		return rows.Err()
+	})
+	return n
+}
+
 // LogClubMilestones checks this /live frame's home batters (or, while the club is in the
-// field, the bowler) against their club records. Each milestone is logged once per
+// field, the bowler and whoever took the last catch) against their club records. Each milestone is logged once per
 // match — a moment, so it's a chapter on the match video too — and handed to the
 // overlay. Never raises: it sits in the match-day loop.
 func LogClubMilestones(state M) {
@@ -833,6 +899,19 @@ func LogClubMilestones(state M) {
 		if name := cleanName(gs(bw, "name", "")); name != "" {
 			if rec := careerPlayerRecord(career, name, anyStr(bw, "number", "")); rec != nil {
 				for _, t := range clubMilestones(rec, 0, gi(bw, "wickets", 0), false) {
+					hits = append(hits, hit{"club-" + t, t})
+				}
+			}
+		}
+		// The last wicket's catch: the feed names the fielder, maybe only by surname, so the
+		// record goes through the same family checks as a batter's.
+		if f := cleanName(gs(state, "lastWicketFielder", "")); f != "" && fieldingHow(gs(state, "lastWicketType", "")) == "ct" {
+			if rec := careerPlayerRecord(career, f, ""); rec != nil {
+				inn := gi(state, "innings", 1)
+				if inn == 0 {
+					inn = 1
+				}
+				for _, t := range catchMilestones(rec, catchesToday(CurrentMatchID(), inn, f)) {
 					hits = append(hits, hit{"club-" + t, t})
 				}
 			}

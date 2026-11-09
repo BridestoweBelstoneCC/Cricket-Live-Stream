@@ -9,6 +9,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 - **The scorebar between the innings shows the reply.** Until the reply's openers were named it
   showed the pre-match bar ("HOME — 0.0", P1). Now it's the chasing side at 0-0, P2, "Innings
   break" and what they need, in their colours.
+- **Catches, stumpings and run outs in the club records.** Each player's fielding for the club
+  now comes from the same PlayCricket scorecards as their runs and wickets, and a catch that
+  takes one of ours to 50, 100 or 150 for the club gets a club milestone strap ("Karl Jones: 50
+  catches for the club"). The live catch hasn't been tried on a real NV Play feed yet.
 - **Fixed: the scorer's laptop could say it had stopped sharing a moment before it had.** Seen
   only as a test that failed now and then.
 
