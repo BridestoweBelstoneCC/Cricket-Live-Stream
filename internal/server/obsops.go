@@ -77,7 +77,15 @@ func replayFeed(state M) M {
 	return pcsLastState
 }
 
-func ObsTriggerReplay(state M, reason string) {
+func ObsTriggerReplay(state M, reason string) { obsTriggerReplayHeld(state, reason, 0) }
+
+// maxReplayHoldMs caps how long a replay's cut may be held (a six's animation is 3.9s).
+const maxReplayHoldMs = 8000
+
+// obsTriggerReplayHeld saves the clip at once, so it covers the same seconds as ever, but
+// doesn't cut to the Replay scene until hold has passed since it was asked for: the overlay's
+// four/six animation finishes first.
+func obsTriggerReplayHeld(state M, reason string, hold time.Duration) {
 	// The caption is built from the match state NOW, at trigger time — by the time OBS
 	// has saved the clip a few seconds from here, the strike may have rotated.
 	caption := makeClipCaption(reason, replayFeed(state))
@@ -102,9 +110,9 @@ func ObsTriggerReplay(state M, reason string) {
 			side <- p
 		}()
 	}
-	replays := float64(duration)
+	replays := float64(duration) + hold.Seconds()
 	if side != nil {
-		replays *= 2
+		replays += float64(duration)
 	}
 	noteReplay(replays + 15) // the clips, and up to ten seconds' saving: no quality step in it
 	setReplayBusy(time.Duration(replays+15) * time.Second)
@@ -167,6 +175,9 @@ func ObsTriggerReplay(state M, reason string) {
 		say("  🏷  Tagged: %s", caption)
 	}
 	send("SetInputSettings", M{"inputName": "ReplayClip", "inputSettings": M{"local_file": clip}})
+	if wait := time.Duration((asked + hold.Seconds() - now()) * float64(time.Second)); wait > 0 {
+		replaySleep(wait) // the four/six animation is still on air
+	}
 	gen := replayLatest.Add(1)
 	send("SetCurrentProgramScene", M{"sceneName": replay})
 	say("  ▶  Switched to %s scene", replay)

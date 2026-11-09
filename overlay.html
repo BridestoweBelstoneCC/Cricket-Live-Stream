@@ -2202,29 +2202,44 @@ function triggerReplayTransition(callback) {
 
 var _lastReplayTime = 0;
 
-async function triggerReplay(reason) {
+// flashKind ('four'/'six'): that ball's animation is on screen. The clip is still asked for at
+// the usual moment, so it covers the same seconds, but the transition, the banner and the
+// server's cut to the Replay scene wait until the animation has finished: they used to come
+// up on top of it.
+async function triggerReplay(reason, flashKind) {
   if (!cfg.replay_enabled) { console.log('[replay] skipped (' + reason + '): replay_enabled is off'); return; }
   // Debounce: ignore if replay triggered within the last 3 seconds
   var now = Date.now();
   if (now - _lastReplayTime < 3000) { console.log('[replay] skipped (' + reason + '): debounced'); return; }
   _lastReplayTime = now;
-  triggerReplayTransition(async () => {
+  var hold = flashKind && cfg.graphics_boundary_flash && FLASH[flashKind] ? FLASH[flashKind].ms : 0;
+  async function ask() {
     try {
       // fetch() only rejects on a network failure -- it resolves normally even for a 401/500,
       // so that had to be checked explicitly or a rejected request would silently look like
       // a success (banner shown, no error logged, nothing in OBS).
       const res = await fetch(`${SERVER}/replay`, {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify(hold ? { reason, hold_ms: hold } : { reason }),
       });
       if (!res.ok) {
         console.warn('[replay] server rejected the request (' + reason + '):', res.status, await res.text().catch(() => ''));
-        return;
+        return false;
       }
       console.log('[replay] triggered:', reason);
-      showReplayBanner(reason);
-    } catch(e) { console.warn('[replay] fetch failed (' + reason + '):', e); }
-  });
+      return true;
+    } catch(e) { console.warn('[replay] fetch failed (' + reason + '):', e); return false; }
+  }
+  if (!hold) {
+    triggerReplayTransition(async () => { if (await ask()) showReplayBanner(reason); });
+    return;
+  }
+  // Asked for 700ms in, as ever; the server cuts hold ms after that, which is the middle of the
+  // transition started when the animation ends.
+  var asked = new Promise(function (resolve) { setTimeout(function () { ask().then(resolve); }, 700); });
+  setTimeout(function () {
+    triggerReplayTransition(function () { asked.then(function (ok) { if (ok) showReplayBanner(reason); }); });
+  }, hold);
 }
 
 // ── Fall of wicket ────────────────────────────────────────
@@ -3442,8 +3457,8 @@ function processPCSData(state) {
     var newBalls = tickerChanged
       ? newTickerBalls(parsed, tickerOver, _lastBallOver, _lastBallCount) : [];
     newBalls.forEach(function(newBall) {
-      if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('four'); triggerReplay('Boundary'); }
-      else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six'); triggerReplay('Six'); }
+      if (newBall.cls === 'four') { console.log('[boundary] FOUR detected'); showFlash('four'); triggerReplay('Boundary', 'four'); }
+      else if (newBall.cls === 'six') { console.log('[boundary] SIX detected'); showFlash('six'); triggerReplay('Six', 'six'); }
     });
     // v2.2: hat-trick chain feeds off the same new-token stream, plus a wickets-delta
     // fallback inside for the over-completing wicket the ticker didn't show. Run on the
