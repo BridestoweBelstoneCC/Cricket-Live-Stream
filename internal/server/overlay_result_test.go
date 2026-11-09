@@ -156,6 +156,44 @@ console.log(JSON.stringify({ out: out, ended: ended }));`
 	mustEq(t, got.Ended, 1)
 }
 
+// Between the innings the scorebar shows the reply about to start: it used to show the
+// pre-match "HOME — 0.0" and P1 until the openers were named.
+func TestScorebarBetweenTheInningsShowsTheReply(t *testing.T) {
+	src := overlayFunctions(t, "isReplyWaiting", "renderReplyWaiting", "renderScorebar", "updateTargetTracker",
+		"oversDisplay", "fmtSurname") + `
+var MAX_OVERS = 20, cfg = { home_team: 'Home CC' }, _weatherPrematch = false, _preMatchShow = false;
+function clearShowGraphics() {}
+var els = {};
+function el(id) { return els[id] || (els[id] = { textContent: '', innerHTML: '', className: '', style: {}, classList: { remove: function () {} } }); }
+var document = { getElementById: el };
+var gap = { innings: 2, score: 0, wickets: 0, overs: 0, targetRuns: 151, ballsRemaining: 120,
+  battingTeamName: 'Rival CC', bowlingTeamName: 'Home CC', statusText: '—',
+  batter1: { name: '—', runs: 0, balls: 0, onStrike: true }, batter2: { name: '—', runs: 0, balls: 0 },
+  bowler: { name: '—' } };
+var out = { waiting: isReplyWaiting(gap), firstInnings: isReplyWaiting({ innings: 1, targetRuns: 0 }), none: isReplyWaiting(null) };
+renderReplyWaiting(gap, 'Home CC', 'Rival CC');
+out.team = el('batting-team-name').textContent; out.score = el('score-total').textContent;
+out.badge = el('innings-badge').textContent; out.need = el('target-need').textContent;
+out.status = el('status-text').textContent; out.runs = el('batter1-runs').textContent;
+out.balls = el('batter2-balls').textContent;
+gap.score = 140; gap.wickets = 10; gap.statusText = 'RR: 7.00';
+renderReplyWaiting(gap, 'Home CC', 'Rival CC');
+out.afterStatus = el('status-text').textContent;
+console.log(JSON.stringify(out));`
+	var got map[string]any
+	runJS(t, src, &got)
+	for k, want := range map[string]any{"waiting": true, "firstInnings": false, "none": false,
+		"team": "RIVAL", "score": "0-0", "badge": "P2", "need": "Need 151", "status": "Innings break",
+		"runs": "", "balls": "", "afterStatus": "RR: 7.00"} {
+		if got[k] != want {
+			t.Errorf("%s = %v, want %v", k, got[k], want)
+		}
+	}
+	if !strings.Contains(page(t, "overlay.html"), "} else if (isReplyWaiting(liveData.state)) {") {
+		t.Error("the poll no longer gives the gap between the innings its own scorebar")
+	}
+}
+
 // The practice names its openers before the first ball, and that frame is enough for a
 // first-ball boundary to fire: it used to arrive with the openers, on the frame the overlay
 // only takes its bearings from.
