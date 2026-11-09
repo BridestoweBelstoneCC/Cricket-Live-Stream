@@ -146,7 +146,7 @@ func Run(o Options) int {
 			return true
 		}
 	}
-	pace := map[string]float64{"prematch": 3.0, "prematch2": 3.0, "break": 5.0, "end": 3.0, "ball": 1.0}
+	pace := map[string]float64{"prematch": 3.0, "prematch2": 3.0, "openers": 3.0, "break": 5.0, "end": 3.0, "ball": 1.0}
 	rng := rand.New(rand.NewSource(seed))
 	secs := func(x float64) time.Duration { return time.Duration(x * float64(time.Second)) }
 	last := ""

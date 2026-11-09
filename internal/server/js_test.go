@@ -930,7 +930,8 @@ console.log(JSON.stringify({ counts: out, first: straps[0] }));
 // poll whose ticker still holds the finished over (what made the old drinks card vanish);
 // the innings break lasts through the change of innings until the reply's first ball.
 func TestBreakDetection(t *testing.T) {
-	src := overlayFunctions(t, "ballsOf", "updateBreak", "startBreak", "endBreak", "fillBreakPanel", "breakGraphics") + `
+	src := overlayFunctions(t, "ballsOf", "updateBreak", "startBreak", "endBreak", "fillBreakPanel", "breakGraphics", "isPreMatchPCS", "clearShowGraphics") + `
+var SHOW_PANELS = [];
 var BREAK_LABELS = { drinks: 'Drinks', innings: 'Innings break', rain: 'Rain delay', 'break': 'Break in play' };
 var _break = null, _breakAt = null, _drinksDone = {}, _inningsBreakDone = false;
 var _breakTimer = null, _breakLoop = null, _weatherBreak = false, _weatherOK = true;

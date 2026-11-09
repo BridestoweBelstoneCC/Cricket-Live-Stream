@@ -4,6 +4,24 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## v3.0.0-beta.7 — first ball and final result (2026-11-09)
+
+- **Graphics clear for the first ball.** The pre-match show and the innings break now end when
+  the scorer names the openers, not once the first ball is scored, and anything they still had
+  queued is dropped. A first-ball boundary no longer happens under the graphics, or during a
+  break clip. The finished innings' scorecard no longer comes back 4 seconds into the reply.
+- **The end of the match has its graphics.** A side reaching its target with overs left used to
+  get no post-match graphics. Now any finished chase shows the result ("Rival CC won by 6
+  wickets", "Home CC won by 12 runs", "Match tied"), the innings summary and the final scorecard.
+- **The innings summary is filled in on NV Play.** Top scorer, best bowling and extras now come
+  from the scorecard.
+- **Fixed: an old score after a practice match.** The scorer's old file looked new for 12 hours
+  after a practice, so last match's score could go back on the scorebar.
+- **Practice match names the openers before the first ball,** as a real scorer does, so it
+  rehearses all of this, and a first-ball four gets its replay.
+
+---
+
 ## v3.0.0-beta.6 — keeping relatives apart (2026-11-09)
 
 - **Fixed: a relative's record on the player card.** A player whose surname matched a

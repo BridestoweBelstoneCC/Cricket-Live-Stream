@@ -46,6 +46,8 @@ func practiceGap(prev, fr simulate.Frame, s M) float64 {
 	// Several frames each (3 pre-match, 3 at the break, 3 at each innings' end).
 	case "prematch", "prematch2":
 		return 10
+	case "openers":
+		return 20 // walking out, as long as a real scorer's gap before the first ball
 	case "break":
 		return 30
 	case "end":
@@ -321,6 +323,11 @@ func deleteMatchRows(mid string) {
 // resetFeedPipeline forgets everything the per-poll pipeline remembers about the feed,
 // so the practice starts (and the real match resumes) from a clean slate.
 func resetFeedPipeline() {
+	// The folder changed, so the file's time changed: that isn't the scorer writing. Left as
+	// it was, last week's final score looked new for 12 hours after a practice.
+	agentMu.Lock()
+	leftoverFeedSaid, leftoverMtime, leftoverSince, leftoverWritten = false, 0, 0, false
+	agentMu.Unlock()
 	ResetPCSCache()
 	SetInningsLatch(1)
 	ResetEventDetection()

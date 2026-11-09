@@ -2363,13 +2363,53 @@ function triggerInningsSummary(state, allInnings) {
       el('summary-top-bowl-fig').textContent = `${bowled[0].wickets}-${bowled[0].runs}`;
     }
     el('summary-extras').textContent = live.extras || '—';
-  }
+  } else fillSummaryFromCard(state.card, state.score);
   queueGraphic('summary-panel', 12000);
+}
+
+// NV Play's feed has no allInnings, so the summary's other three columns come from its
+// scorecard. Extras are what the batters didn't score: the card lists all of them.
+function fillSummaryFromCard(card, score) {
+  var bats = (card && card.batters) || [], bowls = (card && card.bowlers) || [];
+  var bat = bats.slice().sort(function (a, b) { return (b.runs || 0) - (a.runs || 0); })[0];
+  var bowl = bowls.slice().sort(function (a, b) { return (b.w || 0) - (a.w || 0) || (a.r || 0) - (b.r || 0); })[0];
+  var extras = bats.length ? parseInt(score || 0, 10) - bats.reduce(function (n, b) { return n + (b.runs || 0); }, 0) : -1;
+  el('summary-top-bat').textContent = bat ? fmtSurname(bat.name) : '—';
+  el('summary-top-bat-score').textContent = bat ? bat.runs + ' (' + bat.balls + ')' : '';
+  el('summary-top-bowl').textContent = bowl ? fmtSurname(bowl.name) : '—';
+  el('summary-top-bowl-fig').textContent = bowl ? bowl.w + '-' + bowl.r : '';
+  el('summary-extras').textContent = extras >= 0 ? String(extras) : '—';
+}
+
+// The result, only once it's certain: the target reached, or the chasing side all out or
+// out of overs. '' otherwise, so nothing's claimed mid-chase or without a target. It names
+// the sides rather than saying who "we" are.
+function matchResult(state) {
+  var target = parseInt(state.targetRuns || 0, 10), score = parseInt(state.score || 0, 10);
+  var wk = parseInt(state.wickets || 0, 10), bat = state.battingTeamName || '', bowl = state.bowlingTeamName || '';
+  if (!target) return '';
+  function by(n, what) { return n + ' ' + what + (n === 1 ? '' : 's'); }
+  if (score >= target) return bat ? bat + ' won by ' + by(10 - wk, 'wicket') : '';
+  if (wk < 10 && !(MAX_OVERS > 0 && ballsOf(state.overs) >= MAX_OVERS * 6)) return '';
+  if (score === target - 1) return 'Match tied';
+  return bowl ? bowl + ' won by ' + by(target - 1 - score, 'run') : '';
+}
+
+// The end of the match: the result on the break card's panel, then the innings summary and
+// the final scorecard. The winning runs may have a replay to play out first.
+function showMatchResult(state, result) {
+  el('break-accent').style.background = cfg.home_colour || '#1a3a5c';
+  el('break-label').textContent = 'Result';
+  el('break-teams').textContent = (cfg.home_team || 'Home') + ' v ' + (cfg.away_team || 'Away');
+  el('break-score').textContent = (state.battingTeamName ? state.battingTeamName + ' ' : '') + (state.score || 0) + '/' + (state.wickets || 0);
+  el('break-sub').textContent = result;
+  queueGraphic('break-panel', 14000);
 }
 
 // ── Weather ───────────────────────────────────────────────
 var _weatherOK = false;         // /weather has answered: there are conditions to show
 var _weatherPrematch = false;   // the pre-match show put the card up (and takes it down)
+var _preMatchShow = false;      // the pre-match show has been running (renderScorebar ends it)
 async function refreshWeather() {
   try {
     const res  = await fetch(`${SERVER}/weather`);
@@ -3284,7 +3324,9 @@ function processPCSData(state) {
     // v2.1: show the completed innings' full scorecard a moment after the break graphics.
     // _lastCard still holds the FINISHED innings here (it's refreshed at the end of this
     // function, after this block), so we capture and queue it before it's overwritten.
-    if (_lastCard && _lastCard.batters && _lastCard.batters.length) {
+    // Not after a break the overlay ran: that showed this card already, and this frame is now
+    // the openers coming out, so 4s on it landed on the first ball.
+    if (!_inningsBreakDone && _lastCard && _lastCard.batters && _lastCard.batters.length) {
       const cardSnap = JSON.parse(JSON.stringify(_lastCard));
       const metaSnap = Object.assign({}, _lastCardMeta);
       setTimeout(function(){ showScorecard(cardSnap, metaSnap); }, 4000);
@@ -3622,10 +3664,17 @@ function detectEvents(state, allInnings) {
     }
   }
 
-  // Innings summary — fires 3s after end of innings
-  if (innings !== prev.summaryInnings && (wickets >= 10 || overs >= MAX_OVERS)) {
+  // Innings summary — fires 3s after end of innings. A chase can end with overs left, so the
+  // result counts too: it used to get no graphics at all. Then it's the end of the match.
+  const result = matchResult(state);
+  if (innings !== prev.summaryInnings && (wickets >= 10 || overs >= MAX_OVERS || result)) {
     prev.summaryInnings = innings;
-    setTimeout(() => triggerInningsSummary(state, allInnings), 3000);
+    const after = result && cfg.replay_enabled && (dWickets > 0 || dScore >= 4) ? wicketReplayMs() : 3000;
+    setTimeout(() => {
+      if (result) showMatchResult(state, result);
+      triggerInningsSummary(state, allInnings);
+      if (result && _lastCard) showScorecard(_lastCard, _lastCardMeta);
+    }, after);
   }
 
   // prev.score/wickets/overs already updated at top of function
@@ -3635,6 +3684,8 @@ function detectEvents(state, allInnings) {
 // ── Scorebar render ───────────────────────────────────────
 function renderScorebar(state, home, away) {
   if (_weatherPrematch) { _weatherPrematch = false; el('weather-widget').classList.remove('show'); }
+  // The first live frame: the openers are named, so play is moments away.
+  if (_preMatchShow) { _preMatchShow = false; clearShowGraphics(); }
   const batting = state.battingTeamName||home;
   const bowling = state.bowlingTeamName||away;
   // Use abbreviation if set, otherwise auto-shorten the full name
@@ -4060,8 +4111,11 @@ function updateBreak(state) {
   var inn = parseInt(state.innings || 1, 10), balls = ballsOf(state.overs), wk = parseInt(state.wickets || 0, 10);
   _breakAt = { innings: inn, balls: balls, state: state };
   if (_break) {
-    // Play again: a ball bowled in the same innings, or the next innings under way.
-    if ((inn === _break.innings && balls > _break.balls) || (inn > _break.innings && balls > 0)) endBreak(true);
+    // Play again: a ball bowled in the same innings, or the next innings under way. Naming
+    // the openers is the scorer's last step before play, so the reply's break ends there: at
+    // its first ball the shot's already been played, with graphics or a clip over it.
+    if ((inn === _break.innings && balls > _break.balls) ||
+        (inn > _break.innings && (balls > 0 || !isPreMatchPCS(state)))) endBreak(true);
     return;
   }
   var drinksOv = parseInt(cfg.drinks_over, 10) || 0;
@@ -4108,6 +4162,19 @@ function endBreak(tell) {
   if (tell) fetch(SERVER + '/break/end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(function () {});
   if (_weatherBreak) { _weatherBreak = false; el('weather-widget').classList.remove('show'); }
   el('break-panel').classList.remove('show');
+  clearShowGraphics();
+}
+
+// Play's starting: the pre-match and break graphics come down, and any still queued are
+// dropped, or a show's whole round carried on over the cricket. Anything else in the queue
+// (the over's own graphics, a milestone) is about the game, and stays.
+var SHOW_PANELS = ['prematch-panel', 'pregame-form-home', 'pregame-form-away', 'leaders-panel', 'radar-panel',
+  'league-table-panel', 'countdown-panel', 'h2h-panel', 'lineup-panel', 'break-panel', 'scorecard-panel'];
+function clearShowGraphics() {
+  for (var i = queue.length - 1; i >= 0; i--) {
+    if (SHOW_PANELS.indexOf(queue[i].id) >= 0) queue.splice(i, 1);
+  }
+  SHOW_PANELS.forEach(function (id) { var p = el(id); if (p) p.classList.remove('show'); });
 }
 
 // Fills #break-panel from the last frame: what the break is, and where the match stands.
@@ -4159,6 +4226,7 @@ function isPreMatchPCS(state) {
 }
 
 function showPreMatchInfo() {
+  _preMatchShow = true;
   loadPregameForm();
   if (cfg.graphics_league_table) loadLeagueTable();
   if (cfg.graphics_h2h !== false) loadH2H();
@@ -4397,7 +4465,13 @@ async function poll() {
             } catch(e){ console.warn('event handler error:', ev, e); }
           });
         }
-      } else { renderPreMatch(home,away); showPreMatchInfo(); updateBadges(cfg.home_club_id, cfg.away_club_id, null, null); }
+      } else {
+        // The reply's openers aren't named yet: that's still the innings break, with its own
+        // graphics, not the pre-match show.
+        renderPreMatch(home,away);
+        if (!_break) showPreMatchInfo();
+        updateBadges(cfg.home_club_id, cfg.away_club_id, null, null);
+      }
     } else if (liveData.source==='widget') {
       if (liveData.state){renderScorebar(liveData.state,home,away);detectEvents(liveData.state,null);}
       else { renderPreMatch(home,away); showPreMatchInfo(); }

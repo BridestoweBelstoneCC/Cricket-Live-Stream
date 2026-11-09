@@ -39,7 +39,8 @@ var prev = { score: null, wickets: null, overs: null, partnership: 0, partnershi
   batsmen: [], lineupInnings: 0, summaryInnings: 0, milestonesFired: new Set() };
 var _latestWinPrediction = null, _lastPCSinnings = 1, _lastPCSovers = -1, _currentOverBalls = [];
 var _spells = {}, _hatTrick = { bowler: '', count: 0 }, _htPrevWickets = 0, _bowlerFived = {};
-var _lastCard = null, _lastCardMeta = null, _rrData = { prevScore: 0, prevWickets: 0 };
+var _lastCard = null, _lastCardMeta = null, _rrData = { prevScore: 0, prevWickets: 0 }, _inningsBreakDone = false;
+function matchResult() { return ''; } function showMatchResult() {}
 var _lastPolledBowler = null, _lastWicketOver = -1, _overRunHistory = [];
 var _lastBallSig = null, _lastBallCount = 0, _lastBallOver = -1;
 var _playerCardVisible = false, _cardShownAtBall = -1, _pendingFOW = null;
