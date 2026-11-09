@@ -98,6 +98,7 @@ type App struct {
 	exitCode    int
 	lastPoll    time.Time
 
+	agentStopMu sync.Mutex // held for the whole of a stop
 	agentRun    *agent.Running
 	agentFolder string
 	agentHow    string
@@ -291,8 +292,10 @@ var (
 	runLauncher    = launcher.Run
 	alreadyRunning = launcher.AlreadyRunning
 	agentOptions   = agent.Options{}
-	finishOBS      = func() (bool, string) { return obs.Finish(setup.ConfigFile()) }
-	obsOpen        = obs.Running
+	// stopRunningAgent is the agent's Stop, which tests slow down.
+	stopRunningAgent = (*agent.Running).Stop
+	finishOBS        = func() (bool, string) { return obs.Finish(setup.ConfigFile()) }
+	obsOpen          = obs.Running
 	// stopThenCloseDone, if set, is told when "Stop and close" has done all it will (tests).
 	stopThenCloseDone func()
 )
@@ -450,15 +453,22 @@ func agentPort() int {
 	return agent.DefaultHTTPPort
 }
 
+// stopAgent returns once the sharing has really stopped, even if another stop got there
+// first: the window says stopped, and the app closes, only after that.
 func (a *App) stopAgent() {
+	a.agentStopMu.Lock()
+	defer a.agentStopMu.Unlock()
 	a.mu.Lock()
 	r := a.agentRun
+	a.mu.Unlock()
+	if r == nil {
+		return
+	}
+	stopRunningAgent(r)
+	a.mu.Lock()
 	a.agentRun = nil
 	a.mu.Unlock()
-	if r != nil {
-		r.Stop()
-		fmt.Println("  Stopped sharing the scoreboard.")
-	}
+	fmt.Println("  Stopped sharing the scoreboard.")
 }
 
 func (a *App) startBridge() {

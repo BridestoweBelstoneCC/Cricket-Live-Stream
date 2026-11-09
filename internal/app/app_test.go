@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +41,22 @@ func freePort(t *testing.T) int {
 	}
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
+}
+
+// agentTestPort is a free port below the range the system hands out by itself. The agent listens
+// well after this and again on a new folder, and from freePort's range a connection's own
+// source port could take it in between ("port is in use": 1 in about 3000 runs on a busy Linux).
+func agentTestPort(t *testing.T) int {
+	t.Helper()
+	for range 100 {
+		p := 20000 + rand.IntN(10000)
+		if ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p)); err == nil {
+			ln.Close()
+			return p
+		}
+	}
+	t.Fatal("no free port for the agent")
+	return 0
 }
 
 // testApp is the app's page and API on a test server, in a folder of its own: nothing
@@ -72,7 +90,7 @@ func newTestApp(t *testing.T) *testApp {
 	browser.OpenFolder = func(string) error { return nil }
 	savedLaunch, savedAlready, savedAgent := runLauncher, alreadyRunning, agentOptions
 	alreadyRunning = func() bool { return false }
-	agentOptions = agent.Options{Port: freePort(t), DiscoveryPort: freePort(t)}
+	agentOptions = agent.Options{Port: agentTestPort(t), DiscoveryPort: freePort(t)}
 	t.Cleanup(func() {
 		browser.Open, browser.OpenFolder = savedOpen, savedFolder
 		runLauncher, alreadyRunning, agentOptions = savedLaunch, savedAlready, savedAgent
@@ -287,15 +305,80 @@ func TestFirstRunAsTheScorersLaptopSharesTheScoreInTheWindow(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the app didn't close")
 	}
-	// The agent itself, not whatever else may have been given the freed port since (seen
-	// on Linux CI: another test server landed on it).
-	if resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", agentOptions.Port)); err == nil {
-		var d M
-		json.NewDecoder(resp.Body).Decode(&d)
-		resp.Body.Close()
-		if d["service"] == agent.ServiceName {
-			t.Error("still sharing after close")
-		}
+	if agentAnswers() {
+		t.Error("still sharing after close")
+	}
+}
+
+// agentAnswers is whether the agent itself is on its port, not whatever else may have been
+// given the port since it was freed.
+func agentAnswers() bool {
+	c := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}, Timeout: 2 * time.Second}
+	resp, err := c.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", agentOptions.Port))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var d M
+	json.NewDecoder(resp.Body).Decode(&d)
+	return d["service"] == agent.ServiceName
+}
+
+// newSharingApp is a scorer's laptop that's sharing, with stopRunningAgent free to be swapped.
+func newSharingApp(t *testing.T) *testApp {
+	t.Helper()
+	ta := newTestApp(t)
+	ta.enterRole("")
+	nv := filepath.Join(ta.dir, "nv", "Output")
+	os.MkdirAll(nv, 0o755)
+	os.WriteFile(filepath.Join(nv, "nvplay-scoreboard1.xml"), []byte("<x/>"), 0o644)
+	if r := ta.saveSetup(M{"role": "scorer", "pcs_folder": nv}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	ta.waitFor("the agent", func(st M) bool { a, _ := st["agent"].(M); return a != nil && a["running"] == true })
+
+	saved := stopRunningAgent
+	t.Cleanup(func() { stopRunningAgent = saved })
+	return ta
+}
+
+// Stopping the sharing takes a moment, and until it's done the window mustn't say it has, or
+// close with the scorer's file still being served.
+func TestSlowStopStillStopsTheSharingBeforeSayingSo(t *testing.T) {
+	ta := newSharingApp(t)
+	stopRunningAgent = func(r *agent.Running) {
+		time.Sleep(300 * time.Millisecond)
+		r.Stop()
+	}
+	ta.api("POST", "stop", M{})
+	ta.waitFor("sharing stopped", func(st M) bool { return st["agent"].(M)["running"] == false })
+	if agentAnswers() {
+		t.Error("the window says stopped while the agent is still sharing")
+	}
+}
+
+// Close during a slow stop: the app waits for it rather than leaving it to finish after.
+func TestCloseWaitsForASlowStop(t *testing.T) {
+	ta := newSharingApp(t)
+	entered := make(chan struct{})
+	var once sync.Once
+	stopRunningAgent = func(r *agent.Running) {
+		once.Do(func() { close(entered) })
+		time.Sleep(300 * time.Millisecond)
+		r.Stop()
+	}
+	ta.api("POST", "stop", M{})
+	<-entered
+	if r := ta.api("POST", "close", M{}); r.status != 200 {
+		t.Fatalf("close: %d", r.status)
+	}
+	select {
+	case <-ta.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app didn't close")
+	}
+	if agentAnswers() {
+		t.Error("closed with the agent still sharing")
 	}
 }
 
