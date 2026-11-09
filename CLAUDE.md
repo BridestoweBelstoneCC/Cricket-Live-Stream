@@ -289,8 +289,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   drinks card used to hide on "the next poll with balls in the ticker", which (stale
   ticker, above) was the very next poll: drinks never really showed. The overlay's
   `updateBreak()` starts drinks at `drinks_over` complete, the innings break when innings 1
-  is all out / out of overs, and ends either at a ball bowled after it (or the reply's
-  first ball); the panel starts rain delays / breaks in play the same way. The server's
+  is all out / out of overs, and ends either at a ball bowled after it or when the reply's
+  openers are named (the scorer's last step before play: at the first ball, the shot's
+  already been played under the graphics); the panel starts rain delays / breaks in play the
+  same way. `clearShowGraphics()` drops the pre-match and break panels still queued. The server's
   `breakshow.go` plays the match's best saved clips through the Replay scene between the
   overlay's break graphics, and cuts back to Main the moment the break ends.
 - **On that same over-completing write, `bowler` has ALREADY rotated to the next over's

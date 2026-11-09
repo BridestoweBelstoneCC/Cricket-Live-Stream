@@ -213,6 +213,12 @@ func (m *Match) Frames() []Frame {
 			emit("end", inn, n)
 		}
 	}
+	// The scorer names the openers before the first ball, as in NV Play: the overlay takes
+	// that as play being moments away.
+	openers := func(inn *Innings, n int) {
+		inn.OpenersSelected = true
+		emit("openers", inn, n)
+	}
 	switch m.Scenario {
 	case "chase":
 		inn1 := m.newInnings(false, nil, 0, 1, 1)
@@ -245,6 +251,7 @@ func (m *Match) Frames() []Frame {
 		for i := 0; i < 3; i++ {
 			emit("prematch", inn1, 1)
 		}
+		openers(inn1, 1)
 		play(inn1, 1)
 		for i := 0; i < 3; i++ { // innings break holds
 			emit("break", inn1, 1)
@@ -254,6 +261,7 @@ func (m *Match) Frames() []Frame {
 		for i := 0; i < 2; i++ {
 			emit("prematch2", inn2, 2) // openers not yet picked
 		}
+		openers(inn2, 2)
 		play(inn2, 2)
 	}
 	return out
