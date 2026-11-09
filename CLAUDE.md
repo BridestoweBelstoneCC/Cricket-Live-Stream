@@ -579,9 +579,12 @@ problem + what to do + pause) or print and `console.Pause()`.
 - `http://localhost:5000/club/career?name=SURNAME` — the club record behind the club
   milestones (`career.go`): every past PlayCricket scorecard of the home club's sides,
   today's match excluded; a name that could be two people resolves to nothing, on purpose.
-  `careerMerge` joins a player's spellings ("J Ewen", "Dan"/"Daniel"), never two names on one
-  scorecard; don't key this on PlayCricket's player ids, which on real data give one man
-  several. With `&team=` (the batting team)
+  `careerMerge` joins a player's spellings ("J Smith", "Dan"/"Daniel"), never two names on one
+  list; don't key this on PlayCricket's player ids, which on real data give one man several.
+  Clubs have a lot of relatives, so a name with a first name or initial never falls back on
+  the surname (`careerRecord`), and a bare surname is checked against today's XIs
+  (`careerPlayerRecord`, which must not wait: it runs on every /live poll). `[Club]
+  same_players` is the club's word on who's one person, and beats every rule. With `&team=` (the batting team)
   it also gives the player card's `apps`: games for the club including today's, only for our
   side. A team list only adds to a record, never starts one, so its spelling can't cost a
   player their milestones. `[Club] former_ids` (a merged club's old clubs) adds those clubs'

@@ -127,32 +127,32 @@ func TestCareerMerge(t *testing.T) {
 		return accs, accs
 	}
 	// Each scorecard here is one list, unless a test says otherwise.
-	merge := func(accs map[string]*careerAcc, sheets [][]string) { careerMerge(accs, sheets, sheets) }
+	merge := func(accs map[string]*careerAcc, sheets [][]string) { careerMerge(accs, sheets, sheets, nil) }
 	same := func(accs map[string]*careerAcc, a, b string) bool {
 		return accs[normNameKey(a)] == accs[normNameKey(b)]
 	}
 
 	// Old cards' initial and short name join the usual one, whose name the record keeps.
-	accs, _ := build("Daniel Fogerty", "Dan Fogerty", "D Fogerty")
-	merge(accs, [][]string{{"Daniel Fogerty"}, {"Daniel Fogerty"}, {"Dan Fogerty"}, {"D Fogerty"}})
-	if !same(accs, "Daniel Fogerty", "Dan Fogerty") || !same(accs, "Daniel Fogerty", "D Fogerty") {
+	accs, _ := build("Daniel Reed", "Dan Reed", "D Reed")
+	merge(accs, [][]string{{"Daniel Reed"}, {"Daniel Reed"}, {"Dan Reed"}, {"D Reed"}})
+	if !same(accs, "Daniel Reed", "Dan Reed") || !same(accs, "Daniel Reed", "D Reed") {
 		t.Fatal("one man's names didn't join")
 	}
-	eqv(t, []any{accs["danfogerty"].name, accs["danfogerty"].runs, accs["danfogerty"].inn}, []any{"Daniel Fogerty", 30, 3})
-	careerCountApps(accs, [][]string{{"Daniel Fogerty"}, {"Dan Fogerty", "D Fogerty"}})
-	mustEq(t, accs["dfogerty"].apps, 2, "a joined name on one card is still one game")
+	eqv(t, []any{accs["danreed"].name, accs["danreed"].runs, accs["danreed"].inn}, []any{"Daniel Reed", 30, 3})
+	careerCountApps(accs, [][]string{{"Daniel Reed"}, {"Dan Reed", "D Reed"}})
+	mustEq(t, accs["dreed"].apps, 2, "a joined name on one card is still one game")
 
 	// A nickname that doesn't start the formal name, which then lets the initial join too.
-	accs, _ = build("James Ewen", "Jimmy Ewen", "J Ewen", "Thomas Boother", "Tom Boother")
-	merge(accs, [][]string{{"James Ewen"}, {"James Ewen"}, {"Jimmy Ewen"}, {"J Ewen"}, {"Thomas Boother"}, {"Thomas Boother"}, {"Tom Boother"}})
-	if !same(accs, "James Ewen", "Jimmy Ewen") || !same(accs, "James Ewen", "J Ewen") || !same(accs, "Thomas Boother", "Tom Boother") {
+	accs, _ = build("James Hale", "Jimmy Hale", "J Hale", "Thomas Marsh", "Tom Marsh")
+	merge(accs, [][]string{{"James Hale"}, {"James Hale"}, {"Jimmy Hale"}, {"J Hale"}, {"Thomas Marsh"}, {"Thomas Marsh"}, {"Tom Marsh"}})
+	if !same(accs, "James Hale", "Jimmy Hale") || !same(accs, "James Hale", "J Hale") || !same(accs, "Thomas Marsh", "Tom Marsh") {
 		t.Fatal("a nickname didn't join")
 	}
 
 	// Different first names are different people.
-	accs, _ = build("Abigail Drake", "Alistair Drake")
-	merge(accs, [][]string{{"Abigail Drake"}, {"Alistair Drake"}})
-	if same(accs, "Abigail Drake", "Alistair Drake") {
+	accs, _ = build("Abigail Pike", "Alistair Pike")
+	merge(accs, [][]string{{"Abigail Pike"}, {"Alistair Pike"}})
+	if same(accs, "Abigail Pike", "Alistair Pike") {
 		t.Fatal("joined two people")
 	}
 
@@ -164,40 +164,163 @@ func TestCareerMerge(t *testing.T) {
 	}
 
 	// One card can write a player two ways, in its team list and its batting rows.
-	accs, _ = build("Thomas Boother", "T Boother")
-	careerMerge(accs, [][]string{{"Thomas Boother"}, {"Thomas Boother", "T Boother"}},
-		[][]string{{"Thomas Boother"}, {"Thomas Boother"}, {"T Boother"}})
-	if !same(accs, "Thomas Boother", "T Boother") {
+	accs, _ = build("Thomas Marsh", "T Marsh")
+	careerMerge(accs, [][]string{{"Thomas Marsh"}, {"Thomas Marsh", "T Marsh"}},
+		[][]string{{"Thomas Marsh"}, {"Thomas Marsh"}, {"T Marsh"}}, nil)
+	if !same(accs, "Thomas Marsh", "T Marsh") {
 		t.Fatal("kept apart by different lists on one card")
 	}
 
-	// "J Hatton" could be Jack or John.
-	accs, _ = build("Jack Hatton", "John Hatton", "J Hatton")
-	merge(accs, [][]string{{"Jack Hatton"}, {"Jack Hatton"}, {"John Hatton"}, {"J Hatton"}})
-	if same(accs, "J Hatton", "Jack Hatton") || same(accs, "J Hatton", "John Hatton") {
+	// "J Lowe" could be Jack or John.
+	accs, _ = build("Jack Lowe", "John Lowe", "J Lowe")
+	merge(accs, [][]string{{"Jack Lowe"}, {"Jack Lowe"}, {"John Lowe"}, {"J Lowe"}})
+	if same(accs, "J Lowe", "Jack Lowe") || same(accs, "J Lowe", "John Lowe") {
 		t.Fatal("placed an initial that fits two people")
 	}
 
-	// Mostly "A Griffiths": may well be someone other than the Adam seen once.
-	accs, _ = build("Adam Griffiths", "A Griffiths")
-	merge(accs, [][]string{{"Adam Griffiths"}, {"A Griffiths"}, {"A Griffiths"}})
-	if same(accs, "Adam Griffiths", "A Griffiths") {
+	// Mostly "A Nash": may well be someone other than the Adam seen once.
+	accs, _ = build("Adam Nash", "A Nash")
+	merge(accs, [][]string{{"Adam Nash"}, {"A Nash"}, {"A Nash"}})
+	if same(accs, "Adam Nash", "A Nash") {
 		t.Fatal("joined an initial busier than the full name")
+	}
+}
+
+// A club with a lot of relatives: nothing here may join by itself.
+func TestCareerMergeKeepsFamiliesApart(t *testing.T) {
+	merge := func(names []string, sheets [][]string) map[string]*careerAcc {
+		accs := map[string]*careerAcc{}
+		for _, n := range names {
+			accs[normNameKey(n)] = &careerAcc{name: n}
+		}
+		careerMerge(accs, sheets, sheets, nil)
+		return accs
+	}
+	// Chris only ever on a team list has no record, but he's why "C Hale" can't be Charles.
+	accs := merge([]string{"Charles Hale", "C Hale"}, [][]string{{"Charles Hale"}, {"Charles Hale"}, {"Chris Hale"}, {"C Hale"}})
+	if accs["chale"] == accs["charleshale"] {
+		t.Fatal("an initial joined past a relative on a team list")
+	}
+	for _, p := range [][2]string{{"Sam Pike", "Samantha Pike"}, {"Alex Pike", "Alexandra Pike"}, {"Dan Pike", "Danielle Pike"},
+		{"Jo Pike", "Joseph Pike"}, {"Phil Pike", "Philippa Pike"}, {"Louis Pike", "Louise Pike"}} {
+		accs = merge([]string{p[0], p[1]}, [][]string{{p[0]}, {p[1]}})
+		if accs[normNameKey(p[0])] == accs[normNameKey(p[1])] {
+			t.Errorf("joined %s and %s", p[0], p[1])
+		}
+	}
+	// A team-list name's initial doesn't get credited to a record past a relative either.
+	accs = merge([]string{"Charles Hale"}, nil)
+	careerCountApps(accs, [][]string{{"Chris Hale"}, {"C Hale"}, {"Charles Hale"}})
+	mustEq(t, accs["charleshale"].apps, 1)
+}
+
+// The club's own word beats every rule, including two names on one list.
+func TestSamePlayers(t *testing.T) {
+	same := careerSamePlayers(M{"same_players": " Matt Cole: Matthew Cole, M Cole | Alone | Alex Frost: Alex Frosk | "})
+	eqv(t, same, [][]string{{"Matt Cole", "Matthew Cole", "M Cole"}, {"Alex Frost", "Alex Frosk"}})
+	accs := map[string]*careerAcc{"mattcole": {name: "Matt Cole", runs: 10}, "matthewcole": {name: "Matthew Cole", runs: 5, wkts: 1},
+		"mcole": {name: "M Cole", runs: 1}, "alexfrosk": {name: "Alex Frosk", runs: 3}}
+	lists := [][]string{{"Matt Cole", "Matthew Cole"}, {"M Cole"}, {"Alex Frosk"}, {"Rob Bright"}}
+	careerMerge(accs, lists, lists, same)
+	m := accs["matthewcole"]
+	if m != accs["mattcole"] || m != accs["mcole"] {
+		t.Fatal("named as one player, still apart")
+	}
+	eqv(t, []any{m.name, m.runs, m.wkts}, []any{"Matt Cole", 16, 1})
+	// The usual name need not have a record of its own.
+	if a := accs["alexfrost"]; a == nil || a != accs["alexfrosk"] || a.name != "Alex Frost" {
+		t.Fatalf("%+v", a)
+	}
+	careerCountApps(accs, [][]string{{"Matt Cole", "Matthew Cole"}, {"M Cole"}})
+	mustEq(t, m.apps, 2)
+}
+
+// Every spelling a club named finds the one record, through the real build.
+func TestSamePlayersAreFoundByAnyName(t *testing.T) {
+	careerFake(t)
+	UpdateState(func(s M) { s["same_players"] = "Karl Jones: K Jones, Carl Jones" })
+	c := buildCareer(LoadState())
+	jones := careerRecord(c, "Karl Jones")
+	for _, n := range []string{"K Jones", "Carl Jones", "JONES"} {
+		if r := careerRecord(c, n); r == nil || gs(r, "name", "") != "Karl Jones" || gi(r, "apps", 0) != gi(jones, "apps", 0) {
+			t.Errorf("%s found %v", n, r)
+		}
+	}
+}
+
+// A relative's first game must not show the record of the one who's played for years.
+func TestCareerRecordNeverCreditsARelative(t *testing.T) {
+	lk := M{"lookup": careerLookup([]M{{"name": "Callum Vane", "apps": 176}})}
+	for _, n := range []string{"Harry Vane", "H Vane", "Chris Vane"} {
+		if careerRecord(lk, n) != nil {
+			t.Errorf("%s got Callum's record", n)
+		}
+	}
+	for _, n := range []string{"Callum Vane", "C Vane", "VANE"} {
+		if careerRecord(lk, n) == nil {
+			t.Errorf("%s not found", n)
+		}
+	}
+	// A nickname still finds its man.
+	if careerRecord(M{"lookup": careerLookup([]M{{"name": "Thomas Pike"}})}, "Tom Pike") == nil {
+		t.Error("Tom is Thomas")
+	}
+	if careerRecord(M{"lookup": careerLookup([]M{{"name": "Thomas Pike"}})}, "Tim Pike") != nil {
+		t.Error("Tim isn't Thomas")
+	}
+}
+
+// With only a surname on the scorebar, today's XI can say it isn't the man on record.
+func TestCareerBareSurnameCheckedAgainstTodaysXI(t *testing.T) {
+	sandbox(t, "")
+	lk := M{"lookup": careerLookup([]M{{"name": "Callum Vane", "apps": 176}})}
+	saved := lineupsOut
+	t.Cleanup(func() { lineupsOut = saved })
+	xi := func(names ...string) M {
+		ps := []any{}
+		for _, n := range names {
+			ps = append(ps, M{"name": n})
+		}
+		return M{"ok": true, "home": M{"players": ps}, "away": M{"players": []any{}}}
+	}
+	lineupsOut = nil
+	if careerPlayerRecord(lk, "VANE", "") == nil {
+		t.Fatal("no XI known yet: the surname stands")
+	}
+	lineupsOut = xi("Callum Vane", "Jo Smith")
+	if careerPlayerRecord(lk, "VANE", "") == nil {
+		t.Fatal("he's playing")
+	}
+	lineupsOut = xi("Harry Vane", "Jo Smith")
+	if careerPlayerRecord(lk, "VANE", "") != nil {
+		t.Fatal("his brother's playing, not him")
+	}
+	lineupsOut = xi("Callum Vane", "Harry Vane")
+	if careerPlayerRecord(lk, "VANE", "") != nil {
+		t.Fatal("either of them could be batting")
+	}
+	// A fetch under way: say nothing rather than wait in the /live poll.
+	lineupsOut = xi("Callum Vane")
+	lineupsMu.Lock()
+	got := careerPlayerRecord(lk, "VANE", "")
+	lineupsMu.Unlock()
+	if got != nil {
+		t.Fatal("guessed during a fetch")
 	}
 }
 
 func TestCareerLookupFindsPeopleByWhatOnlyTheyAre(t *testing.T) {
 	lk := M{"lookup": careerLookup([]M{
-		{"name": "Jack Hatton"}, {"name": "John Hatton"}, {"name": "J Hatton"},
-		{"name": "Abigail Drake"}, {"name": "Alistair Drake"}, {"name": "Thomas Drake"},
+		{"name": "Jack Lowe"}, {"name": "John Lowe"}, {"name": "J Lowe"},
+		{"name": "Abigail Pike"}, {"name": "Alistair Pike"}, {"name": "Thomas Pike"},
 		{"name": "Karl Jones"},
 	})}
-	for _, n := range []string{"Jack Hatton", "John Hatton", "Abigail Drake", "Alistair Drake", "Thomas Drake", "T Drake", "Karl Jones", "K Jones", "JONES"} {
+	for _, n := range []string{"Jack Lowe", "John Lowe", "Abigail Pike", "Alistair Pike", "Thomas Pike", "T Pike", "Karl Jones", "K Jones", "JONES"} {
 		if careerRecord(lk, n) == nil {
 			t.Errorf("%s not found", n)
 		}
 	}
-	for _, n := range []string{"HATTON", "J Hatton", "DRAKE", "A Drake"} {
+	for _, n := range []string{"LOWE", "J Lowe", "PIKE", "A Pike"} {
 		if careerRecord(lk, n) != nil {
 			t.Errorf("%s could be two people", n)
 		}
