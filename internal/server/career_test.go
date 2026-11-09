@@ -80,10 +80,12 @@ func TestBuildCareer(t *testing.T) {
 	// Two games: batted and bowled in A (once, though on the team list too), bowled in B.
 	// Neither today's nor the one called off counts.
 	eqv(t, jones["apps"], 2)
-	// "Peter Smith" and "P Smith" could be one person on two accounts: neither is matched.
-	if careerRecord(c, "SMITH") != nil || careerRecord(c, "Peter Smith") != nil {
+	// "Peter Smith" and "P Smith" batted together, so they're two people: Peter is found
+	// by his full name, and a bare "Smith" or "P Smith" finds nobody.
+	if careerRecord(c, "SMITH") != nil || careerRecord(c, "P Smith") != nil {
 		t.Fatal("an ambiguous Smith was matched")
 	}
+	eqv(t, careerRecord(c, "Peter Smith")["runs"], 150)
 	// The opposition's players aren't in it, nor is a DNB an innings.
 	if careerRecord(c, "Rival") != nil || careerRecord(c, "Able") != nil {
 		t.Fatal("not our player, or didn't bat")
@@ -113,6 +115,107 @@ func TestCareerCountApps(t *testing.T) {
 		{"", "  ", "Unsure"},
 	})
 	eqv(t, []int{peter.apps, tim.apps, paul.apps, pat.apps}, []int{3, 1, 0, 0})
+}
+
+// Each case is a real shape from a merged club's scorecards.
+func TestCareerMerge(t *testing.T) {
+	build := func(names ...string) (map[string]*careerAcc, map[string]*careerAcc) {
+		accs := map[string]*careerAcc{}
+		for _, n := range names {
+			accs[normNameKey(n)] = &careerAcc{name: n, runs: 10, inn: 1}
+		}
+		return accs, accs
+	}
+	// Each scorecard here is one list, unless a test says otherwise.
+	merge := func(accs map[string]*careerAcc, sheets [][]string) { careerMerge(accs, sheets, sheets) }
+	same := func(accs map[string]*careerAcc, a, b string) bool {
+		return accs[normNameKey(a)] == accs[normNameKey(b)]
+	}
+
+	// Old cards' initial and short name join the usual one, whose name the record keeps.
+	accs, _ := build("Daniel Fogerty", "Dan Fogerty", "D Fogerty")
+	merge(accs, [][]string{{"Daniel Fogerty"}, {"Daniel Fogerty"}, {"Dan Fogerty"}, {"D Fogerty"}})
+	if !same(accs, "Daniel Fogerty", "Dan Fogerty") || !same(accs, "Daniel Fogerty", "D Fogerty") {
+		t.Fatal("one man's names didn't join")
+	}
+	eqv(t, []any{accs["danfogerty"].name, accs["danfogerty"].runs, accs["danfogerty"].inn}, []any{"Daniel Fogerty", 30, 3})
+	careerCountApps(accs, [][]string{{"Daniel Fogerty"}, {"Dan Fogerty", "D Fogerty"}})
+	mustEq(t, accs["dfogerty"].apps, 2, "a joined name on one card is still one game")
+
+	// A nickname that doesn't start the formal name, which then lets the initial join too.
+	accs, _ = build("James Ewen", "Jimmy Ewen", "J Ewen", "Thomas Boother", "Tom Boother")
+	merge(accs, [][]string{{"James Ewen"}, {"James Ewen"}, {"Jimmy Ewen"}, {"J Ewen"}, {"Thomas Boother"}, {"Thomas Boother"}, {"Tom Boother"}})
+	if !same(accs, "James Ewen", "Jimmy Ewen") || !same(accs, "James Ewen", "J Ewen") || !same(accs, "Thomas Boother", "Tom Boother") {
+		t.Fatal("a nickname didn't join")
+	}
+
+	// Different first names are different people.
+	accs, _ = build("Abigail Drake", "Alistair Drake")
+	merge(accs, [][]string{{"Abigail Drake"}, {"Alistair Drake"}})
+	if same(accs, "Abigail Drake", "Alistair Drake") {
+		t.Fatal("joined two people")
+	}
+
+	// On one list, however alike: two people.
+	accs, _ = build("Dan Shaw", "Daniel Shaw", "D Shaw")
+	merge(accs, [][]string{{"Dan Shaw", "Daniel Shaw", "D Shaw"}})
+	if same(accs, "Dan Shaw", "Daniel Shaw") || same(accs, "Dan Shaw", "D Shaw") || same(accs, "Daniel Shaw", "D Shaw") {
+		t.Fatal("joined names from one list")
+	}
+
+	// One card can write a player two ways, in its team list and its batting rows.
+	accs, _ = build("Thomas Boother", "T Boother")
+	careerMerge(accs, [][]string{{"Thomas Boother"}, {"Thomas Boother", "T Boother"}},
+		[][]string{{"Thomas Boother"}, {"Thomas Boother"}, {"T Boother"}})
+	if !same(accs, "Thomas Boother", "T Boother") {
+		t.Fatal("kept apart by different lists on one card")
+	}
+
+	// "J Hatton" could be Jack or John.
+	accs, _ = build("Jack Hatton", "John Hatton", "J Hatton")
+	merge(accs, [][]string{{"Jack Hatton"}, {"Jack Hatton"}, {"John Hatton"}, {"J Hatton"}})
+	if same(accs, "J Hatton", "Jack Hatton") || same(accs, "J Hatton", "John Hatton") {
+		t.Fatal("placed an initial that fits two people")
+	}
+
+	// Mostly "A Griffiths": may well be someone other than the Adam seen once.
+	accs, _ = build("Adam Griffiths", "A Griffiths")
+	merge(accs, [][]string{{"Adam Griffiths"}, {"A Griffiths"}, {"A Griffiths"}})
+	if same(accs, "Adam Griffiths", "A Griffiths") {
+		t.Fatal("joined an initial busier than the full name")
+	}
+}
+
+func TestCareerLookupFindsPeopleByWhatOnlyTheyAre(t *testing.T) {
+	lk := M{"lookup": careerLookup([]M{
+		{"name": "Jack Hatton"}, {"name": "John Hatton"}, {"name": "J Hatton"},
+		{"name": "Abigail Drake"}, {"name": "Alistair Drake"}, {"name": "Thomas Drake"},
+		{"name": "Karl Jones"},
+	})}
+	for _, n := range []string{"Jack Hatton", "John Hatton", "Abigail Drake", "Alistair Drake", "Thomas Drake", "T Drake", "Karl Jones", "K Jones", "JONES"} {
+		if careerRecord(lk, n) == nil {
+			t.Errorf("%s not found", n)
+		}
+	}
+	for _, n := range []string{"HATTON", "J Hatton", "DRAKE", "A Drake"} {
+		if careerRecord(lk, n) != nil {
+			t.Errorf("%s could be two people", n)
+		}
+	}
+}
+
+// PlayCricket's stand-in for an unnamed player isn't a player.
+func TestUnsureIsNobody(t *testing.T) {
+	accs := map[string]*careerAcc{}
+	played := careerMatch(M{"innings": []any{innings(11, "Home CC", 5, 1, "2", []any{pcBat("Unsure", 5, "b")}, nil)}},
+		fixture("A", "02/06/2026", 100, 11, 200, 21), "100", func(n string) *careerAcc {
+			a := &careerAcc{name: n}
+			accs[n] = a
+			return a
+		})
+	if !played || len(accs) != 0 {
+		t.Fatalf("played %v, records %v", played, accs)
+	}
 }
 
 // The team list only adds to a record, so milestones see exactly the records they always did.

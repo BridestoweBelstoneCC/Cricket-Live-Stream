@@ -12,11 +12,10 @@ package server
 // logs a milestone once (a moment — so it's a chapter too) and tells the overlay.
 //
 // A claim on air has to be right, so: today's match never counts towards the record (it
-// isn't in it), a player is only matched when the name is unambiguous (two records that
-// could be the same person — "P Smith" and "Peter Smith", or two P Smiths — and neither
-// gets a milestone; one person's runs split across two accounts would read low and
-// "pass 1,000" a second time), and the strap says since when PlayCricket has the club's
-// records.
+// isn't in it), the strap says since when PlayCricket has the club's records, and names are
+// only joined up when they can only be one person (careerMerge). PlayCricket's player ids
+// don't help: on real scorecards one man had four, because old cards were entered with
+// throwaway ones. A bare initial or surname that could be two people matches nobody.
 //
 // The same scorecards give the player card its appearances. A game counts for everyone on
 // our team list as well as everyone in our batting and bowling rows (a fielder who neither
@@ -28,6 +27,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -119,7 +119,7 @@ func buildCareer(cfg M) (out M) {
 		return a
 	}
 	matches, since, failed := 0, 0, 0
-	var sheets [][]string
+	var sheets, lists [][]string
 	for i, club := range careerClubs(cfg, site) {
 		// A former club has nothing since it stopped, so its gap only counts once its
 		// matches have started. Ours starts at today: two empty seasons is its records' start.
@@ -154,7 +154,12 @@ func buildCareer(cfg M) (out M) {
 				}
 				if md := firstDetail(det); careerMatch(md, m, club, acc) {
 					played++
-					sheets = append(sheets, careerTeamSheet(md, m, club))
+					var sheet []string
+					for _, list := range careerTeamLists(md, m, club) {
+						sheet = append(sheet, list...)
+						lists = append(lists, list)
+					}
+					sheets = append(sheets, sheet)
 				}
 			}
 			matches += played
@@ -170,10 +175,15 @@ func buildCareer(cfg M) (out M) {
 			}
 		}
 	}
+	careerMerge(accs, sheets, lists)
 	careerCountApps(accs, sheets)
 	recs := make([]M, 0, len(order))
+	done := map[*careerAcc]bool{}
 	for _, k := range order {
-		recs = append(recs, accs[k].record())
+		if a := accs[k]; !done[a] {
+			done[a] = true
+			recs = append(recs, a.record())
+		}
 	}
 	out["lookup"], out["matches"], out["since"] = careerLookup(recs), matches, since
 	return out
@@ -218,6 +228,10 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 				if name == "" || !ok {
 					continue
 				}
+				if careerNobody(name) {
+					batted = true
+					continue
+				}
 				a := acc(name)
 				a.inn++
 				a.runs += r
@@ -237,6 +251,10 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 			if name == "" || !ok {
 				continue
 			}
+			if careerNobody(name) {
+				batted = true
+				continue
+			}
 			a := acc(name)
 			a.wkts += w
 			if w >= 5 {
@@ -248,17 +266,161 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 	return batted
 }
 
-// careerTeamSheet is every name a played match has for our side: the team list, the batting
-// rows (a "did not bat" still played) and the bowling on the other side's innings. Old
-// scorecards often have no team list, which is why it can't be the team list alone.
-func careerTeamSheet(md, fixture M, site string) []string {
+// careerNobody is PlayCricket's stand-in for a player the scorer couldn't name.
+func careerNobody(name string) bool { return strings.EqualFold(trim(name), "unsure") }
+
+// careerNicknames are the everyday first names that don't start with the formal one (Dan
+// and Daniel need no entry).
+var careerNicknames = map[string]string{
+	"tom": "thomas", "tommy": "thomas", "jim": "james", "jimmy": "james", "bill": "william", "billy": "william",
+	"bob": "robert", "bobby": "robert", "mike": "michael", "andy": "andrew", "tony": "anthony", "rick": "richard",
+	"dick": "richard", "steve": "stephen", "joe": "joseph", "joey": "joseph", "nick": "nicholas", "nicky": "nicholas",
+}
+
+// careerSameFirst says two first names can be one person's. Steven's spelling is the one
+// formal name that varies enough to need it.
+func careerSameFirst(a, b string) bool {
+	norm := func(s string) string {
+		if f := careerNicknames[s]; f != "" {
+			return f
+		}
+		if s == "steven" {
+			return "stephen"
+		}
+		return s
+	}
+	a, b = norm(a), norm(b)
+	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
+
+// careerMerge joins the names that can only be one person, so a record holds their whole
+// career: old scorecards say "J Ewen" or "Dan Fogerty" where later ones say "James Ewen" and
+// "Daniel Fogerty". Two names on one list (lists: a team list, an innings' batting or bowling)
+// are two people, whatever they look like. The same card's different lists don't say that: real
+// cards have "Thomas Boother" in the team and "T Boother" batting. Full names join when their
+// first names fit (careerSameFirst). A bare initial joins a full name only if
+// that's the one it could be, and the full name has played at least as often (otherwise
+// "A Griffiths" might be someone else who only ever appears that way). Anything else stays
+// apart, which at worst reads a little low. Afterwards accs maps each joined name's key to
+// the one record.
+func careerMerge(accs map[string]*careerAcc, sheets, lists [][]string) {
+	games := map[string]int{}
+	apart := map[[2]string]bool{}
+	pair := func(a, b string) [2]string {
+		if a > b {
+			a, b = b, a
+		}
+		return [2]string{a, b}
+	}
+	for _, sheet := range sheets {
+		seen := map[string]bool{}
+		for _, name := range sheet {
+			if k := normNameKey(trim(name)); accs[k] != nil && !seen[k] {
+				seen[k] = true
+				games[k]++
+			}
+		}
+	}
+	for _, list := range lists {
+		var keys []string
+		seen := map[string]bool{}
+		for _, name := range list {
+			if k := normNameKey(trim(name)); accs[k] != nil && !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+		for i, a := range keys {
+			for _, b := range keys[i+1:] {
+				apart[pair(a, b)] = true
+			}
+		}
+	}
+	type member struct{ key, first string }
+	groups := map[string][]member{}
+	for k, a := range accs {
+		if init, first := careerInitSur(a.name); first != "" {
+			groups[init] = append(groups[init], member{k, first})
+		}
+	}
+	for _, group := range groups {
+		// Most games first, so a joined name becomes the player's usual one.
+		sort.Slice(group, func(i, j int) bool {
+			if games[group[i].key] != games[group[j].key] {
+				return games[group[i].key] > games[group[j].key]
+			}
+			return group[i].key < group[j].key
+		})
+		type person struct {
+			first string
+			keys  []string
+		}
+		var people []*person
+		canJoin := func(p *person, k string) bool {
+			for _, m := range p.keys {
+				if apart[pair(m, k)] {
+					return false
+				}
+			}
+			return true
+		}
+		join := func(p *person, k string) {
+			into, from := accs[p.keys[0]], accs[k]
+			into.inn += from.inn
+			into.runs += from.runs
+			into.fifties += from.fifties
+			into.hundreds += from.hundreds
+			into.wkts += from.wkts
+			into.fivefors += from.fivefors
+			accs[k] = into
+			p.keys = append(p.keys, k)
+		}
+		for _, m := range group {
+			if len(m.first) == 1 {
+				continue
+			}
+			var fits *person
+			for _, p := range people {
+				if careerSameFirst(m.first, p.first) && canJoin(p, m.key) {
+					fits = p
+					break
+				}
+			}
+			if fits != nil {
+				join(fits, m.key)
+			} else {
+				people = append(people, &person{m.first, []string{m.key}})
+			}
+		}
+		for _, m := range group {
+			if len(m.first) != 1 {
+				continue
+			}
+			var fits []*person
+			for _, p := range people {
+				if canJoin(p, m.key) {
+					fits = append(fits, p)
+				}
+			}
+			if len(people) == 1 && len(fits) == 1 && games[fits[0].keys[0]] >= games[m.key] {
+				join(fits[0], m.key)
+			}
+		}
+	}
+}
+
+// careerTeamLists is the lists of names a played match has for our side: each side's team
+// list, then each innings' batting rows (a "did not bat" still played) or the bowling on the
+// other side's. Old scorecards often have no team list, which is why it can't be that alone.
+func careerTeamLists(md, fixture M, site string) [][]string {
 	ours := map[string]bool{}
-	var names []string
+	var lists [][]string
 	for _, side := range []string{"home", "away"} {
 		if anyStr(fixture, side+"_club_id", "") != site {
 			continue
 		}
 		ours[anyStr(fixture, side+"_team_id", "")] = true
+		var names []string
 		for _, rg := range gl(md, "players") {
 			group, _ := rg.(map[string]any)
 			for _, rp := range gl(group, side+"_team") {
@@ -266,6 +428,7 @@ func careerTeamSheet(md, fixture M, site string) []string {
 				names = append(names, gs(p, "player_name", ""))
 			}
 		}
+		lists = append(lists, names)
 	}
 	for _, ri := range gl(md, "innings") {
 		inn, _ := ri.(map[string]any)
@@ -273,12 +436,14 @@ func careerTeamSheet(md, fixture M, site string) []string {
 		if ours[anyStr(inn, "team_batting_id", "")] {
 			rows, field = gl(inn, "bat"), "batsman_name"
 		}
+		var names []string
 		for _, rr := range rows {
 			r, _ := rr.(map[string]any)
 			names = append(names, gs(r, field, ""))
 		}
+		lists = append(lists, names)
 	}
-	return names
+	return lists
 }
 
 // careerInitSur is a name's first initial + surname, and its first name, in careerLookup's
@@ -301,9 +466,13 @@ func careerInitSur(name string) (initSur, first string) {
 // crediting the wrong player.
 func careerCountApps(accs map[string]*careerAcc, sheets [][]string) {
 	byInit := map[string][]*careerAcc{}
+	counted := map[*careerAcc]bool{}
 	for _, a := range accs {
-		k, _ := careerInitSur(a.name)
-		byInit[k] = append(byInit[k], a)
+		if !counted[a] {
+			counted[a] = true
+			k, _ := careerInitSur(a.name)
+			byInit[k] = append(byInit[k], a)
+		}
 	}
 	find := func(name string) *careerAcc {
 		if a := accs[normNameKey(name)]; a != nil {
@@ -315,7 +484,7 @@ func careerCountApps(accs map[string]*careerAcc, sheets [][]string) {
 			return nil
 		}
 		_, other := careerInitSur(c[0].name)
-		if !strings.HasPrefix(first, other) && !strings.HasPrefix(other, first) {
+		if !careerSameFirst(first, other) {
 			return nil
 		}
 		return c[0]
@@ -347,15 +516,16 @@ func cardAppearances(career, cfg M, name, num, team string) int {
 	return gi(rec, "apps", 0) + 1
 }
 
-// careerLookup files each record under its full name, its first initial + surname, and
-// (only when one record has it) its surname — the season stats' keys, so the scorebar's
-// names resolve the same way. A record whose initial + surname another record shares is
-// left out entirely: it might be the same person under a second account (whose career
-// would read low), or a namesake the scorebar can't be told apart from.
+// careerLookup files each record under its full name, its first initial + surname, and its
+// surname — the season stats' keys, so the scorebar's names resolve the same way — but only
+// the keys that can mean one person. With a Jack and a John Hatton, each is found by his full
+// name (the squad roster's shirt numbers give it) and "J Hatton" and "Hatton" find nobody. A
+// record that's only ever "J Hatton" has no full name to be found by, so it isn't filed.
 func careerLookup(recs []M) M {
 	type keyed struct {
 		rec                    M
 		full, initSur, surname string
+		initialOnly            bool
 	}
 	var ks []keyed
 	initCount, surCount := map[string]int{}, map[string]int{}
@@ -365,20 +535,23 @@ func careerLookup(recs []M) M {
 			continue
 		}
 		k := keyed{rec: r, full: normNameKey(gs(r, "name", "")), surname: normNameKey(toks[len(toks)-1])}
-		k.initSur = k.surname
-		if len(toks) >= 2 {
-			k.initSur = normNameKey(toks[0][:1] + toks[len(toks)-1])
-		}
+		var first string
+		k.initSur, first = careerInitSur(gs(r, "name", ""))
+		k.initialOnly = len(first) == 1
 		ks = append(ks, k)
 		initCount[k.initSur]++
 		surCount[k.surname]++
 	}
 	lookup := M{}
 	for _, k := range ks {
-		if initCount[k.initSur] > 1 {
+		alone := initCount[k.initSur] == 1
+		if !alone && k.initialOnly {
 			continue
 		}
-		lookup[k.full], lookup[k.initSur] = k.rec, k.rec
+		lookup[k.full] = k.rec
+		if alone {
+			lookup[k.initSur] = k.rec
+		}
 		if surCount[k.surname] == 1 {
 			lookup[k.surname] = k.rec
 		}
