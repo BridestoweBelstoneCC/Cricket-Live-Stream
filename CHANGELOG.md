@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.8 — replays after the animation, fielding records (2026-11-09)
 
 - **A four's or six's replay comes after its animation.** The replay's transition and banner used
   to come up on top of the FOUR / SIX animation, and a six could cut to the replay before its
