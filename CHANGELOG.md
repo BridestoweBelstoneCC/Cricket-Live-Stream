@@ -4,6 +4,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **The scorebar between the innings shows the reply.** Until the reply's openers were named it
+  showed the pre-match bar ("HOME — 0.0", P1). Now it's the chasing side at 0-0, P2, "Innings
+  break" and what they need, in their colours.
+- **Fixed: the scorer's laptop could say it had stopped sharing a moment before it had.** Seen
+  only as a test that failed now and then.
+
+---
+
 ## v3.0.0-beta.7 — first ball and final result (2026-11-09)
 
 - **Graphics clear for the first ball.** The pre-match show and the innings break now end when

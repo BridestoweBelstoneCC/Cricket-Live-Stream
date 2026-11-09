@@ -4310,6 +4310,27 @@ function loadLineups() {
     .then(function (d) { if (d && d.ok) _lineups = d; }).catch(function () {});
 }
 
+// Between the innings, before the reply's openers are named: the feed's already on the second
+// innings, but it isn't play yet.
+function isReplyWaiting(state) {
+  return !!state && (parseInt(state.innings, 10) >= 2 || parseInt(state.targetRuns, 10) > 0);
+}
+
+// The reply about to start: their side, the score, the target. The pre-match scorebar
+// ("HOME — 0.0", P1) used to stand here for the whole gap.
+function renderReplyWaiting(state, home, away) {
+  renderScorebar(state, home, away);
+  ['batter1','batter2'].forEach(function (id) {
+    el(id+'-name').textContent = '—';
+    el(id+'-runs').textContent = el(id+'-balls').textContent = '';
+    el(id+'-icon').className = 'batter-icon';
+    el('seg-'+id).className = 'seg seg-light seg-batter';
+  });
+  if (!(parseInt(state.score, 10) > 0) && !(parseInt(state.wickets, 10) > 0)) {
+    el('status-text').textContent = 'Innings break';
+  }
+}
+
 function renderPreMatch(home, away) {
   el('batting-team-name').textContent = home.split(' ')[0].toUpperCase().slice(0,6);
   el('bowling-team-name').textContent = away.split(' ')[0].toUpperCase().slice(0,6);
@@ -4465,9 +4486,16 @@ async function poll() {
             } catch(e){ console.warn('event handler error:', ev, e); }
           });
         }
+      } else if (isReplyWaiting(liveData.state)) {
+        // The reply's openers aren't named yet: still the innings break, with its own graphics.
+        // The scorebar shows the reply about to start, not the pre-match "HOME — 0.0".
+        try { renderReplyWaiting(liveData.state,home,away); }
+        catch(e){ console.warn('renderReplyWaiting error:', e); }
+        try { updateBadges(cfg.home_club_id, cfg.away_club_id, liveData.state.battingTeamName, cfg.home_team);
+              applyColours(cfg.home_colour||'#1a3a5c', cfg.away_colour||'#7b2d2d',
+                           _lastHomeBatting = homeIsBatting(liveData.state.battingTeamName, cfg.home_team)); }
+        catch(e){ console.warn('updateBadges error:', e); }
       } else {
-        // The reply's openers aren't named yet: that's still the innings break, with its own
-        // graphics, not the pre-match show.
         renderPreMatch(home,away);
         if (!_break) showPreMatchInfo();
         updateBadges(cfg.home_club_id, cfg.away_club_id, null, null);
