@@ -66,7 +66,8 @@ func runJS(t *testing.T, src string, out any) {
 // "async" in front of it (cutCameraScene's await is a syntax error without it).
 func extractFunction(t *testing.T, html, name string) string {
 	t.Helper()
-	start := strings.Index(html, "function "+name)
+	// The name and its "(": triggerReplay must not find triggerReplayTransition.
+	start := strings.Index(html, "function "+name+"(")
 	if start < 0 {
 		t.Fatalf("function %s not found", name)
 	}

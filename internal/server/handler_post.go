@@ -408,8 +408,11 @@ func (c *ctx) doPOST() {
 		if v, ok := data["reason"]; ok {
 			reason = pyval.Str(v)
 		}
+		// hold_ms: the overlay's four/six animation is still on, so the clip is saved now and
+		// the cut waits for the animation to finish.
+		hold := time.Duration(min(max(gi(data, "hold_ms", 0), 0), maxReplayHoldMs)) * time.Millisecond
 		// In the background — don't block the overlay
-		safeGo("replay", func() { ObsTriggerReplay(state, reason) })
+		safeGo("replay", func() { obsTriggerReplayHeld(state, reason, hold) })
 		c.json(M{"ok": true, "reason": reason})
 		say("  ▶  Replay queued — reason: %s", reason)
 

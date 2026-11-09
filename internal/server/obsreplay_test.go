@@ -78,6 +78,32 @@ func TestReplayNeverShowsThePreviousClip(t *testing.T) {
 	}
 }
 
+// A four/six: the clip is saved at once (the same seconds as ever) and the cut waits out the
+// animation. The 3s spent waiting for OBS's file counts towards it.
+func TestReplayCutWaitsForTheAnimation(t *testing.T) {
+	srv, _ := replayRig(t, true, true)
+	var slept []time.Duration
+	replaySleep = func(d time.Duration) { slept = append(slept, d) }
+	obsTriggerReplayHeld(LoadState(), "Six", 3900*time.Millisecond)
+	types := srv.Types()
+	if types[0] != "SaveReplayBuffer" && !has(types[:2], "SaveReplayBuffer") {
+		t.Fatalf("the clip wasn't saved first: %v", types)
+	}
+	// replaySleep is stubbed, so no time passed: after the 3s file wait, the cut still held
+	// for (about) the whole 3.9s, then the clip's own duration.
+	if len(slept) < 3 || slept[0] != 3*time.Second || slept[1] < 3800*time.Millisecond || slept[1] > 3900*time.Millisecond {
+		t.Fatalf("sleeps %v", slept)
+	}
+	mustEq(t, types[len(types)-1], "SetCurrentProgramScene")
+
+	// No animation: no hold.
+	slept = nil
+	ObsTriggerReplay(LoadState(), "Wicket")
+	if len(slept) != 2 || slept[0] != 3*time.Second || slept[1] != time.Second {
+		t.Fatalf("unheld sleeps %v", slept)
+	}
+}
+
 func TestReplayShowsTheNewClip(t *testing.T) {
 	srv, folder := replayRig(t, true, true)
 	ObsTriggerReplay(LoadState(), "Boundary")

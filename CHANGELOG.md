@@ -6,6 +6,10 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **A four's or six's replay comes after its animation.** The replay's transition and banner used
+  to come up on top of the FOUR / SIX animation, and a six could cut to the replay before its
+  animation had finished. The clip is still saved at the same moment, so it shows the same
+  footage; it just goes on air once the animation is over.
 - **The scorebar between the innings shows the reply.** Until the reply's openers were named it
   showed the pre-match bar ("HOME — 0.0", P1). Now it's the chasing side at 0-0, P2, "Innings
   break" and what they need, in their colours.
