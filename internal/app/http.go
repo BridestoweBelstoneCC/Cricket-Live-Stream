@@ -102,11 +102,22 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		a.api(w, r)
 		return
-	case r.Method == "POST" && p == "/setup/save":
-		a.saveSetup(w, r)
+	// The setup page, with the window's key in it: saving, and above all the export (every
+	// key and password in one file), need it, like /api/. The origin check alone let any
+	// program on this computer that sent no Origin header ask for the export.
+	case r.Method == "GET" && p == "/setup":
+		a.serveSetupPage(w)
 		return
-	case r.Method == "POST" && (p == "/setup/export" || p == "/setup/import"):
-		a.clubFile(w, r)
+	case r.Method == "POST" && (p == "/setup/save" || p == "/setup/export" || p == "/setup/import"):
+		if r.Header.Get("X-App-Key") != a.key {
+			writeJSON(w, map[string]any{"ok": false, "error": "Not the app's page"}, 403)
+			return
+		}
+		if p == "/setup/save" {
+			a.saveSetup(w, r)
+		} else {
+			a.clubFile(w, r)
+		}
 		return
 	case r.Method == "GET" && strings.HasPrefix(p, "/brand/") && strings.HasSuffix(p, ".png") && !strings.Contains(p, ".."):
 		if b, err := assets.Read(strings.TrimPrefix(p, "/")); err == nil {
@@ -125,6 +136,19 @@ var setupHandler, _ = setup.Handler()
 // The page's Content-Security-Policy: its own script only, nothing external.
 const pageCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+
+// serveSetupPage is the setup package's page with this window's key added, the same way
+// the app's own page carries it.
+func (a *App) serveSetupPage(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-store, must-revalidate")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "SAMEORIGIN")
+	h.Set("Content-Security-Policy", setup.PageCSP)
+	meta := `<meta name="app-key" content="` + html.EscapeString(a.key) + `">`
+	w.Write([]byte(strings.Replace(string(setup.Page()), "<head>", "<head>\n"+meta, 1)))
+}
 
 func (a *App) servePage(w http.ResponseWriter) {
 	h := w.Header()

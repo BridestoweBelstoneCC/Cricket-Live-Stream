@@ -165,7 +165,7 @@ func (ta *testApp) status() M {
 
 func (ta *testApp) saveSetup(v M) reply {
 	ta.t.Helper()
-	return ta.do("POST", "/setup/save", v, map[string]string{"Origin": ta.srv.URL})
+	return ta.do("POST", "/setup/save", v, map[string]string{"Origin": ta.srv.URL, "X-App-Key": ta.key})
 }
 
 // waitFor polls the page's status until ok, as the page does.
@@ -213,6 +213,16 @@ func TestPageCarriesItsKeyAndOnlyThePageCanDriveTheApp(t *testing.T) {
 	}
 	if r := ta.do("POST", "/setup/save", M{"role": "scorer"}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
 		t.Errorf("cross-origin setup save: %d", r.status)
+	}
+	// The review's S8: no Origin header at all (a program on this computer) but no key
+	// either — never the export with every password in it.
+	for _, p := range []string{"/setup/save", "/setup/export", "/setup/import"} {
+		if r := ta.do("POST", p, M{"secrets": true}, nil); r.status != 403 {
+			t.Errorf("%s with no key: %d", p, r.status)
+		}
+	}
+	if page := ta.do("GET", "/setup", nil, nil); !strings.Contains(page.body, `name="app-key" content="`+ta.key+`"`) {
+		t.Error("the setup page in the window has no key")
 	}
 	// "Origin: null" is a sandboxed iframe or a file:// page — any website can make one.
 	for _, p := range []string{"/setup/save", "/setup/import"} {
@@ -994,7 +1004,7 @@ func TestMoveSettingsBetweenLaptops(t *testing.T) {
 	if r := ta.do("POST", "/setup/export", M{}, map[string]string{"Origin": "http://evil.example"}); r.status != 403 {
 		t.Errorf("export from another site: %d", r.status)
 	}
-	r := ta.do("POST", "/setup/export", M{"secrets": false}, map[string]string{"Origin": ta.srv.URL})
+	r := ta.do("POST", "/setup/export", M{"secrets": false}, map[string]string{"Origin": ta.srv.URL, "X-App-Key": ta.key})
 	if r.status != 200 || !strings.HasPrefix(r.body, "PK") {
 		t.Fatalf("export: %d %.80q", r.status, r.body)
 	}
@@ -1021,6 +1031,7 @@ func TestMoveSettingsBetweenLaptops(t *testing.T) {
 	}
 	req, _ := http.NewRequest("POST", fresh.srv.URL+"/setup/import", bytes.NewReader(file))
 	req.Header.Set("Origin", fresh.srv.URL)
+	req.Header.Set("X-App-Key", fresh.key)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1045,7 +1056,7 @@ func TestMoveSettingsBetweenLaptops(t *testing.T) {
 	runLauncher = func(o launcher.Options) int { o.OpenPanel("http://127.0.0.1:5000/control", ""); <-block; return 0 }
 	fresh.api("POST", "start", M{})
 	fresh.waitFor("running", phaseIs(phRunning))
-	if r := fresh.do("POST", "/setup/import", nil, map[string]string{"Origin": fresh.srv.URL}); r.status != 409 {
+	if r := fresh.do("POST", "/setup/import", nil, map[string]string{"Origin": fresh.srv.URL, "X-App-Key": fresh.key}); r.status != 409 {
 		t.Errorf("import during match day: %d", r.status)
 	}
 }
