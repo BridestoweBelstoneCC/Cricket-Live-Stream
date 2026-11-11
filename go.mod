@@ -3,7 +3,7 @@ module cricketstream
 go 1.27.4
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.82.0
+	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
