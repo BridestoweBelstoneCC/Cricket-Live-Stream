@@ -599,7 +599,7 @@ flowchart LR
     end
 
     srv{{"server"}}
-    obsov -- "loopback carve-out:<br/>/replay, /camera/scene,<br/>/commentary/over/generate,<br/>/weather/*, /sponsor/airtime" --> srv
+    obsov -- "loopback carve-out:<br/>/live, /commands,<br/>/replay, /camera/scene,<br/>/commentary/over/generate,<br/>/weather/*, /sponsor/airtime" --> srv
     lan -- "Bearer session token<br/>(HMAC, 12 h, epoch-revocable)<br/>+ Origin check on POST" --> srv
     cf -- "same, and never<br/>treated as loopback" --> srv
     anon -- "read-only, no secrets:<br/>/live/view, /health, /state (redacted),<br/>shareable outputs" --> srv
@@ -609,7 +609,18 @@ flowchart LR
   but 127.0.0.1 without a club password falls back to 127.0.0.1.
 - **Sessions:** the password is exchanged for `expiry:nonce:HMAC(control_token+epoch)`.
   Tokens are Bearer only, never cookies, so a cross-site page has nothing to ride on.
-  "Log everyone out" rotates the epoch. Five failures in 10 minutes lock that client out.
+  "Log everyone out" rotates the epoch. Five failures in 10 minutes lock that client out,
+  and 30 from every address together lock sign-in for 5 minutes for everyone but this
+  laptop. The client is the socket's address; `X-Forwarded-For` / `CF-Connecting-IP` are
+  believed only from a proxy on this machine (the tunnel, the clubhouse link).
+- **The server answers only to its own names** (`hostAllowed`): an IP address, localhost,
+  this computer's name, a Tailscale name, the running tunnel's hostname, or `[Network]
+  extra_hosts`. Anything else is a 421. That's what stops a web page elsewhere reaching a
+  no-password install by pointing its own domain at 127.0.0.1 (DNS rebinding).
+- **No cross-origin reads.** No response carries `Access-Control-Allow-Origin`: every page
+  that calls the server is served by it.
+- **`/live` and `/commands` answer only the overlay** (`overlayCaller`): a request the
+  browser didn't mark cross-site, from this machine unproxied or from `obs_host`.
 - **Secrets never reach a browser.** `/state` replaces each key in `SecretKeys` with a
   sentinel, and a POST carrying the sentinel leaves the stored value alone.
 - **Inputs are distrusted:** uploads are typed by magic bytes (never SVG). Paths are
@@ -625,7 +636,8 @@ flowchart LR
 | Group | Endpoints | Access |
 |---|---|---|
 | Pages | `/overlay`, `/control`, `/scoring` | open (the panel asks for a login when a password is set) |
-| Live feed | `/live` *(overlay only, mutating)*, `/live/view`, `/state` GET, `/commands` *(pops)* | open, secrets redacted |
+| Overlay's own | `/live` *(mutating)*, `/commands` *(pops)* | the overlay only: this machine or `obs_host`, never cross-site |
+| Live feed | `/live/view`, `/state` GET | open, secrets redacted |
 | Settings | `/state` POST, `/login`, `/auth/logout_all`, `/auth/log` | token |
 | Overlay actions | `/replay`, `/camera/scene`, `/commentary/over/generate`, `/weather/show`, `/weather/hide`, `/sponsor/airtime` POST | loopback or token |
 | Match day | `/checklist`, `/checklist/action`, `/match/fetch`, `/obs/add_camera`, `/stream/quality`, `/stream/dynamic`, `/youtube/update`, `/camera/spotter`, `/precheck`, `/precheck/last` | token |
@@ -633,7 +645,9 @@ flowchart LR
 | Stats and context | `/player/stats`, `/season/top`, `/league/table`, `/weather`, `/headshot/*`, `/logo/*`, `/sponsor/*` | open |
 | After the match | `/report/generate`, `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/data/export`, `/data/reconcile` | token |
 | Shareable outputs | `/social/image/latest`, `/social/clips/file/*`, `/match/page/latest`, `/sponsor/airtime` GET | open |
-| Diagnostics | `/health`, `/status`, `/stream/monitor`, `/pcs/debug`, `/logos/debug`, `/data/status`, `/agent/status`, `/remote/info` | open |
+| Diagnostics | `/health`, `/stream/monitor`, `/data/status`, `/remote/info` | open |
+| Diagnostics with paths | `/status`, `/pcs/debug`, `/logos/debug` | this machine's own browser, or token |
+| Scorer's laptop | `/agent/status`, `/agent/discover`, `/agent/pair` | token |
 
 Routing rule: exact paths are matched before prefixes (`/sponsor/airtime` before
 `/sponsor/<id>`).
