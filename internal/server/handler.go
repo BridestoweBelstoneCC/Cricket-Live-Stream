@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "image/gif" // sponsor uploads and logo previews decode any accepted type
@@ -55,6 +56,12 @@ func (Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" { // absolute-form request
 		raw = u.EscapedPath()
 	}
+	if !hostAllowed(r.Host) { // DNS rebinding (hostcheck.go)
+		http.Error(w, "This address isn't this laptop's. Open the panel at http://localhost:"+
+			strconv.Itoa(Port)+"/control, or by the laptop's IP address. (Your own domain or "+
+			"reverse proxy: add its name to [Network] extra_hosts in config.ini.)", http.StatusMisdirectedRequest)
+		return
+	}
 	// The commentary phone's own routes, with the tunnel's real certificate (talk.go): a key,
 	// not a login, and nothing but those exact paths.
 	if talkPhonePaths[raw] {
@@ -81,11 +88,10 @@ func (Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		c.doPOST()
 	case "OPTIONS":
-		h := w.Header()
-		h.Set("Access-Control-Allow-Origin", "*")
-		h.Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		h.Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
-		w.WriteHeader(200)
+		// No CORS grant: a same-origin request never needs a preflight, and nothing else
+		// is meant to call this server from a browser.
+		w.Header().Set("Allow", "GET, POST, OPTIONS")
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusNotImplemented)
 	}
@@ -115,13 +121,9 @@ func (c *ctx) json(data any, status ...int) {
 	h.Set("Content-Type", "application/json")
 	h.Set("Content-Length", strconv.Itoa(len(body)))
 	c.securityHeaders()
-	// Mutating (POST) responses are same-origin-only — the control panel calls them from
-	// its own page on this server, so no CORS header is needed — except the one POST
-	// route the overlay itself calls (over-end AI commentary), which keeps it for the
-	// same reason /live's GET does.
-	if c.method != "POST" || c.path == "/commentary/over/generate" {
-		h.Set("Access-Control-Allow-Origin", "*")
-	}
+	// No Access-Control-Allow-Origin, on any route: every caller is a page this server
+	// served (the overlay's SERVER is location.origin). The old "*" on every GET let any
+	// web site read the open routes' answers (the review's S6).
 	c.w.WriteHeader(code)
 	c.w.Write(body)
 }
@@ -204,14 +206,36 @@ func (c *ctx) socketIP() string {
 	return host
 }
 
-// clientIP prefers X-Forwarded-For's first hop over the raw socket address — a tunnel
-// (Tailscale funnel / Cloudflare quick tunnel) proxies the connection, so the socket
-// address would otherwise always be the tunnel's own endpoint.
+// clientIP is who's asking, for the login lockout and the auth log. A tunnel (Tailscale
+// funnel / Cloudflare quick tunnel) or the clubhouse link proxies the connection from this
+// machine, so the socket address would always be the proxy's own; only then are the
+// forwarding headers believed. From anywhere else they're whatever the sender typed: a
+// fresh X-Forwarded-For per request walked straight past the lockout, the operator's
+// address locked them out, and markup in it reached the panel's activity list.
+// Cloudflare sets CF-Connecting-IP itself and APPENDS to a client's X-Forwarded-For, so
+// the last hop is the one the proxy wrote, never the first. Nothing but an address is
+// ever returned.
 func (c *ctx) clientIP() string {
-	if xff := c.r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
+	sock := c.socketIP()
+	if ip := net.ParseIP(sock); ip == nil || !ip.IsLoopback() {
+		return sock
 	}
-	return c.socketIP()
+	// Cloudflare's header only while its tunnel runs: Tailscale passes a sender's own
+	// CF-Connecting-IP straight through.
+	cfMu.Lock()
+	tunnel := cfURL != ""
+	cfMu.Unlock()
+	if cf := strings.TrimSpace(c.r.Header.Get("CF-Connecting-IP")); tunnel && net.ParseIP(cf) != nil {
+		return cf
+	}
+	if xff := c.r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
+		hops := strings.Split(xff[len(xff)-1], ",")
+		if last := strings.TrimSpace(hops[len(hops)-1]); net.ParseIP(last) != nil {
+			return last
+		}
+		return "proxied" // a proxy that wrote no address: never the header's text
+	}
+	return sock
 }
 
 // trustedLoopback is true only for a genuine same-machine connection with nothing
@@ -225,6 +249,83 @@ func (c *ctx) trustedLoopback() bool {
 	ip := c.socketIP()
 	return ip == "127.0.0.1" || ip == "::1"
 }
+
+// overlayCaller is true when the request could be the OBS overlay's own poll; otherwise it
+// has already sent the 403. /live and /commands change state on a GET (CLAUDE.md: exactly
+// one consumer), so a stray caller isn't just reading: it eats the overlay's events and
+// replay commands. Two things must hold:
+//   - the browser didn't mark it cross-site. A web page's <img src=".../commands"> on this
+//     laptop arrives from loopback just like the overlay, but carries Sec-Fetch-Site:
+//     cross-site (or a foreign Origin). OBS's browser sends same-origin; a tool that sends
+//     neither header isn't a web page;
+//   - it comes from the computer OBS runs on: this laptop with no proxy in between, or the
+//     configured obs_host for a club running OBS on another computer (manage_obs = no).
+//     Never through the tunnel or the clubhouse link.
+func (c *ctx) overlayCaller() bool {
+	switch c.r.Header.Get("Sec-Fetch-Site") {
+	case "", "same-origin", "none":
+	default:
+		c.json(M{"ok": false, "error": "Only the OBS overlay reads this"}, 403)
+		return false
+	}
+	if !c.originOK() {
+		c.json(M{"ok": false, "error": "Only the OBS overlay reads this"}, 403)
+		return false
+	}
+	if c.trustedLoopback() || c.fromOBSHost() {
+		return true
+	}
+	c.json(M{"ok": false, "error": "Only the OBS overlay reads this. Other tools: /live/view"}, 403)
+	return false
+}
+
+// fromOBSHost: an unproxied connection from the computer named in obs_host, when that's
+// another computer.
+func (c *ctx) fromOBSHost() bool {
+	if c.r.Header.Get("X-Forwarded-For") != "" {
+		return false
+	}
+	st := LoadState()
+	if obsIsLocal(st) {
+		return false
+	}
+	sock := net.ParseIP(c.socketIP())
+	if sock == nil {
+		return false
+	}
+	host := trim(gs(st, "obs_host", ""))
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.Equal(sock)
+	}
+	for _, a := range obsHostAddrs(host) {
+		if ip := net.ParseIP(a); ip != nil && ip.Equal(sock) {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	obsHostMu     sync.Mutex
+	obsHostName   string
+	obsHostFound  []string
+	obsHostLooked time.Time
+)
+
+// obsHostAddrs is the addresses a named obs_host has, asked for at most once a minute:
+// this runs on every overlay poll, and a slow DNS answer must not hold each one up.
+func obsHostAddrs(host string) []string {
+	obsHostMu.Lock()
+	defer obsHostMu.Unlock()
+	if host != obsHostName || time.Since(obsHostLooked) > time.Minute {
+		addrs, _ := lookupHost(host)
+		obsHostName, obsHostFound, obsHostLooked = host, addrs, time.Now()
+	}
+	return obsHostFound
+}
+
+// lookupHost is swappable for tests.
+var lookupHost = net.LookupHost
 
 // checkToken is true if the request carries a valid session token (or auth is
 // disabled). Bearer-only by design (see control.html's apiFetch): no cookie fallback, so
@@ -484,6 +585,9 @@ func (c *ctx) doGET() {
 		c.json(M{"ok": false, "error": "No such frame"}, 404)
 
 	case path == "/commands":
+		if !c.overlayCaller() {
+			return
+		}
 		c.json(popCommands())
 
 	case path == "/commentary/over":
@@ -529,6 +633,11 @@ func (c *ctx) doGET() {
 		}
 
 	case path == "/logos/debug":
+		// Full folder paths and directory listings: this laptop's own browser (a tab can't
+		// carry the login, and the setup guides send people here) or the login.
+		if !c.trustedLoopback() && !c.checkToken() {
+			return
+		}
 		s2 := LoadState()
 		lf := trim(gs(s2, "logos_folder", ""))
 		ldir := logosFolder(s2)
@@ -549,12 +658,19 @@ func (c *ctx) doGET() {
 			"drinks_over": valOr(s2, "drinks_over", 25)})
 
 	case path == "/pcs/debug":
+		// As /logos/debug: the setup guides' "what can the server see?" page.
+		if !c.trustedLoopback() && !c.checkToken() {
+			return
+		}
 		c.pcsDebug()
 
 	case path == "/agent/status":
 		// How is the link to the scoring laptop doing? Called by the control panel every
-		// few seconds while the network source is selected. No secrets beyond LAN
-		// topology — open, like /pcs/debug.
+		// few seconds while the network source is selected. Behind the login: it maps the
+		// LAN, and what the agent says about itself is a stranger's text.
+		if !c.checkToken() {
+			return
+		}
 		info := AgentStatus(LoadState())
 		if addr := gs(info, "address", ""); addr != "" {
 			if ping, err := AgentPing(addr, 3*time.Second); ping != nil {
@@ -583,8 +699,10 @@ func (c *ctx) doGET() {
 		c.json(CamerasDiscover())
 
 	case path == "/agent/discover":
-		// Shout on the local network and report every scorer agent that answers.
-		if !c.rateLimit(path) {
+		// Shout on the local network and report every scorer agent that answers. Behind the
+		// login: it ADOPTS the first answer as the score source, and anything on the wifi
+		// can answer.
+		if !c.checkToken() || !c.rateLimit(path) {
 			return
 		}
 		st := LoadState()
@@ -966,7 +1084,11 @@ func (c *ctx) doGET() {
 		c.matchFetch()
 
 	case path == "/match/fixtures":
-		// Every fixture for the season
+		// Every fixture for the season. Behind the login like every other fixture route: it
+		// spends the club's PlayCricket key.
+		if !c.checkToken() {
+			return
+		}
 		s := LoadState()
 		u := fmt.Sprintf("https://play-cricket.com/api/v2/matches.json?api_token=%s&site_id=%s&season=%d",
 			trim(gs(s, "playcricket_api_key", "")), trim(gs(s, "home_club_id", "")), time.Now().Year())
@@ -1001,7 +1123,10 @@ func (c *ctx) doGET() {
 		c.json(out)
 
 	case path == "/status":
-		// Server uptime and clip count
+		// Server uptime and clip count. It names the replay folder: this laptop or the login.
+		if !c.trustedLoopback() && !c.checkToken() {
+			return
+		}
 		up := int(time.Since(serverStart).Seconds())
 		h, rem := up/3600, up%3600
 		mins, secs := rem/60, rem%60
@@ -1169,6 +1294,9 @@ func (c *ctx) doGET() {
 		c.bytes(png, "image/png")
 
 	case path == "/live" || path == "/live/view":
+		if path == "/live" && !c.overlayCaller() {
+			return
+		}
 		c.live(path == "/live")
 
 	case path == "/talk/status":

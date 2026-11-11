@@ -826,7 +826,7 @@ $('import_file').addEventListener('change', function () {
   this.value = '';
   if (!f) return;
   m.classList.remove('hidden'); m.classList.remove('good'); m.textContent = 'Importing ' + f.name + '…';
-  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip', 'X-App-Key': KEY}, body: f})
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d.ok) { m.textContent = d.error || 'Import failed'; return; }

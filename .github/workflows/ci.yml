@@ -6,7 +6,25 @@ on:
   pull_request:
     branches: [main]
 
+# CI only reads the code: nothing a workflow step runs gets a token that can write.
+permissions:
+  contents: read
+
 jobs:
+  # Known vulnerabilities in the Go modules and the Go toolchain, for the code paths
+  # this binary actually reaches.
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
   check:
     strategy:
       # Don't cancel the other platforms when one fails — the whole point of this matrix

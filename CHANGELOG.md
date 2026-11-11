@@ -4,6 +4,46 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased — security review (2026-11-11)
+
+Fixes from an outside read of the code. None is known to have been used against a club.
+
+- **Fixed: a device on the network could put script into the control panel.** With a club
+  password set, a request with a made-up `X-Forwarded-For` header had that text shown, as
+  HTML, in the panel's sign-in activity list; and in two-laptop mode a device answering as
+  the scorer's laptop could do the same through a player's or team's name. Every value the
+  panel and the scoring page show is now escaped, the header is believed only from the
+  tunnel or the clubhouse link on the laptop itself, and finding the scorer's laptop needs
+  the login.
+- **Fixed: the sign-in lockout could be walked past, or turned on the operator.** A new
+  made-up address per guess never reached five failures, and the operator's own address
+  could be locked out by someone else. Thirty wrong passwords from any mix of addresses now
+  also stop sign-ins for 5 minutes, except on the laptop itself.
+- **Fixed: a web page open on the streaming laptop could reach a laptop with no password.**
+  By pointing its own domain at the laptop (DNS rebinding) a page could change settings or
+  press the checklist's buttons. The server now answers only to localhost, an IP address,
+  the laptop's own name, Tailscale names and its own Cloudflare tunnel. **If you open the
+  panel through your own domain or reverse proxy**, add the name to `[Network] extra_hosts`
+  in `config.ini`.
+- **Fixed: the PlayCricket key could appear in an error message.** When PlayCricket couldn't
+  be reached, the error named the whole address, key included, on pages anyone on the
+  network could read, in the log and in Discord alerts.
+- **Fixed: other web sites could read the server, and empty the overlay's queue.** The
+  score feed and replay queue that only the OBS overlay should read (`/live`, `/commands`)
+  now answer only the overlay: on the laptop, or on the computer set as `obs_host`. Nothing
+  is readable from another web site any more. `/pcs/debug`, `/logos/debug` and `/status`
+  open in a browser on the laptop as before; from another device they need the login. A
+  tool of your own that read `/live` should read `/live/view`.
+- **Fixed: a signed-in user could overwrite any file through the highlights reel**, by
+  naming where to save it. It's always saved in the replay folder now.
+- **Fixed: another program on the laptop could ask the app's window for the "move to
+  another laptop" file**, passwords and keys included.
+- **Built with Go 1.27.4**, which fixes two faults in Go itself (one could crash the
+  server). The build now checks for known vulnerabilities, and Dependabot watches the Go
+  modules.
+
+---
+
 ## v3.0.0-beta.8 — replays after the animation, fielding records (2026-11-09)
 
 - **A four's or six's replay comes after its animation.** The replay's transition and banner used

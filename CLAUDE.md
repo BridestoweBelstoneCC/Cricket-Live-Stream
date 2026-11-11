@@ -122,7 +122,11 @@ problem + what to do + pause) or print and `console.Pause()`.
   wicket-event buffer, so exactly ONE client (the OBS overlay) may call it. Panel features
   and any new tooling read `/live/view` (same response, no side effects). `GET /commands`
   is the same shape of trap: it POPS the queue, so a second consumer silently steals
-  replay/scorecard commands from the real overlay.
+  replay/scorecard commands from the real overlay. Both now answer only `overlayCaller()`:
+  not marked cross-site by the browser (`Sec-Fetch-Site`, `Origin`), and from this laptop
+  unproxied or from `obs_host` (OBS on another computer, `manage_obs = no`); everyone else
+  gets a 403 pointing at `/live/view`. Nothing sends `Access-Control-Allow-Origin` any more
+  (it was `*` on every GET). Checked on a real portable OBS with the fault test, 2026-11-11.
   **This is why `overlay.html` has a preview mode** (`/overlay?preview=1&style=<name>`):
   the control panel embeds the real overlay in an iframe to show what each scorebar style
   looks like, and it renders exactly ONE static frame of demo data with both timers never
@@ -209,7 +213,22 @@ problem + what to do + pause) or print and `console.Pause()`.
   The Discord alerts webhook (`[Alerts] discord_webhook`) is a secret too — the token is
   in the URL — and it's never in the state at all: only `internal/discord`, the window's
   `sendDiscord` and the pre-match check read it from config.ini. Go's HTTP errors quote
-  the URL, so `discord` strips it (`clean()`); print only errors that came through it.
+  the URL, so `discord` strips it (`clean()`); print only errors that came through it. The same
+  goes for PlayCricket: its `api_token` is in every URL, so `httpGetJSON`/`httpGetText`
+  return `scrubURLError(err)`. A new outside call that puts a key in its URL must too.
+- **The server answers only to its own names, and believes X-Forwarded-For only from this
+  machine** (security review, 2026-11-11). `hostAllowed()` (`hostcheck.go`) refuses any Host
+  but an IP address, localhost, this computer's name, `*.ts.net` and the running tunnel's
+  hostname with a 421 — DNS rebinding otherwise reached every route on a no-password
+  install. `clientIP()` reads `CF-Connecting-IP` / the LAST `X-Forwarded-For` hop only when
+  the socket is loopback (cloudflared, Tailscale, the clubhouse link), and only ever returns
+  an address: from the network, a fresh header per guess walked past the login lockout and
+  put markup in the panel's activity list. Every server value in a `control.html` template
+  goes through `esc()`; there's no other escaping. A new way of reaching the server by name
+  needs adding to `hostAllowed` (a club's own domain: `[Network] extra_hosts`). The
+  diagnostics with folder paths (`/pcs/debug`, `/logos/debug`, `/status`) are
+  `trustedLoopback() || checkToken()`: the setup guides send people to them in a browser
+  tab, which can't carry the login.
 - **Never commit `config.ini`, `match_state.json`, or `match_data.db`.** They're git-ignored;
   check `git status` before committing. The `.gitignore` entries are globbed
   (`config.ini*`, not `config.ini`) so a hand-made backup copy (`config.ini.bak`,

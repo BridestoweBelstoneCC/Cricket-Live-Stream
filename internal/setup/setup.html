@@ -357,10 +357,16 @@ function role() { return document.querySelector('input[name=role]:checked').valu
 var FIELDS = ['name','abbrev','colour','motto','pc_id','pc_key','pcs_folder','replay_folder',
               'yt_title','max_overs','yt_key','anthropic_key','club_password','discord_webhook'];
 
+// In CricketStream's window the page carries the window's key, which saving needs.
+function appKey() {
+  var m = document.querySelector('meta[name=app-key]');
+  return m ? m.content : '';
+}
 // The control panel's login (same tab, so the same sessionStorage): settings need it.
 function headers(json) {
   var h = {};
   if (json) h['Content-Type'] = 'application/json';
+  if (appKey()) h['X-App-Key'] = appKey();
   var t = null;
   try { t = sessionStorage.getItem('bbcc_token'); } catch (e) {}
   if (MODE === 'settings' && t) h['Authorization'] = 'Bearer ' + t;
@@ -663,7 +669,7 @@ function moveResult(kind, text) { var r = $('result_move'); r.className = 'resul
 $('move_export').addEventListener('click', function () {
   var secrets = $('move_secrets').checked;
   moveResult('busy', 'Making the file…');
-  fetch('/setup/export', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({secrets: secrets})})
+  fetch('/setup/export', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-App-Key': appKey()}, body: JSON.stringify({secrets: secrets})})
     .then(function (r) {
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Export failed'); });
       var club = (r.headers.get('X-Club') || 'club').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -684,7 +690,7 @@ $('move_import').addEventListener('change', function () {
   this.value = '';
   if (!f) return;
   moveResult('busy', 'Importing ' + f.name + '…');
-  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip'}, body: f})
+  fetch('/setup/import', {method: 'POST', headers: {'Content-Type': 'application/zip', 'X-App-Key': appKey()}, body: f})
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d.ok) { moveResult('bad', d.error || 'Import failed'); return; }

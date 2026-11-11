@@ -49,7 +49,8 @@ func (pg *appPage) status() map[string]any {
 
 func (pg *appPage) saveSetup(values map[string]any) reply {
 	pg.t.Helper()
-	return saveSetup(pg.t, pg.base, values)
+	// The window's setup page carries the window's key, and saving needs it.
+	return do(pg.t, "POST", pg.base+"/setup/save", values, map[string]string{"Origin": pg.base, "X-App-Key": pg.key})
 }
 
 // until polls the status, as the page does, until ok.

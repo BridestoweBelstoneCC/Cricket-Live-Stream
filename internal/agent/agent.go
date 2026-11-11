@@ -124,8 +124,8 @@ func writeJSON(w http.ResponseWriter, obj any, code int) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json")
 	h.Set("Content-Length", strconv.Itoa(len(body)))
-	// The streaming laptop is a different origin; let it read us.
-	h.Set("Access-Control-Allow-Origin", "*")
+	// No Access-Control-Allow-Origin: the streaming laptop's SERVER reads this, not a web
+	// page, and "*" let any page in any browser on the wifi read the folder and the score.
 	h.Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	w.Write(body) // the stream laptop going away mid-response is harmless

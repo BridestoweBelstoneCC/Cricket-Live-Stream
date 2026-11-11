@@ -764,6 +764,13 @@ func TestPrematchCountdown(t *testing.T) {
 var els = {};
 function el(id) { return els[id] || (els[id] = {style: {}, textContent: ''}); }
 var cfg = {};
+// The clock stands at noon: on the real one, a start time "95 minutes from now" is
+// tomorrow's whenever the test runs late in the evening (CI's clock is UTC), and it failed.
+var RealDate = Date, NOON = new RealDate(2026, 5, 6, 12, 0, 10).getTime();
+Date = class extends RealDate {
+  constructor(...a) { if (a.length) super(...a); else super(NOON); }
+  static now() { return NOON; }
+};
 function at(mins) { var d = new Date(Date.now() + mins * 60000 + 20000);
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
 var out = {};
