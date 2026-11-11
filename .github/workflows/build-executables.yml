@@ -306,7 +306,7 @@ jobs:
       # A tag with a hyphen (v3.0.0-beta.1) is a pre-release: GitHub doesn't count it as
       # "latest", so neither edition's update check offers it to clubs on a proven version.
       - name: Attach binaries to the GitHub release
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
