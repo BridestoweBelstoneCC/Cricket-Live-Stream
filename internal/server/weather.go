@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -53,12 +54,12 @@ func httpGetJSON(u string, timeout time.Duration, headers map[string]string) (M,
 	c := &http.Client{Timeout: timeout}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, scrubURLError(err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBytes))
 	if err != nil {
-		return nil, err
+		return nil, scrubURLError(err)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, &httpError{Code: resp.StatusCode, Body: string(body)}
@@ -68,6 +69,22 @@ func httpGetJSON(u string, timeout time.Duration, headers map[string]string) (M,
 		return nil, err
 	}
 	return out, nil
+}
+
+// maxFetchBytes caps what one outside answer may put in memory. A season's PlayCricket
+// match list is about a megabyte.
+const maxFetchBytes = 32 << 20
+
+// scrubURLError drops the URL from Go's HTTP errors, which quote it whole: every
+// PlayCricket call carries the club's api_token in it, and these errors reach open
+// endpoints (/league/table, /club/career, /health) and the logs. A timeout at the ground
+// was enough to publish the key. Same idea as internal/discord's clean().
+func scrubURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s request failed: %w", ue.Op, ue.Err)
+	}
+	return err
 }
 
 // httpError is a non-2xx answer (Python's urllib.error.HTTPError).

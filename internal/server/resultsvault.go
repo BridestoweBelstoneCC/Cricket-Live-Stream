@@ -53,12 +53,12 @@ func httpGetText(u string, headers map[string]string, timeout time.Duration) (st
 	}
 	resp, err := (&http.Client{Timeout: timeout}).Do(req)
 	if err != nil {
-		return "", err
+		return "", scrubURLError(err)
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBytes))
 	if err != nil {
-		return "", err
+		return "", scrubURLError(err)
 	}
 	if resp.StatusCode >= 400 {
 		return "", &httpError{Code: resp.StatusCode, Body: string(b)}

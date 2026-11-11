@@ -1976,6 +1976,16 @@ function remoteVia() {
   a.textContent = url;
 })();
 
+// esc makes any value safe inside an HTML template, as text or in a quoted attribute.
+// EVERY value from the server goes through it before reaching innerHTML: names come from
+// the scorer's feed (in two-laptop mode, from a device on the wifi), PlayCricket, file
+// names, error text and the auth log's addresses — and this page holds the session token.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 // ── Stream health check ─────────────────────────────────────
 async function runStreamHealthCheck(force) {
   const body = document.getElementById('stream-check-body');
@@ -1985,18 +1995,18 @@ async function runStreamHealthCheck(force) {
     const res = await apiFetch('/obs/stream_check' + (force ? '?force=1' : ''));
     const d = await res.json();
     if (res.status === 429) {
-      body.innerHTML = '<span style="color:var(--text-2);">' + (d.error || 'Checked recently — try again shortly.') + '</span>';
+      body.innerHTML = '<span style="color:var(--text-2);">' + esc(d.error || 'Checked recently — try again shortly.') + '</span>';
       return;
     }
     let html = '';
     const n = d.network || {};
     if (n.error) {
-      html += '<div style="color:var(--bad);margin-bottom:8px;">' + n.error + '</div>';
+      html += '<div style="color:var(--bad);margin-bottom:8px;">' + esc(n.error) + '</div>';
     } else if (n.recommended_kbps) {
       html += '<div style="margin-bottom:8px;"><strong style="color:var(--text);">Recommended: '
-        + n.recommended_kbps + ' kbps, ' + n.recommended_resolution + ' ' + n.recommended_fps + 'fps</strong><br>'
-        + '<span style="color:var(--text-2);">Measured upload speed: ' + n.upload_mbps + ' Mbps'
-        + (n.freshly_tested ? '' : ' (cached from an earlier test)') + ' — ' + n.note + '</span></div>';
+        + esc(n.recommended_kbps) + ' kbps, ' + esc(n.recommended_resolution) + ' ' + esc(n.recommended_fps) + 'fps</strong><br>'
+        + '<span style="color:var(--text-2);">Measured upload speed: ' + esc(n.upload_mbps) + ' Mbps'
+        + (n.freshly_tested ? '' : ' (cached from an earlier test)') + ' — ' + esc(n.note) + '</span></div>';
     }
     body.innerHTML = html || 'No data yet — click Check now.';
   } catch (err) {
@@ -2054,18 +2064,18 @@ async function pollStreamMonitor() {
     const healthy = d.step === 0 && d.congestion !== null && d.congestion < 0.1;
     // What OBS really sends, beside the setting: a setting that never reached the encoder
     // looked fine here for a long time, because only the setting was shown.
-    const sent = d.sent_kbps ? ' &middot; sending ' + d.sent_kbps + ' kbps' : '';
+    const sent = d.sent_kbps ? ' &middot; sending ' + esc(d.sent_kbps) + ' kbps' : '';
     let html = '<div><strong style="color:' + (healthy ? 'var(--ok)' : 'var(--warn)') + ';">LIVE — set to '
-      + (d.current_kbps || '?') + ' kbps (' + pct + '% of baseline)</strong>'
-      + sent + ' &middot; congestion ' + cong + '</div>'
-      + (d.bitrate_warning ? '<div style="color:var(--bad);margin-top:3px;">&#9888; ' + d.bitrate_warning + '</div>' : '')
-      + '<div style="color:var(--text-2);margin-top:3px;">' + (d.verdict || '') + '</div>';
-    if (d.upshift) html += '<div style="color:var(--text-2);margin-top:3px;">&#9206; ' + d.upshift + '</div>';
+      + esc(d.current_kbps || '?') + ' kbps (' + esc(pct) + '% of baseline)</strong>'
+      + sent + ' &middot; congestion ' + esc(cong) + '</div>'
+      + (d.bitrate_warning ? '<div style="color:var(--bad);margin-top:3px;">&#9888; ' + esc(d.bitrate_warning) + '</div>' : '')
+      + '<div style="color:var(--text-2);margin-top:3px;">' + esc(d.verdict || '') + '</div>';
+    if (d.upshift) html += '<div style="color:var(--text-2);margin-top:3px;">&#9206; ' + esc(d.upshift) + '</div>';
     (d.shifts || []).slice(-2).forEach(function (s) {
       const up = s.kbps_to > s.kbps_from;
       html += '<div style="color:' + (up ? 'var(--ok)' : 'var(--warn)') + ';margin-top:3px;">'
-        + (up ? '&#9206; ' : '&#9207; ') + s.kbps_from + ' &rarr; '
-        + s.kbps_to + ' kbps (' + s.mode + ': ' + s.reason + ')</div>';
+        + (up ? '&#9206; ' : '&#9207; ') + esc(s.kbps_from) + ' &rarr; '
+        + esc(s.kbps_to) + ' kbps (' + esc(s.mode) + ': ' + esc(s.reason) + ')</div>';
     });
     body.innerHTML = html + dyn + modeNote;
   } catch (e) {}
@@ -2077,7 +2087,7 @@ async function enableDynamicBitrate() {
     const d = await (await apiFetch('/stream/dynamic', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: '{}'})).json();
     if (body) body.innerHTML = '<span style="color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';">'
-      + (d.message || d.error || '') + '</span>';
+      + esc(d.message || d.error || '') + '</span>';
     setTimeout(pollStreamMonitor, 2500);
   } catch (e) {
     if (body) body.innerHTML = '<span style="color:var(--bad);">Could not reach server</span>';
@@ -2524,7 +2534,7 @@ async function streamQuality(action) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({action: action})})).json();
     if (body) body.innerHTML = '<span style="color:' + (d.ok ? 'var(--ok)' : 'var(--bad)') + ';">'
-      + (d.message || d.error || '') + '</span>';
+      + esc(d.message || d.error || '') + '</span>';
     setTimeout(pollStreamMonitor, 4000);
   } catch (e) {
     if (body) body.innerHTML = '<span style="color:var(--bad);">Could not reach server</span>';
@@ -2543,6 +2553,7 @@ function renderRemoteTarget(via) {
   const tabs = _remoteTargets.length <= 1 ? '' : '<div style="margin-bottom:12px;">' +
     _remoteTargets.map(x => {
       const active = x.via === t.via;
+      if (!REMOTE_TAB_LABEL[x.via]) return '';   // only the known kinds reach the onclick
       return '<button onclick="renderRemoteTarget(\'' + x.via + '\')" style="font-size:11px;' +
         'padding:5px 10px;border-radius:14px;cursor:pointer;margin:0 3px;border:1px solid ' +
         (active ? 'var(--accent)' : 'var(--line)') + ';background:' + (active ? '#1a3a5c' : 'transparent') +
@@ -2554,13 +2565,13 @@ function renderRemoteTarget(via) {
     : 'Scan on a phone or tablet ' + REMOTE_SCAN_NOTE[t.via] + ':';
   body.innerHTML = tabs +
     '<p style="font-size:12px;color:var(--text-2);margin-bottom:12px;line-height:1.5;">' + scan + '</p>' +
-    '<img src="/remote/qr.png?via=' + t.via + (_remotePage ? '&page=' + _remotePage : '') + '&t=' + Date.now() +
+    '<img src="/remote/qr.png?via=' + encodeURIComponent(t.via) + (_remotePage ? '&page=' + _remotePage : '') + '&t=' + Date.now() +
     '" style="width:200px;height:200px;' +
     'background:#fff;border-radius:8px;padding:8px;" ' +
     'onerror="this.replaceWith(Object.assign(document.createElement(\'p\'),' +
     '{textContent:\'Install the qrcode package on the server for a scannable code.\',' +
     'style:\'font-size:12px;color:var(--text-2)\'}))">' +
-    '<p style="font-size:11px;color:var(--muted);margin-top:12px;word-break:break-all;">' + t.url + '</p>';
+    '<p style="font-size:11px;color:var(--muted);margin-top:12px;word-break:break-all;">' + esc(t.url) + '</p>';
 }
 
 async function showRemoteOverlay(page) {
@@ -2669,8 +2680,8 @@ async function showSecurityOverlay() {
                       (e.event === 'logout_all') ? 'var(--accent)' : 'var(--bad)';
         return '<div style="display:flex;justify-content:space-between;gap:10px;' +
           'font-size:11px;padding:5px 0;border-bottom:1px solid var(--line);">' +
-          '<span style="color:' + color + '">' + label + '</span>' +
-          '<span style="color:var(--muted);">' + e.ip + ' &middot; ' + fmtAgo(e.time) + '</span>' +
+          '<span style="color:' + color + '">' + esc(label) + '</span>' +
+          '<span style="color:var(--muted);">' + esc(e.ip) + ' &middot; ' + fmtAgo(e.time) + '</span>' +
           '</div>';
       }).join('') + '</div>' +
       (d.entries.some(function (e) { return e.event === '401'; })
@@ -2889,7 +2900,7 @@ async function saveRoster() {
 async function loadLogoOptions() {  try {
     const d = await (await apiFetch('/logos/list')).json();
     const opts = '<option value="">— pick a logo —</option>'
-      + (d.logos||[]).map(function(l){ return '<option value="'+l.id+'">'+l.file+'</option>'; }).join('');
+      + (d.logos||[]).map(function(l){ return '<option value="'+esc(l.id)+'">'+esc(l.file)+'</option>'; }).join('');
     ['home','away'].forEach(function(side){
       const sel = document.getElementById(side+'-logo-pick');
       if (sel) { const cur = sel.value; sel.innerHTML = opts; sel.value = cur; }
@@ -3033,15 +3044,9 @@ function onAgentToggle() {
   }
 }
 
-function escapeAgentText(s) {
-  // hostname/address/file/error all round-trip through an unauthenticated LAN broadcast
-  // (see scorer_agent.py) — anything a rogue device on the wifi chooses to put in them
-  // must never reach innerHTML unescaped, or answering the discovery broadcast becomes a
-  // way to inject markup into the control panel (which holds the session token).
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
+// The agent's hostname/address/file/error round-trip through an unauthenticated LAN
+// broadcast (see internal/agent): a rogue device on the wifi chooses what's in them.
+function escapeAgentText(s) { return esc(s); }
 
 function setAgentStatus(text, kind) {
   const el = document.getElementById('agent-status');
@@ -3088,7 +3093,7 @@ async function refreshAgentStatus() {
                    + (d.have_score ? '<br>Still showing the last score received.' : ''), 'err');
     }
   } catch(e) {
-    setAgentStatus('Could not ask the server about the connection: ' + e.message, 'err');
+    setAgentStatus('Could not ask the server about the connection: ' + esc(e.message), 'err');
   }
 }
 
@@ -3109,7 +3114,7 @@ async function pairAgent() {
     if (tog && !tog.checked) { tog.checked = true; if (typeof onAgentToggle === 'function') onAgentToggle(); }
     await refreshAgentStatus();
   } catch (e) {
-    setAgentStatus('Could not connect: ' + e.message, 'err');
+    setAgentStatus('Could not connect: ' + esc(e.message), 'err');
   }
 }
 
@@ -3126,7 +3131,7 @@ async function discoverAgent() {
     if (d.chosen) document.getElementById('agent_host').placeholder = 'found automatically: ' + d.chosen;
     await refreshAgentStatus();
   } catch(e) {
-    setAgentStatus('Search failed: ' + e.message, 'err');
+    setAgentStatus('Search failed: ' + esc(e.message), 'err');
   }
 }
 
@@ -3503,12 +3508,12 @@ async function loadDataStatus() {
     const d = await (await apiFetch('/data/status')).json();
     if (!d.ok) { box.textContent = 'Database error: ' + (d.error || ''); return; }
     _latestMatchId = (d.recent && d.recent[0]) ? d.recent[0].match_id : '';
-    let html = '<b>' + (d.balls || 0).toLocaleString() + '</b> balls logged across <b>'
-             + (d.matches || 0) + '</b> match(es).';
+    let html = '<b>' + esc((d.balls || 0).toLocaleString()) + '</b> balls logged across <b>'
+             + esc(d.matches || 0) + '</b> match(es).';
     if (d.recent && d.recent.length) {
       html += '<div style="margin-top:6px;font-size:12px;line-height:1.6;">'
         + d.recent.slice(0, 5).map(function(m){
-            return (m.date || '') + ' &nbsp;' + (m.home || '') + ' v ' + (m.away || '')
+            return esc(m.date || '') + ' &nbsp;' + esc(m.home || '') + ' v ' + esc(m.away || '')
               + (m.reconciled ? ' <span style="color:var(--ok);">&#10003; reconciled</span>'
                               : ' <span style="color:var(--warn);">live only</span>');
           }).join('<br>')
@@ -3626,11 +3631,11 @@ async function loadSocialPhotos() {
     const d = await (await apiFetch('/social/photos')).json();
     if (d.photos && d.photos.length) {
       box.innerHTML = '<p class="hint" style="margin-bottom:6px;">Photos in your socials folder ('
-        + d.photos.length + ') — attach one when posting:</p>'
+        + esc(d.photos.length) + ') — attach one when posting:</p>'
         + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
         + d.photos.map(function(p){ return '<span style="font-size:11px;background:var(--surface-2);'
           + 'border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:3px 8px;color:var(--accent);">'
-          + p + '</span>'; }).join('')
+          + esc(p) + '</span>'; }).join('')
         + '</div>';
     } else {
       box.innerHTML = '<p class="hint">No photos found in socials folder. Add JPG/PNG files to use with posts.</p>';
@@ -3644,7 +3649,7 @@ async function loadSocialPhotos() {
       const cur = sel.value;
       sel.innerHTML = '<option value="">Newest photo in socials folder</option>'
         + (d2.photos || []).map(function(p){
-            return '<option value="'+p+'">'+p+'</option>'; }).join('');
+            return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('');
       sel.value = cur;
     }
   } catch(e) {}
@@ -3663,7 +3668,7 @@ async function loadRecentMatches() {
     sel.innerHTML = '<option value="">Streamed match (live data)</option>'
       + (d.matches || []).map(function(m){
           var tag = m.team_key ? (' [' + m.team_key + ' XI]') : '';
-          return '<option value="' + m.id + '">' + (m.label || m.id) + tag + '</option>';
+          return '<option value="' + esc(m.id) + '">' + esc((m.label || m.id) + tag) + '</option>';
         }).join('');
     if (status) { status.textContent = (d.matches || []).length + ' recent match(es) loaded — pick one above'; status.style.color = 'var(--ok)'; }
   } catch(e) { if (status) { status.textContent = 'Could not reach server'; status.style.color = 'var(--bad)'; } }
@@ -3680,8 +3685,8 @@ async function onMatchPick() {
     if (!sel) return;
     const d = await (await apiFetch('/social/photos?team=' + encodeURIComponent(team))).json();
     const label = team ? ('Newest photo in socials/' + team) : 'Newest photo in socials folder';
-    sel.innerHTML = '<option value="">' + label + '</option>'
-      + (d.photos || []).map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
+    sel.innerHTML = '<option value="">' + esc(label) + '</option>'
+      + (d.photos || []).map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('');
   } catch(e) {}
 }
 
@@ -3837,7 +3842,7 @@ async function updatePCSMonitor() {
       ballsHtml = `<div class="pcs-ball-row">
         <div style="font-size:10px;color:var(--muted);align-self:center;margin-right:4px;">Last ball:</div>
         <div class="pcs-ball ${ballClass}">${s.last_ball.replace(/[^0-9WwNnBb]/g,'').slice(0,2)||'·'}</div>
-        <div style="font-size:11px;color:var(--text-2);align-self:center;margin-left:4px;">${s.last_ball}</div>
+        <div style="font-size:11px;color:var(--text-2);align-self:center;margin-left:4px;">${esc(s.last_ball)}</div>
       </div>`;
     }
 
@@ -3851,44 +3856,44 @@ async function updatePCSMonitor() {
       <div class="pcs-grid">
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Batting</div>
-          <div class="pcs-cell-value" style="font-size:13px;">${s.battingTeamName||'—'}</div>
+          <div class="pcs-cell-value" style="font-size:13px;">${esc(s.battingTeamName||'—')}</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Score</div>
-          <div class="pcs-cell-value">${s.score}-${s.wickets}</div>
-          <div class="pcs-cell-sub">${s.overs} overs · RR ${parseFloat(s.statusText?.replace('RR:','')||0).toFixed(2)||'—'}</div>
+          <div class="pcs-cell-value">${esc(s.score)}-${esc(s.wickets)}</div>
+          <div class="pcs-cell-sub">${esc(s.overs)} overs · RR ${parseFloat(String(s.statusText||'').replace('RR:','')||0).toFixed(2)||'—'}</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Innings</div>
-          <div class="pcs-cell-value">${s.innings||1}</div>
-          <div class="pcs-cell-sub">of ${s.max_overs||50} overs</div>
+          <div class="pcs-cell-value">${esc(s.innings||1)}</div>
+          <div class="pcs-cell-sub">of ${esc(s.max_overs||50)} overs</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Partnership</div>
-          <div class="pcs-cell-value">${s.partnership_runs??'—'}</div>
-          <div class="pcs-cell-sub">${s.partnership_balls??'—'} balls</div>
+          <div class="pcs-cell-value">${esc(s.partnership_runs??'—')}</div>
+          <div class="pcs-cell-sub">${esc(s.partnership_balls??'—')} balls</div>
         </div>
       </div>
 
       <div class="pcs-grid">
         <div class="pcs-cell live">
           <div class="pcs-cell-label">&#9998; ${s.batter1?.onStrike ? 'On strike' : 'Batter 1'}</div>
-          <div class="pcs-cell-value">${s.batter1?.name||'—'}</div>
-          <div class="pcs-cell-sub">${s.batter1?.runs??0} (${s.batter1?.balls??0}b) · SR ${b1sr}</div>
+          <div class="pcs-cell-value">${esc(s.batter1?.name||'—')}</div>
+          <div class="pcs-cell-sub">${esc(s.batter1?.runs??0)} (${esc(s.batter1?.balls??0)}b) · SR ${esc(b1sr)}</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">&#9998; ${!s.batter1?.onStrike ? 'On strike' : 'Batter 2'}</div>
-          <div class="pcs-cell-value">${s.batter2?.name||'—'}</div>
-          <div class="pcs-cell-sub">${s.batter2?.runs??0} (${s.batter2?.balls??0}b) · SR ${b2sr}</div>
+          <div class="pcs-cell-value">${esc(s.batter2?.name||'—')}</div>
+          <div class="pcs-cell-sub">${esc(s.batter2?.runs??0)} (${esc(s.batter2?.balls??0)}b) · SR ${esc(b2sr)}</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Bowler</div>
-          <div class="pcs-cell-value">${s.bowler?.name||'—'}</div>
-          <div class="pcs-cell-sub">${s.bowler?.overs||0}-${s.bowler?.maidens||0}-${s.bowler?.runs||0}-${s.bowler?.wickets||0}</div>
+          <div class="pcs-cell-value">${esc(s.bowler?.name||'—')}</div>
+          <div class="pcs-cell-sub">${esc(s.bowler?.overs||0)}-${esc(s.bowler?.maidens||0)}-${esc(s.bowler?.runs||0)}-${esc(s.bowler?.wickets||0)}</div>
         </div>
         <div class="pcs-cell">
           <div class="pcs-cell-label">Bowling</div>
-          <div class="pcs-cell-value" style="font-size:13px;">${s.bowlingTeamName||'—'}</div>
+          <div class="pcs-cell-value" style="font-size:13px;">${esc(s.bowlingTeamName||'—')}</div>
         </div>
       </div>
 
@@ -3898,12 +3903,12 @@ async function updatePCSMonitor() {
       <div class="pcs-grid" style="margin-top:8px;">
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Target</div>
-          <div class="pcs-cell-value">${s.targetRuns}</div>
+          <div class="pcs-cell-value">${esc(s.targetRuns)}</div>
         </div>
         <div class="pcs-cell live">
           <div class="pcs-cell-label">Required</div>
-          <div class="pcs-cell-value">${s.runsRequired}</div>
-          <div class="pcs-cell-sub">RRR ${s.req_rate||'—'}</div>
+          <div class="pcs-cell-value">${esc(s.runsRequired)}</div>
+          <div class="pcs-cell-sub">RRR ${esc(s.req_rate||'—')}</div>
         </div>
       </div>` : ''}
     `;
@@ -3976,7 +3981,7 @@ async function fetchTodaysMatch() {
     grid_el.innerHTML = cells.map(c =>
       `<div class="pcs-cell live">
         <div class="pcs-cell-label">${c.label}</div>
-        <div class="pcs-cell-value" style="font-size:13px;">${c.value}</div>
+        <div class="pcs-cell-value" style="font-size:13px;">${esc(c.value)}</div>
       </div>`
     ).join('');
     details_el.style.display = 'block';

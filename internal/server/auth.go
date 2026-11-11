@@ -98,6 +98,7 @@ func LoadAuthConfig() {
 			BindHost = strings.TrimSpace(f.Get("Network", "bind_host", "127.0.0.1"))
 		}
 		CloudflareTunnel = f.GetBool("Network", "cloudflare_tunnel", false)
+		ExtraHosts = parseExtraHosts(f.Get("Network", "extra_hosts", ""))
 	}
 	// Binding beyond localhost with no password would expose every control-panel action
 	// to the network with nothing gating it. Fail closed.
@@ -219,6 +220,11 @@ const (
 	LoginMaxFailures = 5
 	LoginWindowSec   = 600 // failures older than this don't count towards the lockout
 	LoginLockoutSec  = 600 // how long an IP is rejected once it trips the limit
+
+	// Every address together: many addresses guessing at once (a tunnel is public) lock
+	// the sign-in for everyone but this laptop itself, so the operator is never shut out.
+	LoginMaxFailuresGlobal = 30
+	LoginGlobalLockoutSec  = 300
 )
 
 type loginRecord struct {
@@ -229,6 +235,8 @@ type loginRecord struct {
 var (
 	loginAttempts   = map[string]*loginRecord{}
 	loginAttemptsMu sync.Mutex
+	loginAllFails   []float64 // every failure in the window, any address (under loginAttemptsMu)
+	loginLockAll    float64   // when the global lock ends (under loginAttemptsMu)
 )
 
 // ── Auth event log ────────────────────────────────────────────

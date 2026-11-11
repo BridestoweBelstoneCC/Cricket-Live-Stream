@@ -101,6 +101,7 @@ func sandbox(t *testing.T, password string) string {
 	rvMu.Unlock()
 	loginAttemptsMu.Lock()
 	loginAttempts = map[string]*loginRecord{}
+	loginAllFails, loginLockAll = nil, 0
 	loginAttemptsMu.Unlock()
 	rateLimitMu.Lock()
 	rateLimitTS = map[string]float64{}

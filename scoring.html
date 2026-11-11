@@ -224,6 +224,14 @@
 <div id="flash"></div>
 
 <script>
+// esc makes a value safe inside an HTML template. Team and player names are whatever was
+// typed at set-up, and this page holds the session token: every one goes through it.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 // ── Auth (shares the control panel's session token) ─────────
 function getToken() { return sessionStorage.getItem('bbcc_token'); }
 async function apiFetch(url, opts) {
@@ -501,8 +509,8 @@ function render(s) {
   pad.style.display = s.innings_complete ? 'none' : 'block';
 
   if (s.match_over) {
-    banners.innerHTML = '<div class="banner gold">Match over — ' + s.batting + ' ' +
-        (s.need === 0 && s.target ? 'won' : 'finished') + ' on ' + s.score + '-' + s.wickets +
+    banners.innerHTML = '<div class="banner gold">Match over — ' + esc(s.batting) + ' ' +
+        (s.need === 0 && s.target ? 'won' : 'finished') + ' on ' + esc(s.score) + '-' + esc(s.wickets) +
         '.</div>' +
         '<button class="big-cta" onclick="showScorecard()">&#128203; Scorecard for Play-Cricket</button>' +
         '<button class="big-cta" style="background:#3a0d0d;color:#f08080;" ' +
@@ -510,8 +518,8 @@ function render(s) {
     return;
   }
   if (s.innings_complete) {
-    banners.innerHTML = '<div class="banner gold">Innings closed: ' + s.batting + ' ' +
-        s.score + '-' + s.wickets + ' (' + s.overs + ' ov).</div>' +
+    banners.innerHTML = '<div class="banner gold">Innings closed: ' + esc(s.batting) + ' ' +
+        esc(s.score) + '-' + esc(s.wickets) + ' (' + esc(s.overs) + ' ov).</div>' +
         '<button class="big-cta" onclick="post(\'/scoring/innings\',{action:\'start_next\'})">' +
         'Start 2nd innings</button>' +
         '<button class="undo-btn" onclick="post(\'/scoring/undo\')">&#8630; Undo (reopen innings)</button>';
@@ -520,7 +528,7 @@ function render(s) {
   if (s.new_batter) {
     const b = document.createElement('div');
     b.className = 'banner info';
-    b.innerHTML = 'New batter: <b>' + s.new_batter + '</b>';
+    b.innerHTML = 'New batter: <b>' + esc(s.new_batter) + '</b>';
     const btn = document.createElement('button');
     btn.textContent = 'Someone else?';
     btn.onclick = openBatterSheet;
@@ -533,9 +541,9 @@ function render(s) {
     const b = document.createElement('div');
     b.className = 'banner gold';
     const lo = s.last_over;
-    b.innerHTML = '<b>End of over ' + (lo ? lo.num : Math.floor(parseFloat(s.overs))) + '</b>'
-      + (lo ? ' — ' + lo.runs + ' run' + (lo.runs !== 1 ? 's' : '')
-              + ' <span style="opacity:.75;">(' + lo.balls.join(' ') + ')</span>' : '')
+    b.innerHTML = '<b>End of over ' + esc(lo ? lo.num : Math.floor(parseFloat(s.overs))) + '</b>'
+      + (lo ? ' — ' + esc(lo.runs) + ' run' + (lo.runs !== 1 ? 's' : '')
+              + ' <span style="opacity:.75;">(' + esc(lo.balls.join(' ')) + ')</span>' : '')
       + '<br>';
     const ok = document.createElement('button');
     ok.textContent = 'Correct — next bowler';

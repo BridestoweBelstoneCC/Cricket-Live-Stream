@@ -167,6 +167,9 @@ func (c *ctx) handleLogin(body []byte) {
 		loginAttempts[ip] = rec
 	}
 	lockedUntil := rec.lockedUntil
+	if loginLockAll > lockedUntil && !c.trustedLoopback() {
+		lockedUntil = loginLockAll
+	}
 	loginAttemptsMu.Unlock()
 	if lockedUntil > t {
 		wait := int(lockedUntil-t) + 1
@@ -210,6 +213,23 @@ func (c *ctx) handleLogin(body []byte) {
 	count := len(rec.failures)
 	if count >= LoginMaxFailures {
 		rec.lockedUntil = t + LoginLockoutSec
+	}
+	keepAll := loginAllFails[:0]
+	for _, f := range loginAllFails {
+		if t-f < LoginWindowSec {
+			keepAll = append(keepAll, f)
+		}
+	}
+	loginAllFails = append(keepAll, t)
+	if len(loginAllFails) >= LoginMaxFailuresGlobal {
+		loginLockAll, loginAllFails = t+LoginGlobalLockoutSec, nil
+		say("  ⚠  Login: many wrong passwords from several addresses — refusing sign-ins from other devices for 5 minutes")
+	}
+	// A stale record per address would otherwise pile up for the whole match day.
+	for k, r := range loginAttempts {
+		if r.lockedUntil < t && (len(r.failures) == 0 || t-r.failures[len(r.failures)-1] >= LoginWindowSec) {
+			delete(loginAttempts, k)
+		}
 	}
 	loginAttemptsMu.Unlock()
 	say("  ✗  Login: bad password, %d failure(s) in window [%s]", count, ip)
@@ -604,11 +624,23 @@ func (c *ctx) doPOST() {
 		}
 		st := LoadState()
 		folder := replayFolder(st)
-		output := filepath.Join(folder, "highlights.mp4")
+		// A file NAME only, always in the replay folder: this goes to ffmpeg -y, and a path
+		// let anyone signed in overwrite any file the account can write (config.ini).
+		name := "highlights.mp4"
 		if v, ok := d["output"]; ok {
-			output = pyval.Str(v)
+			name = bareName(pyval.Str(v))
+			if !strings.EqualFold(filepath.Ext(name), ".mp4") || strings.HasPrefix(name, ".") {
+				c.json(M{"ok": false, "error": "output must be a file name ending .mp4"}, 400)
+				return
+			}
 		}
+		output := filepath.Join(folder, name)
 		highlightsMu.Lock()
+		if highlightsStatus["running"] == true {
+			highlightsMu.Unlock()
+			c.json(M{"ok": false, "error": "A highlights reel is already being made"}, 409)
+			return
+		}
 		highlightsStatus["running"], highlightsStatus["ok"], highlightsStatus["message"] = true, nil, ""
 		highlightsMu.Unlock()
 		go func() {

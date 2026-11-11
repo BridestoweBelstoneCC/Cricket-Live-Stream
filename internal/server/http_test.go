@@ -100,9 +100,14 @@ func TestDiagnosticsRespond(t *testing.T) {
 
 func TestOptionsPreflight(t *testing.T) {
 	s := newTestServer(t, "")
+	// No cross-origin grant, on a preflight or a plain GET (the review's S6): every page
+	// that calls the server is served by it.
 	r := s.raw("OPTIONS", "/state", nil, nil)
-	mustEq(t, r.status, 200)
-	if !strings.Contains(r.header.Get("Access-Control-Allow-Headers"), "Authorization") {
+	mustEq(t, r.status, 204)
+	if r.header.Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal(r.header)
+	}
+	if r := s.get("/live/view"); r.header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal(r.header)
 	}
 }

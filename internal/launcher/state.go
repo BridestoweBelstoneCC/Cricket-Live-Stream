@@ -6,8 +6,10 @@ package launcher
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +51,12 @@ func FetchTodaysMatch(apiKey, clubID string) (*Match, string) {
 	req.Header.Set("Accept", "application/json")
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		// Go's error quotes the URL, and the URL holds the club's API key: this reaches
+		// the window's log, the log file and the Discord alerts.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			return nil, "PlayCricket couldn't be reached: " + ue.Err.Error()
+		}
 		return nil, err.Error()
 	}
 	defer resp.Body.Close()
