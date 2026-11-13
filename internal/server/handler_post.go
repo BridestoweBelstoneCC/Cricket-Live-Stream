@@ -324,6 +324,18 @@ func (c *ctx) doPOST() {
 		}
 		c.json(TalkStatus())
 
+	case path == "/report/generate":
+		// The AI match report (?type=social: the social post). Separate cooldowns: two
+		// buttons, and making one shouldn't lock the other out.
+		rtype := "report"
+		if c.q("type") == "social" {
+			rtype = "social"
+		}
+		if !c.rateLimit(path, path+":"+rtype) {
+			return
+		}
+		c.json(GenerateMatchReport(rtype))
+
 	case path == "/rehearsal":
 		d := jsonObject(body)
 		switch str(d, "action", "") {

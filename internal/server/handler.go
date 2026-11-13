@@ -732,17 +732,13 @@ func (c *ctx) doGET() {
 		c.json(M{"ok": len(agents) > 0, "agents": agents, "chosen": chosen, "error": errMsg})
 
 	case path == "/report/generate":
+		// It spends Anthropic credit, so it's a POST (handler_post.go): a GET is something
+		// a link, a prefetch or a reload can make.
 		if !c.checkToken() {
 			return
 		}
-		rtype := "report"
-		if strings.Contains(c.r.RequestURI, "?") && strings.Contains(c.r.RequestURI, "type=social") {
-			rtype = "social"
-		}
-		if !c.rateLimit(path, path+":"+rtype) {
-			return
-		}
-		c.json(GenerateMatchReport(rtype))
+		c.w.Header().Set("Allow", "POST")
+		c.json(M{"ok": false, "error": "POST /report/generate (it was a GET until 2026-11)"}, 405)
 
 	case path == "/data/status":
 		c.json(DBStatus())

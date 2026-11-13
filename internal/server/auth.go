@@ -36,7 +36,7 @@ var (
 
 func randHex(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	rand.Read(b) // never fails: since Go 1.24 it stops the program if the OS has no random numbers
 	return hex.EncodeToString(b)
 }
 
@@ -240,8 +240,11 @@ func rotateSessionEpoch() {
 	epoch := sessionEpoch
 	sessionEpochMu.Unlock()
 	if day := strings.TrimSpace(os.Getenv(SessionEpochEnv)); day != "" {
-		// Failing to save only matters if the server also crashes before the end of the day.
-		os.WriteFile(sessionEpochFile(), []byte(day+" "+epoch), 0o600)
+		// Failing to save only matters if the server also crashes before the end of the day:
+		// the restart would then bring back the sessions that were just logged out.
+		if err := os.WriteFile(sessionEpochFile(), []byte(day+" "+epoch), 0o600); err != nil {
+			say("  ⚠  Everyone is logged out, but that couldn't be saved (%v) — if the server restarts today, log everyone out again", err)
+		}
 	}
 }
 
@@ -299,10 +302,12 @@ func authLogCopy(n int) []M {
 	return append([]M(nil), authLog[len(authLog)-n:]...)
 }
 
-// writeFileAtomic writes via a temp file + rename, fsynced.
+// writeFileAtomic writes via a temp file + rename, fsynced. Owner-only, like ini.Save: it
+// writes config.ini, which holds the club's keys.
 func writeFileAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	os.Remove(tmp) // a leftover from a crash would keep its own, older permissions
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

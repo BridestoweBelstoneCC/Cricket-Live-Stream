@@ -233,7 +233,7 @@ function esc(s) {
 }
 
 // ── Auth (shares the control panel's session token) ─────────
-function getToken() { return sessionStorage.getItem('bbcc_token'); }
+function getToken() { return sessionStorage.getItem('cricketstream_token'); }
 async function apiFetch(url, opts) {
   const t = getToken();
   const h = Object.assign({'Content-Type': 'application/json'}, (opts && opts.headers) || {});
@@ -254,7 +254,7 @@ async function doLogin() {
                                      body: JSON.stringify({password: val})});
     const d = await r.json();
     if (d.ok) {
-      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      sessionStorage.setItem('cricketstream_token', d.session_token || '');
       document.getElementById('login-overlay').classList.remove('show');
       refresh();
     } else {
@@ -268,7 +268,7 @@ async function doSkip() {
                                      body: JSON.stringify({password: ''})});
     const d = await r.json();
     if (d.ok) {
-      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      sessionStorage.setItem('cricketstream_token', d.session_token || '');
       document.getElementById('login-overlay').classList.remove('show');
       refresh();
       return;

@@ -112,7 +112,7 @@ func DetectPCSFolder() (string, string) { return scorerfile.Detect() }
 
 func newToken() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	rand.Read(b) // never fails (Go 1.24+: it stops the program instead)
 	return hex.EncodeToString(b)
 }
 

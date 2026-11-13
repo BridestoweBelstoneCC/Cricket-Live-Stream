@@ -797,7 +797,16 @@ var startPractice = func(token string) error {
 }
 
 func getJSON(path, token string, timeout time.Duration) (M, error) {
-	req, _ := http.NewRequest("GET", base()+path, nil)
+	return doJSON("GET", path, token, timeout)
+}
+
+// postJSON is a POST with no body (the report: it spends AI credit, so it isn't a GET).
+func postJSON(path, token string, timeout time.Duration) (M, error) {
+	return doJSON("POST", path, token, timeout)
+}
+
+func doJSON(method, path, token string, timeout time.Duration) (M, error) {
+	req, _ := http.NewRequest(method, base()+path, nil)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -1037,7 +1046,7 @@ func OfferMatchReport(token string) {
 		return
 	}
 	fmt.Println("  Generating report (needs your Anthropic API key)...")
-	d, err := getJSON("/report/generate", token, 60*time.Second)
+	d, err := postJSON("/report/generate", token, 60*time.Second)
 	if err != nil {
 		fmt.Printf("  Report generation failed: %v\n", err)
 		fmt.Println("  Tip: you can still generate it from the control panel (After the match tab) while the server is running.")
