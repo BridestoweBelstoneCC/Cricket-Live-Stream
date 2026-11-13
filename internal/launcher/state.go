@@ -16,6 +16,7 @@ import (
 
 	"cricketstream/internal/ini"
 	"cricketstream/internal/pyval"
+	"cricketstream/internal/server"
 )
 
 type M = map[string]any
@@ -25,6 +26,8 @@ type Match struct {
 	MatchID, AwayTeam, AwayAbbrev, AwayClubID        string
 	Competition, CompetitionID, Ground, GroundLat    string
 	GroundLon, Umpire1, Umpire2, Scorer1, Date, Time string
+	// Junior: an age-group fixture (either team's label or the competition says so).
+	Junior bool
 }
 
 // matchesURL is swappable for tests.
@@ -107,7 +110,8 @@ func FetchTodaysMatch(apiKey, clubID string) (*Match, string) {
 		Competition: str(m, "competition_name"), CompetitionID: pyval.Str(valOr(m["competition_id"], "")),
 		Ground: str(m, "ground_name"), GroundLat: str(m, "ground_latitude"), GroundLon: str(m, "ground_longitude"),
 		Umpire1: str(m, "umpire_1_name"), Umpire2: str(m, "umpire_2_name"), Scorer1: str(m, "scorer_1_name"),
-		Date: str(m, "match_date"), Time: str(m, "match_time")}, ""
+		Date: str(m, "match_date"), Time: str(m, "match_time"),
+		Junior: server.LooksJunior(str(m, "home_team_name"), str(m, "away_team_name"), str(m, "competition_name"))}, ""
 }
 
 func valOr(v, def any) any {
@@ -167,6 +171,10 @@ func BuildState(cfg *ini.File, match *Match, exist M) M {
 	if src == "" {
 		src = "local"
 	}
+	junior := get(exist, "junior_mode", false)
+	if match != nil {
+		junior = match.Junior
+	}
 	fresh := M{
 		// Club / match identity
 		"home_team":        c("Club", "name", "My Club CC"),
@@ -183,7 +191,10 @@ func BuildState(cfg *ini.File, match *Match, exist M) M {
 		"scorer1_name":     pick(scorer, "scorer1_name", ""),
 		"pc_match_id":      pick(pcID, "pc_match_id", ""),
 		"match_time":       pick(start, "match_time", ""), // "13:00": the pre-match countdown
-		"match_notes":      "",
+		// Junior match mode follows today's fixture: on for an age-group side, off for a
+		// senior one (a new match day is a new decision). No fixture found: as it was left.
+		"junior_mode": junior,
+		"match_notes": "",
 		// API keys
 		"playcricket_api_key": c("API", "playcricket_key", ""),
 		"anthropic_api_key":   c("API", "anthropic_key", ""),

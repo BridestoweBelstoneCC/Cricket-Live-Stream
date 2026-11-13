@@ -11,6 +11,7 @@ talk_tls.pem*
 # ...and a crashed server's commentary session: the QR code's key and a phone's secret.
 talk_session.json*
 session_epoch.txt*
+junior_names.json*
 __pycache__/
 *.pyc
 *.log

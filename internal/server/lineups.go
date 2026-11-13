@@ -23,6 +23,24 @@ var (
 	lineupsOut M
 )
 
+// lineupNamesCached are the names in today's XIs if they've been fetched (never fetches:
+// junior mode asks on every /live poll).
+func lineupNamesCached() []string {
+	lineupsMu.Lock()
+	defer lineupsMu.Unlock()
+	var out []string
+	for _, side := range []string{"home", "away"} {
+		for _, x := range gl(gm(lineupsOut, side), "players") {
+			if p, ok := x.(M); ok {
+				if n := trim(gs(p, "name", "")); n != "" {
+					out = append(out, n)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // TodaysLineups is {"home": {"team", "players": [...]}, "away": ...}; a side with no
 // players entered has an empty list. Never raises.
 func TodaysLineups() (out M) {

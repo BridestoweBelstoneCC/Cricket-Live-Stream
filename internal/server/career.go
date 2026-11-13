@@ -867,7 +867,7 @@ func catchesToday(mid string, innings int, fielder string) int {
 func LogClubMilestones(state M) {
 	defer func() { recover() }()
 	cfg := LoadState()
-	if !gb(cfg, "graphics_club_milestones", true) {
+	if !gb(cfg, "graphics_club_milestones", true) || juniorMode(cfg) {
 		return
 	}
 	career := ClubCareer()

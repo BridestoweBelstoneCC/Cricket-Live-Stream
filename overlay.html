@@ -2515,7 +2515,7 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
-    if (Array.isArray(cmds.club_milestone)) cmds.club_milestone.forEach(showClubMilestone);
+    if (Array.isArray(cmds.club_milestone) && !(cfg && cfg.junior_mode)) cmds.club_milestone.forEach(showClubMilestone);
     if (cmds.break) startBreak(cmds.break, false);
     if (cmds.break_end && _break) endBreak(false);
     if (cmds.break_clip) showReplayBanner(cmds.break_clip);
@@ -2524,7 +2524,7 @@ async function pollCommands() {
     if (cmds.show_h2h) { _h2hRequested = false; loadH2H(function () { if (fillH2HPanel()) queueGraphic('h2h-panel', 12000); }); }
     // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
     if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
-    if (cmds.show_player_cards && prev && prev.batter1 && prev.batter1.name) {
+    if (cmds.show_player_cards && !(cfg && cfg.junior_mode) && prev && prev.batter1 && prev.batter1.name) {
       // Manual (re)show from the control panel: clear the shown-flags so they re-fire
       delete _playerCardShown[bId(prev.batter1)];
       if (prev.batter2) delete _playerCardShown[bId(prev.batter2)];
@@ -4470,10 +4470,26 @@ function runDemoTick(home,away) {
   else if (tick===6) { showFlash('four'); showReplayBanner('Boundary'); }
 }
 
+// ── Junior match mode ─────────────────────────────────────
+// The server already sends every name as first name + initial (junior.go). This is the
+// rest of the switch: the graphics that are about one named child, or that need a
+// headshot, a club record or an AI's words about them, are off while it's on, whatever
+// their own switches say. Replays stay.
+function applyJuniorMode(c) {
+  if (c && c.junior_mode) {
+    c.graphics_player_card = false;
+    c.graphics_club_milestones = false;
+    c.graphics_season_leaders = false;
+    c.graphics_commentary_over = false;
+    c.graphics_voice_commentary = false;
+  }
+  return c;
+}
+
 // ── Main poll ─────────────────────────────────────────────
 async function poll() {
-  try { cfg=await (await fetch(`${SERVER}/state`)).json(); }
-  catch(e){console.warn('server.py not reachable');return;}
+  try { cfg=applyJuniorMode(await (await fetch(`${SERVER}/state`)).json()); }
+  catch(e){console.warn('server not reachable');return;}
 
   // One body class per scorebar style, driven by whatever the panel has selected. Anything
   // not in this list (including "classic" and an empty/unknown value) leaves every style-*

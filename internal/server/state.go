@@ -60,6 +60,9 @@ func DefaultState() M {
 		"graphics_season_leaders":      true, // the club's top run-scorers and wicket-takers, pre-match and at breaks
 		"break_reel":                   true, // replays in breaks (breakshow.go)
 		"graphics_player_card":         false,
+		// Junior match mode (junior.go): first name + initial everywhere, no player cards,
+		// headshots, club records or AI. Today's fixture switches it on for an age-group side.
+		"junior_mode": false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
 		// blocks and its SCOREBAR_STYLES list. "classic" is the base stylesheet, so an
 		// unknown value renders as classic rather than breaking the bar.

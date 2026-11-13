@@ -1038,6 +1038,18 @@ func (c *ctx) doGET() {
 		}
 		c.json(BreakStatus())
 
+	case path == "/lineups" && juniorMode(LoadState()):
+		// Junior match mode: the XIs by first name and initial.
+		out := shallow(TodaysLineups())
+		for _, side := range []string{"home", "away"} {
+			if sd, ok := out[side].(M); ok {
+				sd = shallow(sd)
+				sd["players"] = juniorNames(gl(sd, "players"))
+				out[side] = sd
+			}
+		}
+		c.json(out)
+
 	case path == "/lineups":
 		// Today's two XIs as entered on PlayCricket (lineups.go), for the pre-match show.
 		c.json(TodaysLineups())
@@ -1049,7 +1061,11 @@ func (c *ctx) doGET() {
 		if force && !c.checkToken() {
 			return
 		}
-		c.json(HeadToHead(force))
+		out := HeadToHead(force)
+		if juniorMode(LoadState()) {
+			out = juniorH2H(out).(M)
+		}
+		c.json(out)
 
 	case path == "/league/table":
 		// Pre-game / between-innings "context" panel: where this result leaves the home
@@ -1750,6 +1766,11 @@ func (c *ctx) matchFetch() {
 				updates[kv[1]] = result[kv[0]]
 			}
 		}
+		// An age-group fixture switches junior match mode ON. Never off: a junior match the
+		// names don't give away is switched on by hand, and a later fetch mustn't undo that.
+		if LooksJunior(pyval.Str(orNil(result["home_team"])), pyval.Str(orNil(result["away_team"])), pyval.Str(orNil(result["competition"]))) {
+			updates["junior_mode"] = true
+		}
 		if pyval.Truthy(result["ground_lat"]) {
 			updates["weather_lat"] = result["ground_lat"]
 			updates["weather_lon"] = result["ground_lon"]
@@ -1959,6 +1980,11 @@ func (c *ctx) live(mutate bool) {
 	switch {
 	case pcsState != nil:
 		pcsState = shallow(pcsState) // the feed reader may hand back its cached map
+		if juniorMode(s) {
+			// Before anything below logs it: the junior form is the only one the ball
+			// database, the scorecard, the report and the video's chapters ever hold.
+			pcsState = juniorLive(pcsState, s)
+		}
 		pcsState["home_abbrev"] = strings.ToUpper(trim(gs(s, "home_abbrev", "")))
 		pcsState["away_abbrev"] = strings.ToUpper(trim(gs(s, "away_abbrev", "")))
 		pcsState["winPredictor"] = safeWinPrediction(pcsState, s)

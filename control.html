@@ -508,6 +508,16 @@
         <span class="track"></span>
       </label>
     </div>
+    <div class="toggle-row" style="margin-top:8px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;">
+      <div>
+        <div class="toggle-label">Junior match</div>
+        <div class="toggle-desc">For a match with children in it. Every player is shown by first name and the first letter of their surname (Patrick E) on the stream, the scorecard, the match page and the report. No player cards, headshots, club records or season leaders; no AI or spoken commentary and no AI camera check; the highlights video waits for you to upload it. Replays stay on. Switched on by itself when today's fixture is an age-group side; check it before you go live. First names come from the squad roster and the teams on PlayCricket: a player in neither shows as initials.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="junior_mode">
+        <span class="track"></span>
+      </label>
+    </div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
       <div class="field" style="margin-bottom:0">
         <label>Home team name</label>
@@ -2836,7 +2846,7 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips',
   'camera_over_hold','camera_walkout_hold'];
 const DECIMAL_FIELDS = ['graphics_delay_seconds'];   // numbers that may have a decimal point
-const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
+const BOOL_FIELDS = ['demo_mode','junior_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
   'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_delay','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
 
