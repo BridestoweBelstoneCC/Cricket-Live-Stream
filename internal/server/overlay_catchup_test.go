@@ -126,7 +126,7 @@ process.stdout.write(JSON.stringify([noteLiveFrame(500000), noteLiveFrame(560000
 	var got []bool
 	runJS(t, src, &got)
 	eqv(t, got, []bool{false, false, true, false}, "first frame, 60s, 60.001s, 2s")
-	if !strings.Contains(page(t, "overlay.html"), "noteLiveFrame(Date.now());") {
+	if !strings.Contains(page(t, "overlay.html"), "catchingUp:noteLiveFrame(now)") {
 		t.Fatal("poll() no longer notes each /live frame")
 	}
 }

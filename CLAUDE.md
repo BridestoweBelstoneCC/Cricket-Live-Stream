@@ -188,6 +188,32 @@ problem + what to do + pause) or print and `console.Pause()`.
   `NoMatchDataError`. Never let the card or report claim WIN/DEFEAT when it can't tell
   which side is ours, or before the chase is finished (PlayCricket's live scorecard has no
   result mid-match). Found in the 2026-10-02 rehearsal and review.
+- **Junior match mode swaps names BEFORE anything is logged** (`junior.go`, `juniorLive` in
+  `live`): the ball DB, scorecard, match page, report and chapters then only ever hold
+  "Patrick E". Anything new that shows a player's name from somewhere else (PlayCricket
+  directly, like `/lineups` and `/h2h`) must relabel it itself (`juniorNames`,
+  `juniorPlain`), and anything about one named child (a card, a record, an AI's words, a
+  picture sent to an AI) must be off under `juniorMode(st)` on the server or in the
+  overlay's `applyJuniorMode`. The overlay's `fmtSurname`/`fmtInitial` cut a name to its
+  last word: in junior mode they leave the server's labels whole (`state.junior`) and
+  shorten anything else themselves. A label is kept for the match in `junior_names.json`
+  because the logs are keyed by it; clashes get more of the surname, never all of it.
+  `overlay_live_browser_test.go` runs the real overlay in Chrome: read the scorebar's
+  boxes, not the page text (the script holds demo names).
+- **The graphics delay holds whole frames, in order** (`applyLiveFrame`, `_heldFrames`).
+  Everything that follows from a `/live` frame is drawn in `applyLiveFrame`; `poll()` only
+  fetches and queues. Draw nothing from a frame in `poll()` itself, or it shows early with
+  the delay on. `/commands` (the operator's buttons) is never held.
+- **The sound and picture watch only reports** (`avwatch.go`, `/health`'s `av`). Silence
+  counts only after sound has been heard that day, a freeze only after the camera's been
+  seen moving, and neither off air. Levels come from `obsws.Meters`, its own connection
+  subscribed to `InputVolumeMeters` (never subscribe the shared connections to it: twenty
+  events a second). Its format is checked on a real OBS by
+  `internal/integration/meters_windows_test.go` (opt-in); non-zero levels from a real
+  microphone are still unseen.
+- **The scheduled start never goes live and starts once a day** (`internal/app/autostart.go`).
+  Match day started or stopped by anyone today means it has nothing to do. `[App]
+  auto_start`, `auto_start_minutes`.
 - **Logging must never raise.** `LogBallData()` and anything in the match-day loop is wrapped
   in try/except and must stay that way — a logging error must never interrupt the stream.
 - **State writes must stay atomic.** `SaveState()` writes to a temp file then `os.Rename`s,
@@ -206,6 +232,13 @@ problem + what to do + pause) or print and `console.Pause()`.
 - **Route handling checks specific paths before prefixes.** When adding endpoints, put exact
   matches (`path == "/data/status"`) before `startswith` checks so a prefix doesn't swallow a
   more specific route.
+- **A new route needs a line in `internal/server/routes.go`, or it answers 404.** That table
+  says who may call each route (open, the overlay, this laptop, a login) and is asked before
+  either switch, so a case that forgets `checkToken()` is still shut. The cases' own checks
+  stay; the stricter wins. `routes_test.go` reads both switches (the table and they must
+  list the same routes), refuses every closed route from the network, and holds
+  `openRoutes`: opening a route means adding it there on purpose. The overlay's own POSTs
+  are `accLocal` (this replaced the `overlayEndpoints` map).
 - **The current-over DB write is delete-then-reinsert.** That's deliberate — it's how scorer
   edits/deletions within an over stay correct. Don't switch it to plain append.
 - **Secrets never reach the browser.** `/state` redacts secret keys; POST `/state` drops
@@ -216,6 +249,16 @@ problem + what to do + pause) or print and `console.Pause()`.
   the URL, so `discord` strips it (`clean()`); print only errors that came through it. The same
   goes for PlayCricket: its `api_token` is in every URL, so `httpGetJSON`/`httpGetText`
   return `scrubURLError(err)`. A new outside call that puts a key in its URL must too.
+- **`config.ini` holds the club password's hash, never the password** (`internal/passhash`,
+  PBKDF2). `ClubPassword` is whatever the file holds: check it with `passhash.Verify`, never
+  `==`. A plain one typed in by hand still works and is hashed at the next server start
+  (`HashClubPassword`), which is also the forgotten-password fix. So nothing on the laptop
+  can read the password to log in with: the launcher (for the window and the clubhouse
+  link), the simulator and the quality test post `passhash.LocalLogin`, which is
+  `{"local_key": control_token}`, and `/login` takes that only from `trustedLoopback()`.
+  A new local tool that needs a session must do the same. POST `/state` saves only known
+  settings of the right type (`checkPostedState`): a new panel field must be in
+  `DefaultState` or `postedStateExtras`, or it's ignored (a test reads the panel's lists).
 - **The server answers only to its own names, and believes X-Forwarded-For only from this
   machine** (security review, 2026-11-11). `hostAllowed()` (`hostcheck.go`) refuses any Host
   but an IP address, localhost, this computer's name, `*.ts.net` and the running tunnel's

@@ -34,6 +34,8 @@ type alertState struct {
 	streamSeen   bool      // the stream has been on air this match day
 	streamOff    time.Time // when it went off (zero while it's on)
 	streamSaid   bool      // "stream stopped" said, waiting for it to come back
+	silentSaid   bool      // "no sound" said, waiting for it to come back
+	frozenSaid   map[string]bool
 }
 
 // streamGrace: how long the stream may be off before it's news. A quality step stops and
@@ -79,6 +81,36 @@ func (s *alertState) health(h map[string]any) []notice {
 			s.feedAlerted = true
 			out = append(out, notice{"The scorer's feed has gone quiet",
 				"No update for 2 minutes. Fine at a break; otherwise check NV Play on the scorer's laptop.", true, false})
+		}
+	}
+	if av, _ := h["av"].(map[string]any); av != nil && av["watching"] == true {
+		switch sound, _ := av["sound"].(string); {
+		case sound == "silent" && !s.silentSaid:
+			s.silentSaid = true
+			out = append(out, notice{"No sound on the stream",
+				"There was sound, and now there's none. Check the ground microphone, and that nothing in OBS is muted.", true, false})
+		case sound == "ok" && s.silentSaid:
+			s.silentSaid = false
+			out = append(out, notice{"The sound is back", "There's sound on the stream again.", false, false})
+		}
+		if s.frozenSaid == nil {
+			s.frozenSaid = map[string]bool{}
+		}
+		cams, _ := av["cameras"].([]any)
+		for _, x := range cams {
+			c, _ := x.(map[string]any)
+			name, _ := c["name"].(string)
+			frozen, _ := c["frozen"].(bool)
+			switch {
+			case name == "":
+			case frozen && !s.frozenSaid[name]:
+				s.frozenSaid[name] = true
+				out = append(out, notice{name + " has frozen",
+					"Its picture hasn't changed for a while: the camera may have dropped off the network. The control panel's Cameras card can reload it.", true, false})
+			case !frozen && s.frozenSaid[name]:
+				s.frozenSaid[name] = false
+				out = append(out, notice{name + " is moving again", "The picture is live again.", false, false})
+			}
 		}
 	}
 	if rec, _ := h["obs_recovery"].(map[string]any); rec != nil {

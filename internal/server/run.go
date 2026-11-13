@@ -25,8 +25,8 @@ type Options struct {
 	Stop <-chan struct{}
 }
 
-// Start does everything server.py's import and __main__ block did before
-// serve_forever: config, state, the control token and every background loop.
+// Start does everything before serving (the Python original's import and __main__
+// block): config, state, the control token and every background loop.
 func Start() {
 	LoadAuthConfig()
 	if !fileExists(StateFile) {
@@ -37,6 +37,7 @@ func Start() {
 	SeedStateFromConfig()
 	RecoverInterruptedRehearsal()
 	EnsureControlToken()
+	HashClubPassword()
 	loadSessionEpoch()
 	StartWatchdog()
 	StartStreamMonitor()
@@ -45,6 +46,7 @@ func Start() {
 	StartCameraSpotter()
 	StartOBSGuard()
 	StartOverlayWatch()
+	StartAVWatch()
 	StartReplayWatch()
 	StartPCSBridgeSync()
 	StartSideCam()

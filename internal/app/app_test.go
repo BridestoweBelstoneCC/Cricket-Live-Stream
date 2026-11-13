@@ -754,7 +754,7 @@ func TestCaptureReachesTheLogFile(t *testing.T) {
 // login the panel already has, and with a token that can't break out of the script.
 func TestPanelLoginScript(t *testing.T) {
 	s := panelLoginScript("http://127.0.0.1:5000/control", `a'b"</script>`)
-	for _, want := range []string{`location.origin==="http://127.0.0.1:5000"`, `!sessionStorage.getItem('bbcc_token')`,
+	for _, want := range []string{`location.origin==="http://127.0.0.1:5000"`, `!sessionStorage.getItem('cricketstream_token')`,
 		`"a'b\"\u003c/script\u003e"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %s in %s", want, s)

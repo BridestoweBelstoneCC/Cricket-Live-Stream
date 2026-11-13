@@ -312,8 +312,8 @@
     </div>
     <h2 style="font-size:15px;color:var(--text);margin-bottom:6px;">Enter club password</h2>
     <p style="font-size:12px;color:var(--accent);margin-bottom:20px;">
-      The password chosen at setup (changeable in Settings, or
-      <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">club_password</code> in config.ini)
+      The password chosen at setup (changeable in Settings; forgotten, type a new one as
+      <code style="background:var(--bg);padding:1px 5px;border-radius:3px;">club_password</code> in config.ini and restart)
     </p>
     <input type="password" id="auth-input" placeholder="Club password"
            style="width:100%;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;
@@ -508,6 +508,16 @@
         <span class="track"></span>
       </label>
     </div>
+    <div class="toggle-row" style="margin-top:8px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;">
+      <div>
+        <div class="toggle-label">Junior match</div>
+        <div class="toggle-desc">For a match with children in it. Every player is shown by first name and the first letter of their surname (Patrick E) on the stream, the scorecard, the match page and the report. No player cards, headshots, club records or season leaders; no AI or spoken commentary and no AI camera check; the highlights video waits for you to upload it. Replays stay on. Switched on by itself when today's fixture is an age-group side; check it before you go live. First names come from the squad roster and the teams on PlayCricket: a player in neither shows as initials.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="junior_mode">
+        <span class="track"></span>
+      </label>
+    </div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
       <div class="field" style="margin-bottom:0">
         <label>Home team name</label>
@@ -580,6 +590,17 @@
       <label>Seconds on camera 2 for a walk-out</label>
       <input type="number" id="camera_walkout_hold" min="10" max="180" style="width:90px">
     </div>
+    <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Hold the graphics back to match the camera</div>
+           <div class="toggle-desc">A camera's picture arrives a second or more late, so with a quick scorer the score can change before viewers see the ball. With this on, the scorebar and every graphic wait the time below; replays are cut that much later too. Buttons you press here are never held. Leave it off unless you've seen the score beat the picture.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_delay"><span class="track"></span></label>
+    </div>
+    <div class="field" style="margin-top:6px">
+      <label>Seconds to hold the graphics back (0.5 to 10)</label>
+      <input type="number" id="graphics_delay_seconds" min="0.5" max="10" step="0.5" style="width:90px">
+      <button class="btn btn-test" style="margin-left:8px" onclick="showSyncClock()">&#9201; Measure the camera's delay</button>
+    </div>
+    <p class="hint" style="margin-top:4px;">To measure: press the button (a clock shows on the stream for a minute), and have someone hold a phone showing a clock with seconds up to the camera. In OBS, the phone's clock is behind the big one by the camera's delay: that's the number to enter.</p>
     <div class="toggle-row" style="margin-top:10px">
       <div><div class="toggle-label">Side-on wicket replays</div>
            <div class="toggle-desc">Each wicket replays twice: camera 1 as now, then camera 2's view of the same moment. CricketStream records camera 2 itself while this is on (it copies the stream — next to no work for the laptop). Needs FFmpeg and camera 2.</div></div>
@@ -680,6 +701,14 @@
     <label class="toggle"><input type="checkbox" id="stream_auto_downshift"
            onchange="saveState()"><span class="track"></span></label>
   </div>
+  <div class="toggle-row" style="margin-top:8px;">
+    <div>
+      <div class="toggle-label">Warn about silence and a frozen picture</div>
+      <div class="toggle-desc">While on air, listens to OBS's sound and looks at each camera every 15 seconds. If the sound stops for 45 seconds (after there's been some), or a camera's picture stops changing, it says so here, on the clubhouse screen, as a Windows notification and in Discord. It only warns: nothing is changed in OBS.</div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="stream_av_watch"
+           onchange="saveState()"><span class="track"></span></label>
+  </div>
   <div class="btn-row" style="margin-top:8px;">
     <button class="btn btn-test" onclick="streamQuality('down')" style="flex:1;">&#9660; Reduce quality now</button>
     <button class="btn btn-test" onclick="streamQuality('restore')" style="flex:1;">&#9650; Restore full quality</button>
@@ -702,6 +731,8 @@
     <span class="hl-item"><span class="hl-dot" id="hl-ai"></span>AI: <b id="hl-ai-t">—</b></span>
     <span class="hl-item" id="hl-thermal-item" style="display:none;"><span class="hl-dot" id="hl-thermal"></span>CPU: <b id="hl-thermal-t">—</b></span>
     <span class="hl-item" id="hl-bitrate-item" style="display:none;"><span class="hl-dot" id="hl-bitrate"></span>Bitrate: <b id="hl-bitrate-t">—</b></span>
+    <span class="hl-item" id="hl-sound-item" style="display:none;"><span class="hl-dot" id="hl-sound"></span>Sound: <b id="hl-sound-t">—</b></span>
+    <span class="hl-item" id="hl-picture-item" style="display:none;"><span class="hl-dot" id="hl-picture"></span>Picture: <b id="hl-picture-t">—</b></span>
   </div>
   <style>
     .hl-item { display:inline-flex; align-items:center; gap:6px; }
@@ -1186,7 +1217,7 @@
       <div id="ig-preview-wrap" style="display:none;margin-top:12px;">
         <img id="ig-preview" style="width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.1);" alt="Instagram graphic preview">
         <div class="btn-row" style="margin-top:8px;">
-          <a id="ig-download" class="btn btn-test" download="bbcc_instagram.png" style="flex:1;text-align:center;text-decoration:none;">&#11015;&#65039; Download image</a>
+          <a id="ig-download" class="btn btn-test" download="result-card.png" style="flex:1;text-align:center;text-decoration:none;">&#11015;&#65039; Download image</a>
           <button class="btn btn-test" onclick="copyIgCaption()" style="flex:1;">&#128203; Copy caption</button>
         </div>
         <textarea id="ig-caption" placeholder="Caption will appear here." style="width:100%;margin-top:8px;min-height:70px;background:var(--surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:10px;font-size:13px;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
@@ -1843,11 +1874,11 @@ window.onerror = function (message, source, lineno, colno) {
 const PRESETS = /*__KIT_PRESETS__*/[];
 
 // ── Auth helpers ─────────────────────────────────────────────
-// sessionStorage key 'bbcc_token' holds the control token for this tab session.
+// sessionStorage key 'cricketstream_token' holds the control token for this tab session.
 // null  = not yet set (show login overlay on load)
 // ''    = user skipped (no auth configured on server)
 // value = token to send as Authorization: Bearer
-function getToken() { return sessionStorage.getItem('bbcc_token'); }
+function getToken() { return sessionStorage.getItem('cricketstream_token'); }
 
 // A refused session stays refused until someone signs in again, so after the first 401
 // the panel stops asking: a panel left open in another tab or browser with an old login
@@ -1866,7 +1897,7 @@ async function apiFetch(url, opts) {
   const r = await fetch(url, Object.assign({}, opts, {headers: h}));
   if (r.status === 401) {
     _sessionRefused = true;
-    sessionStorage.removeItem('bbcc_token');
+    sessionStorage.removeItem('cricketstream_token');
     showLoginOverlay('Session expired — log in again');
   }
   return r;
@@ -1894,7 +1925,7 @@ async function doLogin() {
     });
     const d = await res.json();
     if (d.ok) {
-      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      sessionStorage.setItem('cricketstream_token', d.session_token || '');
       _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
@@ -1921,7 +1952,7 @@ async function doSkip() {
     });
     const d = await res.json();
     if (d.ok) {
-      sessionStorage.setItem('bbcc_token', d.session_token || '');
+      sessionStorage.setItem('cricketstream_token', d.session_token || '');
       _sessionRefused = false;
       document.getElementById('auth-overlay').style.display = 'none';
       autoStreamHealthCheck();   // deferred from page load (defined below; runs post-login)
@@ -1935,7 +1966,7 @@ async function doSkip() {
       if (e) { e.textContent = 'Password required — enter it above'; e.style.display = 'block'; }
     }
   } catch (err) {
-    sessionStorage.setItem('bbcc_token', '');
+    sessionStorage.setItem('cricketstream_token', '');
     document.getElementById('auth-overlay').style.display = 'none';
   }
 }
@@ -2023,8 +2054,8 @@ async function runStreamHealthCheck(force) {
 // the fresh login overlay. doLogin/doSkip re-invoke this once a token exists.
 function autoStreamHealthCheck() {
   if (getToken() === null) return;                     // login overlay still up
-  if (sessionStorage.getItem('bbcc_stream_check_done')) return;
-  sessionStorage.setItem('bbcc_stream_check_done', '1');
+  if (sessionStorage.getItem('cricketstream_stream_check_done')) return;
+  sessionStorage.setItem('cricketstream_stream_check_done', '1');
   runStreamHealthCheck(false);
 }
 autoStreamHealthCheck();
@@ -2706,7 +2737,7 @@ async function logoutAllSessions() {
     await apiFetch('/auth/logout_all',
       {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
   } catch (err) {}
-  sessionStorage.removeItem('bbcc_token');
+  sessionStorage.removeItem('cricketstream_token');
   hideSecurityOverlay();
   showLoginOverlay('Signed out — log in again');
 }
@@ -2824,9 +2855,10 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id','scorebar_style'];
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips',
   'camera_over_hold','camera_walkout_hold'];
-const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
+const DECIMAL_FIELDS = ['graphics_delay_seconds'];   // numbers that may have a decimal point
+const BOOL_FIELDS = ['demo_mode','junior_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_delay','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','stream_av_watch','camera_walkout','replay_side_on'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -2980,6 +3012,7 @@ async function loadState() {
   FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   BOOL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.checked=!!s[id]; });
+  DECIMAL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   updateSwatch(document.getElementById('home-swatch'), s.home_colour||'#1a3a5c');
   updateSwatch(document.getElementById('away-swatch'), s.away_colour||'#7b2d2d');
   updatePreview();
@@ -3012,6 +3045,9 @@ async function saveState() {
   FIELDS.forEach(id     => { const el=document.getElementById(id); if(el) state[id]=el.value.trim(); });
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) state[id]=parseInt(el.value)||0; });
   BOOL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=el.checked; });
+  DECIMAL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=parseFloat(el.value)||0; });
+  if (!(state.graphics_delay_seconds > 0)) state.graphics_delay_seconds = 2;
+  state.graphics_delay_seconds = Math.min(10, state.graphics_delay_seconds);
   // Defaults for blank required fields
   if (!state.home_team) state.home_team = 'Home CC';
   if (!state.away_team) state.away_team = 'Opposition CC';
@@ -3402,6 +3438,12 @@ async function showH2H() {
     showStatus('Head-to-head showing on overlay','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
+async function showSyncClock() {
+  try {
+    await apiFetch('/sync/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('A clock is on the stream for a minute — hold a phone clock up to the camera and compare the two in OBS','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
 async function showPlayerCards() {
   try {
     await apiFetch('/cards/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -3591,7 +3633,7 @@ async function generateReport(type) {
   st.textContent = ''; st.style.color = 'var(--muted)';
   try {
     const url = '/report/generate' + (type==='social' ? '?type=social' : '');
-    const d = await (await apiFetch(url)).json();
+    const d = await (await apiFetch(url, {method: 'POST'})).json();
     if (d.ok) {
       out.value = d.text;
       st.textContent = 'Generated ' + new Date().toLocaleTimeString() + ' · edit before posting';
@@ -4281,6 +4323,21 @@ async function pollHealth() {
       }
     } else {
       brItem.style.display = 'none';
+    }
+    // Sound and picture while on air (avwatch.go): silence after there's been sound, and
+    // a camera whose picture has stopped changing. Hidden when not on air.
+    var av = h.av || {};
+    var sndItem = document.getElementById('hl-sound-item'), picItem = document.getElementById('hl-picture-item');
+    sndItem.style.display = picItem.style.display = av.watching ? '' : 'none';
+    if (av.watching) {
+      if (av.sound === 'silent') hlSet('hl-sound','hl-bad', 'none for ' + Math.round(av.silent_for_sec) + 's — check the mic');
+      else if (av.sound === 'ok') hlSet('hl-sound','hl-ok','ok');
+      else if (av.sound === 'none yet') hlSet('hl-sound','hl-warn','none heard yet');
+      else hlSet('hl-sound','','—');
+      var stuck = (av.cameras || []).filter(function (c) { return c.frozen; });
+      if (stuck.length) hlSet('hl-picture','hl-bad', stuck.map(function (c) { return c.name; }).join(', ') + ' frozen');
+      else if ((av.cameras || []).length) hlSet('hl-picture','hl-ok','moving');
+      else hlSet('hl-picture','','—');
     }
   } catch(e) {
     ['hl-feed','hl-stats','hl-photos','hl-badges','hl-ai','hl-thermal','hl-bitrate'].forEach(function(id){ hlSet(id,'','—'); });

@@ -31,6 +31,7 @@ const (
 	opHello           = 0
 	opIdentify        = 1
 	opIdentified      = 2
+	opEvent           = 5
 	opRequest         = 6
 	opRequestResponse = 7
 )
@@ -105,7 +106,15 @@ var ErrUnreachable = errors.New("OBS not reachable")
 var Guard func(Target) error
 
 // Dial connects and identifies.
-func Dial(t Target, timeout time.Duration) (*Conn, error) {
+func Dial(t Target, timeout time.Duration) (*Conn, error) { return dial(t, timeout, -1) }
+
+// subInputVolumeMeters is OBS's event subscription for sound levels: a "high-volume" event
+// (every 50ms), so it's only sent to a connection that asks for it by name.
+const subInputVolumeMeters = 1 << 16
+
+// dial connects and identifies; events >= 0 asks for exactly those event subscriptions
+// (the default, with none named, is every ordinary event and no high-volume ones).
+func dial(t Target, timeout time.Duration, events int) (*Conn, error) {
 	if Guard != nil {
 		if err := Guard(t.Resolved()); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
@@ -130,6 +139,9 @@ func Dial(t Target, timeout time.Duration) (*Conn, error) {
 	}
 	json.Unmarshal(hello, &h)
 	identify := map[string]any{"rpcVersion": 1}
+	if events >= 0 {
+		identify["eventSubscriptions"] = events
+	}
 	if h.Authentication != nil && t.Password != "" {
 		identify["authentication"] = AuthResponse(t.Password, h.Authentication.Salt, h.Authentication.Challenge)
 	}
@@ -310,4 +322,55 @@ func (f *Fast) Close() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.drop()
+}
+
+// Meters listens to OBS's sound levels for listen and returns the loudest peak each audio
+// input reached, as OBS's own multiplier (0 is silence, 1 is full scale; 0.001 is -60 dB).
+// An input OBS has no levels for isn't in the map. Its own connection, closed afterwards:
+// the levels arrive twenty times a second, which nothing else wants on its socket.
+func Meters(t Target, listen, timeout time.Duration) (map[string]float64, error) {
+	c, err := dial(t, timeout, subInputVolumeMeters)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	peaks := map[string]float64{}
+	got := false
+	deadline := time.Now().Add(listen)
+	for time.Now().Before(deadline) {
+		c.ws.SetReadDeadline(deadline)
+		var m message
+		if err := c.ws.ReadJSON(&m); err != nil {
+			break // the listening time is up (or OBS went away: whatever was heard stands)
+		}
+		if m.Op != opEvent {
+			continue
+		}
+		var ev struct {
+			EventType string `json:"eventType"`
+			EventData struct {
+				Inputs []struct {
+					Name   string      `json:"inputName"`
+					Levels [][]float64 `json:"inputLevelsMul"`
+				} `json:"inputs"`
+			} `json:"eventData"`
+		}
+		if json.Unmarshal(m.D, &ev) != nil || ev.EventType != "InputVolumeMeters" {
+			continue
+		}
+		got = true
+		for _, in := range ev.EventData.Inputs {
+			peak := peaks[in.Name]
+			for _, ch := range in.Levels { // per channel: [magnitude, peak, input peak]
+				if len(ch) >= 2 && ch[1] > peak {
+					peak = ch[1]
+				}
+			}
+			peaks[in.Name] = peak
+		}
+	}
+	if !got {
+		return nil, fmt.Errorf("%w: OBS sent no sound levels", ErrUnreachable)
+	}
+	return peaks, nil
 }

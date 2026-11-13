@@ -2027,8 +2027,23 @@ function oversDisplay(overs) {
 }
 function fmtSurname(full) {
   if (!full || full === '—') return '—';
+  // Junior match mode: never the surname. The server's names are the short form already
+  // ("Patrick E", junior.go); a name from anywhere else is cut down here.
+  if (typeof cfg !== 'undefined' && cfg && cfg.junior_mode) return _juniorLabelled ? full.trim() : juniorShort(full);
   const p = full.trim().split(' ');
   return p[p.length - 1];
+}
+// True while the frame being drawn came from the server already in the junior form.
+let _juniorLabelled = false;
+// "Patrick Edwards" -> "Patrick E", "T Hatton" -> "T H", "EDWARDS" -> "E".
+function juniorShort(full) {
+  const p = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '';
+  const last = p[p.length - 1][0].toUpperCase();
+  if (p.length === 1) return last;
+  const first = p[0].replace(/\./g, '');
+  if (first.length > 1) return first[0].toUpperCase() + first.slice(1).toLowerCase() + ' ' + last;
+  return first.toUpperCase() + ' ' + last;
 }
 // Escape scorer-controlled text before it goes into innerHTML. Player/team names come
 // from the scoring software and PlayCricket; a name containing markup must render as
@@ -2040,6 +2055,7 @@ function esc(s) {
 }
 function fmtInitial(full) {
   if (!full || full === '—') return '—';
+  if (typeof cfg !== 'undefined' && cfg && cfg.junior_mode) return _juniorLabelled ? full.trim() : juniorShort(full);   // "Patrick E", not "P. E"
   const p = full.trim().split(' ');
   return p.length === 1 ? p[0] : p[0][0].toUpperCase() + '. ' + p.slice(1).join(' ');
 }
@@ -2515,15 +2531,16 @@ async function pollCommands() {
     if (cmds.show_weather) el('weather-widget').classList.add('show');
     if (cmds.hide_weather) el('weather-widget').classList.remove('show');
     if (cmds.show_scorecard && _lastCard) showScorecard(_lastCard, _lastCardMeta);
-    if (Array.isArray(cmds.club_milestone)) cmds.club_milestone.forEach(showClubMilestone);
+    if (Array.isArray(cmds.club_milestone) && !(cfg && cfg.junior_mode)) cmds.club_milestone.forEach(showClubMilestone);
     if (cmds.break) startBreak(cmds.break, false);
     if (cmds.break_end && _break) endBreak(false);
     if (cmds.break_clip) showReplayBanner(cmds.break_clip);
     if (cmds.replay_caption) showReplayBanner(cmds.replay_caption);
+    if (cmds.sync_test) showSyncClock();
     if (cmds.show_h2h) { _h2hRequested = false; loadH2H(function () { if (fillH2HPanel()) queueGraphic('h2h-panel', 12000); }); }
     // The panel's "Test replay now": exactly what a boundary's replay does, intro and all.
     if (cmds.test_replay) { _lastReplayTime = 0; triggerReplay('Test'); }
-    if (cmds.show_player_cards && prev && prev.batter1 && prev.batter1.name) {
+    if (cmds.show_player_cards && !(cfg && cfg.junior_mode) && prev && prev.batter1 && prev.batter1.name) {
       // Manual (re)show from the control panel: clear the shown-flags so they re-fire
       delete _playerCardShown[bId(prev.batter1)];
       if (prev.batter2) delete _playerCardShown[bId(prev.batter2)];
@@ -2535,6 +2552,32 @@ async function pollCommands() {
     }
   } catch(e) {}
 }
+// ── Camera delay test ─────────────────────────────────────
+// The panel's "Measure the camera's delay": a big clock on the stream for a minute. Someone
+// holds a phone showing a clock with seconds up to the camera; in OBS the phone's clock is
+// behind this one by the camera's delay, which is the number to hold the graphics back by.
+// The clock is this laptop's, in tenths, and is never held back itself.
+let _syncClockTimer = null;
+function showSyncClock() {
+  let box = document.getElementById('sync-clock');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'sync-clock';
+    box.style.cssText = 'position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:9999;' +
+      'background:#000;color:#fff;font:700 120px/1.1 monospace;padding:16px 40px;border-radius:12px;' +
+      'text-align:center;letter-spacing:2px';
+    document.body.appendChild(box);
+  }
+  const until = Date.now() + 60000;
+  if (_syncClockTimer) clearInterval(_syncClockTimer);
+  _syncClockTimer = setInterval(function () {
+    const d = new Date();
+    if (d.getTime() > until) { clearInterval(_syncClockTimer); _syncClockTimer = null; box.remove(); return; }
+    const p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    box.textContent = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()) + '.' + Math.floor(d.getMilliseconds() / 100);
+  }, 50);
+}
+
 // Not in preview mode: /commands POPS the queue, so a preview tab left open would eat
 // replay/scorecard commands the real OBS overlay was meant to receive.
 if (new URLSearchParams(location.search).get('preview') !== '1') {
@@ -3194,9 +3237,22 @@ function updateSpell(bowler, overNum, overRuns, wkts) {
 // ── v2.1: end-of-over moments + "at this stage" ───────────
 // The gold strap on the over summary: season-best scores, team milestones, and (2nd
 // innings) the first-innings comparison from the worm data we already collect.
+// The chase at the end of an over: "Need 48 from 36 balls · 8.00 an over". '' when there's
+// no chase to state (first innings, the target reached, or the feed gives no balls left).
+function chaseEquation(state) {
+  if (parseInt(state.innings || 1) !== 2) return '';
+  const need = parseInt(state.runsRequired) || 0, balls = parseInt(state.ballsRemaining) || 0;
+  if (need <= 0 || balls <= 0) return '';
+  const rate = (need * 6 / balls).toFixed(2);
+  return 'Need ' + need + ' from ' + balls + (balls === 1 ? ' ball' : ' balls') + ' · ' + rate + ' an over';
+}
+
 async function overExtras(state, overNum, overRuns) {
   const momentEl = el('over-moment');
   const msgs = [];
+  // The chase equation leads: it's what a viewer joining now wants first.
+  const chase = chaseEquation(state);
+  if (chase) msgs.push(esc(chase));
   // "At this stage" — 2nd innings vs 1st innings cumulative at the same over
   if (parseInt(state.innings || 1) === 2 && _rrData.inn1.length) {
     const upto = Math.min(overNum, _rrData.inn1.length);
@@ -3213,9 +3269,10 @@ async function overExtras(state, overNum, overRuns) {
   for (const m of [50, 100, 150, 200, 250, 300]) {
     if (before < m && score >= m) { msgs.push(`${m} up in ${overNum} overs`); break; }
   }
-  // Season-best score for either current batter (uses the local stats endpoint)
+  // Season-best score for either current batter (uses the local stats endpoint). Not in a
+  // junior match: it's one named child's record.
   try {
-    for (const bk of ['batter1', 'batter2']) {
+    for (const bk of (cfg.junior_mode ? [] : ['batter1', 'batter2'])) {
       const b = state[bk] || {};
       if (!b.name || b.name === '—' || !(b.runs > 0)) continue;
       const q = `${SERVER}/player/stats?name=${encodeURIComponent(b.name)}&num=${encodeURIComponent(b.number || '')}`;
@@ -4443,10 +4500,26 @@ function runDemoTick(home,away) {
   else if (tick===6) { showFlash('four'); showReplayBanner('Boundary'); }
 }
 
+// ── Junior match mode ─────────────────────────────────────
+// The server already sends every name as first name + initial (junior.go). This is the
+// rest of the switch: the graphics that are about one named child, or that need a
+// headshot, a club record or an AI's words about them, are off while it's on, whatever
+// their own switches say. Replays stay.
+function applyJuniorMode(c) {
+  if (c && c.junior_mode) {
+    c.graphics_player_card = false;
+    c.graphics_club_milestones = false;
+    c.graphics_season_leaders = false;
+    c.graphics_commentary_over = false;
+    c.graphics_voice_commentary = false;
+  }
+  return c;
+}
+
 // ── Main poll ─────────────────────────────────────────────
 async function poll() {
-  try { cfg=await (await fetch(`${SERVER}/state`)).json(); }
-  catch(e){console.warn('server.py not reachable');return;}
+  try { cfg=applyJuniorMode(await (await fetch(`${SERVER}/state`)).json()); }
+  catch(e){console.warn('server not reachable');return;}
 
   // One body class per scorebar style, driven by whatever the panel has selected. Anything
   // not in this list (including "classic" and an empty/unknown value) leaves every style-*
@@ -4467,70 +4540,114 @@ async function poll() {
   try {
     const liveRes=await fetch(`${SERVER}/live`);
     const liveData=await liveRes.json();
-    noteLiveFrame(Date.now());
+    const now=Date.now();
+    const frame={at:now, liveData:liveData, home:home, away:away, catchingUp:noteLiveFrame(now)};
     _lastSource = liveData.source || '';
-    if (liveData.source==='pcs') {
-      if (liveData.state && !isPreMatchPCS(liveData.state)){
-        // Each stage isolated so one failure can't kill the others (esp. the events forEach)
-        try { renderScorebar(liveData.state,home,away); }
-        catch(e){ console.warn('renderScorebar error:', e); }
-        try { updateBadges(cfg.home_club_id, cfg.away_club_id, liveData.state.battingTeamName, cfg.home_team); }
-        catch(e){ console.warn('updateBadges error:', e); }
-        try { applyColours(cfg.home_colour||'#1a3a5c', cfg.away_colour||'#7b2d2d',
-                           _lastHomeBatting = homeIsBatting(liveData.state.battingTeamName, cfg.home_team)); }
-        catch(e){ console.warn('applyColours error:', e); }
-        try { detectEvents(liveData.state,null); }
-        catch(e){ console.warn('detectEvents error:', e); }
-        try { processPCSData(liveData.state); }
-        catch(e){ console.warn('processPCSData error:', e); }
-        try { updateDLS(liveData.state); }
-        catch(e){ console.warn('updateDLS error:', e); }
-        // Process server-buffered events — catches 4s/6s between polls.
-        // ALWAYS runs even if the stages above threw.
-        if (liveData.events && liveData.events.length) {
-          liveData.events.forEach(ev => {
-            try {
-              // Boundaries are detected from the ball ticker in processPCSData (single source
-              // of truth). The server no longer emits four/six events. Only wickets come through
-              // here, to align the player-card timing with the wicket replay.
-              if (ev.type==='wicket' && !_catchingUp) {
-                // replay handled by detectEvents with 6s delay;
-                // here just update _wicketReplayAt so pending card timing is correct
-                _wicketReplayAt = Date.now() + wicketReplayMs();
-              }
-            } catch(e){ console.warn('event handler error:', ev, e); }
-          });
-        }
-      } else if (isReplyWaiting(liveData.state)) {
-        // The reply's openers aren't named yet: still the innings break, with its own graphics.
-        // The scorebar shows the reply about to start, not the pre-match "HOME — 0.0".
-        try { renderReplyWaiting(liveData.state,home,away); }
-        catch(e){ console.warn('renderReplyWaiting error:', e); }
-        try { updateBadges(cfg.home_club_id, cfg.away_club_id, liveData.state.battingTeamName, cfg.home_team);
-              applyColours(cfg.home_colour||'#1a3a5c', cfg.away_colour||'#7b2d2d',
-                           _lastHomeBatting = homeIsBatting(liveData.state.battingTeamName, cfg.home_team)); }
-        catch(e){ console.warn('updateBadges error:', e); }
-      } else {
-        renderPreMatch(home,away);
-        if (!_break) showPreMatchInfo();
-        updateBadges(cfg.home_club_id, cfg.away_club_id, null, null);
-      }
-    } else if (liveData.source==='widget') {
-      if (liveData.state){renderScorebar(liveData.state,home,away);detectEvents(liveData.state,null);}
-      else { renderPreMatch(home,away); showPreMatchInfo(); }
-    } else if (liveData.source==='api'&&liveData.data) {
-      const {state,allInnings}=parsePlayCricket(liveData.data,home,away);
-      if (state){renderScorebar(state,home,away);detectEvents(state,allInnings);}
-      else { renderPreMatch(home,away); showPreMatchInfo(); }
-    } else {
-      renderPreMatch(home,away); showPreMatchInfo();
-    }
+    // Graphics delay (the panel's "Hold the graphics back"): the frame waits its turn, so the
+    // score never changes before the ball's been seen. Off: drawn now, as it always was.
+    if (graphicsDelayMs() > 0 || _heldFrames.length) { _heldFrames.push(frame); drainHeldFrames(); }
+    else applyLiveFrame(frame);
     _fetchErrors = 0;          // success this poll — clear the consecutive-failure counter
   } catch(e){
     console.error('Live fetch error:',e);
     _fetchErrors = (_fetchErrors||0) + 1;
     if (_fetchErrors >= 5) { location.reload(); }
   }
+}
+
+// ── Graphics delay ────────────────────────────────────────
+// A camera's picture reaches OBS late (an RTSP camera buffers a second or three); the score
+// comes straight from the scorer's laptop. With a quick scorer the scorebar changed, and
+// WICKET came up, before the ball had been seen. With cfg.graphics_delay on, every frame
+// from /live waits cfg.graphics_delay_seconds before it's drawn. Everything that comes from
+// a frame moves together: the scorebar, the event graphics, the replay request (so the clip
+// is cut that much later and still ends after the ball), the camera cuts and the breaks.
+// What the operator presses (/commands) isn't held, and nor is the poll itself: the server
+// logs every ball when it happens.
+const GRAPHICS_DELAY_MAX_S = 10;
+let _heldFrames = [];
+let _heldTimer = null;
+function graphicsDelayMs() {
+  if (!cfg || !cfg.graphics_delay) return 0;
+  const s = Number(cfg.graphics_delay_seconds);
+  if (!(s > 0)) return 0;
+  return Math.min(s, GRAPHICS_DELAY_MAX_S) * 1000;
+}
+// Draws every held frame whose time has come, oldest first. A frame never overtakes the one
+// before it, so shortening the delay (or switching it off) mid-match can't reorder the score.
+function drainHeldFrames() {
+  const wait = graphicsDelayMs();
+  const now = Date.now();
+  while (_heldFrames.length && now - _heldFrames[0].at >= wait) applyLiveFrame(_heldFrames.shift());
+  if (_heldTimer) { clearTimeout(_heldTimer); _heldTimer = null; }
+  if (_heldFrames.length) {
+    _heldTimer = setTimeout(drainHeldFrames, Math.max(50, wait - (now - _heldFrames[0].at)));
+  }
+}
+
+// One frame from /live, drawn: the scorebar and every graphic that follows from it.
+function applyLiveFrame(frame) {
+  const liveData=frame.liveData, home=frame.home, away=frame.away;
+  _catchingUp = frame.catchingUp;
+  _juniorLabelled = !!(liveData.state && liveData.state.junior);
+  try {
+  if (liveData.source==='pcs') {
+    if (liveData.state && !isPreMatchPCS(liveData.state)){
+      // Each stage isolated so one failure can't kill the others (esp. the events forEach)
+      try { renderScorebar(liveData.state,home,away); }
+      catch(e){ console.warn('renderScorebar error:', e); }
+      try { updateBadges(cfg.home_club_id, cfg.away_club_id, liveData.state.battingTeamName, cfg.home_team); }
+      catch(e){ console.warn('updateBadges error:', e); }
+      try { applyColours(cfg.home_colour||'#1a3a5c', cfg.away_colour||'#7b2d2d',
+                         _lastHomeBatting = homeIsBatting(liveData.state.battingTeamName, cfg.home_team)); }
+      catch(e){ console.warn('applyColours error:', e); }
+      try { detectEvents(liveData.state,null); }
+      catch(e){ console.warn('detectEvents error:', e); }
+      try { processPCSData(liveData.state); }
+      catch(e){ console.warn('processPCSData error:', e); }
+      try { updateDLS(liveData.state); }
+      catch(e){ console.warn('updateDLS error:', e); }
+      // Process server-buffered events — catches 4s/6s between polls.
+      // ALWAYS runs even if the stages above threw.
+      if (liveData.events && liveData.events.length) {
+        liveData.events.forEach(ev => {
+          try {
+            // Boundaries are detected from the ball ticker in processPCSData (single source
+            // of truth). The server no longer emits four/six events. Only wickets come through
+            // here, to align the player-card timing with the wicket replay.
+            if (ev.type==='wicket' && !_catchingUp) {
+              // replay handled by detectEvents with 6s delay;
+              // here just update _wicketReplayAt so pending card timing is correct
+              _wicketReplayAt = Date.now() + wicketReplayMs();
+            }
+          } catch(e){ console.warn('event handler error:', ev, e); }
+        });
+      }
+    } else if (isReplyWaiting(liveData.state)) {
+      // The reply's openers aren't named yet: still the innings break, with its own graphics.
+      // The scorebar shows the reply about to start, not the pre-match "HOME — 0.0".
+      try { renderReplyWaiting(liveData.state,home,away); }
+      catch(e){ console.warn('renderReplyWaiting error:', e); }
+      try { updateBadges(cfg.home_club_id, cfg.away_club_id, liveData.state.battingTeamName, cfg.home_team);
+            applyColours(cfg.home_colour||'#1a3a5c', cfg.away_colour||'#7b2d2d',
+                         _lastHomeBatting = homeIsBatting(liveData.state.battingTeamName, cfg.home_team)); }
+      catch(e){ console.warn('updateBadges error:', e); }
+    } else {
+      renderPreMatch(home,away);
+      if (!_break) showPreMatchInfo();
+      updateBadges(cfg.home_club_id, cfg.away_club_id, null, null);
+    }
+  } else if (liveData.source==='widget') {
+    if (liveData.state){renderScorebar(liveData.state,home,away);detectEvents(liveData.state,null);}
+    else { renderPreMatch(home,away); showPreMatchInfo(); }
+  } else if (liveData.source==='api'&&liveData.data) {
+    const {state,allInnings}=parsePlayCricket(liveData.data,home,away);
+    if (state){renderScorebar(state,home,away);detectEvents(state,allInnings);}
+    else { renderPreMatch(home,away); showPreMatchInfo(); }
+  } else {
+    renderPreMatch(home,away); showPreMatchInfo();
+  }
+  } catch(e){ console.error('Live frame error:',e); }
 }
 
 // Jittered polling

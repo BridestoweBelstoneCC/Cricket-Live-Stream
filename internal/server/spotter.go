@@ -201,6 +201,9 @@ func spotterDue(st M, live bool, t float64) bool {
 	spotterMu.Lock()
 	last := spotterLastRun
 	spotterMu.Unlock()
+	if juniorMode(st) {
+		return false // it sends pictures of the ground to Anthropic: not with children on it
+	}
 	return gb(st, "camera_spotter", false) && live && trim(gs(st, "anthropic_api_key", "")) != "" && t-last >= every
 }
 

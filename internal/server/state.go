@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +60,9 @@ func DefaultState() M {
 		"graphics_season_leaders":      true, // the club's top run-scorers and wicket-takers, pre-match and at breaks
 		"break_reel":                   true, // replays in breaks (breakshow.go)
 		"graphics_player_card":         false,
+		// Junior match mode (junior.go): first name + initial everywhere, no player cards,
+		// headshots, club records or AI. Today's fixture switches it on for an age-group side.
+		"junior_mode": false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
 		// blocks and its SCOREBAR_STYLES list. "classic" is the base stylesheet, so an
 		// unknown value renders as classic rather than breaking the bar.
@@ -67,7 +71,7 @@ func DefaultState() M {
 		"replay_on_fifty":  false,
 		"obs_host":         "localhost",
 		"obs_port":         4455,
-		"obs_password":     "CHANGE_ME",
+		"obs_password":     "", // match day writes OBS's own password here; see oldOBSPasswordDefault
 		"obs_main_scene":   "Main",
 		"camera_rtsp_url":  "",
 		"obs_camera_name":  "Cricket Camera",
@@ -80,7 +84,11 @@ func DefaultState() M {
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut": false,
-		"camera_over_hold":         8, // seconds on camera 2 at the over change
+		// Hold every graphic back by this long, so the score doesn't change before the
+		// camera's (late) picture shows the ball. Off by default; the overlay does it.
+		"graphics_delay":         false,
+		"graphics_delay_seconds": 2,
+		"camera_over_hold":       8, // seconds on camera 2 at the over change
 		// After a wicket (once its replay's done), camera 2 while the new batter walks out;
 		// and the teams walking off at the end of an innings (camhold.go). Opt-in, like
 		// the auto-cut; a no-op without camera 2.
@@ -103,6 +111,7 @@ func DefaultState() M {
 		"network_test_mbps":         nil,
 		"network_test_at":           0,
 		"stream_auto_downshift":     false, // the sentinel may auto-reduce bitrate on sustained congestion
+		"stream_av_watch":           true,  // warn when the stream goes silent or a camera freezes (avwatch.go)
 		"youtube_title_template":    "LIVE: {home} vs {away}",
 		"youtube_description":       "Live grassroots cricket. {home} v {away}.",
 		"youtube_privacy":           "unlisted",
@@ -142,6 +151,12 @@ var SecretKeys = []string{"anthropic_api_key", "playcricket_api_key", "api_token
 
 const SecretSentinel = "••••••••"
 
+// oldOBSPasswordDefault was obs_password's default until 2026-11: a made-up password that
+// the panel showed as "a password is saved" and every OBS call tried first. A state file
+// saved back then still holds it; it reads as no password, which is what it always meant
+// (and what lets config.ini's real one be seeded over it).
+const oldOBSPasswordDefault = "CHANGE_ME"
+
 func isSecret(k string) bool {
 	for _, s := range SecretKeys {
 		if s == k {
@@ -162,6 +177,67 @@ func redactState(s M) M {
 		}
 	}
 	return out
+}
+
+// postedStateExtras are the settings POST /state takes that DefaultState doesn't list (it
+// only lists the ones with a default worth having), with a value of the type each must be.
+var postedStateExtras = M{
+	"pcs_output_folder": "", "anthropic_api_key": "", "playcricket_api_key": "",
+	"umpire1_name": "", "umpire2_name": "", "competition_name": "", "pc_match_id": "",
+	"use_widget": false,
+}
+
+// postedStateKind is the JSON type POST /state accepts for key ("string", "bool", "number"
+// or "object"), and whether the key is a setting at all. Everything else the state file
+// holds (the quality ladder's place, the last network test, what a rehearsal put aside)
+// is the server's own and not for a request to write.
+func postedStateKind(key string) (string, bool) {
+	def, ok := DefaultState()[key]
+	if !ok {
+		if def, ok = postedStateExtras[key]; !ok {
+			return "", false
+		}
+	}
+	switch def.(type) {
+	case string:
+		return "string", true
+	case bool:
+		return "bool", true
+	case int, float64:
+		return "number", true
+	case M:
+		return "object", true
+	}
+	return "", false // a default of nil: measured by the server, never posted
+}
+
+// checkPostedState keeps the settings in incoming that are known and of the right type,
+// and names the rest. Before this POST /state merged any key of any type: a number where
+// the server reads a string, or a key that's the server's own, went straight into
+// match_state.json (the code review's "typed keys on POST /state").
+func checkPostedState(incoming M) (keep M, ignored []string) {
+	keep = M{}
+	for k, v := range incoming {
+		kind, known := postedStateKind(k)
+		ok := false
+		switch v.(type) {
+		case string:
+			ok = kind == "string"
+		case bool:
+			ok = kind == "bool"
+		case float64, int:
+			ok = kind == "number"
+		case M:
+			ok = kind == "object"
+		}
+		if known && ok {
+			keep[k] = v
+		} else {
+			ignored = append(ignored, k)
+		}
+	}
+	sort.Strings(ignored)
+	return keep, ignored
 }
 
 // The mtime-keyed cache: LoadState is called several times per overlay poll, but the
@@ -228,6 +304,9 @@ func LoadState() M {
 	state := DefaultState()
 	for k, v := range loaded {
 		state[k] = v
+	}
+	if state["obs_password"] == oldOBSPasswordDefault {
+		state["obs_password"] = ""
 	}
 	stateCacheMu.Lock()
 	lastGoodState, stateCacheKey, stateCache = state, key, state
