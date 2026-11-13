@@ -55,6 +55,13 @@ Fixes from an outside read of the code. None is known to have been used against 
   a saved password. An old one reads as blank.
 - **Ready for signed releases:** once releases are signed, the updater accepts only a
   download signed by the project's own certificate, not just "the same as this copy".
+- **One list of who may call what.** Every address the server answers is now in one table
+  saying whether it's open, the overlay's, this laptop's or needs the login, checked before
+  anything else, so a new feature can't be left open by mistake. A test holds the list of
+  open ones.
+- **Making the AI match report is no longer a plain link** (`GET`), which a browser can
+  follow by itself: the panel's buttons work as before. A tool of your own that called
+  `GET /report/generate` must `POST` to it.
 - **Built with Go 1.27.4**, which fixes two faults in Go itself (one could crash the
   server). The build now checks for known vulnerabilities, and Dependabot watches the Go
   modules.
