@@ -165,6 +165,7 @@ var routes = []route{
 	{"POST", "/sponsor/remove_background", false, accSession},
 	{"POST", "/sponsor/upload", false, accSession},
 	{"POST", "/state", false, accSession},
+	{"POST", "/sync/show", false, accSession},
 	{"POST", "/stream/dynamic", false, accSession},
 	{"POST", "/stream/quality", false, accSession},
 	{"POST", "/talk/control", false, accSession},

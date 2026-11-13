@@ -581,6 +581,17 @@
       <input type="number" id="camera_walkout_hold" min="10" max="180" style="width:90px">
     </div>
     <div class="toggle-row" style="margin-top:10px">
+      <div><div class="toggle-label">Hold the graphics back to match the camera</div>
+           <div class="toggle-desc">A camera's picture arrives a second or more late, so with a quick scorer the score can change before viewers see the ball. With this on, the scorebar and every graphic wait the time below; replays are cut that much later too. Buttons you press here are never held. Leave it off unless you've seen the score beat the picture.</div></div>
+      <label class="toggle"><input type="checkbox" id="graphics_delay"><span class="track"></span></label>
+    </div>
+    <div class="field" style="margin-top:6px">
+      <label>Seconds to hold the graphics back (0.5 to 10)</label>
+      <input type="number" id="graphics_delay_seconds" min="0.5" max="10" step="0.5" style="width:90px">
+      <button class="btn btn-test" style="margin-left:8px" onclick="showSyncClock()">&#9201; Measure the camera's delay</button>
+    </div>
+    <p class="hint" style="margin-top:4px;">To measure: press the button (a clock shows on the stream for a minute), and have someone hold a phone showing a clock with seconds up to the camera. In OBS, the phone's clock is behind the big one by the camera's delay: that's the number to enter.</p>
+    <div class="toggle-row" style="margin-top:10px">
       <div><div class="toggle-label">Side-on wicket replays</div>
            <div class="toggle-desc">Each wicket replays twice: camera 1 as now, then camera 2's view of the same moment. CricketStream records camera 2 itself while this is on (it copies the stream — next to no work for the laptop). Needs FFmpeg and camera 2.</div></div>
       <label class="toggle"><input type="checkbox" id="replay_side_on"><span class="track"></span></label>
@@ -2824,9 +2835,10 @@ const FIELDS = ['social_handle','home_team','away_team','home_abbrev','away_abbr
   'youtube_title_template','youtube_description','youtube_privacy','youtube_category','anthropic_api_key','playcricket_api_key','ground_filter','umpire1_name','umpire2_name','competition_name','pc_match_id','replay_motto','logos_folder','headshots_folder','socials_folder','sponsor_name','sponsor_id','scorebar_style'];
 const NUM_FIELDS = ['camera_spotter_minutes','max_overs','poll_interval','obs_port','replay_duration','max_clips',
   'camera_over_hold','camera_walkout_hold'];
+const DECIMAL_FIELDS = ['graphics_delay_seconds'];   // numbers that may have a decimal point
 const BOOL_FIELDS = ['demo_mode','graphics_fow','graphics_partnership',
   'graphics_lineup','graphics_boundary_flash','graphics_milestones',
-  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
+  'graphics_innings_summary','graphics_commentary_over','graphics_over_summary','graphics_partnership_display','graphics_runrate_trend','graphics_league_table','graphics_win_predictor','graphics_player_card','graphics_voice_commentary','graphics_camera_auto_cut','graphics_delay','graphics_h2h','graphics_club_milestones','break_reel','youtube_chapters','youtube_thumbnail','youtube_highlights','graphics_season_leaders','graphics_rain_radar','camera_spotter','replay_enabled','replay_on_fifty','use_widget','stream_auto_downshift','camera_walkout','replay_side_on'];
 
 function badgeError(side) {
   document.getElementById('badge-'+side+'-img').style.display = 'none';
@@ -2980,6 +2992,7 @@ async function loadState() {
   FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   BOOL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.checked=!!s[id]; });
+  DECIMAL_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=s[id]||''; });
   updateSwatch(document.getElementById('home-swatch'), s.home_colour||'#1a3a5c');
   updateSwatch(document.getElementById('away-swatch'), s.away_colour||'#7b2d2d');
   updatePreview();
@@ -3012,6 +3025,9 @@ async function saveState() {
   FIELDS.forEach(id     => { const el=document.getElementById(id); if(el) state[id]=el.value.trim(); });
   NUM_FIELDS.forEach(id => { const el=document.getElementById(id); if(el) state[id]=parseInt(el.value)||0; });
   BOOL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=el.checked; });
+  DECIMAL_FIELDS.forEach(id=> { const el=document.getElementById(id); if(el) state[id]=parseFloat(el.value)||0; });
+  if (!(state.graphics_delay_seconds > 0)) state.graphics_delay_seconds = 2;
+  state.graphics_delay_seconds = Math.min(10, state.graphics_delay_seconds);
   // Defaults for blank required fields
   if (!state.home_team) state.home_team = 'Home CC';
   if (!state.away_team) state.away_team = 'Opposition CC';
@@ -3400,6 +3416,12 @@ async function showH2H() {
     if (!d.usable) { showStatus(d.reason || 'No head-to-head to show', 'err'); return; }
     await apiFetch('/h2h/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     showStatus('Head-to-head showing on overlay','ok');
+  } catch(e) { showStatus('Could not reach server','err'); }
+}
+async function showSyncClock() {
+  try {
+    await apiFetch('/sync/show', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showStatus('A clock is on the stream for a minute — hold a phone clock up to the camera and compare the two in OBS','ok');
   } catch(e) { showStatus('Could not reach server','err'); }
 }
 async function showPlayerCards() {

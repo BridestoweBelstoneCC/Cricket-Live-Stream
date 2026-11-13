@@ -81,7 +81,11 @@ func DefaultState() M {
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut": false,
-		"camera_over_hold":         8, // seconds on camera 2 at the over change
+		// Hold every graphic back by this long, so the score doesn't change before the
+		// camera's (late) picture shows the ball. Off by default; the overlay does it.
+		"graphics_delay":         false,
+		"graphics_delay_seconds": 2,
+		"camera_over_hold":       8, // seconds on camera 2 at the over change
 		// After a wicket (once its replay's done), camera 2 while the new batter walks out;
 		// and the teams walking off at the end of an innings (camhold.go). Opt-in, like
 		// the auto-cut; a no-op without camera 2.
