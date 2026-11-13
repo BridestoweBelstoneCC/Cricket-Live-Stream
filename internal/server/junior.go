@@ -255,6 +255,7 @@ func juniorLive(state M, s M) M {
 	book := juniorBookFor(CurrentMatchID())
 	known := juniorKnownNames(s)
 	out := shallow(state)
+	out["junior"] = true // the overlay: these names are already the junior form
 	// A first name the scorer's own frame gives ("Oliver Marsh" bowling) is on record too:
 	// "b O Marsh" and "b Marsh" in a dismissal are then the same boy.
 	for _, key := range []string{"batter1", "batter2", "bowler"} {

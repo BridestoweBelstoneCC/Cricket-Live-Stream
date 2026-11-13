@@ -1947,6 +1947,12 @@ func (c *ctx) live(mutate bool) {
 		rvMu.Unlock()
 	}
 
+	if pyval.Truthy(s["api_token"]) && pyval.Truthy(s["match_id"]) && juniorMode(s) {
+		// The raw PlayCricket scorecard goes to the overlay as it is, full names and all:
+		// not in a junior match. The scorebar waits for the scorer's feed instead.
+		c.json(M{"source": "api", "error": "Junior match mode: the PlayCricket scorecard isn't shown (it names players in full)", "data": nil})
+		return
+	}
 	if pyval.Truthy(s["api_token"]) && pyval.Truthy(s["match_id"]) {
 		u := fmt.Sprintf("https://play-cricket.com/api/v2/match_detail.json?id=%s&site_id=%s&api_token=%s",
 			pyval.Str(s["match_id"]), pyval.Str(valOr(s, "site_id", "")), pyval.Str(s["api_token"]))
@@ -2030,6 +2036,9 @@ func (c *ctx) live(mutate bool) {
 			case state = <-ch:
 			case <-time.After(5 * time.Second):
 			}
+		}
+		if state != nil && juniorMode(s) {
+			state = juniorLive(state, s) // PlayCricket's live widget names players in full
 		}
 		if state != nil {
 			state = shallow(state)

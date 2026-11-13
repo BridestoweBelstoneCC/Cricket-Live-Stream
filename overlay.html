@@ -2027,8 +2027,23 @@ function oversDisplay(overs) {
 }
 function fmtSurname(full) {
   if (!full || full === '—') return '—';
+  // Junior match mode: never the surname. The server's names are the short form already
+  // ("Patrick E", junior.go); a name from anywhere else is cut down here.
+  if (typeof cfg !== 'undefined' && cfg && cfg.junior_mode) return _juniorLabelled ? full.trim() : juniorShort(full);
   const p = full.trim().split(' ');
   return p[p.length - 1];
+}
+// True while the frame being drawn came from the server already in the junior form.
+let _juniorLabelled = false;
+// "Patrick Edwards" -> "Patrick E", "T Hatton" -> "T H", "EDWARDS" -> "E".
+function juniorShort(full) {
+  const p = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '';
+  const last = p[p.length - 1][0].toUpperCase();
+  if (p.length === 1) return last;
+  const first = p[0].replace(/\./g, '');
+  if (first.length > 1) return first[0].toUpperCase() + first.slice(1).toLowerCase() + ' ' + last;
+  return first.toUpperCase() + ' ' + last;
 }
 // Escape scorer-controlled text before it goes into innerHTML. Player/team names come
 // from the scoring software and PlayCricket; a name containing markup must render as
@@ -2040,6 +2055,7 @@ function esc(s) {
 }
 function fmtInitial(full) {
   if (!full || full === '—') return '—';
+  if (typeof cfg !== 'undefined' && cfg && cfg.junior_mode) return _juniorLabelled ? full.trim() : juniorShort(full);   // "Patrick E", not "P. E"
   const p = full.trim().split(' ');
   return p.length === 1 ? p[0] : p[0][0].toUpperCase() + '. ' + p.slice(1).join(' ');
 }
@@ -4573,6 +4589,7 @@ function drainHeldFrames() {
 function applyLiveFrame(frame) {
   const liveData=frame.liveData, home=frame.home, away=frame.away;
   _catchingUp = frame.catchingUp;
+  _juniorLabelled = !!(liveData.state && liveData.state.junior);
   try {
   if (liveData.source==='pcs') {
     if (liveData.state && !isPreMatchPCS(liveData.state)){
