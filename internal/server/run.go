@@ -37,6 +37,7 @@ func Start() {
 	SeedStateFromConfig()
 	RecoverInterruptedRehearsal()
 	EnsureControlToken()
+	HashClubPassword()
 	loadSessionEpoch()
 	StartWatchdog()
 	StartStreamMonitor()

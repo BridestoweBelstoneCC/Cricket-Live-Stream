@@ -100,6 +100,11 @@ func (Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ── Response helpers ──────────────────────────────────────────
 
 // Baseline hardening headers for every panel/API response.
+// matchPageCSP: the match page is one file with its styles and pictures inside it and
+// links out to the video. No script, no requests, and a sandbox (links may still open).
+const matchPageCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; " +
+	"form-action 'none'; sandbox allow-popups allow-popups-to-escape-sandbox"
+
 func (c *ctx) securityHeaders() {
 	h := c.w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -828,6 +833,12 @@ func (c *ctx) doGET() {
 	case path == "/match/page/latest":
 		// Same exposure as the result card: a page made to be shared.
 		if p := latestMatchPage(); p != "" {
+			// It's served from the panel's own address and is built from names off
+			// PlayCricket and the scorer. Everything in it is escaped; if something ever
+			// isn't, this stops it running: the page needs no script, and the sandbox gives
+			// it an origin of its own, away from the panel's login.
+			c.securityHeaders()
+			c.w.Header().Set("Content-Security-Policy", matchPageCSP)
 			c.file(p, "text/html; charset=utf-8", true)
 		} else {
 			c.notFoundEmpty()

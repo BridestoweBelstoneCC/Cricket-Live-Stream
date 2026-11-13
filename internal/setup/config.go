@@ -15,6 +15,7 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/discord"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/passhash"
 	"cricketstream/internal/scorerfile"
 )
 
@@ -215,7 +216,13 @@ func (v Values) Config() *ini.File {
 	f.Set("Stream", "youtube_stream_key", v.YTKey)
 	f.Set("Stream", "max_overs", v.MaxOvers)
 	f.Set("Auth", "control_token", newToken())
-	f.Set("Auth", "club_password", v.ClubPassword)
+	// Kept as a hash: the file is copied about (backups, "move to another laptop"). If
+	// hashing fails (no random numbers), the server hashes it when it next starts.
+	pw := v.ClubPassword
+	if h, err := passhash.Hash(pw); err == nil {
+		pw = h
+	}
+	f.Set("Auth", "club_password", pw)
 	bind := "127.0.0.1"
 	if v.AllowRemote {
 		bind = "0.0.0.0"

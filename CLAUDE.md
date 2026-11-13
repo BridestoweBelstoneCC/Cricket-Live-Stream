@@ -216,6 +216,16 @@ problem + what to do + pause) or print and `console.Pause()`.
   the URL, so `discord` strips it (`clean()`); print only errors that came through it. The same
   goes for PlayCricket: its `api_token` is in every URL, so `httpGetJSON`/`httpGetText`
   return `scrubURLError(err)`. A new outside call that puts a key in its URL must too.
+- **`config.ini` holds the club password's hash, never the password** (`internal/passhash`,
+  PBKDF2). `ClubPassword` is whatever the file holds: check it with `passhash.Verify`, never
+  `==`. A plain one typed in by hand still works and is hashed at the next server start
+  (`HashClubPassword`), which is also the forgotten-password fix. So nothing on the laptop
+  can read the password to log in with: the launcher (for the window and the clubhouse
+  link), the simulator and the quality test post `passhash.LocalLogin`, which is
+  `{"local_key": control_token}`, and `/login` takes that only from `trustedLoopback()`.
+  A new local tool that needs a session must do the same. POST `/state` saves only known
+  settings of the right type (`checkPostedState`): a new panel field must be in
+  `DefaultState` or `postedStateExtras`, or it's ignored (a test reads the panel's lists).
 - **The server answers only to its own names, and believes X-Forwarded-For only from this
   machine** (security review, 2026-11-11). `hostAllowed()` (`hostcheck.go`) refuses any Host
   but an IP address, localhost, this computer's name, `*.ts.net` and the running tunnel's
