@@ -21,15 +21,11 @@ import (
 	"cricketstream/internal/scoring"
 )
 
-// overlayEndpoints are fired automatically by the overlay itself — a loopback OBS
-// browser source with no login flow of its own. /commentary/over/generate additionally
-// spends Anthropic credit, so all of them trust loopback callers with no forwarding proxy
-// in front of them (see trustedLoopback), or a valid session either way, rather than
-// requiring a session the overlay can never obtain. The checklist never belongs here: it
-// starts OBS and goes live.
-var overlayEndpoints = map[string]bool{"/commentary/over/generate": true, "/replay": true,
-	"/weather/show": true, "/weather/hide": true, "/camera/scene": true, "/sponsor/airtime": true,
-	"/break/start": true, "/break/end": true}
+// The routes the overlay itself fires (/replay, /weather/show, /break/start...) are
+// accLocal in routes.go: a loopback OBS browser source has no login flow of its own, so
+// they trust loopback callers with no forwarding proxy in front of them (trustedLoopback),
+// or a valid session either way. /commentary/over/generate also spends Anthropic credit.
+// The checklist never belongs with them: it starts OBS and goes live.
 
 // jsonObject is json.loads(body or "{}") required to be an object; anything else is
 // an empty object, as the Python routes that tolerated bad bodies treated it.
@@ -297,11 +293,13 @@ func (c *ctx) doPOST() {
 		c.handleLogin(body)
 		return
 	}
-	if overlayEndpoints[path] {
-		if !c.trustedLoopback() && !c.checkToken() {
-			return
-		}
-	} else if !c.checkToken() {
+	// Who may call it, from the one table (routes.go). A path that isn't a route still
+	// needs a login before it's told so.
+	acc, ok := routeAccess("POST", path)
+	if !ok {
+		acc = accSession
+	}
+	if !c.allowed(acc) {
 		return
 	}
 

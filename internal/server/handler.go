@@ -487,6 +487,15 @@ var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func (c *ctx) doGET() {
 	path := c.path
+	// Who may call it, from the one table (routes.go). Not a route: not found.
+	acc, ok := routeAccess("GET", path)
+	if !ok {
+		c.notFound()
+		return
+	}
+	if !c.allowed(acc) {
+		return
+	}
 	switch {
 	case path == "/" || path == "/overlay":
 		c.asset("overlay.html", "text/html; charset=utf-8", true)
