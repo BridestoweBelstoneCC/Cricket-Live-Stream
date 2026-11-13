@@ -111,6 +111,7 @@ func DefaultState() M {
 		"network_test_mbps":         nil,
 		"network_test_at":           0,
 		"stream_auto_downshift":     false, // the sentinel may auto-reduce bitrate on sustained congestion
+		"stream_av_watch":           true,  // warn when the stream goes silent or a camera freezes (avwatch.go)
 		"youtube_title_template":    "LIVE: {home} vs {away}",
 		"youtube_description":       "Live grassroots cricket. {home} v {away}.",
 		"youtube_privacy":           "unlisted",

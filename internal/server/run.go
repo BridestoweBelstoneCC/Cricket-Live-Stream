@@ -46,6 +46,7 @@ func Start() {
 	StartCameraSpotter()
 	StartOBSGuard()
 	StartOverlayWatch()
+	StartAVWatch()
 	StartReplayWatch()
 	StartPCSBridgeSync()
 	StartSideCam()

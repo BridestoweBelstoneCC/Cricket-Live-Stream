@@ -1892,6 +1892,7 @@ func (c *ctx) health() {
 		"obs_bitrate":  obsBitrateSanityCheck(s),
 		"obs_recovery": obsGuardStatus(),
 		"overlay":      overlayWatchStatus(),
+		"av":           avWatchStatus(),
 		"errors":       recentServerErrors(0),
 	})
 }

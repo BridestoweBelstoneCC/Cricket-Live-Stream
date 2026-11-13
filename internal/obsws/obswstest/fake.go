@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -29,6 +30,12 @@ type Server struct {
 	Requests []Recorded
 	Conns    int
 	open     []*websocket.Conn
+	// Meters, when set, is the sound levels sent (every 20ms, as OBS's InputVolumeMeters
+	// event) to a connection that subscribed to them: input name -> one [magnitude, peak,
+	// input peak] per channel. Asked afresh each time, so a test can change the sound.
+	Meters func() map[string][][]float64
+	// Subscriptions is the eventSubscriptions each connection identified with (-1: none named).
+	Subscriptions []int
 }
 
 // Recorded is one request the fake received.
@@ -59,7 +66,8 @@ func New(password string, h Handler) *Server {
 		var ident struct {
 			Op int `json:"op"`
 			D  struct {
-				Authentication string `json:"authentication"`
+				Authentication     string `json:"authentication"`
+				EventSubscriptions *int   `json:"eventSubscriptions"`
 			} `json:"d"`
 		}
 		if ws.ReadJSON(&ident) != nil || ident.Op != 1 {
@@ -70,6 +78,28 @@ func New(password string, h Handler) *Server {
 			return
 		}
 		ws.WriteJSON(map[string]any{"op": 2, "d": map[string]any{"negotiatedRpcVersion": 1}})
+		subs := -1
+		if ident.D.EventSubscriptions != nil {
+			subs = *ident.D.EventSubscriptions
+		}
+		s.mu.Lock()
+		s.Subscriptions = append(s.Subscriptions, subs)
+		meters := s.Meters
+		s.mu.Unlock()
+		if subs >= 0 && subs&(1<<16) != 0 && meters != nil {
+			// A listener: levels until it hangs up (it sends no requests).
+			for {
+				var inputs []map[string]any
+				for name, levels := range meters() {
+					inputs = append(inputs, map[string]any{"inputName": name, "inputLevelsMul": levels})
+				}
+				if ws.WriteJSON(map[string]any{"op": 5, "d": map[string]any{"eventType": "InputVolumeMeters",
+					"eventIntent": 1 << 16, "eventData": map[string]any{"inputs": inputs}}}) != nil {
+					return
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+		}
 		for {
 			var m struct {
 				Op int `json:"op"`

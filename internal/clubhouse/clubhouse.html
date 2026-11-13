@@ -1218,6 +1218,15 @@ function healthItems(h, m) {
       else if (r.frozen_for_sec > 0) add('bad', 'OBS', 'OBS hasn\'t answered for ' + mins(r.frozen_for_sec) + '.');
       else if (r.restarts_recent > 0) add('todo', 'OBS', 'OBS crashed and was reopened ' + (r.restarts_recent === 1 ? 'once' : r.restarts_recent + ' times') + ' recently.');
     }
+    var av = h.av || {};
+    if (av.watching) {
+      if (av.sound === 'silent') add('bad', 'The sound', 'No sound on the stream for ' + mins(av.silent_for_sec) + '. Check the microphone.');
+      else if (av.sound === 'ok') add('done', 'The sound', 'There is sound on the stream.');
+      else if (av.sound === 'none yet') add('todo', 'The sound', 'No sound has been heard on the stream yet.');
+      (av.cameras || []).forEach(function (c) {
+        if (c.frozen) add('bad', c.name, 'The picture hasn\'t changed for ' + mins(c.frozen_for_sec) + '. The camera may have dropped out.');
+      });
+    }
     var th = h.thermal || {};
     if (th.available && th.throttled) add('todo', 'The laptop', 'Slowed down to ' + th.speed_limit_pct + '% of its speed: off its charger, or too hot.');
     else if (th.available) add('done', 'The laptop', 'Running at full speed.');
