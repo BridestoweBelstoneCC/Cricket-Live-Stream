@@ -5,6 +5,7 @@ package app
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ func at(h, m int) time.Time { return time.Date(2026, 6, 13, h, m, 0, 0, time.Loc
 type autoRig struct {
 	*testApp
 	fetches int
+	clockMu sync.Mutex // the page's status reads the clock from another goroutine
+	now     time.Time
 	started chan launcher.Options
 	block   chan struct{}
 }
@@ -23,7 +26,21 @@ type autoRig struct {
 func newAutoRig(t *testing.T, fix autoFixture, now time.Time) *autoRig {
 	t.Helper()
 	r := &autoRig{testApp: newTestApp(t), started: make(chan launcher.Options, 4), block: make(chan struct{})}
-	t.Cleanup(func() { close(r.block) })
+	// At the end: let any match day still "running" finish, and wait until it has. Its
+	// goroutine reads the app folder, which the next test moves.
+	t.Cleanup(func() {
+		close(r.block)
+		r.mu.Lock()
+		end := r.launcherEnd
+		r.mu.Unlock()
+		if end != nil {
+			select {
+			case <-end:
+			case <-time.After(5 * time.Second):
+				t.Error("match day didn't finish")
+			}
+		}
+	})
 	runLauncher = func(o launcher.Options) int {
 		r.started <- o
 		select {
@@ -34,7 +51,12 @@ func newAutoRig(t *testing.T, fix autoFixture, now time.Time) *autoRig {
 	}
 	savedFetch, savedNow := fetchAutoFixture, autoNow
 	fetchAutoFixture = func() autoFixture { r.fetches++; return fix }
-	autoNow = func() time.Time { return now }
+	r.now = now
+	autoNow = func() time.Time {
+		r.clockMu.Lock()
+		defer r.clockMu.Unlock()
+		return r.now
+	}
 	t.Cleanup(func() { fetchAutoFixture, autoNow = savedFetch, savedNow })
 	if rep := r.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"}); rep.status != 200 {
 		t.Fatalf("save: %d %s", rep.status, rep.body)
@@ -42,7 +64,20 @@ func newAutoRig(t *testing.T, fix autoFixture, now time.Time) *autoRig {
 	return r
 }
 
-func (r *autoRig) setNow(now time.Time) { autoNow = func() time.Time { return now } }
+func (r *autoRig) setNow(now time.Time) {
+	r.clockMu.Lock()
+	r.now = now
+	r.clockMu.Unlock()
+}
+
+// stopMatchDay is someone pressing Stop: the launcher's interrupt, read as the app does.
+func (r *autoRig) stopMatchDay() {
+	r.mu.Lock()
+	ch := r.interrupt
+	r.mu.Unlock()
+	ch <- nil
+	r.waitFor("stopped", phaseIs(phStopped))
+}
 
 func (r *autoRig) didStart() bool {
 	select {
@@ -130,8 +165,7 @@ func TestAutoStartStartsOnceAtTheRightTime(t *testing.T) {
 	if r.autoStartTick() {
 		t.Fatal("started again while starting")
 	}
-	r.interrupt <- nil
-	r.waitFor("stopped", phaseIs(phStopped))
+	r.stopMatchDay()
 	r.setNow(at(12, 45))
 	if r.autoStartTick() || r.didStart() {
 		t.Fatal("match day was stopped by someone, and it started it again")
@@ -155,8 +189,7 @@ func TestAutoStartLeavesAMatchDaySomeoneStartedAlone(t *testing.T) {
 	<-r.started
 	r.waitFor("getting ready", phaseIs(phStarting))
 	r.autoStartTick() // it sees match day running today
-	r.interrupt <- nil
-	r.waitFor("stopped", phaseIs(phStopped))
+	r.stopMatchDay()
 	r.setNow(at(12, 45))
 	if r.autoStartTick() || r.didStart() {
 		t.Fatal("someone started and stopped match day today; it started it again")

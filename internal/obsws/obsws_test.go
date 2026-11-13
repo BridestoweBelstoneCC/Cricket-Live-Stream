@@ -77,7 +77,7 @@ func TestMetersReadsEachInputsPeak(t *testing.T) {
 	f := obswstest.New("pw", nil)
 	defer f.Close()
 	n := 0
-	f.Meters = func() map[string][][]float64 {
+	f.SetMeters(func() map[string][][]float64 {
 		n++
 		mic := 0.02
 		if n == 3 {
@@ -88,7 +88,7 @@ func TestMetersReadsEachInputsPeak(t *testing.T) {
 			"Desktop Audio": {{0, 0, 0}, {0, 0, 0}},
 			"No channels":   {},
 		}
-	}
+	})
 	peaks, err := obsws.Meters(f.Target(), 300*time.Millisecond, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +104,8 @@ func TestMetersReadsEachInputsPeak(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Close()
-	if len(f.Subscriptions) != 2 || f.Subscriptions[0] != 1<<16 || f.Subscriptions[1] != -1 {
-		t.Errorf("subscriptions %v, want the meters for the listener and none named for an ordinary connection", f.Subscriptions)
+	if subs := f.Subs(); len(subs) != 2 || subs[0] != 1<<16 || subs[1] != -1 {
+		t.Errorf("subscriptions %v, want the meters for the listener and none named for an ordinary connection", subs)
 	}
 }
 

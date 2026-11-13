@@ -138,6 +138,20 @@ func New(password string, h Handler) *Server {
 	return s
 }
 
+// SetMeters sets Meters while the fake is running.
+func (s *Server) SetMeters(fn func() map[string][][]float64) {
+	s.mu.Lock()
+	s.Meters = fn
+	s.mu.Unlock()
+}
+
+// Subs is a copy of Subscriptions, safe to read while connections are open.
+func (s *Server) Subs() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int(nil), s.Subscriptions...)
+}
+
 // Target points a client at the fake.
 func (s *Server) Target() obsws.Target {
 	host, port, _ := net.SplitHostPort(s.srv.Listener.Addr().String())
