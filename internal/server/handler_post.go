@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,19 +16,16 @@ import (
 	"cricketstream/internal/agent"
 	"cricketstream/internal/logobg"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/passhash"
 	"cricketstream/internal/pyval"
 	"cricketstream/internal/scoring"
 )
 
-// overlayEndpoints are fired automatically by the overlay itself — a loopback OBS
-// browser source with no login flow of its own. /commentary/over/generate additionally
-// spends Anthropic credit, so all of them trust loopback callers with no forwarding proxy
-// in front of them (see trustedLoopback), or a valid session either way, rather than
-// requiring a session the overlay can never obtain. The checklist never belongs here: it
-// starts OBS and goes live.
-var overlayEndpoints = map[string]bool{"/commentary/over/generate": true, "/replay": true,
-	"/weather/show": true, "/weather/hide": true, "/camera/scene": true, "/sponsor/airtime": true,
-	"/break/start": true, "/break/end": true}
+// The routes the overlay itself fires (/replay, /weather/show, /break/start...) are
+// accLocal in routes.go: a loopback OBS browser source has no login flow of its own, so
+// they trust loopback callers with no forwarding proxy in front of them (trustedLoopback),
+// or a valid session either way. /commentary/over/generate also spends Anthropic credit.
+// The checklist never belongs with them: it starts OBS and goes live.
 
 // jsonObject is json.loads(body or "{}") required to be an object; anything else is
 // an empty object, as the Python routes that tolerated bad bodies treated it.
@@ -63,14 +61,38 @@ func str(d M, k, def string) string {
 	return def
 }
 
+// Time limits on reading a request's body. The server has none of its own beyond the
+// headers (a reply may wait a minute for Claude), so a sender that opened a POST and then
+// sent its body a byte at a time, or never, held a connection and a goroutine for as long
+// as it liked. Vars so a test needn't wait.
+var (
+	bodyReadTimeout   = 20 * time.Second // small JSON
+	uploadReadTimeout = 2 * time.Minute  // a picture of up to 8 MB, from a phone on poor wifi
+)
+
+// bodyDeadline gives the rest of this request's body d to arrive; the returned func lifts
+// the limit again (the connection is kept for the next request, and the reply isn't timed).
+func (c *ctx) bodyDeadline(d time.Duration) func() {
+	rc := http.NewResponseController(c.w)
+	if rc.SetReadDeadline(time.Now().Add(d)) != nil {
+		return func() {}
+	}
+	return func() { rc.SetReadDeadline(time.Time{}) }
+}
+
 func (c *ctx) readBody() ([]byte, bool) {
 	if c.r.ContentLength > MaxBodyBytes {
 		c.w.Header().Set("Content-Length", "0")
 		c.w.WriteHeader(413)
 		return nil, false
 	}
+	defer c.bodyDeadline(bodyReadTimeout)()
 	body, err := io.ReadAll(io.LimitReader(c.r.Body, MaxBodyBytes+1))
 	if err != nil {
+		// The body never arrived (or not in time): say so and drop the connection.
+		c.w.Header().Set("Connection", "close")
+		c.w.Header().Set("Content-Length", "0")
+		c.w.WriteHeader(408)
 		return nil, false
 	}
 	if len(body) > MaxBodyBytes {
@@ -97,7 +119,10 @@ func (c *ctx) sponsorUpload() {
 		return
 	}
 	data := make([]byte, n)
-	if _, err := io.ReadFull(c.r.Body, data); err != nil {
+	done := c.bodyDeadline(uploadReadTimeout)
+	_, err := io.ReadFull(c.r.Body, data)
+	done()
+	if err != nil {
 		c.json(M{"ok": false, "error": "Upload interrupted: " + err.Error()}, 400)
 		return
 	}
@@ -129,7 +154,10 @@ func (c *ctx) libraryUpload() {
 		return
 	}
 	data := make([]byte, n)
-	if _, err := io.ReadFull(c.r.Body, data); err != nil {
+	done := c.bodyDeadline(uploadReadTimeout)
+	_, err := io.ReadFull(c.r.Body, data)
+	done()
+	if err != nil {
 		c.json(M{"ok": false, "error": "Upload interrupted: " + err.Error()}, 400)
 		return
 	}
@@ -178,11 +206,17 @@ func (c *ctx) handleLogin(body []byte) {
 		c.json(M{"ok": false, "error": fmt.Sprintf("Too many attempts — try again in %ds", wait)}, 429)
 		return
 	}
-	pw := ""
+	pw, localKey := "", ""
 	if d, err := strictObject(body); err == nil {
 		pw, _ = d["password"].(string)
+		localKey, _ = d["local_key"].(string)
 	}
-	if pw != "" && constantTimeEqual(pw, ClubPassword) {
+	// local_key: a program on this laptop that can read config.ini (the launcher for the
+	// window, the simulator, the quality test). The file holds only the password's hash, so
+	// they prove themselves with its control_token instead. Never through a tunnel or the
+	// clubhouse link, and never from another device: a copy of config.ini isn't a login.
+	local := localKey != "" && ControlToken != "" && c.trustedLoopback() && constantTimeEqual(localKey, ControlToken)
+	if local || passhash.Verify(ClubPassword, pw) {
 		loginAttemptsMu.Lock()
 		delete(loginAttempts, ip)
 		loginAttemptsMu.Unlock()
@@ -259,11 +293,13 @@ func (c *ctx) doPOST() {
 		c.handleLogin(body)
 		return
 	}
-	if overlayEndpoints[path] {
-		if !c.trustedLoopback() && !c.checkToken() {
-			return
-		}
-	} else if !c.checkToken() {
+	// Who may call it, from the one table (routes.go). A path that isn't a route still
+	// needs a login before it's told so.
+	acc, ok := routeAccess("POST", path)
+	if !ok {
+		acc = accSession
+	}
+	if !c.allowed(acc) {
 		return
 	}
 
@@ -285,6 +321,18 @@ func (c *ctx) doPOST() {
 			return
 		}
 		c.json(TalkStatus())
+
+	case path == "/report/generate":
+		// The AI match report (?type=social: the social post). Separate cooldowns: two
+		// buttons, and making one shouldn't lock the other out.
+		rtype := "report"
+		if c.q("type") == "social" {
+			rtype = "social"
+		}
+		if !c.rateLimit(path, path+":"+rtype) {
+			return
+		}
+		c.json(GenerateMatchReport(rtype))
 
 	case path == "/rehearsal":
 		d := jsonObject(body)
@@ -387,6 +435,12 @@ func (c *ctx) doPOST() {
 				delete(incoming, k)
 			}
 		}
+		// Only settings, and only of the type each one is (checkPostedState). The rest of
+		// the form is still saved: one bad field mustn't cost the operator the others.
+		incoming, ignored := checkPostedState(incoming)
+		if len(ignored) > 0 {
+			say("  ⚠  Settings: ignored %s (not a setting, or the wrong kind of value)", strings.Join(ignored, ", "))
+		}
 		// MERGE into existing state rather than replacing the whole file. The panel form
 		// only posts its own fields, so a plain replace would wipe keys that have no form
 		// input (home_club_id / away_club_id badges, drinks_over...). One locked
@@ -404,7 +458,11 @@ func (c *ctx) doPOST() {
 				cur[k] = v
 			}
 		})
-		c.json(M{"ok": true})
+		if len(ignored) > 0 {
+			c.json(M{"ok": true, "ignored": ignored})
+		} else {
+			c.json(M{"ok": true})
+		}
 		s := LoadState()
 		replay := "off"
 		if pyval.Truthy(s["replay_enabled"]) {

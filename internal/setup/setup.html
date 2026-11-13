@@ -368,7 +368,7 @@ function headers(json) {
   if (json) h['Content-Type'] = 'application/json';
   if (appKey()) h['X-App-Key'] = appKey();
   var t = null;
-  try { t = sessionStorage.getItem('bbcc_token'); } catch (e) {}
+  try { t = sessionStorage.getItem('cricketstream_token'); } catch (e) {}
   if (MODE === 'settings' && t) h['Authorization'] = 'Bearer ' + t;
   return h;
 }
@@ -394,7 +394,7 @@ $('login_go').addEventListener('click', function () {
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d.ok) { m.className = 'result bad'; m.textContent = d.error || 'Wrong password'; return; }
-      try { sessionStorage.setItem('bbcc_token', d.session_token || ''); } catch (e) {}
+      try { sessionStorage.setItem('cricketstream_token', d.session_token || ''); } catch (e) {}
       $('login').classList.add('hidden');
       m.textContent = '';
       load();

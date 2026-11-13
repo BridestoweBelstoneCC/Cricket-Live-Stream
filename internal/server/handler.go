@@ -100,6 +100,11 @@ func (Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ── Response helpers ──────────────────────────────────────────
 
 // Baseline hardening headers for every panel/API response.
+// matchPageCSP: the match page is one file with its styles and pictures inside it and
+// links out to the video. No script, no requests, and a sandbox (links may still open).
+const matchPageCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; " +
+	"form-action 'none'; sandbox allow-popups allow-popups-to-escape-sandbox"
+
 func (c *ctx) securityHeaders() {
 	h := c.w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -482,6 +487,15 @@ var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func (c *ctx) doGET() {
 	path := c.path
+	// Who may call it, from the one table (routes.go). Not a route: not found.
+	acc, ok := routeAccess("GET", path)
+	if !ok {
+		c.notFound()
+		return
+	}
+	if !c.allowed(acc) {
+		return
+	}
 	switch {
 	case path == "/" || path == "/overlay":
 		c.asset("overlay.html", "text/html; charset=utf-8", true)
@@ -727,17 +741,13 @@ func (c *ctx) doGET() {
 		c.json(M{"ok": len(agents) > 0, "agents": agents, "chosen": chosen, "error": errMsg})
 
 	case path == "/report/generate":
+		// It spends Anthropic credit, so it's a POST (handler_post.go): a GET is something
+		// a link, a prefetch or a reload can make.
 		if !c.checkToken() {
 			return
 		}
-		rtype := "report"
-		if strings.Contains(c.r.RequestURI, "?") && strings.Contains(c.r.RequestURI, "type=social") {
-			rtype = "social"
-		}
-		if !c.rateLimit(path, path+":"+rtype) {
-			return
-		}
-		c.json(GenerateMatchReport(rtype))
+		c.w.Header().Set("Allow", "POST")
+		c.json(M{"ok": false, "error": "POST /report/generate (it was a GET until 2026-11)"}, 405)
 
 	case path == "/data/status":
 		c.json(DBStatus())
@@ -828,6 +838,12 @@ func (c *ctx) doGET() {
 	case path == "/match/page/latest":
 		// Same exposure as the result card: a page made to be shared.
 		if p := latestMatchPage(); p != "" {
+			// It's served from the panel's own address and is built from names off
+			// PlayCricket and the scorer. Everything in it is escaped; if something ever
+			// isn't, this stops it running: the page needs no script, and the sandbox gives
+			// it an origin of its own, away from the panel's login.
+			c.securityHeaders()
+			c.w.Header().Set("Content-Security-Policy", matchPageCSP)
 			c.file(p, "text/html; charset=utf-8", true)
 		} else {
 			c.notFoundEmpty()

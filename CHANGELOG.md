@@ -38,6 +38,30 @@ Fixes from an outside read of the code. None is known to have been used against 
   naming where to save it. It's always saved in the replay folder now.
 - **Fixed: another program on the laptop could ask the app's window for the "move to
   another laptop" file**, passwords and keys included.
+- **The club password is no longer kept as typed.** `config.ini` now holds a hash of it (a
+  line starting `pbkdf2-sha256$`), so a copy of the file, a backup or a "move to another
+  laptop" file doesn't give away a password the club may use elsewhere. Nothing to do: an
+  existing password is hashed the next time match day starts, and signing in is unchanged.
+  **Forgotten the password?** Type a new one in `config.ini` in place of the hash and
+  restart, or change it in Settings.
+- **Settings saved from the panel are checked.** Only real settings are saved, and only
+  with the right kind of value (text, a number, on/off); anything else is left out and
+  named in the activity log.
+- **A request that never finishes arriving is dropped** after 20 seconds (2 minutes for a
+  picture), where it used to hold a connection open for as long as the sender liked.
+- **The match page can't run script**, whatever a team or player is called: it's served
+  with a policy that allows its own styles and pictures and nothing else.
+- **OBS's password has no made-up default.** It was `CHANGE_ME`, which the panel showed as
+  a saved password. An old one reads as blank.
+- **Ready for signed releases:** once releases are signed, the updater accepts only a
+  download signed by the project's own certificate, not just "the same as this copy".
+- **One list of who may call what.** Every address the server answers is now in one table
+  saying whether it's open, the overlay's, this laptop's or needs the login, checked before
+  anything else, so a new feature can't be left open by mistake. A test holds the list of
+  open ones.
+- **Making the AI match report is no longer a plain link** (`GET`), which a browser can
+  follow by itself: the panel's buttons work as before. A tool of your own that called
+  `GET /report/generate` must `POST` to it.
 - **Built with Go 1.27.4**, which fixes two faults in Go itself (one could crash the
   server). The build now checks for known vulnerabilities, and Dependabot watches the Go
   modules.

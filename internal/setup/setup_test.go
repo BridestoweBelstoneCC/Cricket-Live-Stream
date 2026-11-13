@@ -15,7 +15,11 @@ import (
 	"cricketstream/internal/assets"
 	"cricketstream/internal/bridge"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/passhash"
 )
+
+// A real hash takes a fair part of a second; these tests save many passwords.
+func init() { passhash.Iterations = 1000 }
 
 func appDir(t *testing.T) string {
 	t.Helper()
@@ -79,10 +83,14 @@ func TestConfigHasEverySectionTheServerReads(t *testing.T) {
 	for _, c := range [][3]string{{"App", "role", "streaming"}, {"Club", "name", "Test CC"}, {"Club", "abbreviation", "TEST"},
 		{"Club", "playcricket_id", "111"}, {"API", "playcricket_key", "k"}, {"Scoring", "pcs_output_folder", `C:\NV`},
 		{"Graphics", "scorebar_style", "modern"}, {"Stream", "youtube_stream_key", "abcd"}, {"Stream", "max_overs", "50"},
-		{"Auth", "club_password", "pw"}, {"Network", "bind_host", "0.0.0.0"}, {"OBS", "obs_password", ""}} {
+		{"Network", "bind_host", "0.0.0.0"}, {"OBS", "obs_password", ""}} {
 		if got := f.Get(c[0], c[1], "<missing>"); got != c[2] {
 			t.Errorf("[%s] %s = %q, want %q", c[0], c[1], got, c[2])
 		}
+	}
+	// The password is never written as typed: only its hash.
+	if got := f.Get("Auth", "club_password", ""); !passhash.IsHash(got) || !passhash.Verify(got, "pw") {
+		t.Errorf("[Auth] club_password = %q, want a hash of the password", got)
 	}
 	if tok := f.Get("Auth", "control_token", ""); len(tok) != 64 {
 		t.Fatal("no random control_token:", tok)
@@ -144,7 +152,7 @@ func TestPercentSignsSurviveTheRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Get("Club", "name", "") != "100% Cricket CC" || f.Get("Auth", "club_password", "") != "50%off" {
+	if f.Get("Club", "name", "") != "100% Cricket CC" || !passhash.Verify(f.Get("Auth", "club_password", ""), "50%off") {
 		t.Fatal(string(f.Bytes()))
 	}
 }
