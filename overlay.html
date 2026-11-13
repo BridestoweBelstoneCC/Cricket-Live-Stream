@@ -3221,9 +3221,22 @@ function updateSpell(bowler, overNum, overRuns, wkts) {
 // ── v2.1: end-of-over moments + "at this stage" ───────────
 // The gold strap on the over summary: season-best scores, team milestones, and (2nd
 // innings) the first-innings comparison from the worm data we already collect.
+// The chase at the end of an over: "Need 48 from 36 balls · 8.00 an over". '' when there's
+// no chase to state (first innings, the target reached, or the feed gives no balls left).
+function chaseEquation(state) {
+  if (parseInt(state.innings || 1) !== 2) return '';
+  const need = parseInt(state.runsRequired) || 0, balls = parseInt(state.ballsRemaining) || 0;
+  if (need <= 0 || balls <= 0) return '';
+  const rate = (need * 6 / balls).toFixed(2);
+  return 'Need ' + need + ' from ' + balls + (balls === 1 ? ' ball' : ' balls') + ' · ' + rate + ' an over';
+}
+
 async function overExtras(state, overNum, overRuns) {
   const momentEl = el('over-moment');
   const msgs = [];
+  // The chase equation leads: it's what a viewer joining now wants first.
+  const chase = chaseEquation(state);
+  if (chase) msgs.push(esc(chase));
   // "At this stage" — 2nd innings vs 1st innings cumulative at the same over
   if (parseInt(state.innings || 1) === 2 && _rrData.inn1.length) {
     const upto = Math.min(overNum, _rrData.inn1.length);
@@ -3240,9 +3253,10 @@ async function overExtras(state, overNum, overRuns) {
   for (const m of [50, 100, 150, 200, 250, 300]) {
     if (before < m && score >= m) { msgs.push(`${m} up in ${overNum} overs`); break; }
   }
-  // Season-best score for either current batter (uses the local stats endpoint)
+  // Season-best score for either current batter (uses the local stats endpoint). Not in a
+  // junior match: it's one named child's record.
   try {
-    for (const bk of ['batter1', 'batter2']) {
+    for (const bk of (cfg.junior_mode ? [] : ['batter1', 'batter2'])) {
       const b = state[bk] || {};
       if (!b.name || b.name === '—' || !(b.runs > 0)) continue;
       const q = `${SERVER}/player/stats?name=${encodeURIComponent(b.name)}&num=${encodeURIComponent(b.number || '')}`;

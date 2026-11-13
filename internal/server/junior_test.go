@@ -304,3 +304,11 @@ func TestFixtureSwitchesJuniorModeOn(t *testing.T) {
 	s.getJSON("/match/fetch")
 	mustEq(t, LoadState()["junior_mode"], any(true)) // someone has to decide it's off
 }
+
+// The end-of-over "best score of the season" is one named child's record too.
+func TestJuniorModeSkipsSeasonBestAtTheOver(t *testing.T) {
+	extras := extractFunction(t, page(t, "overlay.html"), "overExtras")
+	if !strings.Contains(extras, "cfg.junior_mode ? [] : ['batter1', 'batter2']") {
+		t.Error("overExtras looks up a batter's season best in junior mode")
+	}
+}
