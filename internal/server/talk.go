@@ -666,8 +666,9 @@ func (talkPhoneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Secret string `json:"secret"`
 			Muted  bool   `json:"muted"`
 		}
-		b, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
-		json.Unmarshal(b, &body)
+		if !talkBody(w, r, &body) {
+			return
+		}
 		talkJSON(w, talkTouch(body.ID, body.Secret, path == "/talk/leave", body.Muted), 200)
 	case "/talk/level":
 		// Their own volume, up or down, while on air. Not the clubhouse's mute: that stays
@@ -677,8 +678,9 @@ func (talkPhoneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Secret string `json:"secret"`
 			Step   int    `json:"step"`
 		}
-		b, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
-		json.Unmarshal(b, &body)
+		if !talkBody(w, r, &body) {
+			return
+		}
 		talk.Lock()
 		defer talk.Unlock()
 		p := talkFind(body.ID, body.Secret)
@@ -699,13 +701,30 @@ func (talkPhoneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// talkBody reads a phone's small JSON request into v; false when it has already answered
+// 400. A body that isn't JSON used to be read as an empty one, which for a poll looked
+// like a phone nobody knew: "you've been taken off". The phone's page always sends JSON,
+// so this is something else talking.
+func talkBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	b, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+	if err == nil {
+		err = json.Unmarshal(b, v)
+	}
+	if err != nil {
+		talkJSON(w, M{"ok": false, "error": "That isn't a request from the commentary page."}, 400)
+		return false
+	}
+	return true
+}
+
 func talkJoin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Key  string `json:"k"`
 		Name string `json:"name"`
 	}
-	b, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
-	json.Unmarshal(b, &body)
+	if !talkBody(w, r, &body) {
+		return
+	}
 	if !talkKeyOK(body.Key) {
 		talkJSON(w, M{"ok": false, "off": true, "error": "Commentary isn't on at the moment."}, 403)
 		return

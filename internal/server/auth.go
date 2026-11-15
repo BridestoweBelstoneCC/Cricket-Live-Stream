@@ -16,11 +16,15 @@ import (
 	"time"
 
 	"cricketstream/internal/ini"
+	"cricketstream/internal/passhash"
 )
 
 // ── Auth ─────────────────────────────────────────────────────
 // control_token: signing key for session tokens — never shown to users.
-// club_password:  what operators type in the login form.
+// club_password:  what operators type in the login form, kept as a hash (HashClubPassword;
+//
+//	ClubPassword holds config.ini's value, whichever it is).
+//
 // Auth is disabled when club_password is empty (safe on localhost).
 var (
 	ControlToken     string
@@ -32,20 +36,28 @@ var (
 
 func randHex(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	rand.Read(b) // never fails: since Go 1.24 it stops the program if the OS has no random numbers
 	return hex.EncodeToString(b)
 }
 
-var controlTokenLine = regexp.MustCompile(`^\s*control_token\s*=`)
-
 // persistControlToken writes a freshly generated control_token into config.ini's [Auth]
-// section, editing the line in place (a whole-file rewrite would strip every comment)
-// and atomically.
+// section.
 func persistControlToken(token string) bool {
-	b, err := os.ReadFile(ConfigFile)
-	if err != nil {
+	if err := persistAuthValue("control_token", token); err != nil {
 		say("  ✗  Could not persist generated control_token to config.ini: %v", err)
 		return false
+	}
+	return true
+}
+
+// persistAuthValue sets one key of config.ini's [Auth] section, editing the line in place
+// (a whole-file rewrite would strip every comment) and atomically. The value is written
+// as it is: it must hold no '%' (the INI reader's escape) and no line break.
+func persistAuthValue(key, value string) error {
+	keyLine := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(key) + `\s*=`)
+	b, err := os.ReadFile(ConfigFile)
+	if err != nil {
+		return err
 	}
 	lines := strings.SplitAfter(string(b), "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -58,8 +70,8 @@ func persistControlToken(token string) bool {
 			inAuth = s == "[Auth]"
 			continue
 		}
-		if inAuth && controlTokenLine.MatchString(line) {
-			lines[i] = "control_token = " + token + "\n"
+		if inAuth && keyLine.MatchString(line) {
+			lines[i] = key + " = " + value + "\n"
 			found = true
 			break
 		}
@@ -76,16 +88,32 @@ func persistControlToken(token string) bool {
 			}
 		}
 		if at < 0 {
-			lines = append(lines, "\n[Auth]\n", "control_token = "+token+"\n")
+			lines = append(lines, "\n[Auth]\n", key+" = "+value+"\n")
 		} else {
-			lines = append(lines[:at+1], append([]string{"control_token = " + token + "\n"}, lines[at+1:]...)...)
+			lines = append(lines[:at+1], append([]string{key + " = " + value + "\n"}, lines[at+1:]...)...)
 		}
 	}
-	if err := writeFileAtomic(ConfigFile, []byte(strings.Join(lines, ""))); err != nil {
-		say("  ✗  Could not persist generated control_token to config.ini: %v", err)
-		return false
+	return writeFileAtomic(ConfigFile, []byte(strings.Join(lines, "")))
+}
+
+// HashClubPassword replaces a club password typed into config.ini by hand with its hash
+// (internal/passhash), so the file no longer holds a password someone may use elsewhere.
+// Called at server start, never as a side effect of loading. If the file can't be written
+// the plain one carries on working.
+func HashClubPassword() {
+	if ClubPassword == "" || passhash.IsHash(ClubPassword) {
+		return
 	}
-	return true
+	h, err := passhash.Hash(ClubPassword)
+	if err == nil {
+		err = persistAuthValue("club_password", h)
+	}
+	if err != nil {
+		say("  ⚠  Couldn't store the club password as a hash in config.ini (%v) — it stays as typed", err)
+		return
+	}
+	ClubPassword = h
+	say("  ✓  The club password in config.ini is now stored as a hash, not as typed")
 }
 
 // LoadAuthConfig reads [Auth] and [Network] from config.ini.
@@ -93,7 +121,11 @@ func LoadAuthConfig() {
 	if f, err := ini.Load(ConfigFile); err == nil {
 		ControlToken = strings.TrimSpace(f.Get("Auth", "control_token", ""))
 		ClubPassword = strings.TrimSpace(f.Get("Auth", "club_password", ""))
-		BindHost = strings.TrimSpace(os.Getenv("BBCC_BIND_HOST"))
+		BindHost = strings.TrimSpace(os.Getenv("CRICKETSTREAM_BIND_HOST"))
+		if BindHost == "" {
+			// The Python edition's name for it, still read for now.
+			BindHost = strings.TrimSpace(os.Getenv("BBCC_BIND_HOST"))
+		}
 		if BindHost == "" {
 			BindHost = strings.TrimSpace(f.Get("Network", "bind_host", "127.0.0.1"))
 		}
@@ -208,8 +240,11 @@ func rotateSessionEpoch() {
 	epoch := sessionEpoch
 	sessionEpochMu.Unlock()
 	if day := strings.TrimSpace(os.Getenv(SessionEpochEnv)); day != "" {
-		// Failing to save only matters if the server also crashes before the end of the day.
-		os.WriteFile(sessionEpochFile(), []byte(day+" "+epoch), 0o600)
+		// Failing to save only matters if the server also crashes before the end of the day:
+		// the restart would then bring back the sessions that were just logged out.
+		if err := os.WriteFile(sessionEpochFile(), []byte(day+" "+epoch), 0o600); err != nil {
+			say("  ⚠  Everyone is logged out, but that couldn't be saved (%v) — if the server restarts today, log everyone out again", err)
+		}
 	}
 }
 
@@ -267,10 +302,12 @@ func authLogCopy(n int) []M {
 	return append([]M(nil), authLog[len(authLog)-n:]...)
 }
 
-// writeFileAtomic writes via a temp file + rename, fsynced.
+// writeFileAtomic writes via a temp file + rename, fsynced. Owner-only, like ini.Save: it
+// writes config.ini, which holds the club's keys.
 func writeFileAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	os.Remove(tmp) // a leftover from a crash would keep its own, older permissions
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

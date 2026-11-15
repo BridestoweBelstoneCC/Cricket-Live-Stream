@@ -152,17 +152,23 @@ func TestUpdateRefusesABadDownload(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name, current, download, why string
+		pin                          string // ReleaseSigner
 		noSum, badSum                bool
 	}{
 		{name: "another signer", current: "SIGNED:SignPath Foundation|v=3.0.0", download: "SIGNED:Someone Else|v=3.1.0", why: `not "SignPath Foundation"`},
 		{name: "unsigned replacing signed", current: "SIGNED:SignPath Foundation|v=3.0.0", download: "UNSIGNED|v=3.1.0", why: "isn't validly signed"},
 		{name: "checksum mismatch", current: "UNSIGNED|v=3.0.0", download: "UNSIGNED|v=3.1.0", badSum: true, why: "checksum"},
 		{name: "no signature, no checksum", current: "UNSIGNED|v=3.0.0", download: "UNSIGNED|v=3.1.0", noSum: true, why: "neither a signature nor"},
+		{name: "not the release signer, this copy unsigned", pin: "SignPath Foundation", current: "UNSIGNED|v=3.0.0", download: "SIGNED:Someone Else|v=3.1.0", why: "like every real release"},
+		{name: "not the release signer, this copy signed by them too", pin: "SignPath Foundation", current: "SIGNED:Someone Else|v=3.0.0", download: "SIGNED:Someone Else|v=3.1.0", why: "like every real release"},
+		{name: "unsigned, this copy unsigned, checksum right", pin: "SignPath Foundation", current: "UNSIGNED|v=3.0.0", download: "UNSIGNED|v=3.1.0", why: "real releases are signed by SignPath Foundation"},
 		{name: "wrong version inside", current: "SIGNED:SignPath Foundation|v=3.0.0", download: "SIGNED:SignPath Foundation|v=2.9.0", why: "says it's version"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			ta := newTestApp(t)
 			stubChecks(t)
+			ReleaseSigner = c.pin
+			t.Cleanup(func() { ReleaseSigner = "" })
 			f := newFakeRelease(t, "v3.1.0", c.download)
 			if c.noSum {
 				f.publishedSum = ""

@@ -9,11 +9,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"cricketstream/internal/assets"
-	"cricketstream/internal/ini"
+	"cricketstream/internal/passhash"
 	"cricketstream/internal/port"
 )
 
@@ -22,7 +21,7 @@ import (
 const OutputFilename = "nvplay-scoreboard1.xml"
 
 // ConfigureServer points the RUNNING server's PCS folder at the sim folder (logging in
-// with config.ini's club_password if auth is on). Best-effort; prints what to restore.
+// as this laptop if auth is on). Best-effort; prints what to restore.
 func ConfigureServer(folder string, port int) bool {
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -46,10 +45,9 @@ func ConfigureServer(folder string, port int) bool {
 			"folder to the path above manually in the control panel\n", err)
 		return false
 	}
-	cfg, _ := ini.Load(assets.Join("config.ini"))
 	token := ""
-	if pw := strings.TrimSpace(cfg.Get("Auth", "club_password", "")); pw != "" {
-		d, err := post("/login", map[string]string{"password": pw}, "")
+	if login := passhash.LocalLogin(assets.Join("config.ini")); login != nil {
+		d, err := post("/login", login, "")
 		if err != nil {
 			return fail(err)
 		}

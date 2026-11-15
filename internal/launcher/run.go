@@ -21,6 +21,7 @@ import (
 	"cricketstream/internal/console"
 	"cricketstream/internal/ini"
 	"cricketstream/internal/obs"
+	"cricketstream/internal/passhash"
 	"cricketstream/internal/proc"
 	"cricketstream/internal/server"
 )
@@ -377,7 +378,7 @@ func Run(o Options) int {
 
 	token := ""
 	if WaitForServer(20 * time.Second) {
-		token = SessionToken(cfg)
+		token = SessionToken(cfgPath)
 		PullSeasonStats(apiKey, token)
 		scoring := ""
 		switch {
@@ -566,7 +567,7 @@ func startServer(bind string, manual bool) (Proc, error) {
 	cmd := exec.Command(exe, "server")
 	// Its stdin is how it's told to stop; a fatal problem in it must exit (and be
 	// restarted), not wait for an Enter nobody can type.
-	cmd.Env = append(os.Environ(), "BBCC_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir(), StopOnEOFEnv+"=1",
+	cmd.Env = append(os.Environ(), "CRICKETSTREAM_BIND_HOST="+bind, "CRICKETSTREAM_HOME="+assets.Dir(), StopOnEOFEnv+"=1",
 		"CRICKETSTREAM_NO_PAUSE=1", server.SessionEpochEnv+"="+sessionEpoch)
 	if manual {
 		// For this server only (a restart keeps it; tomorrow's match day asks again).
@@ -796,7 +797,16 @@ var startPractice = func(token string) error {
 }
 
 func getJSON(path, token string, timeout time.Duration) (M, error) {
-	req, _ := http.NewRequest("GET", base()+path, nil)
+	return doJSON("GET", path, token, timeout)
+}
+
+// postJSON is a POST with no body (the report: it spends AI credit, so it isn't a GET).
+func postJSON(path, token string, timeout time.Duration) (M, error) {
+	return doJSON("POST", path, token, timeout)
+}
+
+func doJSON(method, path, token string, timeout time.Duration) (M, error) {
+	req, _ := http.NewRequest(method, base()+path, nil)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -825,14 +835,16 @@ func WaitForServer(timeout time.Duration) bool {
 	return false
 }
 
-// SessionToken logs in with the club password from config.ini, so the launcher's own
-// calls to token-gated endpoints don't 401 against its own server. "" without a password.
-func SessionToken(cfg *ini.File) string {
-	pw := strings.TrimSpace(cfg.Get("Auth", "club_password", ""))
-	if pw == "" {
+// SessionToken logs in as this laptop (passhash.LocalLogin: config.ini holds the club
+// password only as a hash), so the launcher's own calls to token-gated endpoints don't 401
+// against its own server. The file is read now, not at launch: the server may have just
+// written its control_token or hashed the password. "" without a password.
+func SessionToken(cfgPath string) string {
+	login := passhash.LocalLogin(cfgPath)
+	if login == nil {
 		return ""
 	}
-	b, _ := json.Marshal(M{"password": pw})
+	b, _ := json.Marshal(login)
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Post(base()+"/login", "application/json", bytes.NewReader(b))
 	if err != nil {
 		return ""
@@ -1034,7 +1046,7 @@ func OfferMatchReport(token string) {
 		return
 	}
 	fmt.Println("  Generating report (needs your Anthropic API key)...")
-	d, err := getJSON("/report/generate", token, 60*time.Second)
+	d, err := postJSON("/report/generate", token, 60*time.Second)
 	if err != nil {
 		fmt.Printf("  Report generation failed: %v\n", err)
 		fmt.Println("  Tip: you can still generate it from the control panel (After the match tab) while the server is running.")

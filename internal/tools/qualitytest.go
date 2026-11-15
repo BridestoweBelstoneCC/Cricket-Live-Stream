@@ -23,10 +23,11 @@ package tools
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
+	"cricketstream/internal/assets"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/passhash"
 	"cricketstream/internal/pyval"
 )
 
@@ -56,11 +57,11 @@ func streamStatus(c *obsws.Conn) map[string]any {
 }
 
 func loginToken() string {
-	pw := strings.TrimSpace(config().Get("Auth", "club_password", ""))
-	if pw == "" {
+	login := passhash.LocalLogin(assets.Join("config.ini"))
+	if login == nil {
 		return ""
 	}
-	d := postJSON("/login", map[string]any{"password": pw}, "", 10*time.Second)
+	d := postJSON("/login", login, "", 10*time.Second)
 	if !pyval.Truthy(d["ok"]) {
 		return ""
 	}

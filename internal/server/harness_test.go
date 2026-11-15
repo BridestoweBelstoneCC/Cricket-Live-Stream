@@ -26,10 +26,12 @@ import (
 	"cricketstream/internal/browser"
 	"cricketstream/internal/obs"
 	"cricketstream/internal/obsws"
+	"cricketstream/internal/passhash"
 )
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+	passhash.Iterations = 1000 // a real hash takes a fair part of a second
 	if !testing.Verbose() {
 		sayOut = io.Discard
 	}

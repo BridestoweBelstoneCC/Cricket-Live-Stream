@@ -191,6 +191,16 @@ func TestTalkApprovalThenAudioReachesOBSPage(t *testing.T) {
 	if _, p := phonePost(t, base, "/talk/poll", M{"id": id, "secret": secret}); p["state"] != "on_air" {
 		t.Fatalf("poll: %v", p)
 	}
+	// A request that isn't the page's JSON is refused, not read as an empty one (which
+	// said "you've been taken off"), and takes nobody off air.
+	for _, path := range []string{"/talk/poll", "/talk/level", "/talk/join"} {
+		if st, _ := phonePost(t, base, path, "not an object"); st != 400 {
+			t.Errorf("%s with a bad body: %d, want 400", path, st)
+		}
+	}
+	if _, p := phonePost(t, base, "/talk/poll", M{"id": id, "secret": secret}); p["state"] != "on_air" {
+		t.Fatalf("a bad request took the phone off air: %v", p)
+	}
 	if _, a := ts.getJSON("/talk/onair"); a["on_air"] != true || a["name"] != "Sam Bell" {
 		t.Fatalf("/talk/onair on air: %v", a)
 	}

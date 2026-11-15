@@ -717,8 +717,8 @@ func panelLoginScript(panelURL, token string) string {
 	}
 	o, _ := json.Marshal(origin)
 	t, _ := json.Marshal(token)
-	return `(function(){try{if(location.origin===` + string(o) + `&&!sessionStorage.getItem('bbcc_token'))` +
-		`sessionStorage.setItem('bbcc_token',` + string(t) + `);}catch(e){}})();`
+	return `(function(){try{if(location.origin===` + string(o) + `&&!sessionStorage.getItem('cricketstream_token'))` +
+		`sessionStorage.setItem('cricketstream_token',` + string(t) + `);}catch(e){}})();`
 }
 
 // ── The pre-match check, from the home screen ──

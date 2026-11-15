@@ -633,6 +633,9 @@ flowchart LR
 
 ## 10. Interface catalogue
 
+The access column is enforced from one table, `internal/server/routes.go`, asked before
+the routing switches and denying by default; `routes_test.go` holds the list of open routes.
+
 | Group | Endpoints | Access |
 |---|---|---|
 | Pages | `/overlay`, `/control`, `/scoring` | open (the panel asks for a login when a password is set) |
@@ -643,7 +646,7 @@ flowchart LR
 | Match day | `/checklist`, `/checklist/action`, `/match/fetch`, `/obs/add_camera`, `/stream/quality`, `/stream/dynamic`, `/youtube/update`, `/camera/spotter`, `/precheck`, `/precheck/last` | token |
 | Manual scoring | `/scoring/setup`, `/scoring/{ball,undo,edit,bowler,batter,strike,innings,reset}`, `/scoring/state`, `/scoring/balls`, `/scoring/scorecard` | token for writes |
 | Stats and context | `/player/stats`, `/season/top`, `/league/table`, `/weather`, `/headshot/*`, `/logo/*`, `/sponsor/*` | open |
-| After the match | `/report/generate`, `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/data/export`, `/data/reconcile` | token |
+| After the match | `/report/generate` (POST), `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/data/export`, `/data/reconcile` | token |
 | Shareable outputs | `/social/image/latest`, `/social/clips/file/*`, `/match/page/latest`, `/sponsor/airtime` GET | open |
 | Diagnostics | `/health`, `/stream/monitor`, `/data/status`, `/remote/info` | open |
 | Diagnostics with paths | `/status`, `/pcs/debug`, `/logos/debug` | this machine's own browser, or token |

@@ -112,7 +112,7 @@ func newApp(t *testing.T) *app {
 	for _, kv := range os.Environ() {
 		k := strings.ToUpper(strings.SplitN(kv, "=", 2)[0])
 		if strings.HasPrefix(k, "CRICKETSTREAM_") || k == "HOME" || k == "USERPROFILE" || k == "APPDATA" ||
-			k == "LOCALAPPDATA" || k == "XDG_CONFIG_HOME" || k == "BBCC_BIND_HOST" {
+			k == "LOCALAPPDATA" || k == "XDG_CONFIG_HOME" || k == "BBCC_BIND_HOST" || k == "CRICKETSTREAM_BIND_HOST" {
 			continue
 		}
 		keep = append(keep, kv)

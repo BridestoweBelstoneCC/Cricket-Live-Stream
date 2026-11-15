@@ -122,7 +122,7 @@ func TestReportEndpointRefusesWithoutCallingModel(t *testing.T) {
 	s := newTestServer(t, "")
 	setState(t, M{"anthropic_api_key": "sk-test"})
 	calls := noModel(t)
-	_, d := s.getJSON("/report/generate")
+	_, d := s.postJSON("/report/generate", nil)
 	mustEq(t, d["ok"], any(false))
 	mustEq(t, d["error"], any(NoMatchDataError))
 	mustEq(t, *calls, 0)
@@ -131,9 +131,23 @@ func TestReportEndpointRefusesWithoutCallingModel(t *testing.T) {
 func TestReportAndSocialPostHaveSeparateCooldowns(t *testing.T) {
 	s := newTestServer(t, "")
 	noModel(t)
-	mustEq(t, s.get("/report/generate").status, 200)
-	mustEq(t, s.get("/report/generate?type=social").status, 200)
-	mustEq(t, s.get("/report/generate").status, 429)
+	mustEq(t, s.post("/report/generate", nil).status, 200)
+	mustEq(t, s.post("/report/generate?type=social", nil).status, 200)
+	mustEq(t, s.post("/report/generate", nil).status, 429)
+	// "type=social" anywhere else in the address isn't the social post.
+	mustEq(t, s.post("/report/generate?x=type=social", nil).status, 429)
+}
+
+// The report spends AI credit: a GET (a link, a prefetch, a reload) never makes one.
+func TestReportIsNotAGet(t *testing.T) {
+	s := newTestServer(t, "")
+	setState(t, M{"anthropic_api_key": "sk-test"})
+	calls := noModel(t)
+	r := s.get("/report/generate")
+	mustEq(t, r.status, 405)
+	mustEq(t, r.header.Get("Allow"), "POST")
+	mustEq(t, *calls, 0)
+	mustEq(t, s.post("/report/generate", nil).status, 200) // and it didn't start the cooldown
 }
 
 func TestReadingCachedUploadTestDoesNotStartCooldown(t *testing.T) {

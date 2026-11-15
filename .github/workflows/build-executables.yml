@@ -89,12 +89,17 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
+          # The name on the signing certificate, once releases are signed (the repository
+          # variable RELEASE_SIGNER): the updater then accepts only downloads signed by it.
+          RELEASE_SIGNER: ${{ vars.RELEASE_SIGNER }}
         # On Windows it's a GUI program: CricketStream opens its own window, with no console
         # window behind it (run from a terminal, it borrows the terminal's for subcommands).
         run: |
           gui=""
           [[ "$GOOS" != windows ]] || gui="-H windowsgui"
-          go build -trimpath -ldflags "-s -w $gui -X main.version=${{ steps.v.outputs.version }}" -o "dist/${{ matrix.out }}" ./cmd/cricketstream
+          signer=""
+          [[ -z "$RELEASE_SIGNER" ]] || signer="-X 'cricketstream/internal/app.ReleaseSigner=$RELEASE_SIGNER'"
+          go build -trimpath -ldflags "-s -w $gui $signer -X main.version=${{ steps.v.outputs.version }}" -o "dist/${{ matrix.out }}" ./cmd/cricketstream
 
       - name: Check the Windows build is a GUI program
         if: matrix.goos == 'windows'
@@ -196,7 +201,9 @@ jobs:
   # Off until the project is set up there: add the repository VARIABLES
   # SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG and
   # the SECRET SIGNPATH_API_TOKEN (Settings → Secrets and variables → Actions). Without
-  # them the release goes out unsigned and says so. Every job before this one runs on
+  # them the release goes out unsigned and says so. Once it's signing, also add the VARIABLE
+  # RELEASE_SIGNER with the name on the certificate (what the updater prints as "signed
+  # by ..."), so every copy built from then on accepts only updates signed by it. Every job before this one runs on
   # GitHub-hosted runners, which SignPath checks for open-source projects.
   sign-windows:
     needs: build

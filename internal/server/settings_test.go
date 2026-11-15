@@ -7,9 +7,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"cricketstream/internal/browser"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/passhash"
 )
 
 const settingsConfig = "[App]\nrole = streaming\n\n[Club]\nname = Old Town CC\nabbreviation = OLD\nhome_colour = #111111\n" +
@@ -121,7 +123,17 @@ func TestSettingsPasswordChangeIsLive(t *testing.T) {
 	h["Origin"] = "http://" + s.addr
 	st, _ := s.postJSON("/settings/save", settingsAnswers(M{"club_password": "new-pw"}), h)
 	mustEq(t, st, 200)
-	mustEq(t, ClubPassword, "new-pw")
+	if !passhash.IsHash(ClubPassword) || !passhash.Verify(ClubPassword, "new-pw") {
+		t.Errorf("the running password is %q, want a hash of the new one", ClubPassword)
+	}
+	if f, _ := ini.Load(ConfigFile); f.Get("Auth", "club_password", "") != ClubPassword {
+		t.Error("config.ini and the running server disagree about the password")
+	}
+	loginSleep = func(time.Duration) {}
+	t.Cleanup(func() { loginSleep = time.Sleep })
+	if st, d := s.postJSON("/login", M{"password": "old-pw"}); st != 401 || d["ok"] == true {
+		t.Errorf("old password still accepted: %d %v", st, d)
+	}
 	if st, d := s.postJSON("/login", M{"password": "new-pw"}); st != 200 || d["ok"] != true {
 		t.Errorf("new password refused: %d %v", st, d)
 	}

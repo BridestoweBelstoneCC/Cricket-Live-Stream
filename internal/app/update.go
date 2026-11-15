@@ -34,6 +34,14 @@ import (
 // the running file aside (Windows allows that, not overwriting it) and puts it back if
 // anything after fails.
 
+// ReleaseSigner is the name on the certificate real releases are signed with, set when a
+// signed release is built (-ldflags "-X cricketstream/internal/app.ReleaseSigner=...",
+// from the repository variable RELEASE_SIGNER). With it, an update must be validly signed
+// by exactly that name, whatever this copy is: comparing with the running copy alone
+// trusts whoever signed it, and an unsigned copy has nobody to compare with. "" (a dev
+// build, and every release until signing is set up) leaves the comparison.
+var ReleaseSigner = ""
+
 // Swappable for tests.
 var (
 	releasesAPI    = "https://api.github.com/repos/BridestoweBelstoneCC/Cricket-Live-Stream/releases/latest"
@@ -221,6 +229,10 @@ func (a *App) performUpdate(asset releaseAsset, latest string) error {
 	curSigner, curErr := fileSignatureF(exe)
 	newSigner, newErr := fileSignatureF(dl)
 	switch {
+	case ReleaseSigner != "" && newErr != nil:
+		return fmt.Errorf("the download isn't validly signed (%v) — real releases are signed by %s", newErr, ReleaseSigner)
+	case ReleaseSigner != "" && newSigner != ReleaseSigner:
+		return fmt.Errorf("the download is signed by %q, not %q like every real release", newSigner, ReleaseSigner)
 	case curErr == nil && newErr != nil:
 		return fmt.Errorf("the download isn't validly signed (%v) — this copy is, so it won't be replaced by it", newErr)
 	case curErr == nil && newSigner != curSigner:
