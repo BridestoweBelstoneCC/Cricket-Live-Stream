@@ -254,6 +254,39 @@ console.log("ok");
 	}
 }
 
+// Dragging scrolls the page, for a Chromium that gets the touch screen as a mouse: a
+// wobble is still a tap, a drag is never also a tap, and only a quick release flicks.
+func TestScreenPageDragScrolls(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	test := grabFunc(t, pageScript(t), "dragScroller") + `
+function want(got, w, what) { if (got !== w) throw new Error(what + ": " + got + ", want " + w); }
+var el = {scrollTop: 500}, ds = dragScroller(el);
+// A tap that wobbles a few pixels: no scroll, and its click goes through.
+ds.down(300, 0); ds.move(305, 50); want(ds.up(80), 0, "wobble speed");
+want(el.scrollTop, 500, "wobble"); want(ds.eatClick(81), false, "a tap's click");
+// Drag up 200px: the list moves up with the finger; the click after it is swallowed, once.
+ds.down(400, 1000); ds.move(300, 1100); ds.move(200, 1200);
+want(el.scrollTop, 700, "dragged");
+want(ds.up(1210) < 0, true, "a quick release flicks on");
+want(ds.eatClick(1215), true, "the drag's click"); want(ds.eatClick(1300), false, "only once");
+// A drag held still before letting go doesn't flick; a click long after isn't swallowed.
+ds.down(200, 2000); ds.move(260, 2100); want(el.scrollTop, 640, "dragged down");
+want(ds.up(2500), 0, "held still"); want(ds.eatClick(3000), false, "a later tap");
+// Moves with no button down do nothing.
+ds.move(0, 4000); want(el.scrollTop, 640, "hover");
+console.log("ok");
+`
+	f := filepath.Join(t.TempDir(), "drag.js")
+	os.WriteFile(f, []byte(test), 0o644)
+	out, err := exec.Command(bin, f).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "ok" {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
 // The last pre-match check needs the unlock and reading it renews it: only opening the tab
 // reads it. Polled, a public screen left on Health would never lock itself.
 func TestScreenPageHealthDoesNotKeepItUnlocked(t *testing.T) {
