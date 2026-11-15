@@ -265,3 +265,82 @@ func TestScreenPageHealthDoesNotKeepItUnlocked(t *testing.T) {
 		t.Fatal("the last pre-match check must be read only with withCheck")
 	}
 }
+
+// The Stats tab and the club's own tabs show whatever the laptop's doing, on both kinds of
+// screen; but never before the screen's paired.
+func TestScreenPageStatsAndClubTabsAlwaysShow(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	test := `var S, pinStep = false, tab;
+function laptop() { return (S && S.laptop) || {}; }
+` + grabFunc(t, pageScript(t), "viewName") + grabFunc(t, pageScript(t), "opTab") + `
+function want(s, tb, v) { S = s; tab = tb; var got = viewName(); if (got !== v) throw new Error(tb + " " + JSON.stringify(s) + ": " + got + ", want " + v); }
+['stats', 'x:/extra/darts.html'].forEach(function (tb) {
+  var v = tb === 'stats' ? 'stats' : 'extra';
+  want({paired: true, reachable: false, laptop: null}, tb, v);
+  want({paired: true, reachable: true, laptop: {phase: 'home'}}, tb, v);
+  want({paired: true, reachable: true, laptop: {phase: 'running', server_ready: true}}, tb, v);
+  want({paired: true, view_only: true, reachable: false, laptop: null}, tb, v);
+  want({paired: false}, tb, 'pair');
+});
+if (opTab('stats') || opTab('score') || opTab('x:/extra/darts.html') || !opTab('get') || !opTab('end')) throw new Error("opTab");
+console.log("ok");
+`
+	f := filepath.Join(t.TempDir(), "tabs.js")
+	os.WriteFile(f, []byte(test), 0o644)
+	out, err := exec.Command(bin, f).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "ok" {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// Adding up a player's figures for the chosen club and side, and the ranking.
+func TestScreenPageStatsRows(t *testing.T) {
+	bin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	script := pageScript(t)
+	var funcs []string
+	for _, name := range []string{"statsRows", "batAvg", "bowlAvg", "oversOf", "hsText", "bestText"} {
+		funcs = append(funcs, grabFunc(t, script, name))
+	}
+	test := strings.Join(funcs, "\n") + `
+var F = ["apps","inn","no","runs","hs","hs_no","fifties","hundreds","balls","b_runs","wkts","fivefors","best_w","best_r","ct","st","ro"];
+function v(o) { return F.map(function (k) { return o[k] || 0; }); }
+var d = {fields: F, players: [
+  {name: "Karl Jones", b: {
+    "29434:m": v({apps: 10, inn: 9, no: 1, runs: 300, hs: 80, hs_no: 1, balls: 300, b_runs: 200, wkts: 10, best_w: 3, best_r: 25, ct: 4}),
+    "9593:m": v({apps: 20, inn: 20, no: 0, runs: 500, hs: 101, balls: 120, b_runs: 90, wkts: 5, best_w: 3, best_r: 20, ct: 1, st: 1})}},
+  {name: "Amy Young", b: {"29434:j": v({apps: 5, inn: 5, runs: 31, hs: 20, best_w: -1}), "29434:g": v({apps: 3, inn: 3, runs: 50, hs: 50, best_w: -1})}},
+  {name: "Sam Lee", b: {"29434:l": v({apps: 2, inn: 1, runs: 4, hs: 4, best_w: -1})}}
+]};
+function eq(a, b, what) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(what + ": " + JSON.stringify(a) + " want " + JSON.stringify(b)); }
+var all = statsRows(d, 'all', 'all', 'apps');
+eq(all.map(function (r) { return r.name; }), ["Karl Jones", "Amy Young", "Sam Lee"], "most games first");
+var k = all[0].t;
+eq([k.apps, k.runs, k.inn, k.no, hsText(k), batAvg(k), bestText(k), oversOf(k.balls), bowlAvg(k), k.ct + k.st], [30, 800, 29, 1, "101", "28.57", "3-20", "70", "19.33", 6], "Karl, every club");
+// One club: only its figures.
+var now = statsRows(d, '29434', 'all', 'apps');
+eq(now.map(function (r) { return r.name + " " + r.t.apps; }), ["Karl Jones 10", "Amy Young 8", "Sam Lee 2"], "the merged club");
+eq(hsText(now[0].t) + " " + bestText(now[0].t), "80* 3-25", "a not out high score");
+// Juniors include girls' sides; ladies include them too.
+eq(statsRows(d, 'all', 'j', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 8"], "juniors");
+eq(statsRows(d, 'all', 'l', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 3", "Sam Lee 2"], "ladies");
+eq(statsRows(d, 'all', 'm', 'apps').map(function (r) { return r.name; }), ["Karl Jones"], "men");
+// Most runs; and no innings, no wickets read as dashes.
+eq(statsRows(d, 'all', 'all', 'runs')[1].name, "Amy Young", "most runs");
+var sam = statsRows(d, 'all', 'l', 'apps')[1].t;
+eq([batAvg(sam), bestText(sam), bowlAvg(sam)], ["4.00", "–", "–"], "dashes");
+eq(statsRows(d, '1059', 'all', 'apps'), [], "a club nobody's in");
+console.log("ok");
+`
+	f := filepath.Join(t.TempDir(), "stats.js")
+	os.WriteFile(f, []byte(test), 0o644)
+	out, err := exec.Command(bin, f).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "ok" {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

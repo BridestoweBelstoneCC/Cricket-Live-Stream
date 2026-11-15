@@ -72,7 +72,8 @@ type screenConfig struct {
 	Colour  string
 	PinSalt string
 	PinHash string
-	WakeFor int // seconds to wait for a woken laptop before saying so
+	WakeFor int    // seconds to wait for a woken laptop before saying so
+	Extra   string // [Screen] extra_tabs: the club's own pages as tabs (stats.go)
 }
 
 func (c screenConfig) paired() bool { return c.Host != "" && len(NormaliseKey(c.Key)) == KeyLen }
@@ -98,6 +99,7 @@ func loadScreenConfig() screenConfig {
 	c.PinSalt = f.Get("Screen", "pin_salt", "")
 	c.PinHash = f.Get("Screen", "pin_hash", "")
 	c.WakeFor = f.GetInt("Screen", "wake_wait", 240)
+	c.Extra = f.Get("Screen", "extra_tabs", "")
 	return c
 }
 
@@ -114,6 +116,9 @@ func saveScreenConfig(c screenConfig) error {
 	f.Set("Screen", "pin_salt", c.PinSalt)
 	f.Set("Screen", "pin_hash", c.PinHash)
 	f.Set("Screen", "wake_wait", strconv.Itoa(c.WakeFor))
+	if strings.TrimSpace(c.Extra) != "" {
+		f.Set("Screen", "extra_tabs", c.Extra)
+	}
 	// Set by hand and read at start-up (update.go), so not in screenConfig: rewriting the file
 	// on a new PIN or club name must not switch the updates back on.
 	if old, err := ini.Load(ScreenFile()); err == nil {
@@ -163,6 +168,8 @@ type Screen struct {
 	askUntil    time.Time
 	askErr      string
 	askRunning  bool
+	statsBusy   bool      // asking the laptop for the club stats (stats.go)
+	statsTried  time.Time // when it last did
 	done        chan struct{}
 }
 
@@ -322,6 +329,10 @@ func (s *Screen) pollOnce() {
 			s.badgeAt = time.Now()
 			go s.cacheClub()
 		}
+		if ready, _ := st["server_ready"].(bool); ready && s.statsDueLocked() {
+			s.statsBusy = true
+			s.background(s.fetchStats)
+		}
 	}
 }
 
@@ -391,7 +402,7 @@ func sameOrigin(r *http.Request) bool {
 // The page's CSP: its own script; the only thing from outside is YouTube's player, for
 // the full-screen stream.
 const screenCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
-	"img-src 'self' data: blob:; connect-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
+	"img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' https://www.youtube-nocookie.com; frame-ancestors 'none'"
 
 func (s *Screen) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.ownHost(r) {
@@ -420,6 +431,9 @@ func (s *Screen) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write(b)
 			return
 		}
+	case r.Method == "GET" && strings.HasPrefix(p, "/extra/"):
+		s.serveExtra(w, r) // the club's own page as a tab (stats.go)
+		return
 	case r.Method == "GET" && (p == "/favicon.ico" || p == "/mark.png"):
 		if b, err := assets.Read("brand/mark-transparent.png"); err == nil {
 			w.Header().Set("Content-Type", "image/png")
@@ -532,6 +546,8 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 	switch r.Method + " " + p {
 	case "GET /status":
 		writeJSON(w, s.status(), 200)
+	case "GET /stats":
+		s.serveStats(w) // public, and there with the laptop off: a copy kept on the screen
 	case "GET /badge":
 		b, err := os.ReadFile(badgeFile())
 		if err != nil {
@@ -705,7 +721,7 @@ func (s *Screen) status() map[string]any {
 	out := map[string]any{"ok": true, "paired": c.paired(), "club": c.Club, "laptop_name": c.Name,
 		"laptop_host": c.Host, "colour": c.Colour, "has_badge": badgeErr == nil, "reachable": s.reachable,
 		"error": s.lastErr, "laptop": s.laptop, "pin_set": c.PinHash != "", "can_wake": len(c.MACs) > 0 && !c.View,
-		"view_only": c.View,
+		"view_only": c.View, "extra_tabs": parseExtraTabs(c.Extra),
 		"wake_wait": c.WakeFor, "version": s.o.Version}
 	unlocked := c.PinHash == "" || time.Now().Before(s.unlockedTil)
 	out["unlocked"] = unlocked

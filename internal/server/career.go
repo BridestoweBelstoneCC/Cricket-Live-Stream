@@ -55,6 +55,13 @@ type careerAcc struct {
 	wkts, fivefors               int
 	ct, st, ro                   int // catches, stumpings, run outs in the field
 	apps                         int
+	// For the club stats table (clubstats.go): not outs, the high score, and the bowling's
+	// balls, runs and best figures.
+	no, hs       int
+	hsNotOut     bool
+	balls, bRuns int
+	bestW, bestR int
+	hasBest      bool
 }
 
 func (a *careerAcc) record() M {
@@ -137,6 +144,8 @@ func buildCareer(cfg M) (out M) {
 	}
 	matches, since, failed := 0, 0, 0
 	var sheets, lists [][]string
+	// The same figures by club and kind of side, for the club stats table (clubstats.go).
+	tally := newStatsTally(site)
 	for i, club := range careerClubs(cfg, site) {
 		// A former club has nothing since it stopped, so its gap only counts once its
 		// matches have started. Ours starts at today: two empty seasons is its records' start.
@@ -177,6 +186,7 @@ func buildCareer(cfg M) (out M) {
 						lists = append(lists, list)
 					}
 					sheets = append(sheets, sheet)
+					tally.match(md, m, club)
 				}
 			}
 			matches += played
@@ -194,6 +204,7 @@ func buildCareer(cfg M) (out M) {
 	}
 	careerMerge(accs, sheets, lists, careerSamePlayers(cfg))
 	careerCountApps(accs, sheets)
+	out["stats"] = tally.table(accs, sheets)
 	recs := make([]M, 0, len(order))
 	recOf := map[*careerAcc]M{}
 	for _, k := range order {
@@ -260,6 +271,13 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 				a := acc(name)
 				a.inn++
 				a.runs += r
+				notOut := careerNotOut(gs(b, "how_out", ""))
+				if notOut {
+					a.no++
+				}
+				if r > a.hs || (r == a.hs && notOut) {
+					a.hs, a.hsNotOut = r, notOut
+				}
 				if r >= 100 {
 					a.hundreds++
 				} else if r >= 50 {
@@ -285,6 +303,10 @@ func careerMatch(md, fixture M, site string, acc func(string) *careerAcc) bool {
 			if w >= 5 {
 				a.fivefors++
 			}
+			runs, _ := pcParseInt(b["runs"])
+			a.balls += oversToBalls(b["overs"])
+			a.bRuns += runs
+			a.best(w, runs)
 			batted = true
 		}
 		for _, rb := range gl(inn, "bat") {
@@ -470,6 +492,29 @@ func (a *careerAcc) add(from *careerAcc) {
 	a.ct += from.ct
 	a.st += from.st
 	a.ro += from.ro
+	a.no += from.no
+	a.balls += from.balls
+	a.bRuns += from.bRuns
+	if from.hs > a.hs || (from.hs == a.hs && from.hsNotOut) {
+		a.hs, a.hsNotOut = from.hs, from.hsNotOut
+	}
+	if from.hasBest {
+		a.best(from.bestW, from.bestR)
+	}
+}
+
+// best keeps a bowler's best figures: most wickets, then fewest runs.
+func (a *careerAcc) best(w, r int) {
+	if !a.hasBest || w > a.bestW || (w == a.bestW && r < a.bestR) {
+		a.bestW, a.bestR, a.hasBest = w, r, true
+	}
+}
+
+// careerNotOut: PlayCricket's how_out for an innings that didn't end in a dismissal.
+func careerNotOut(how string) bool {
+	h := strings.ToLower(trim(how))
+	return h == "not out" || h == "no" || h == "rno" || h == "retired not out" || h == "retired hurt" || h == "rhno" ||
+		(strings.HasPrefix(h, "retired") && !strings.Contains(h, "retired out"))
 }
 
 // careerJoinNamed applies [Club] same_players. The first name of each group is the one the
@@ -607,6 +652,20 @@ func careerInitSur(name string) (initSur, first string) {
 // Jones" isn't Tim Jones). A name that can't be placed adds nothing: reading low beats
 // crediting the wrong player.
 func careerCountApps(accs map[string]*careerAcc, sheets [][]string) {
+	find := careerAppFinder(accs, sheets)
+	for _, sheet := range sheets {
+		seen := map[*careerAcc]bool{}
+		for _, name := range sheet {
+			if a := find(trim(name)); a != nil && !seen[a] {
+				seen[a] = true
+				a.apps++
+			}
+		}
+	}
+}
+
+// careerAppFinder is the record a name on a team sheet counts for, or nil (careerCountApps).
+func careerAppFinder(accs map[string]*careerAcc, sheets [][]string) func(string) *careerAcc {
 	byInit := map[string][]*careerAcc{}
 	counted := map[*careerAcc]bool{}
 	for _, a := range accs {
@@ -632,15 +691,7 @@ func careerCountApps(accs map[string]*careerAcc, sheets [][]string) {
 		}
 		return c[0]
 	}
-	for _, sheet := range sheets {
-		seen := map[*careerAcc]bool{}
-		for _, name := range sheet {
-			if a := find(trim(name)); a != nil && !seen[a] {
-				seen[a] = true
-				a.apps++
-			}
-		}
-	}
+	return find
 }
 
 // cardAppearances is what the player card shows, or 0 for no figure at all. Today's match

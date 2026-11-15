@@ -399,7 +399,8 @@ func TestScreenPageScriptOnlyUsesItsOwnAPI(t *testing.T) {
 	if strings.Contains(screenHTML, "fetch('http") || strings.Contains(screenHTML, "innerHTML") {
 		t.Fatal("the page fetches elsewhere or builds HTML from strings")
 	}
-	if !strings.Contains(screenCSP, "frame-src https://www.youtube-nocookie.com;") {
-		t.Fatal("CSP should allow only YouTube's player as a frame")
+	// Frames: YouTube's player, and the screen's own extra tabs (served by the screen itself).
+	if !strings.Contains(screenCSP, "frame-src 'self' https://www.youtube-nocookie.com;") {
+		t.Fatal("CSP should allow only the screen's own pages and YouTube's player as frames")
 	}
 }

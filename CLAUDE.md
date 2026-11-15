@@ -515,6 +515,16 @@ problem + what to do + pause) or print and `console.Pause()`.
     piwiz. `cricketstream-autologin` waits out both (marking itself done only for a real
     account), and `clubhouse-start.sh` never opens over the wizard. Checked by building
     the image and chrooting into it (arm64 emulated), never booted on a Pi by CI.
+  - **The Stats tab** (`clubstats.go` on the server, `stats.go` on the Pi): the club record's
+    build (`career.go`) also tallies each player by club and kind of side (`sideKind`: men,
+    ladies, junior, girls), and `/club/stats` serves it; full names, juniors too (the club's
+    choice). The Pi keeps `club_stats.json` and asks again only when it's a week old: never
+    let the Pi ask PlayCricket itself (the API key would be on a public screen). `/club/stats`
+    is on `proxyGET` and `viewGET`; the Pi's `/api/stats` is public on both kinds of screen.
+  - **The club's own tabs** (`[Screen] extra_tabs` on the Pi): the Pi serves ONLY files named
+    there, plain `.html` names beside the app, at `/extra/<file>`, in an iframe (the page's
+    CSP allows `frame-src 'self'` for it). That's how a club keeps something of its own (Bridestowe's
+    darts scorer) off GitHub. `saveScreenConfig` must keep `extra_tabs`.
   - The Pi page must be served by the Pi (the laptop is off when it's first touched); it
     talks only to its own `/api/` with a page key, never to the laptop directly. Its
     corner picture is `/preview.jpg` (cached 1.5s server-side, only fetched while shown)
@@ -659,6 +669,9 @@ problem + what to do + pause) or print and `console.Pause()`.
   but can lag the wicket count and still show the last innings' final wicket: `live_fielding`
   files each under the batter it dismissed, never re-files a batter from another innings, and
   counts only the innings being fielded. NV Play's real spelling of those fields is unseen.
+- `http://localhost:5000/club/stats` — the club stats table behind the clubhouse screen's
+  Stats tab (`clubstats.go`): every player, per club and kind of side (`29434:m`, `9593:j`),
+  figures in the order of `fields`. `{"ready": false}` while the club record builds.
 - `http://localhost:5000/h2h` — head to head with today's opposition (`h2h.go`): today's
   two TEAM ids from the fixture, meetings in the last 6 seasons' fixture lists, the last 5
   scorecards. Past seasons' lists and finished scorecards are cached for good in

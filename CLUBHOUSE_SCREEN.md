@@ -248,10 +248,48 @@ Each new commentator starts at normal volume, not muted.
 - Locked, the screen hides the code and the buttons, and its chip says when someone's asking.
   A score-only screen has none of this.
 
+## Club stats
+
+**Stats**, along the bottom of every paired screen (match-day and score-only, locked or
+not, with the laptop on or off), is every player's record for the club from PlayCricket,
+as far back as it goes: games, runs, average, high score, wickets, best bowling, catches.
+
+- **Filters:** which club (the club, and each club it was formed from, before the merge:
+  `[Club] former_ids` on the laptop), and which cricket (**Men**, **Ladies**, **Juniors**;
+  a girls' side counts as both ladies' and junior). A side's kind is read from its team and
+  competition names on PlayCricket ("Under 13", "Women's XI").
+- **Ranked** by games for the club, or by runs, wickets or catches.
+- **Find a player:** type on the screen's own letters (there's no text box, so the Pi's
+  keyboard never comes up). Tap a name for their whole record.
+- **Names** are joined the way the club milestones join them (`[Club] same_players` on
+  the laptop is the club's word on who's one person), and shown in full, as on PlayCricket.
+
+The laptop adds them up from the scorecards it already keeps for the milestones; the
+screen keeps its own copy, so they're there with the laptop off. It asks for a new copy
+when it finds match day running and its copy is a week old (the first time ever, the
+laptop takes a few minutes to read every scorecard: the tab says so). Left on Stats for
+three minutes, the screen goes back to the score.
+
+## The club's own tabs
+
+A page of the club's own can be a tab too: a darts scorer, a quiz, the bar's prices. It
+lives only on the Pi and never goes into CricketStream:
+
+1. Put the page (one `.html` file, with everything it needs inside it) in
+   `~/cricketstream` on the Pi, beside the app.
+2. Add to `~/cricketstream/clubhouse.ini`, under `[Screen]`:
+   `extra_tabs = Darts: darts.html` (up to three: `Darts: darts.html, Quiz: quiz.html`).
+3. Restart the Pi (or `pkill -f 'cricketstream clubhouse'`; the start script brings it back).
+
+The tab shows on every screen, locked or not, whatever the laptop's doing, and the screen
+doesn't go to sleep while it's open. The page can keep things in the browser
+(`localStorage`); it can't reach anything but itself. Updates to CricketStream never
+touch it.
+
 ## Score-only screens
 
-A score-only screen shows the score, the Scorecard, Overs and Table views and the stream
-picture, and nothing else: no Start, no Get ready, no Finish. It can't switch the laptop on
+A score-only screen shows the score, the Scorecard, Overs and Table views, the stream
+picture, Stats and the club's own tabs, and nothing else: no Start, no Get ready, no Finish. It can't switch the laptop on
 or off. Use it anywhere people can touch it — a club can have one match-day screen and any
 number of score-only ones, or score-only screens alone.
 

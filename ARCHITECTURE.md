@@ -337,7 +337,7 @@ logic can be tested without a server, OBS or a network.
 | `overlay.html?preview=1` | iframe in the panel | one `/state` read, then never again | None |
 | `control.html` | `/control` | `/live/view`, `/health` (10 s), checklist, stream monitor (10 s), spotter (60 s)… | Operator POSTs only |
 | `scoring.html` | `/scoring` | `/scoring/state` (5 s) | Ball events |
-| `clubhouse.html` (the Pi) | the Pi's own loopback, through the window's link | `/live/view`, checklist (3 s), `/preview.jpg` (2 s, only while shown), `/match/scorecard` (10 s, only while shown), `/league/table` | Operator POSTs on the link's allowlist only |
+| `clubhouse.html` (the Pi) | the Pi's own loopback, through the window's link | `/live/view`, checklist (3 s), `/preview.jpg` (2 s, only while shown), `/match/scorecard` (10 s, only while shown), `/league/table`; the Stats tab reads the Pi's own copy of `/club/stats` (refreshed weekly) | Operator POSTs on the link's allowlist only |
 
 The overlay's graphics are one DOM with a queue (`queueGraphic` → `nextGraphic`). Panels
 show one at a time, and every stage is wrapped so one failing graphic can't stall the
@@ -541,7 +541,8 @@ lost. CI runs the whole suite under the race detector.
 | `talk_session.json` | Commentary's key and who's on air; deleted by a clean stop, so only a crash leaves one (used within 5 min) | commentary | crash only | ignored |
 | `.h2h_cache/`, `.radar_cache/`, `.pcs_bridge_cache/`, `.sidecam/<pid>/` | Past seasons' fixtures and scorecards; radar frames; the bridge's mirror; camera 2's ring of segments | their features | caches | ignored |
 | `logs/cricketstream-<date>.log` | Everything printed, the server child's output too | the window | yes | ignored |
-| `clubhouse.ini`, `clubhouse_wake.json` | On the Pi: which laptop, its pairing key. On the laptop: the last wake the screen reported | the clubhouse screen | yes | ignored |
+| `clubhouse.ini`, `clubhouse_wake.json` | On the Pi: which laptop, its pairing key, the club's own tabs (`extra_tabs`). On the laptop: the last wake the screen reported | the clubhouse screen | yes | ignored |
+| `club_stats.json` | On the Pi: its copy of `/club/stats`, so the Stats tab works with the laptop off; refreshed when a week old | the clubhouse screen | yes | ignored |
 
 All of these live beside the binary (or under `CRICKETSTREAM_HOME`), never in a system
 folder: one folder is the whole install and the whole backup.
@@ -808,7 +809,7 @@ the routing switches and denying by default; `routes_test.go` holds the list of 
 | | `/talk/out`, `/talk/out/ws` | this machine only, never proxied |
 | | `/talk`, `/talk/capture.js`, `/talk/info`, `/talk/join`, `/talk/poll`, `/talk/audio`, `/talk/leave`, `/talk/level` | the QR code's key; on the HTTPS port or the tunnel |
 | Manual scoring | `/scoring/setup`, `/scoring/{ball,undo,edit,bowler,batter,strike,innings,reset}`, `/scoring/state`, `/scoring/balls`, `/scoring/scorecard` | token for writes |
-| Stats and context | `/player/stats`, `/club/career`, `/season/top`, `/league/table`, `/h2h`, `/lineups`, `/match/scorecard`, `/weather`, `/weather/radar`, `/headshot/*`, `/logo/*`, `/sponsor/*`, `/voice/*` | open (`/h2h?force=1` and `/player/stats/refresh` need a token) |
+| Stats and context | `/player/stats`, `/club/career`, `/club/stats`, `/season/top`, `/league/table`, `/h2h`, `/lineups`, `/match/scorecard`, `/weather`, `/weather/radar`, `/headshot/*`, `/logo/*`, `/sponsor/*`, `/voice/*` | open (`/h2h?force=1` and `/player/stats/refresh` need a token) |
 | After the match | `/report/generate` (POST), `/report/log`, `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/youtube/chapters`, `/youtube/highlights`, `/youtube/thumbnail`, `/data/export`, `/data/reconcile` | token |
 | Pictures | `/library`, `/library/upload`, `/library/rename`, `/library/delete`, `/sponsor/upload`, `/sponsor/remove_background` | token |
 | Shareable outputs | `/social/image/latest`, `/social/clips/file/*`, `/match/page/latest`, `/sponsor/airtime` GET | open |

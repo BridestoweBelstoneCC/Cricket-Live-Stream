@@ -339,7 +339,9 @@ buttons; the score fills the screen for the bar, with a picture of the stream in
 corner that goes full screen when tapped; and **Finish** ends the stream and switches the
 laptop off again. A PIN keeps the controls to the people who should have them.
 
-It's off unless you switch it on (the streaming laptop's match-day screen → *Clubhouse
+Between matches it shows **the club's stats**: every player's record from PlayCricket,
+filtered by club (before and after a merger) and by men's, ladies' and junior cricket,
+with a search for your own name. It's off unless you switch it on (the streaming laptop's match-day screen → *Clubhouse
 screen*), and nothing about it is specific to one club. Setup, including the laptop's
 Wake-on-LAN: **[`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md)**.
 

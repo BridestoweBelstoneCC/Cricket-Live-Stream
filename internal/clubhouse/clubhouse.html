@@ -189,6 +189,39 @@ body.osk main{padding-bottom:300px}
 /* Room for the stream picture: beside the content when wide, below it when tall. */
 body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
 
+/* Stats: every player's record for the club, from the laptop, kept on the screen. */
+.st-head{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+.st-head h2{margin:0}
+.st-filters .seg{margin-bottom:10px}
+.st-filters .seg small{font:15px system-ui,sans-serif;opacity:.8;margin-left:6px}
+.st-find{display:flex;gap:12px;align-items:center;margin:4px 0 12px;flex-wrap:wrap}
+.st-find .btn{min-width:300px;text-align:left}
+.st-keys{max-width:980px;margin:0 0 14px}
+.st-keys .k{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+.st-keys button{flex:0 1 78px;min-height:58px;border-radius:10px;border:1px solid var(--edge);background:var(--board-2);font:600 24px Board,sans-serif}
+.st-keys button.w{flex-basis:150px}
+.st-keys button.go{background:var(--club);color:var(--on-club);border-color:var(--club)}
+#st_table{max-width:1100px}
+#st_table tr.p{cursor:pointer}
+#st_table tr.p:active td{background:var(--board-2)}
+#st_table td.rk{color:var(--sage);width:52px}
+#st_table td,#st_table th{white-space:nowrap}
+#st_table th:nth-child(2),#st_table td:nth-child(2){text-align:left;width:100%}
+@media (max-width:860px){#st_table .opt{display:none}}
+/* The smallest screens (800x480): the filters small, so the table shows. */
+@media (max-height:600px){
+  .st-head h2{font-size:24px}
+  .st-filters .seg{margin-bottom:6px;gap:6px}
+  .st-filters .seg button{min-height:38px;padding:2px 12px;font-size:17px}
+  .st-filters .seg small{display:none}
+  .st-find .btn{min-height:48px;padding:8px 16px;font-size:20px}
+  .st-keys button{min-height:46px}
+}
+.card-sheet{margin:0 0 12px}
+/* An extra tab: a page of the club's own ([Screen] extra_tabs), filling the space. */
+#v-extra{padding:0}
+#extra_frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--night)}
+
 /* Asleep: the laptop is off and nobody's touched the screen for a while. */
 #sleep{position:fixed;inset:0;background:#030805;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#5d7266}
 #sleep b{font:600 120px Board,sans-serif;font-variant-numeric:tabular-nums}
@@ -438,6 +471,27 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
       <div class="log" id="health_log"></div>
     </section>
 
+    <!-- Every player's record for the club, from PlayCricket: public, and there with the
+         laptop off (the screen keeps a copy, refreshed weekly). -->
+    <section id="v-stats" class="view tab hidden">
+      <div class="st-head"><h2>Club stats</h2><span class="muted" id="st_asof"></span></div>
+      <div class="st-filters">
+        <div class="seg" id="st_club"></div>
+        <div class="seg" id="st_side"></div>
+        <div class="seg" id="st_sort"></div>
+      </div>
+      <div class="st-find">
+        <button class="btn" id="st_find" type="button"></button>
+        <button class="btn small hidden" id="st_clear" type="button">Clear</button>
+      </div>
+      <div class="st-keys hidden" id="st_keys"></div>
+      <p class="muted" id="st_msg"></p>
+      <div id="st_table"></div>
+    </section>
+
+    <!-- A page of the club's own, beside the app on the screen ([Screen] extra_tabs). -->
+    <section id="v-extra" class="view tab hidden"><iframe id="extra_frame" title="Club page"></iframe></section>
+
     <section id="v-end" class="view tab hidden center">
       <h1>End the stream</h1>
       <p class="muted">Stops the stream on YouTube, ends match day and closes OBS. Replays already saved are kept.</p>
@@ -452,13 +506,14 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
   </main>
 
   <nav id="tabs" class="hidden" role="tablist">
-    <button type="button" role="tab" data-tab="score">Score</button>
+    <button type="button" role="tab" data-tab="score" id="tab_score">Score</button>
     <button type="button" role="tab" data-tab="get" class="op">Get ready</button>
     <button type="button" role="tab" data-tab="yt" class="op">YouTube</button>
     <button type="button" role="tab" data-tab="cam" class="op">Cameras</button>
     <button type="button" role="tab" data-tab="talk" class="op" id="tab_talk">Commentary</button>
     <button type="button" role="tab" data-tab="health" class="op" id="tab_health">Health</button>
     <button type="button" role="tab" data-tab="end" class="op">Finish</button>
+    <button type="button" role="tab" data-tab="stats" id="tab_stats">Stats</button>
   </nav>
 </div>
 
@@ -623,6 +678,9 @@ function renderQuestion() {
 function viewName() {
   if (!S.paired) return S.asking && S.asking.length ? 'asking' : 'pair';
   if (pinStep) return 'pinset';
+  // Stats and the club's own tabs are there whatever the laptop's doing.
+  if (tab === 'stats') return 'stats';
+  if (tab.indexOf('x:') === 0) return 'extra';
   var L = S.laptop;
   if (S.view_only) return S.reachable && L.phase === 'running' && L.server_ready ? 'score' : 'idle';
   if (!S.reachable) return S.waking_for != null ? 'waking' : 'off';
@@ -637,20 +695,25 @@ function viewName() {
   return 'off';
 }
 function render() {
-  if (!S.unlocked && tab !== 'score') tab = 'score'; // locked again: back to the public view
+  if (!S.unlocked && opTab(tab)) tab = 'score'; // locked again: back to the public view
+  if (tab === 'stats' && Date.now() - lastTouch > 180000) tab = 'score'; // left on Stats: back to the score
   var v = viewName(), L = laptop();
   var isNote = v.indexOf('note-') === 0;
   document.querySelectorAll('.view').forEach(function (el) { el.classList.toggle('hidden', el.id !== 'v-' + (isNote ? 'note' : v)); });
   renderTop(v);
   var running = L.phase === 'running' && L.server_ready && S.reachable;
-  show('tabs', running && !S.view_only); // score-only: the Score tab alone, so no tabs
+  // The tabs: the operator's while match day runs (unlocked, not on a score-only screen),
+  // and Stats and the club's own tabs always, once the screen's paired.
+  renderExtraTabs();
+  show('tabs', S.paired && !pinStep);
+  txt('tab_score', running || S.view_only ? 'Score' : 'Home');
   document.querySelectorAll('#tabs button').forEach(function (b) {
     b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
-    if (b.classList.contains('op')) b.classList.toggle('hidden', !S.unlocked);
+    if (b.classList.contains('op')) b.classList.toggle('hidden', !(S.unlocked && running && !S.view_only));
   });
   // Not on the Commentary tab: nobody's watching the picture there, and it would sit on the code.
-  // Nor on Health: it would sit on the text.
-  show('pv', running && v !== 'talk' && v !== 'health' && !document.body.classList.contains('osk'));
+  // Nor on Health, Stats or a club tab: it would sit on the text.
+  show('pv', running && v !== 'talk' && v !== 'health' && v !== 'stats' && v !== 'extra' && !document.body.classList.contains('osk'));
   document.body.classList.toggle('pv', running && !$('pv').classList.contains('hidden'));
   if (v === 'off') {
     txt('off_why', S.can_wake ? 'Start the stream and this screen switches it on, opens OBS and gets match day ready.'
@@ -697,6 +760,7 @@ function render() {
   if (v === 'note-already') { txt('note_title', 'Match day is open in another window'); txt('note_text', 'CricketStream on the laptop is already running match day from another copy. Use the laptop to carry on.'); }
   if (v === 'note-setup') { txt('note_title', 'The laptop isn\'t set up yet'); txt('note_text', 'Run CricketStream\'s setup on the laptop first.'); }
   if (v === 'score') { renderScore(); renderSV(); }
+  if (v === 'extra') showExtra();
   renderQuestion();
   // Started from the "off" screen: carry on to match day once the laptop is ready.
   if (pendingStart && S.reachable && L.phase === 'home' && !L.question) {
@@ -706,7 +770,9 @@ function render() {
   if (pendingStart && Date.now() - pendingStart.at > 15 * 60000) pendingStart = null;
   // First time match day is up: straight to "Get ready" (Go live is there).
   if (running && lastTabPhase !== 'running') {
-    tab = S.unlocked && !S.view_only ? 'get' : 'score'; lastTabPhase = 'running';
+    // Not if someone's in the middle of the stats or a club tab: they can tap back.
+    if (tab === 'score' || opTab(tab)) tab = S.unlocked && !S.view_only ? 'get' : 'score';
+    lastTabPhase = 'running';
     if (qrDue && S.unlocked && !S.view_only) { qrDue = false; setTimeout(scoringQR, 0); }
     render(); return;
   }
@@ -846,14 +912,18 @@ $('end_go').addEventListener('click', function () {
 });
 
 // ── Tabs ──
-document.querySelectorAll('#tabs button').forEach(function (b) {
+document.querySelectorAll('#tabs button').forEach(tabButton);
+function tabButton(b) {
   b.addEventListener('click', function () {
     var t = b.getAttribute('data-tab');
     var go = function () { tab = t; hideOSK(); render(); loadTab(); };
-    if (t === 'score') go(); else needUnlock(go);
+    if (!opTab(t)) go(); else needUnlock(go);
   });
-});
+}
+// opTab: an operator's tab, behind the PIN. Score, Stats and the club's own tabs are public.
+function opTab(t) { return t !== 'score' && t !== 'stats' && t.indexOf('x:') !== 0; }
 function loadTab() {
+  if (tab === 'stats') loadStats();
   if (tab === 'get') loadChecklist();
   if (tab === 'yt') loadYouTube();
   if (tab === 'cam') loadCameras();
@@ -1383,6 +1453,172 @@ $('pinset_go').addEventListener('click', function () {
 });
 $('pinset_skip').addEventListener('click', function () { pinStep = false; poll(); });
 
+// ── Stats: every player's record for the club ──
+// The figures come from the laptop's club record (the server's /club/stats), kept on the
+// screen in club_stats.json: so they're here with the laptop off. Each player has figures
+// per club and kind of side ("29434:m", "9593:j"); the filters choose which to add up.
+var stData = null, stAt = 0, stClub = 'all', stSide = 'all', stSort = 'apps', stQ = '', stKeysOn = false;
+var ST_SIDES = [['all', 'All cricket'], ['m', 'Men'], ['l', 'Ladies'], ['j', 'Juniors']];
+var ST_SORTS = [['apps', 'Most games'], ['runs', 'Most runs'], ['wkts', 'Most wickets'], ['ct', 'Most catches']];
+function loadStats() {
+  if (stData && !stData.none && Date.now() - stAt < 600000) { renderStats(); return; }
+  api('stats').then(function (d) { stAt = Date.now(); stData = d; renderStats(); });
+}
+// statsRows adds up each player's figures in the chosen club and side, most first.
+function statsRows(d, club, side, sort) {
+  var F = {};
+  (d.fields || []).forEach(function (f, i) { F[f] = i; });
+  var sides = {m: ['m'], l: ['l', 'g'], j: ['j', 'g']}[side] || null;
+  var sum = ['apps', 'inn', 'no', 'runs', 'fifties', 'hundreds', 'balls', 'b_runs', 'wkts', 'fivefors', 'ct', 'st', 'ro'];
+  var rows = [];
+  (d.players || []).forEach(function (p) {
+    var t = null;
+    Object.keys(p.b || {}).forEach(function (b) {
+      var part = b.split(':'), v = p.b[b];
+      if (club !== 'all' && part[0] !== club) return;
+      if (sides && sides.indexOf(part[1]) < 0) return;
+      if (!t) {
+        t = {hs: 0, hs_no: 0, best_w: -1, best_r: 0};
+        sum.forEach(function (k) { t[k] = 0; });
+      }
+      sum.forEach(function (k) { if (F[k] != null) t[k] += v[F[k]] || 0; });
+      var hs = v[F.hs] || 0, hsNo = v[F.hs_no] || 0;
+      if (hs > t.hs || (hs === t.hs && hsNo)) { t.hs = hs; t.hs_no = hsNo; }
+      var bw = v[F.best_w], br = v[F.best_r];
+      if (bw != null && bw >= 0 && (bw > t.best_w || (bw === t.best_w && br < t.best_r))) { t.best_w = bw; t.best_r = br; }
+    });
+    if (t && (t.apps || t.inn || t.balls || t.ct + t.st + t.ro)) rows.push({name: p.name, t: t});
+  });
+  var key = {runs: 'runs', wkts: 'wkts', ct: 'ct'}[sort] || 'apps';
+  function val(t) { return key === 'ct' ? t.ct + t.st : t[key]; }
+  rows.sort(function (a, b) { return val(b.t) - val(a.t) || b.t.apps - a.t.apps || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
+  rows.forEach(function (r, i) { r.rank = i + 1; });
+  return rows;
+}
+function batAvg(t) { var outs = t.inn - t.no; return outs > 0 ? (t.runs / outs).toFixed(2) : '–'; }
+function bowlAvg(t) { return t.wkts > 0 ? (t.b_runs / t.wkts).toFixed(2) : '–'; }
+function oversOf(balls) { return Math.floor(balls / 6) + (balls % 6 ? '.' + balls % 6 : ''); }
+function hsText(t) { return t.inn ? t.hs + (t.hs_no ? '*' : '') : '–'; }
+function bestText(t) { return t.best_w >= 0 ? t.best_w + '-' + t.best_r : '–'; }
+function stClubName(c) { return c.name || ('Club ' + c.id); }
+function stSeg(id, opts, cur, pick) {
+  var seg = $(id); seg.textContent = '';
+  opts.forEach(function (o) {
+    var b = make('button', '', o[1]); b.type = 'button';
+    if (o[2]) b.appendChild(make('small', '', o[2]));
+    b.setAttribute('aria-pressed', o[0] === cur ? 'true' : 'false');
+    b.addEventListener('click', function () { pick(o[0]); renderStats(); });
+    seg.appendChild(b);
+  });
+}
+function renderStats() {
+  var d = stData, out = $('st_table');
+  out.textContent = '';
+  if (!d) { txt('st_msg', 'Loading…'); return; }
+  if (d.none || !d.players) {
+    txt('st_asof', '');
+    ['st_club', 'st_side', 'st_sort'].forEach(function (id) { $(id).textContent = ''; });
+    show('st_find', false);
+    txt('st_msg', d.asked ? 'The streaming laptop is still adding them up from PlayCricket. They\'ll be here in a few minutes.'
+      : 'The club\'s stats come from the streaming laptop. They appear here the first time it\'s on with match day running, and stay here after.');
+    return;
+  }
+  show('st_find', true);
+  var when = (d.fetched || d.as_of || '').slice(0, 10);
+  txt('st_asof', 'From PlayCricket: ' + d.matches + ' matches since ' + d.since + (when ? ' · updated ' + when.split('-').reverse().join('/') : ''));
+  var clubs = [['all', 'All clubs']];
+  (d.clubs || []).forEach(function (c) { clubs.push([c.id, stClubName(c), c.former ? 'before the merge' : '']); });
+  if (clubs.length < 3) clubs = clubs.slice(1, 2); // one club: nothing to choose
+  if (!clubs.some(function (c) { return c[0] === stClub; })) stClub = clubs[0] ? clubs[0][0] : 'all';
+  stSeg('st_club', clubs.length > 1 ? clubs : [], stClub, function (v) { stClub = v; });
+  stSeg('st_side', ST_SIDES, stSide, function (v) { stSide = v; });
+  stSeg('st_sort', ST_SORTS, stSort, function (v) { stSort = v; });
+  var find = $('st_find'); find.textContent = stQ ? '🔍  ' + stQ : '🔍  Find a player';
+  show('st_clear', !!stQ);
+  show('st_keys', stKeysOn);
+  var rows = statsRows(d, stClub, stSide, stSort), q = stQ.toLowerCase();
+  var shown = q ? rows.filter(function (r) { return r.name.toLowerCase().indexOf(q) >= 0; }) : rows;
+  var cap = 100, list = shown.slice(0, cap);
+  txt('st_msg', !rows.length ? 'Nobody has played in that yet.' : q && !shown.length ? 'Nobody called "' + stQ + '" here. Try the start of their surname.'
+    : shown.length > cap ? 'The top ' + cap + ' of ' + shown.length + '. Find a player for anyone else.' : shown.length + (shown.length === 1 ? ' player' : ' players'));
+  if (!list.length) return;
+  var t = make('table', 'sheet'), hr = make('tr');
+  [['#', ''], ['Player', ''], ['Games', ''], ['Runs', ''], ['Avg', 'opt'], ['HS', 'opt'], ['Wkts', ''], ['Best', 'opt'], ['Ct', '']]
+    .forEach(function (h) { hr.appendChild(make('th', h[1], h[0])); });
+  t.appendChild(hr);
+  list.forEach(function (r) {
+    var tr = make('tr', 'p');
+    [[r.rank, 'rk'], [r.name, ''], [r.t.apps, ''], [r.t.runs, ''], [batAvg(r.t), 'opt'], [hsText(r.t), 'opt'],
+      [r.t.wkts, ''], [bestText(r.t), 'opt'], [r.t.ct + r.t.st, '']].forEach(function (c) { tr.appendChild(make('td', c[1], c[0])); });
+    tr.addEventListener('click', function () { statsCard(r); });
+    t.appendChild(tr);
+  });
+  out.appendChild(t);
+}
+function statsCard(r) {
+  var t = r.t, d = openDialog();
+  d.appendChild(make('h2', '', r.name));
+  var club = stClub === 'all' ? 'All clubs' : stClubName((stData.clubs || []).filter(function (c) { return c.id === stClub; })[0] || {id: stClub});
+  var side = ST_SIDES.filter(function (s) { return s[0] === stSide; })[0][1];
+  d.appendChild(make('p', 'muted', club + ' · ' + side + ' · ' + t.apps + (t.apps === 1 ? ' game' : ' games')));
+  if (t.inn) d.appendChild(sheet(['Batting', 'Inns', 'NO', 'Runs', 'HS', 'Avg', '50s', '100s'],
+    [{cells: ['', t.inn, t.no, t.runs, hsText(t), batAvg(t), t.fifties, t.hundreds]}], 'card-sheet'));
+  if (t.balls || t.wkts) d.appendChild(sheet(['Bowling', 'Overs', 'Runs', 'Wkts', 'Avg', 'Best', '5w'],
+    [{cells: ['', oversOf(t.balls), t.b_runs, t.wkts, bowlAvg(t), bestText(t), t.fivefors]}], 'card-sheet'));
+  if (t.ct + t.st + t.ro) d.appendChild(sheet(['Fielding', 'Catches', 'Stumpings', 'Run outs'],
+    [{cells: ['', t.ct, t.st, t.ro]}], 'card-sheet'));
+  var row = make('div', 'row'); row.appendChild(button('Close', 'btn', closeDialog)); d.appendChild(row);
+}
+// Search with the screen's own letters: there's no text box, so nothing can bring up a
+// second (the system's) keyboard.
+(function () {
+  var keys = $('st_keys');
+  ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].forEach(function (line) {
+    var k = make('div', 'k');
+    line.split('').forEach(function (c) { k.appendChild(button(c, '', function () { stType(c); })); });
+    keys.appendChild(k);
+  });
+  var last = make('div', 'k');
+  last.appendChild(button('Space', 'w', function () { stType(' '); }));
+  last.appendChild(button('⌫', 'w', function () { stType('back'); }));
+  last.appendChild(button('Done', 'w go', function () { stKeysOn = false; renderStats(); }));
+  keys.appendChild(last);
+})();
+function stType(c) {
+  if (c === 'back') stQ = stQ.slice(0, -1);
+  else if (stQ.length < 20 && !(c === ' ' && (!stQ || stQ.slice(-1) === ' '))) stQ += c.toLowerCase();
+  renderStats();
+}
+$('st_find').addEventListener('click', function () { stKeysOn = !stKeysOn; renderStats(); });
+$('st_clear').addEventListener('click', function () { stQ = ''; renderStats(); });
+
+// ── The club's own tabs ([Screen] extra_tabs on the Pi) ──
+var extraKey = '';
+function renderExtraTabs() {
+  var tabs = (S && S.extra_tabs) || [], key = JSON.stringify(tabs);
+  if (key === extraKey) return;
+  extraKey = key;
+  document.querySelectorAll('#tabs button.extra').forEach(function (b) { b.parentNode.removeChild(b); });
+  tabs.forEach(function (x) {
+    var b = make('button', 'extra', x.label); b.type = 'button'; b.setAttribute('role', 'tab');
+    b.setAttribute('data-tab', 'x:' + x.url);
+    tabButton(b);
+    $('tabs').appendChild(b);
+  });
+  if (tab.indexOf('x:') === 0 && !tabs.some(function (x) { return 'x:' + x.url === tab; })) tab = 'score';
+}
+function showExtra() {
+  var f = $('extra_frame'), url = tab.slice(2);
+  if (f.getAttribute('src') !== url) f.setAttribute('src', url);
+}
+// Taps inside the club's page count as someone at the screen (it's the same site, so the
+// screen can listen).
+$('extra_frame').addEventListener('load', function () {
+  try {
+    $('extra_frame').contentWindow.document.addEventListener('pointerdown', function () { lastTouch = Date.now(); }, true);
+  } catch (e) { /* not the screen's own page */ }
+});
+
 // ── The stream picture ──
 var pvURL = '', pvBusy = false;
 function loadPreview(force) {
@@ -1484,7 +1720,7 @@ document.addEventListener('pointerdown', function () {
 }, true);
 function checkSleep() {
   var idle = Date.now() - lastTouch > 5 * 60000;
-  var quiet = S && S.paired && !S.reachable && S.waking_for == null && !pendingStart;
+  var quiet = S && S.paired && !S.reachable && S.waking_for == null && !pendingStart && tab.indexOf('x:') !== 0;
   show('sleep', idle && quiet);
 }
 
