@@ -357,6 +357,22 @@ shows up here, not on the day.
 3. In OBS (CricketStream opens it for you), check the preview shows your camera with the overlay
 4. In OBS Controls, verify **Stop Replay Buffer** is showing (buffer is running)
 
+### A junior match
+
+For an age-group fixture, the control panel's **Match setup → Junior match** is switched
+on by itself when today's match is fetched. Every player is then shown by first name and
+the first letter of their surname (**Patrick E**), and player cards, photos, club records
+and AI commentary are off. Check the switch before going live: a junior fixture whose name
+doesn't say so has to be switched on by hand. First names come from the squad roster and
+the teams entered on PlayCricket, so fill those in; a player in neither shows as initials.
+
+### Starting by itself
+
+On CricketStream's home screen, **Start match day by itself N minutes before today's
+match** opens OBS and puts the pre-match show up at that time, from the start time on
+PlayCricket. Nothing goes live on YouTube until someone presses Go live. The laptop has to
+be on with CricketStream open.
+
 ### When the scorer starts
 
 5. Scorer opens NV Play and starts the match
@@ -400,8 +416,9 @@ The icon by the clock (behind the **^** arrow until you drag it onto the taskbar
 the window back with a click, and right-click has Activity, the control panel and Close.
 It also shows a Windows notification when something needs someone during the match: the
 scorer's feed gone quiet, OBS crashing (and being reopened), the stream stopping for more
-than a minute and a half, CricketStream restarting its server, the streaming laptop no
-longer collecting the score, a new version. Each says so once, and once more when it's put
+than a minute and a half, the stream going silent or a camera's picture freezing,
+CricketStream restarting its server, the streaming laptop no longer collecting the score,
+a new version. Each says so once, and once more when it's put
 right; Windows' do-not-disturb keeps them quiet.
 
 **On your phone, too:** paste a Discord webhook link into **Settings → Alerts on Discord**
@@ -415,6 +432,12 @@ checks it's still there. Treat the link like a password.
 `config.ini` lives next to `CricketStream.exe`. If you downloaded a new copy and ran it
 from somewhere else (Downloads, say), it doesn't see your old one. Move the new
 `CricketStream.exe` into your CricketStream folder, replacing the old file.
+
+### I've forgotten the club password
+
+`config.ini` holds a scrambled copy of it, which can't be read back. Open `config.ini`,
+type a new password after `club_password =`, save, and start CricketStream again. It's
+scrambled at the next start.
 
 ### OBS crashed during the match
 
@@ -490,6 +513,22 @@ out is left alone, because closing it would stop the stream; the activity log sa
 - Check the OBS password in `config.ini`
 - Scene names must be exactly `Main` and `Replay` (capital first letter, case sensitive)
 - The media source must be named exactly `ReplayClip`
+
+### It says the stream has gone silent, or a camera's picture has frozen
+
+While on air, CricketStream listens to OBS's sound and looks at each camera every 15
+seconds. No sound for 45 seconds, or a picture that's stopped changing, shows in the
+panel's health strip (and as a notification and a Discord message). It only warns: check
+the microphone or camera's sound in OBS's mixer, or the camera itself. If your stream
+never has sound, switch it off in **Stream → Warn about silence and a frozen picture**.
+
+### The score changes before the ball is seen
+
+An IP camera's picture arrives a second or more late, so a quick scorer can beat it.
+Control panel → **Cameras → Hold the graphics back** delays the scorebar and every
+graphic by the time you set. **Measure the camera's delay** puts a clock on the stream
+for a minute: hold a phone's clock up to the camera, and the difference between the two
+in OBS is the number to enter. Leave it off unless you've seen the score beat the picture.
 
 ### An IP camera's picture drifts behind the score
 

@@ -117,6 +117,26 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   the computer's own voice (British English where available). Free and offline; off by
   default, because these voices are serviceable rather than broadcast quality.
 - **Drinks-break weather** *(new in v2)* — at a configurable over (default 25), the weather widget automatically appears during the drinks interval, then clears on the next ball.
+- **Pre-match show** *(new in 3.0)* — go live before play and the stream has something on
+  it: a countdown to the start, the head to head with today's opposition, both XIs as
+  entered on PlayCricket, the league table and the ground's weather.
+- **Break show** *(new in 3.0)* — at drinks, the innings break or a rain delay: a break
+  card, the scorecard, the weather (and a rain radar when it's raining), and the match's
+  best moments so far replayed with captions. It ends at the first ball after.
+- **Club milestones** *(new in 3.0)* — a strap when a home player passes 500, 1,000…
+  runs, 50, 100… wickets or 50 catches for the club, added up from every past PlayCricket
+  scorecard of the club's sides. The player card shows club appearances too.
+- **The chase at the end of each over** *(new in 3.0)* — in a chase the over summary leads
+  with "Need 48 from 36 balls · 8.00 an over".
+- **Junior match mode** *(new in 3.0)* — one switch (on by itself for an age-group
+  fixture): every player is shown by first name and the first letter of their surname
+  (**Patrick E**) on the stream, the scorecard, the match page, the report and the video's
+  chapters. Player cards and headshots, club records, AI and spoken commentary and the
+  automatic highlights upload are off while it's on. Replays stay on.
+- **Hold the graphics back** *(new in 3.0, optional)* — delays the scorebar and every
+  graphic by a time you set, for a camera whose picture arrives late, so the score never
+  changes before the ball's been seen. The panel can put a clock on the stream to measure
+  the camera's delay.
 
 ### After the match *(new in v2)*
 
@@ -141,6 +161,9 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
 - **Replay transition** — full-screen animated transition before each replay.
 - **Highlights compiler** — stitches all replay clips into a post-match highlights reel automatically with FFmpeg.
 - **Chapters on the match video** — after the stream, the YouTube video gets a timestamp for each innings, wicket, fifty, hundred and five-for, so anyone watching later can jump straight to them.
+- **A second camera** *(new in 3.0, optional)* — an automatic cut at the over change,
+  the new batter walking out and the teams walking off, and **side-on wicket replays**: a
+  wicket replays twice, camera 1 and then camera 2's view of the same moment (needs FFmpeg).
 - **Auto-tagged highlights** *(new)* — every replay clip is tagged with why it fired and the
   match situation at that moment ("WICKET · WALKER 22 · C JONES B HARRISON · 84-3"). The
   reel gets those captions burned in as lower-thirds, test clips are skipped, and a
@@ -176,6 +199,19 @@ CricketStream Overlay runs alongside OBS Studio (free streaming software) and yo
   notices it isn't asking for the score and reloads it. If the server itself crashes or
   stops answering, it's restarted within a couple of minutes, picking up where it
   was.
+- **Commentary from a phone** *(new in 3.0)* — turn it on, a QR code comes up, and whoever
+  scans it can ask to commentate from their phone, with nothing to install. You choose who
+  goes on air; viewers see their name, and the ground's sound dips under their voice by
+  itself. See [`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md).
+- **A warning when the stream goes silent or a camera freezes** *(new in 3.0)* — while on
+  air, no sound for 45 seconds or a picture that's stopped changing shows in the panel's
+  health strip and comes as a notification. It only warns.
+- **Alerts on Discord** *(new in 3.0, optional)* — the same alerts (the scorer's feed gone
+  quiet, OBS crashed, the stream stopped, the server restarting) in a channel of the
+  club's Discord, so they reach a phone.
+- **Start match day by itself** *(new in 3.0, optional)* — so many minutes before today's
+  fixture on PlayCricket, OBS opens and the pre-match show goes up. Nothing goes live on
+  YouTube until someone presses Go live. The laptop has to be on with CricketStream open.
 - **AI camera spotter** *(new, optional)* — while live, Claude looks at each camera every
   few minutes and warns about a fogged or wet lens, a knocked camera, glare or a blocked
   view; a frozen picture is caught without AI. About 10–15p for a long match.
@@ -456,6 +492,13 @@ Drag a tile by the grip in its title to put each tab in your own order.
 | Social clips | FFmpeg + tagged replays (Anthropic key optional, for captions) |
 | Match page | Nothing extra (richer with Anthropic, PlayCricket and YouTube) |
 | Pre-match check, checklist, OBS crash recovery | Nothing extra |
+| Pre-match show, head to head, club milestones | PlayCricket API key |
+| Break show | OBS WebSocket + replay buffer (the replays); the cards need nothing |
+| Second camera cuts; side-on wicket replays | A second RTSP camera; FFmpeg for side-on |
+| Commentary from a phone | A phone on the club's wifi (or the Cloudflare tunnel) |
+| Sound and picture warning | OBS WebSocket |
+| Alerts on Discord | A Discord webhook link |
+| Junior match mode, graphics delay, scheduled start | Nothing extra (scheduled start: PlayCricket API key) |
 | Club badges in scorebar | Badges added in the control panel's Pictures tab |
 
 ---
@@ -562,7 +605,8 @@ What you download is one file. Everything below it is created as you use it, bes
 ```
 CricketStream/
 ├── CricketStream.exe          The whole app (CricketStream + CricketStream.command on a Mac)
-├── config.ini                 Your setup answers, API keys, OBS password (written by setup)
+├── config.ini                 Your setup answers, API keys, OBS password, and the club
+│                              password as a hash, never the password itself (written by setup)
 ├── match_state.json           Control-panel settings (made on first run)
 ├── match_data.db              Ball-by-ball database
 ├── logos/                     Club badges (added in the Pictures tab)
@@ -571,8 +615,13 @@ CricketStream/
 │   ├── 1st/ 2nd/ 3rd/         Optional per-team photo folders
 │   └── youth/                 Stock photos for youth posts (safeguarding)
 ├── sponsors/                  Sponsor logos (Pictures tab)
+├── logs/                      The activity log, one file a day
 └── diagnostics/               Match-day telemetry CSVs
 ```
+
+**Forgotten the club password?** `config.ini` only holds a scrambled copy, so it can't be
+read back. Type a new one after `club_password =` in `config.ini` and start CricketStream
+again: it's scrambled at the next start.
 
 The overlay, control panel, scoring page, fonts and NV Play's scoreboard template are all
 built into the app. **Put a file of the same name beside it and that copy is used
@@ -586,18 +635,21 @@ The source repository:
 ├── cmd/cricketstream/         The app's entry point: role dispatch and subcommands
 ├── internal/
 │   ├── server/                The stream server: every HTTP route, PCS parsing, OBS ops, the ball DB
+│   ├── app/                   The window: first screen, match-day screen, alerts, scheduled start
 │   ├── launcher/              Match day on the streaming laptop: fixture, OBS, server, pre-flight
 │   ├── setup/                 The first-run setup page
 │   ├── scoring/               The scorer's-book engine behind /scoring and the simulator
 │   ├── simulate/              Match simulator — rehearse the whole broadcast, no scorer needed
 │   ├── obs/ obsws/            OBS prep (config while closed), setup (scenes over WebSocket), the client
 │   ├── agent/ bridge/         The scorer's-laptop agent and the token-gated NV Play bridge
+│   ├── clubhouse/             The optional clubhouse touch screen (the laptop's link, the Pi's page)
 │   ├── tools/                 Telemetry, camera encoder read-out, camera refresher, quality-ladder test
 │   ├── resultcard/ matchpage/ socialclips/ winpredict/ voice/ logobg/   Post-match and extras
 │   └── …                      Shared helpers (INI, Python-compatible formatting, assets)
 ├── overlay.html               OBS browser source overlay (1920x1080), built in
 ├── control.html               Operator control panel (served at /control), built in
 ├── scoring.html               Manual ball-by-ball scoring page (served at /scoring), built in
+├── talk.html talk_out.html    Commentary from a phone: the phone's page, and OBS's source
 ├── scoreboard.template        NV Play output template, built in
 ├── fonts/ brand/ graphics/    Built-in fonts, brand assets and OBS graphics
 ├── scripts/                   makebrand (brand assets), renderscorebar (scorebar screenshots)
@@ -794,6 +846,8 @@ It talks to these services, only to do what you've asked it to:
 | Open-Meteo | The weather graphic | Your ground's location |
 | Cloudflare | The upload speed test; a Cloudflare Tunnel only if you switch one on | Test data; the control panel's traffic through the tunnel |
 | GitHub | Checking for a newer version | Nothing beyond the request itself |
+| Discord | Only if you paste a webhook link into Settings → Alerts on Discord | The alert's words and your club's name |
+| RainViewer, OpenStreetMap | The rain radar, when it's shown | Your ground's location (as map tiles) |
 
 Each service's own privacy policy covers what it does with what it receives.
 
@@ -817,6 +871,9 @@ in its window (and the activity log in `logs/`) as it happens:
 - **Only if you switch on the clubhouse screen**: it listens for the screen on port 5096,
   and *Open CricketStream when Windows starts* adds it to Windows' startup apps (Settings →
   Apps → Startup lists it; untick the box to remove it).
+- **Only while commentary from a phone is switched on**: it listens for the phones on port
+  5095, and adds a `Commentary` source to its OBS scenes and a filter to each camera's
+  sound (so the ground dips under a voice).
 
 **Removing it:** close CricketStream, then delete its folder, the desktop shortcut and
 `%LOCALAPPDATA%\CricketStream`. Its OBS scenes stay in OBS until you delete them there, and

@@ -10,7 +10,7 @@ The document follows the usual system-design views, outside in:
 2. [System context](#2-system-context): people and external systems
 3. [Deployment view](#3-deployment-view): what runs on which machine
 4. [Component view](#4-component-view): the one binary, inside the server, and the browser clients
-5. [Runtime views](#5-runtime-views): a ball, an over, a replay, the end of the match
+5. [Runtime views](#5-runtime-views): a ball, an over, the end of the match, a voice from a phone
 6. [Concurrency view](#6-concurrency-view): every background thread and its cadence
 7. [Data view](#7-data-view): files, the SQLite schema, what survives a restart
 8. [Failure and recovery](#8-failure-and-recovery): what breaks on a match day and what happens next
@@ -34,8 +34,8 @@ same frame, so every downstream feature works the same whatever the source.
 
 | Driver | What it means here | Where it shows |
 |---|---|---|
-| **The stream must not stop** | Nothing optional may take the broadcast down | Logging never panics (every background loop recovers); each overlay stage is isolated in its own try/catch; OBS crash and freeze recovery; the launcher restarts a crashed server |
-| **Unattended** | Nobody at the laptop to click a dialog | OBS's Safe Mode and update prompts are pre-empted; a detected checklist; a pre-match check that runs itself |
+| **The stream must not stop** | Nothing optional may take the broadcast down | Logging never panics (every background loop recovers); each overlay stage is isolated in its own try/catch; OBS crash and freeze recovery; the launcher restarts a crashed or stuck server and never gives up; watchers for a missed overlay load, a replay that never cut back, silence and a frozen picture |
+| **Unattended** | Nobody at the laptop to click a dialog | OBS's Safe Mode and update prompts are pre-empted; a detected checklist; a pre-match check that runs itself; alerts to the club's Discord channel; an optional scheduled start and clubhouse touch screen |
 | **Runs on an old laptop that is also encoding video** | CPU headroom belongs to OBS | One native binary, stdlib HTTP server; mtime-cached state; post-match video work at below-normal priority; no encoding mid-match |
 | **Correct numbers, never invented ones** | A wrong score on a public result card is worse than none | Facts come from the scorer's own figures or PlayCricket; AI only writes prose around them, and is refused when there's no data |
 | **Volunteer-proof** | Setup by double-click; failures explained in words | One file to download, nothing to install; first-run setup is a web page; every fatal path pauses with a plain explanation; a ✓/⚠/✗ pre-match check |
@@ -48,7 +48,8 @@ same frame, so every downstream feature works the same whatever the source.
 ```mermaid
 flowchart TB
     scorer(["👤 Scorer<br/>NV Play / PCS Pro,<br/>or a phone at /scoring"])
-    operator(["👤 Operator<br/>control panel on a laptop or phone"])
+    operator(["👤 Operator<br/>control panel on a laptop or phone,<br/>or the clubhouse touch screen"])
+    comm(["👤 Commentator<br/>a phone's microphone"])
     viewers(["👥 Viewers<br/>YouTube"])
     club(["👥 Club and sponsors<br/>result card, clips, match page,<br/>airtime report"])
 
@@ -60,9 +61,11 @@ flowchart TB
     meteo[("Open-Meteo<br/>ground weather")]
     gh[("GitHub Releases<br/>version check")]
     cams[("IP cameras<br/>RTSP")]
+    dc[("Discord webhook<br/>match-day alerts")]
 
     scorer -- "scoreboard frame every ball" --> cs
     operator -- "settings, cuts, buttons" --> cs
+    comm -- "voice, once the operator says yes" --> cs
     cs -- "composited stream" --> yt --> viewers
     cs -- "post-match outputs" --> club
     cams -- "video" --> cs
@@ -71,10 +74,12 @@ flowchart TB
     cs <-->|"commentary, reports,<br/>captions, camera checks"| ai
     cs -- "forecast" --> meteo
     cs -- "latest release" --> gh
+    cs -- "something's wrong / sorted" --> dc
 ```
 
 Every external system is optional apart from YouTube. With no internet beyond the
-stream, the scorebar, replays, highlights and ball database all still work.
+stream, the scorebar, replays, highlights and ball database all still work. Commentary
+from a phone needs only the club's own wifi.
 
 ---
 
@@ -91,25 +96,31 @@ flowchart LR
     end
 
     subgraph STREAM["Streaming laptop"]
-        launcher["CricketStream (launcher role)<br/>(runs the server as a child,<br/>restarts it up to 3×)"]
+        launcher["CricketStream window + launcher<br/>loopback :5098<br/>(runs the server as a child, restarts it<br/>3× quickly, then once a minute)"]
         subgraph PY["CricketStream server: one process, net/http :5000"]
             http["HTTP handler<br/>(goroutine per request)"]
             bg["background loops<br/>(see §6)"]
+            talk["commentary listener<br/>HTTPS :5095, self-signed,<br/>only while commentary is on"]
         end
         subgraph OBSBOX["OBS Studio"]
             ov["overlay.html<br/>browser source 1920×1080"]
+            tout["talk_out.html<br/>Commentary browser source"]
             scenes["Scenes: Main · bowler-end · Replay<br/>replay buffer · encoder"]
         end
+        side["FFmpeg<br/>camera 2 ring recorder<br/>(side-on replays, optional)"]
         files[("match_state.json<br/>match_data.db (SQLite, WAL)<br/>config.ini")]
         launcher --> PY
         ov <-->|"poll /live 2.5–3.5 s"| http
+        tout <-->|"WebSocket /talk/out/ws<br/>(loopback only)"| http
         bg <-->|"WebSocket :4455"| scenes
+        bg --> side
         http --- files
     end
 
     subgraph OPS["Operator devices"]
         panel["control.html<br/>/control"]
         phone["scoring.html<br/>/scoring"]
+        mic["talk.html<br/>a commentator's phone"]
     end
 
     subgraph PI["Clubhouse screen (optional, Raspberry Pi)"]
@@ -117,11 +128,14 @@ flowchart LR
     end
 
     cams["IP cameras<br/>RTSP :554"] --> scenes
+    cams -. "camera 2" .-> side
     agent -. "pull /pcs" .-> http
     bridge -. "mirrored every 2 s<br/>into .pcs_bridge_cache/" .-> bg
     nv -. "same machine:<br/>read the file directly" .-> http
     panel -- "Bearer session<br/>(loopback, LAN, Tailscale<br/>or Cloudflare Tunnel)" --> http
     phone --> http
+    mic -- "audio as HTTPS POSTs<br/>(QR code's key)" --> talk
+    launcher -- "alerts" --> dc["Discord webhook"]
     chscreen -- "Wake-on-LAN, then the window's link :5096<br/>(pairing key; allowlist into the server)" --> launcher
     scenes -- "RTMP" --> yt["YouTube Live"]
 ```
@@ -130,6 +144,11 @@ flowchart LR
 machine and drive the OBS on the streaming laptop. Remote *operation* is what's exposed
 instead: Tailscale (recommended) or an opt-in Cloudflare quick tunnel. Both require a club
 password.
+
+**Ports.** 5000 the server (`CRICKETSTREAM_PORT`); 5098 the window's own pages, loopback
+only; 5096 the clubhouse screen's link, only while it's switched on; 5095 the commentary
+phone's HTTPS, only while commentary is on; 4455 OBS's WebSocket. On the Pi, 5097 is its
+own page, loopback only.
 
 **Three ways to reach the scorer's file**, behind one function (`ReadScoreSource()`):
 
@@ -179,7 +198,14 @@ worth one, every 10 seconds: `/health` during match day (feed freshness, the OBS
 last event), the agent's own collected-ago on the scorer's laptop, a newer release, and
 the launcher's "server stopped unexpectedly" lines from the log. Each condition notifies
 once and once more when it clears; an OBS event already there when the app first looks is
-the baseline, not news.
+the baseline, not news. The same notices go to the club's Discord channel when `[Alerts]
+discord_webhook` is set (`internal/discord`; the webhook is read from `config.ini` at each
+alert and never enters the state).
+
+With `[App] auto_start` on, the window also starts match day by itself so many minutes
+before today's fixture on PlayCricket (`autostart.go`, a look every 30 s): OBS opens and the
+pre-match show goes up. It never goes live, and it does nothing on a day when anyone has
+already started or stopped match day.
 
 Every part is also a subcommand (`server`, `agent`, `bridge`, `simulate`, `obs-setup`,
 `telemetry`, …) for automation and troubleshooting.
@@ -205,10 +231,12 @@ flowchart LR
     end
 
     subgraph PIPE["Per-poll pipeline: /live only"]
+        jr["juniorLive()<br/>names swapped first,<br/>junior mode only"]
         ev["BufferPCSEvents()"]
         fm["FollowMatchID()"]
         lb["LogBallData()"]
         lf["LogLiveFigures()"]
+        lm["LogMoments()"]
         wp["WinPrediction()"]
     end
 
@@ -224,12 +252,14 @@ flowchart LR
         page["matchpage"]
         clips["socialclips"]
         hl["highlights reel"]
+        chap["YouTube chapters<br/>+ Watch it back links"]
     end
 
     subgraph CTRL["Control plane"]
         routes["HTTP routes<br/>auth · origin · rate limits"]
-        svc["Background services<br/>watchdog · stream monitor · OBS guard · overlay watch<br/>viewers · pre-match · spotter · bridge"]
-        obsio["OBS adapters<br/>obsCall · obsFastCall<br/>obs prep · obs setup"]
+        svc["Background services<br/>watchdog · stream monitor · OBS guard · overlay watch<br/>replay watch · sound and picture watch · viewers<br/>pre-match · spotter · bridge · side-on recorder"]
+        shows["On-air helpers<br/>replays · break show · camera 2 holds<br/>commentary mixer"]
+        obsio["OBS adapters<br/>obsCall · obsFastCall · obsws.Meters<br/>obs prep · obs setup"]
     end
 
     f1 --> rss
@@ -237,14 +267,18 @@ flowchart LR
     f3 --> man
     rss --> parse
     man --> parse
-    parse --> ev
-    parse --> fm
-    parse --> lb
-    parse --> lf
-    parse --> wp
+    parse --> jr
+    jr --> ev
+    jr --> fm
+    jr --> lb
+    jr --> lf
+    jr --> lm
+    jr --> wp
     fm --> db
     lb --> db
     lf --> db
+    lm --> db
+    db --> chap
     db --> facts
     facts --> rep
     facts --> card
@@ -257,6 +291,8 @@ flowchart LR
     routes --> st
     svc --> obsio
     routes --> obsio
+    routes --> shows
+    shows --> obsio
     svc --> page
 ```
 
@@ -271,10 +307,16 @@ flowchart LR
 | `internal/voice` | Text to WAV with the OS voice; text always via a file | yes (+ OS TTS) |
 | `internal/logobg` | Transparent background for sponsor logos | yes |
 | `internal/obs` | OBS config files while OBS is closed; launch, close, crash marker, freeze ping; scenes, sources, stream key over the WebSocket | no |
-| `internal/obsws` | The OBS WebSocket v5 client (per-call and held-open); `obswstest` is a fake OBS for tests | no |
-| `internal/app` | The window: first screen, match-day screen, agent/bridge status, the console's questions, activity log | no |
-| `internal/launcher` / `internal/setup` | Match-day launch chain; the first-run setup page | no |
-| `internal/agent` / `internal/bridge` | The scorer's-laptop roles; no dependency on the server package | no |
+| `internal/obsws` | The OBS WebSocket v5 client (per-call, held-open, and `Meters`: its own connection for sound levels); `Guard` refuses a sandbox any OBS but its own; `obswstest` is a fake OBS for tests | no |
+| `internal/onvif` | Finding IP cameras on the network for the panel's camera search | no |
+| `internal/app` | The window: first screen, match-day screen, agent/bridge status, the console's questions, activity log, notifications, the scheduled start | no |
+| `internal/launcher` / `internal/setup` | Match-day launch chain and the server's supervisor; the first-run setup page and `config.ini` writing | no |
+| `internal/agent` / `internal/bridge` / `internal/scorerfile` | The scorer's-laptop roles; finding NV Play's output. No dependency on the server package | no |
+| `internal/discord` | Posting an alert to the club's webhook; strips the webhook from every error | no |
+| `internal/passhash` | The club password's PBKDF2 hash and check; the local login the laptop's own tools use | yes |
+| `internal/clubpack` | "Move to another laptop": the club's settings and pictures as one file, without this machine's keys | no |
+| `internal/ai` | The one door to the Anthropic API | no |
+| `internal/console`, `internal/proc`, `internal/assets`, `internal/port`, `internal/browser` | Prompts and fatal paths that pause (questions in the window); child processes tied to their parent; built-in files with a beside-the-binary override; the server port; opening a page | no |
 | `internal/clubhouse` | The optional clubhouse touch screen: the laptop's link (run by the window), the Pi's `cricketstream clubhouse`, Wake-on-LAN, power-off | no |
 | `internal/simulate` | Rehearsal feed: real NV Play quirks, `--chaos` failures | no |
 | `internal/tools` | Telemetry, camera encoder read-out, camera refresher, quality-ladder test | no |
@@ -289,6 +331,9 @@ logic can be tested without a server, OBS or a network.
 | Client | Served at | Polls | Side effects allowed |
 |---|---|---|---|
 | `overlay.html` (OBS) | `/overlay` | `/state` + `/live` every 2.5–3.5 s, `/commands` every 3 s | **Yes: the only client of `/live` and `/commands`** |
+| `talk_out.html` (OBS, the `Commentary` source) | `/talk/out`, loopback only | a WebSocket, `/talk/out/ws` | Plays the commentators' voices into the stream |
+| `talk.html` (a commentator's phone) | `/talk` on the HTTPS port (or the tunnel) | `/talk/poll`; audio up as POSTs to `/talk/audio` | Its own voice only, and only once the operator says yes |
+| `app.html`, `setup.html` (the window) | loopback :5098 | the app's own `/api/` with a per-run key | Start/stop match day, setup, answers to the console's questions |
 | `overlay.html?preview=1` | iframe in the panel | one `/state` read, then never again | None |
 | `control.html` | `/control` | `/live/view`, `/health` (10 s), checklist, stream monitor (10 s), spotter (60 s)… | Operator POSTs only |
 | `scoring.html` | `/scoring` | `/scoring/state` (5 s) | Ball events |
@@ -297,6 +342,10 @@ logic can be tested without a server, OBS or a network.
 The overlay's graphics are one DOM with a queue (`queueGraphic` → `nextGraphic`). Panels
 show one at a time, and every stage is wrapped so one failing graphic can't stall the
 queue.
+
+Every frame from `/live` is drawn in one place, `applyLiveFrame`; `poll()` only fetches and
+queues. That's what lets the optional graphics delay (`graphics_delay`, to match a camera's
+lag) hold whole frames, in order. `/commands`, the operator's buttons, is never held.
 
 ---
 
@@ -331,6 +380,11 @@ sequenceDiagram
     SV->>OBS: ReplayClip ← clip, cut to Replay
     SV->>OBS: after replay_duration, cut back to Main
 ```
+
+The cut back is one request, so `replaywatch.go` watches for it failing: the Replay scene
+on air with no replay meant to be there (`noteReplay`) is cut away from. A boundary's
+replay waits for its animation (`hold_ms`): the clip is saved at the same moment, the cut
+is held.
 
 ### 5.2 The end of an over
 
@@ -391,6 +445,40 @@ flowchart LR
     op(["Operator: After the match tab"]) --> rc & rpt & sc & hlr & mp
 ```
 
+Moments (innings, wickets, fifties, hundreds, five-fors) are written to the `moments`
+table as they happen. Ninety seconds after the stream ends they become the YouTube video's
+chapters, and the match page's **Watch it back** links.
+
+### 5.4 Commentary from a phone
+
+```mermaid
+sequenceDiagram
+    participant OP as Operator (panel or clubhouse screen)
+    participant SV as server
+    participant PH as Commentator's phone (talk.html)
+    participant CO as talk_out.html (OBS "Commentary" source)
+    participant OBS as OBS Studio
+
+    OP->>SV: POST /talk/control (switch on)
+    SV->>SV: new key, HTTPS listener :5095 (self-signed)
+    SV->>OBS: make the Commentary source in every match scene,<br/>sidechain compressor on each camera
+    OP->>PH: QR code (address + key)
+    PH->>SV: POST /talk/join
+    SV-->>OP: "Sam is asking to commentate"
+    OP->>SV: POST /talk/control (yes)
+    loop while on air
+        PH->>SV: POST /talk/audio (numbered chunks)
+        SV->>SV: volume and mute applied to the samples
+        SV->>CO: WebSocket /talk/out/ws
+        CO->>OBS: plays into the stream, the ground dips under the voice
+    end
+    Note over SV,PH: no contact for 20 s: off the strap.<br/>2 minutes: off air. A dead mic (8 s of no audio<br/>while still polling) takes the strap down, a mute doesn't.
+```
+
+Audio goes up as POSTs, not a WebSocket, because a phone's browser may refuse `wss://` to a
+self-signed certificate. The HTTPS port serves the phone's handful of paths and nothing
+else.
+
 ---
 
 ## 6. Concurrency view
@@ -407,15 +495,25 @@ from a panic and carries on:
 | Stream monitor | 15 s | OBS stream status, congestion samples, quality-ladder decision, stream-end trigger for the match page | Marks OBS unreachable |
 | OBS crash recovery (`obsGuardTick`) | 5 s | OBS crash (sentinel present) → reopen, scene, restart stream if it was live; freeze (window hung 60 s **and** bytes not moving) → kill → reopen | Capped at 3 reopens / 30 min, then a human |
 | Overlay watch (`overlayWatchTick`) | 10 s | OBS local and reachable but no overlay `/live` poll for 30 s (its first load beat the server) → reload the Overlay source | 3 reloads between polls, then says to check its URL |
+| Replay watch (`replayWatchTick`) | 10 s | The Replay scene on air, two checks running, with no replay meant to be on → cut back to Main | Tries again next tick |
+| Sound and picture watch (`avWatchTick`) | 15 s, on air only | Sound levels from `obsws.Meters`, a look at each camera: silence for 45 s (after sound's been heard that day), or a picture that's stopped changing (after it's been seen moving) | Reports only: `/health` → `av`, a notification, Discord |
+| Commentary (`talkTick`) | 2 s | Drops phones that have gone, keeps `talk_session.json` fresh, re-checks the `Commentary` source every 15 s while on | A phone comes off the strap, then off air |
+| Side-on recorder (`sideCamLoop`) | continuous while `replay_side_on` is on | FFmpeg copies camera 2 into a ring of 2 s segments; a wicket cuts the last ~25 s | Restarted; a fresh run every 30 min |
 | Viewer sampler | 60 s, live only | YouTube concurrent viewers for sponsor viewer-minutes | Count goes stale (>3 min) and is not used |
 | Pre-match check | 30 s after start, then 6 h | All pre-match checks in parallel, 20 s budget | A check that errors is reported ✗, never raised |
 | Camera spotter | 60 s tick, check every N min, live only | Camera screenshots → frozen check → Claude Haiku | "Couldn't check", never a false camera problem |
 | Bridge mirror (`pcsBridgeTick`) | 2 s, bridge mode only | Mirrors the remote file atomically, keeps its mtime | Holds the last mirror |
 | Cloudflare reader | event-driven | Captures the tunnel URL | Watchdog restarts the tunnel |
 
-Short-lived goroutines (`safeGo`, which also recovers): replay (one per trigger), AI over
-commentary, match page, social clips, highlights, the checklist's Start OBS job,
-season-stats build, league table.
+Short-lived goroutines (`safeGo`, which also recovers): replay (one per trigger), the
+break show (one per break), a held camera-2 cut's way back, AI over commentary, match page,
+social clips, highlights, YouTube chapters, the checklist's Start OBS job, the camera-cut
+test, season-stats build, head to head, club records, league table.
+
+**Outside the server.** The launcher supervises it: a `/health` check for a stuck server,
+3 quick restarts with backoff, then one try a minute until someone stops match day. The
+window runs its own loops: alerts every 10 s, the scheduled start every 30 s, and the
+clubhouse screen's link.
 
 **Shared-state rules.** `SaveState()` is serialised (`stateWriteMu`) and atomic. Any
 read-modify-write goes through `UpdateState()` (`stateRMWMu`). The DB is reached through
@@ -429,7 +527,7 @@ lost. CI runs the whole suite under the race detector.
 
 | File | Holds | Written by | Survives restart | Git |
 |---|---|---|---|---|
-| `config.ini` | Club identity, keys, OBS/stream policy, auth, this machine's role | setup page, OBS prep | yes | ignored |
+| `config.ini` | Club identity, keys, OBS/stream policy, the club password's hash, this machine's role | setup page, OBS prep | yes | ignored |
 | `match_state.json` | Everything the panel edits | `SaveState` (atomic, mtime-cached reads) | yes | ignored |
 | `match_data.db` | Ball log, live figures, replay tags, reconciled scorecards | loggers | yes | ignored |
 | `manual_scoring.json` | `/scoring` event log | every action | yes, replayed on load | ignored |
@@ -438,6 +536,12 @@ lost. CI runs the whole suite under the race detector.
 | `match_pages/`, `.voice/`, replay folder | Post-match outputs, spoken lines (last 20), clips | jobs | yes | ignored |
 | `diagnostics/telemetry_*.csv` | Match-day bandwidth, drops, congestion, match context | `cricketstream telemetry` (started by the launcher) | yes | ignored |
 | `bridge_config.ini`, `scorer_agent.json` | The bridge's folder/port/token; the agent's remembered folder | those roles | yes | ignored |
+| `junior_names.json` | Junior mode's label for each player, kept for the match (the logs are keyed by it) | junior mode | yes | ignored |
+| `session_epoch.txt` | "Log everyone out", kept through a crash | the server | yes | ignored |
+| `talk_session.json` | Commentary's key and who's on air; deleted by a clean stop, so only a crash leaves one (used within 5 min) | commentary | crash only | ignored |
+| `.h2h_cache/`, `.radar_cache/`, `.pcs_bridge_cache/`, `.sidecam/<pid>/` | Past seasons' fixtures and scorecards; radar frames; the bridge's mirror; camera 2's ring of segments | their features | caches | ignored |
+| `logs/cricketstream-<date>.log` | Everything printed, the server child's output too | the window | yes | ignored |
+| `clubhouse.ini`, `clubhouse_wake.json` | On the Pi: which laptop, its pairing key. On the laptop: the last wake the screen reported | the clubhouse screen | yes | ignored |
 
 All of these live beside the binary (or under `CRICKETSTREAM_HOME`), never in a system
 folder: one folder is the whole install and the whole backup.
@@ -451,7 +555,10 @@ erDiagram
     live_innings ||--o{ live_batting : "match_id, innings"
     live_innings ||--o{ live_bowling : "match_id, innings"
     live_innings ||--o{ live_fow : "match_id, innings"
+    live_innings ||--o{ live_fielding : "match_id, innings"
     matches ||--o{ clips : "match_id"
+    matches ||--o{ moments : "match_id"
+    matches ||--o{ yt_uploads : "match_id"
     matches ||--o{ innings_totals : "reconciled"
     innings_totals ||--o{ batting : "reconciled"
     innings_totals ||--o{ bowling : "reconciled"
@@ -508,11 +615,30 @@ erDiagram
         text batter
         int score
     }
+    live_fielding {
+        text match_id PK
+        int innings PK
+        text batter PK
+        text fielder
+        text how
+    }
     clips {
         text match_id PK
         text file PK
         text reason
         text caption
+    }
+    moments {
+        text match_id PK
+        text key PK
+        real ts
+        text kind
+        text text
+    }
+    yt_uploads {
+        text match_id PK
+        text kind PK
+        text video_id
     }
     innings_totals {
         text match_id PK
@@ -543,8 +669,13 @@ Three layers, in increasing order of authority:
    write.
 2. **`live_*`** holds the scorer's own running figures, upserted every frame. These are
    exact, and they are what reports, result cards and the match page read.
+   `live_fielding` files each catch, stumping and run out under the batter it dismissed.
 3. **`innings_totals` / `batting` / `bowling`** hold PlayCricket's published scorecard,
    written by Reconcile. They are the record of truth after the match.
+
+`moments` (when each wicket and milestone happened) and `yt_uploads` (what has gone up to
+YouTube, so it goes up once) sit beside them. In junior match mode every name in every
+table is already the label ("Patrick E"): the swap happens before anything is logged.
 
 `match_id` is the PlayCricket id once known, else `date_home_v_away`. Every table keyed
 by it is listed in `matchTables`, so `FollowMatchID()` can move a match's rows when the
@@ -564,7 +695,7 @@ id changes mid-innings.
 | OBS freezes | Window hung 60 s **and** stream bytes not moving | Force-close → treated as a crash | Same |
 | OBS frozen but still streaming | Bytes moving | **Left alone** (killing it would cause the outage) | Warning |
 | Upload congested | Stream monitor: 60 s congestion/drops | OBS dynamic bitrate; optional quality ladder down, and back up one step after 10 clean minutes, at a break in play | Monitor card, step history |
-| Server crashes | launcher | Relaunch up to 3× with backoff; the count starts again after 10 min of steady running | Console, Activity, a notification |
+| Server crashes | launcher | Relaunch 3× with backoff, then one try a minute until someone stops match day; the count starts again after 10 min of steady running. Logins survive it (one session epoch for the match day) | Activity, a notification, Discord ("keeps crashing", once per crash loop) |
 | Server running but not answering (stuck) | launcher: 4 missed `/health` checks in a row, once it has answered | Kill → relaunched as a crash | Same |
 | Server restarted while the stream is stepped down | `stream_ladder` in the state | The ladder carries on from its step (only while OBS is still at that bitrate, within 12 h) | Stream quality card |
 | State file unreadable | `LoadState` | Last good copy, else defaults | Console warning |
@@ -573,6 +704,9 @@ id changes mid-innings.
 | Camera fogged or knocked | Camera spotter (opt-in) | None (can't wipe a lens) | Red camera badge in the pinned bar |
 | Leftover quality downshift | Pre-match check, `/health` | The launcher resets the bitrate on next start | ⚠/✗ before going live |
 | Last match's scorer file still in the folder | file unchanged for 12 h (by the server's clock) | Pre-match graphics, nothing logged, until the scorer writes | Health strip |
+| Replay never cut back (server died mid-replay, OBS didn't answer) | Replay watch: Replay on air with no replay meant to be; the launcher does the same while no server is running | Cut back to Main | Activity |
+| Stream goes silent, or a camera's picture freezes | Sound and picture watch | None: it only reports | Health strip, clubhouse Health tab, a notification, Discord |
+| Commentator's phone drops out or its mic dies | No contact 20 s / no audio 8 s | Off the strap; off air after 2 min. The ground's sound comes back by itself (a compressor, not a volume change) | Commentary tab |
 | Replay asked for with the replay buffer stopped | OBS refuses `SaveReplayBuffer` | That replay skipped (no stale clip on air); the buffer started for the next one | Activity |
 
 The rule behind the table: **automate what is safe to repeat, never what could put the
@@ -603,13 +737,30 @@ flowchart LR
     lan -- "Bearer session token<br/>(HMAC, 12 h, epoch-revocable)<br/>+ Origin check on POST" --> srv
     cf -- "same, and never<br/>treated as loopback" --> srv
     anon -- "read-only, no secrets:<br/>/live/view, /health, /state (redacted),<br/>shareable outputs" --> srv
+
+    subgraph T3["Keyed devices"]
+        pi["Clubhouse screen<br/>pairing key"]
+        ph["Commentator's phone<br/>QR code's key, HTTPS :5095"]
+    end
+    win{{"the window's link :5096"}}
+    pi -- "allowlist of match-day routes,<br/>with X-Forwarded-For<br/>(never loopback's carve-outs)" --> win --> srv
+    ph -- "its own /talk paths only,<br/>heard only after the operator's yes" --> srv
 ```
 
 - **Auth is off on a localhost-only install and required beyond it.** Binding to anything
   but 127.0.0.1 without a club password falls back to 127.0.0.1.
+- **One table says who may call each route** (`internal/server/routes.go`): open, the
+  overlay, this laptop, or a login. It's asked before the routing switches and denies by
+  default, so a route missing from it answers 404 and a case that forgets its own check is
+  still shut.
+- **`config.ini` holds the club password's hash, never the password** (PBKDF2,
+  `internal/passhash`). One typed in by hand is hashed at the next start. The laptop's own
+  tools (the window, the clubhouse link, the simulator) log in with a local key the server
+  accepts only from this machine, unproxied.
 - **Sessions:** the password is exchanged for `expiry:nonce:HMAC(control_token+epoch)`.
   Tokens are Bearer only, never cookies, so a cross-site page has nothing to ride on.
-  "Log everyone out" rotates the epoch. Five failures in 10 minutes lock that client out,
+  "Log everyone out" rotates the epoch; a server the launcher restarts keeps the match
+  day's epoch, so a crash logs nobody out. Five failures in 10 minutes lock that client out,
   and 30 from every address together lock sign-in for 5 minutes for everyone but this
   laptop. The client is the socket's address; `X-Forwarded-For` / `CF-Connecting-IP` are
   believed only from a proxy on this machine (the tunnel, the clubhouse link).
@@ -622,7 +773,13 @@ flowchart LR
 - **`/live` and `/commands` answer only the overlay** (`overlayCaller`): a request the
   browser didn't mark cross-site, from this machine unproxied or from `obs_host`.
 - **Secrets never reach a browser.** `/state` replaces each key in `SecretKeys` with a
-  sentinel, and a POST carrying the sentinel leaves the stored value alone.
+  sentinel, and a POST carrying the sentinel leaves the stored value alone. POST `/state`
+  saves only known settings of the right type. Keys that travel in a URL (PlayCricket's,
+  the Discord webhook) are stripped from every error before it's shown or logged.
+- **The clubhouse screen and the commentary phone are keyed, and narrow.** The screen's
+  link reaches the server only through an allowlist, and a score-only screen's second key
+  reaches reads alone. The phone's HTTPS port serves its own few paths; `/talk/out` is
+  loopback only.
 - **Inputs are distrusted:** uploads are typed by magic bytes (never SVG). Paths are
   reduced to a basename. AI text and player names are escaped in every HTML sink. Text
   reaches ffmpeg and the speech engine only via files, never argv or a filter string.
@@ -638,22 +795,33 @@ the routing switches and denying by default; `routes_test.go` holds the list of 
 
 | Group | Endpoints | Access |
 |---|---|---|
-| Pages | `/overlay`, `/control`, `/scoring` | open (the panel asks for a login when a password is set) |
+| Pages | `/overlay`, `/control`, `/scoring`, `/settings` | open (the panel asks for a login when a password is set) |
 | Overlay's own | `/live` *(mutating)*, `/commands` *(pops)* | the overlay only: this machine or `obs_host`, never cross-site |
 | Live feed | `/live/view`, `/state` GET | open, secrets redacted |
-| Settings | `/state` POST, `/login`, `/auth/logout_all`, `/auth/log` | token |
-| Overlay actions | `/replay`, `/camera/scene`, `/commentary/over/generate`, `/weather/show`, `/weather/hide`, `/sponsor/airtime` POST | loopback or token |
-| Match day | `/checklist`, `/checklist/action`, `/match/fetch`, `/obs/add_camera`, `/stream/quality`, `/stream/dynamic`, `/youtube/update`, `/camera/spotter`, `/precheck`, `/precheck/last` | token |
+| Signing in | `/login` | open (rate-limited; the local key only from this machine) |
+| Settings | `/state` POST, `/settings/save`, `/settings/check`, `/settings/info`, `/auth/logout_all`, `/auth/log` | token |
+| Overlay actions | `/replay`, `/camera/scene`, `/break/start`, `/break/end`, `/commentary/over/generate`, `/weather/show`, `/weather/hide`, `/sponsor/airtime` POST | loopback or token |
+| Match day | `/checklist`, `/checklist/action`, `/match/fetch`, `/match/fixtures`, `/rehearsal`, `/obs/add_camera`, `/cameras/discover`, `/cameras/use`, `/camera/cut_test`, `/camera/side-on`, `/camera/spotter`, `/stream/quality`, `/stream/dynamic`, `/obs/stream_check`, `/youtube/update`, `/youtube/live`, `/precheck`, `/precheck/last`, `/preview.jpg` | token |
+| On-air buttons | `/cards/show`, `/scorecard/show`, `/h2h/show`, `/sync/show`, `/replay/test`, `/commentary/test`, `/break` | token |
+| Commentary from a phone | `/talk/control`, `/talk/status`, `/talk/qr.png` | token |
+| | `/talk/onair` | open |
+| | `/talk/out`, `/talk/out/ws` | this machine only, never proxied |
+| | `/talk`, `/talk/capture.js`, `/talk/info`, `/talk/join`, `/talk/poll`, `/talk/audio`, `/talk/leave`, `/talk/level` | the QR code's key; on the HTTPS port or the tunnel |
 | Manual scoring | `/scoring/setup`, `/scoring/{ball,undo,edit,bowler,batter,strike,innings,reset}`, `/scoring/state`, `/scoring/balls`, `/scoring/scorecard` | token for writes |
-| Stats and context | `/player/stats`, `/season/top`, `/league/table`, `/weather`, `/headshot/*`, `/logo/*`, `/sponsor/*` | open |
-| After the match | `/report/generate` (POST), `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/data/export`, `/data/reconcile` | token |
+| Stats and context | `/player/stats`, `/club/career`, `/season/top`, `/league/table`, `/h2h`, `/lineups`, `/match/scorecard`, `/weather`, `/weather/radar`, `/headshot/*`, `/logo/*`, `/sponsor/*`, `/voice/*` | open (`/h2h?force=1` and `/player/stats/refresh` need a token) |
+| After the match | `/report/generate` (POST), `/report/log`, `/social/image/generate`, `/social/recent`, `/social/clips`, `/match/page`, `/highlights`, `/youtube/chapters`, `/youtube/highlights`, `/youtube/thumbnail`, `/data/export`, `/data/reconcile` | token |
+| Pictures | `/library`, `/library/upload`, `/library/rename`, `/library/delete`, `/sponsor/upload`, `/sponsor/remove_background` | token |
 | Shareable outputs | `/social/image/latest`, `/social/clips/file/*`, `/match/page/latest`, `/sponsor/airtime` GET | open |
-| Diagnostics | `/health`, `/stream/monitor`, `/data/status`, `/remote/info` | open |
+| Diagnostics | `/health`, `/stream/monitor`, `/data/status`, `/highlights/status`, `/remote/info` | open |
 | Diagnostics with paths | `/status`, `/pcs/debug`, `/logos/debug` | this machine's own browser, or token |
 | Scorer's laptop | `/agent/status`, `/agent/discover`, `/agent/pair` | token |
 
 Routing rule: exact paths are matched before prefixes (`/sponsor/airtime` before
-`/sponsor/<id>`).
+`/sponsor/<id>`). `routes.go` is the full list; this table groups it.
+
+Two more surfaces sit outside the server: the window's own `/api/` on loopback :5098 (a
+per-run key only its page has), and the clubhouse screen's link on :5096 (`/clubhouse/...`,
+the pairing key; [`CLUBHOUSE_SCREEN.md`](CLUBHOUSE_SCREEN.md)).
 
 ---
 
@@ -675,6 +843,12 @@ Routing rule: exact paths are matched before prefixes (`/sponsor/airtime` before
 | D12 | One Go binary for every role, assets built in, data beside it | A volunteer downloads one file per machine and never installs a runtime; nothing can be half-installed | Python + installer + per-role executables (the original: three launchers, a wizard that installed Python, and a separate scorer-agent exe) |
 | D13 | First-run setup as a web page served by the binary | Works the same on Windows and macOS, shows a live scorebar preview, and needs no GUI toolkit | A console interview (the original); a native GUI per platform |
 | D14 | Port, not rewrite: behaviour, output bytes and tests carried over | Clubs' overlays, panels and saved files keep working unchanged; differential tests prove it | Redesigning while porting |
+| D15 | The clubhouse screen's link lives in the window, not the server | It must answer before match day starts (to start it) and after it ends (to switch the laptop off) | A server route |
+| D16 | A commentator's voice goes phone → HTTPS POSTs → server → a browser source in OBS | A phone gives a page its microphone only on HTTPS; POSTs survive a self-signed certificate where `wss://` may not; nothing to install on the phone | An app; WebRTC; a WebSocket from the phone |
+| D17 | The ground dips under a voice by a sidechain compressor, and volume/mute act on the samples | A phone that crashes can't leave the sound turned down; nothing is left changed in OBS for next week | Changing OBS's faders |
+| D18 | One table of who may call each route, denying by default | A forgotten login check is how a route was once left open | A check written into each case |
+| D19 | The sound and picture watch only reports | A false alarm that acted would cause the outage it's there to prevent | Restarting a source or the stream by itself |
+| D20 | Junior mode swaps names before anything is logged | Nothing downstream (DB, scorecard, page, report, chapters) can ever hold a child's full name | Relabelling at each place a name is shown |
 
 ---
 
@@ -696,3 +870,12 @@ Each of these was broken once and fixed. [`CLAUDE.md`](CLAUDE.md) has the full s
 8. No club identity in defaults. No secrets in git (globbed ignores).
 9. Never test against the real OBS install. Use a portable copy only.
 10. `overlay.html` is a fixed 1920×1080 canvas with a 72 px scorebar. Panels align to it.
+11. A new route needs a line in `routes.go`, or it answers 404.
+12. Anything that puts the Replay scene on air calls `noteReplay` for as long as it means to
+    be there, or the replay watch cuts away from it.
+13. Everything drawn from a `/live` frame is drawn in `applyLiveFrame`, never in `poll()`.
+14. Anything new that shows a player's name from outside the feed relabels it in junior
+    mode; anything about one named child is off.
+15. The clubhouse link's allowlist and the commentary port's path list are security
+    boundaries: never add `/live`, `/commands`, settings or anything holding a secret.
+16. `ClubPassword` is a hash: check it with `passhash.Verify`, never `==`.
