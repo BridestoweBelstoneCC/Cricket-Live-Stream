@@ -41,6 +41,9 @@ Fixes from an outside read of the code. None is known to have been used against 
 - **Built with Go 1.27.4**, which fixes two faults in Go itself (one could crash the
   server). The build now checks for known vulnerabilities, and Dependabot watches the Go
   modules.
+- **The build's own tools are fixed to exact versions.** Each GitHub Action the build and
+  release use is named by its commit, so a changed tag can't alter a release. Four Go
+  modules are also up to date (SQLite, the Anthropic client, `x/oauth2`, `x/sys`).
 
 ---
 
