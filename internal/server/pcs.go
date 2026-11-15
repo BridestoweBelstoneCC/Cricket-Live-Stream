@@ -123,6 +123,14 @@ func parseScoreboardRaw(raw, name string) M {
 
 func logScore(state M, source string) {
 	b1, b2 := gm(state, "batter1"), gm(state, "batter2")
+	if juniorMode(LoadState()) {
+		// The feed's names as the scorer typed them: not in the activity log, which the
+		// clubhouse screen shows.
+		say("  %s: %s %s-%s (%s ov) | %s / %s", source, gs(state, "battingTeamName", ""),
+			anyStr(state, "score", ""), anyStr(state, "wickets", ""), oversStr(state["overs"]),
+			anyStr(b1, "runs", ""), anyStr(b2, "runs", ""))
+		return
+	}
 	say("  %s: %s %s-%s (%s ov) | %s %s / %s %s", source, gs(state, "battingTeamName", ""),
 		anyStr(state, "score", ""), anyStr(state, "wickets", ""), oversStr(state["overs"]),
 		gs(b1, "name", ""), anyStr(b1, "runs", ""), gs(b2, "name", ""), anyStr(b2, "runs", ""))

@@ -266,6 +266,13 @@ When the software is running, open **http://127.0.0.1:5000/control** in your bro
 - Optional extras, all off until you switch them on: the **AI camera spotter** (warns you
   if a camera lens fogs up or gets knocked — costs a few pence a match), and **spoken
   commentary** (a computer voice reads out the end-of-over line)
+- **A junior match:** Match setup → **Junior match** shows every player by first name and
+  the first letter of their surname (**Patrick E**) and switches off player cards, photos
+  and AI commentary. It switches on by itself for an age-group fixture; check it before
+  going live
+- **Starting by itself:** on CricketStream's first screen, tick **Start match day by itself**
+  and it opens OBS and puts the pre-match show up before today's match. It never goes live
+  on YouTube by itself, and the laptop has to be on with CricketStream open
 
 You don't need to use this every match — once you've answered the setup questions, double-clicking CricketStream handles everything automatically.
 
@@ -311,8 +318,8 @@ too — send that file if you ask for help.
 On Windows, CricketStream also has an icon by the clock (it may be hidden behind the
 **^** arrow — drag it onto the taskbar to keep it in sight). Click it to bring the window
 back from behind OBS. It pops up a notification when something needs you — the scorer's
-feed has gone quiet, OBS crashed and was reopened, the stream has stopped, a new version
-is out — and another when it's sorted. If the club uses Discord, the same alerts can go to
+feed has gone quiet, OBS crashed and was reopened, the stream has stopped or gone silent,
+a camera's picture has frozen, a new version is out — and another when it's sorted. If the club uses Discord, the same alerts can go to
 a channel there, so they reach your phone: **Settings → Alerts on Discord**.
 
 ### The CricketStream window is blank or doesn't open (Windows)

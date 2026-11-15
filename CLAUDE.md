@@ -188,6 +188,32 @@ problem + what to do + pause) or print and `console.Pause()`.
   `NoMatchDataError`. Never let the card or report claim WIN/DEFEAT when it can't tell
   which side is ours, or before the chase is finished (PlayCricket's live scorecard has no
   result mid-match). Found in the 2026-10-02 rehearsal and review.
+- **Junior match mode swaps names BEFORE anything is logged** (`junior.go`, `juniorLive` in
+  `live`): the ball DB, scorecard, match page, report and chapters then only ever hold
+  "Patrick E". Anything new that shows a player's name from somewhere else (PlayCricket
+  directly, like `/lineups` and `/h2h`) must relabel it itself (`juniorNames`,
+  `juniorPlain`), and anything about one named child (a card, a record, an AI's words, a
+  picture sent to an AI) must be off under `juniorMode(st)` on the server or in the
+  overlay's `applyJuniorMode`. The overlay's `fmtSurname`/`fmtInitial` cut a name to its
+  last word: in junior mode they leave the server's labels whole (`state.junior`) and
+  shorten anything else themselves. A label is kept for the match in `junior_names.json`
+  because the logs are keyed by it; clashes get more of the surname, never all of it.
+  `overlay_live_browser_test.go` runs the real overlay in Chrome: read the scorebar's
+  boxes, not the page text (the script holds demo names).
+- **The graphics delay holds whole frames, in order** (`applyLiveFrame`, `_heldFrames`).
+  Everything that follows from a `/live` frame is drawn in `applyLiveFrame`; `poll()` only
+  fetches and queues. Draw nothing from a frame in `poll()` itself, or it shows early with
+  the delay on. `/commands` (the operator's buttons) is never held.
+- **The sound and picture watch only reports** (`avwatch.go`, `/health`'s `av`). Silence
+  counts only after sound has been heard that day, a freeze only after the camera's been
+  seen moving, and neither off air. Levels come from `obsws.Meters`, its own connection
+  subscribed to `InputVolumeMeters` (never subscribe the shared connections to it: twenty
+  events a second). Its format is checked on a real OBS by
+  `internal/integration/meters_windows_test.go` (opt-in); non-zero levels from a real
+  microphone are still unseen.
+- **The scheduled start never goes live and starts once a day** (`internal/app/autostart.go`).
+  Match day started or stopped by anyone today means it has nothing to do. `[App]
+  auto_start`, `auto_start_minutes`.
 - **Logging must never raise.** `LogBallData()` and anything in the match-day loop is wrapped
   in try/except and must stay that way — a logging error must never interrupt the stream.
 - **State writes must stay atomic.** `SaveState()` writes to a temp file then `os.Rename`s,

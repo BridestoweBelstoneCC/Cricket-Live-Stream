@@ -195,7 +195,7 @@ func matchLogCopy() M {
 func GenerateOverCommentary(overNum int, overRuns int, bowler, figs, ballsStr string, state M) {
 	cfg := LoadState()
 	key := anthropicKey(cfg)
-	if key == "" {
+	if key == "" || juniorMode(cfg) { // junior match mode: no AI (or spoken) commentary
 		return
 	}
 	sc, wk := gi(state, "score", 0), gi(state, "wickets", 0)

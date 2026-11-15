@@ -82,6 +82,7 @@ type App struct {
 	ask  *asker
 	win  window
 	upd  updateInfo
+	auto autoState // the scheduled start (autostart.go)
 
 	mu          sync.Mutex
 	phase       string
@@ -162,6 +163,7 @@ func Run(o Options) int {
 
 	a.enterRole(setup.Role())
 	go a.watch(10 * time.Second)
+	go a.autoStartLoop(30 * time.Second)
 	if v := os.Getenv(ReleasesEnv); v != "" {
 		releasesAPI = v
 	}
@@ -789,6 +791,7 @@ func (a *App) status(since int) map[string]any {
 		}
 		if phase == phHome || phase == phStopped {
 			out["clubhouse"] = a.clubhouseInfo()
+			out["auto_start"] = a.autoStartInfo()
 		}
 		a.mu.Lock()
 		out["precheck"] = map[string]any{"running": a.precheckRunning, "result": a.precheckResult}

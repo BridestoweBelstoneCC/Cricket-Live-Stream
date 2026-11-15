@@ -343,6 +343,11 @@ func afterStreamYouTube() {
 		say("  %s  YouTube thumbnail: %s", tick(ok), msg)
 	}
 	if gb(st, "youtube_highlights", true) && matchFinished() && ytUploaded(mid, "highlights") == "" {
-		StartHighlightsUpload(mid, false)
+		if juniorMode(st) {
+			// Nothing of a junior match is published without someone looking at it first.
+			say("  •  Junior match mode: the highlights video isn't uploaded by itself — After the match → Upload highlights, once it's been watched")
+		} else {
+			StartHighlightsUpload(mid, false)
+		}
 	}
 }

@@ -61,13 +61,23 @@ func (l *reqLog) all() []string {
 // run for `budget` of (virtual) time, plus every request it made.
 func renderInBrowser(t *testing.T, path string, budget time.Duration) (string, []string) {
 	t.Helper()
+	return renderInBrowserWith(t, path, budget, nil)
+}
+
+// renderInBrowserWith is renderInBrowser with the server's state prepared first (prepare
+// runs once the sandbox is in place).
+func renderInBrowserWith(t *testing.T, path string, budget time.Duration, prepare func(dir string)) (string, []string) {
+	t.Helper()
 	chrome := findChrome(t)
 	if browserHung.Load() {
 		// One hang has already failed the run; another 90s per page only pushes the
 		// package past go test's timeout, which hides every other result.
 		t.Skip("the browser hung on an earlier page")
 	}
-	sandbox(t, "")
+	dir := sandbox(t, "")
+	if prepare != nil {
+		prepare(dir)
+	}
 	log := &reqLog{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.mu.Lock()

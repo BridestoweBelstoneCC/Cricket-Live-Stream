@@ -60,6 +60,9 @@ func DefaultState() M {
 		"graphics_season_leaders":      true, // the club's top run-scorers and wicket-takers, pre-match and at breaks
 		"break_reel":                   true, // replays in breaks (breakshow.go)
 		"graphics_player_card":         false,
+		// Junior match mode (junior.go): first name + initial everywhere, no player cards,
+		// headshots, club records or AI. Today's fixture switches it on for an age-group side.
+		"junior_mode": false,
 		// "classic" | "modern" | "impact" | "minimal" | "franchise" | "neon" | "block" — overlay.html's body.style-* CSS
 		// blocks and its SCOREBAR_STYLES list. "classic" is the base stylesheet, so an
 		// unknown value renders as classic rather than breaking the bar.
@@ -81,7 +84,11 @@ func DefaultState() M {
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut": false,
-		"camera_over_hold":         8, // seconds on camera 2 at the over change
+		// Hold every graphic back by this long, so the score doesn't change before the
+		// camera's (late) picture shows the ball. Off by default; the overlay does it.
+		"graphics_delay":         false,
+		"graphics_delay_seconds": 2,
+		"camera_over_hold":       8, // seconds on camera 2 at the over change
 		// After a wicket (once its replay's done), camera 2 while the new batter walks out;
 		// and the teams walking off at the end of an innings (camhold.go). Opt-in, like
 		// the auto-cut; a no-op without camera 2.
@@ -104,6 +111,7 @@ func DefaultState() M {
 		"network_test_mbps":         nil,
 		"network_test_at":           0,
 		"stream_auto_downshift":     false, // the sentinel may auto-reduce bitrate on sustained congestion
+		"stream_av_watch":           true,  // warn when the stream goes silent or a camera freezes (avwatch.go)
 		"youtube_title_template":    "LIVE: {home} vs {away}",
 		"youtube_description":       "Live grassroots cricket. {home} v {away}.",
 		"youtube_privacy":           "unlisted",

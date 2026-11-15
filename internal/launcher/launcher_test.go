@@ -553,3 +553,11 @@ func TestCtrlCAfterRestartTerminatesTheNewProcess(t *testing.T) {
 		t.Fatal(original.terminated, restarted.terminated)
 	}
 }
+
+// Junior match mode follows today's fixture; with no fixture it's left as the operator set it.
+func TestJuniorModeFollowsTheFixture(t *testing.T) {
+	eq(t, BuildState(cfg(t), &Match{AwayTeam: "Rival CC", Junior: true}, M{"junior_mode": false})["junior_mode"], true, "an age-group fixture")
+	eq(t, BuildState(cfg(t), &Match{AwayTeam: "Rival CC"}, M{"junior_mode": true})["junior_mode"], false, "a senior fixture the next day")
+	eq(t, BuildState(cfg(t), nil, M{"junior_mode": true})["junior_mode"], true, "no fixture found: as it was left")
+	eq(t, BuildState(cfg(t), nil, M{})["junior_mode"], false, "no fixture, never set")
+}

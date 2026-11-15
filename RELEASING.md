@@ -109,9 +109,13 @@ publishes the release with the signed files.
 1. `go test ./...` green, `CHANGELOG.md` has the version's section. For a release worth
    announcing, write `release-notes/<tag>.md` (e.g. `release-notes/v3.0.0-beta.1.md`): the
    workflow puts it at the top of that release's notes.
-2. Rehearse: a practice match on a real streaming laptop with OBS.
-3. `git tag v3.0.0-beta.N && git push origin v3.0.0-beta.N`, approve the signing request.
-4. Download the Windows build from the release, double-click it on a clean machine: the
+2. Run the fault test: the real app on a portable OBS, with everything on, while the
+   server's killed and hung, OBS crashes and freezes, and the line drops (about half an
+   hour, with no OBS open):
+   `CRICKETSTREAM_MATCHDAY=1 CRICKETSTREAM_OBS_PORTABLE=<portable OBS folder> go test ./internal/integration/ -run MatchDayWithEverythingOn -v -count=1 -timeout 70m`
+3. Rehearse: a practice match on a real streaming laptop with OBS.
+4. `git tag v3.0.0-beta.N && git push origin v3.0.0-beta.N`, approve the signing request.
+5. Download the Windows build from the release, double-click it on a clean machine: the
    publisher shows *SignPath Foundation*, and no "Windows protected your PC" box once the
    certificate has built reputation (new certificates can still see it for a while).
 

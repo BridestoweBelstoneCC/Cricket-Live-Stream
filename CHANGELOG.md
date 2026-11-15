@@ -4,6 +4,43 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased — new (2026-11-13)
+
+Five additions from the same review's ideas. All but the sound and picture warning are off
+until you switch them on.
+
+- **Junior match mode.** One switch in the control panel (**Match setup → Junior match**),
+  switched on by itself when today's fixture is an age-group side. Every player is shown by
+  first name and the first letter of their surname (**Patrick E**) on the stream, the
+  scorecard, the match page, the report and the video's chapters. Off while it's on: player
+  cards and headshots, club records, season leaders, AI and spoken commentary, the AI
+  camera check, and the automatic highlights upload (upload it yourself once it's been
+  watched). Replays stay on. First names come from the squad roster and the teams entered
+  on PlayCricket; a player in neither shows as initials (**T H**), never a surname, so add
+  the squad to the roster. Check the switch before going live: a junior fixture whose name
+  doesn't say so has to be switched on by hand.
+- **Hold the graphics back to match the camera.** A camera's picture arrives a second or
+  more late, so with a quick scorer the score could change before the ball was seen.
+  **Cameras → Hold the graphics back** delays the scorebar and every graphic by the time
+  you set (replays are cut that much later too). **Measure the camera's delay** puts a
+  clock on the stream for a minute: hold a phone's clock up to the camera and the
+  difference between the two in OBS is the number to enter. Leave it off unless you've
+  seen the score beat the picture.
+- **A warning when the stream goes silent or a camera freezes.** While on air,
+  CricketStream listens to OBS's sound and looks at each camera every 15 seconds. No sound
+  for 45 seconds (after there's been some), or a picture that's stopped changing, shows in
+  the panel's health strip and the clubhouse screen's Health tab, and comes as a Windows
+  notification and a Discord message. It only warns. On by default (**Stream → Warn about
+  silence and a frozen picture**).
+- **The chase at the end of each over.** In a chase the over summary leads with
+  "Need 48 from 36 balls · 8.00 an over".
+- **Start match day by itself.** On the app's home screen, **Start match day by itself N
+  minutes before today's match** uses the start time on PlayCricket: OBS opens and the
+  pre-match show goes up. Nothing goes live on YouTube until someone presses Go live. The
+  laptop has to be on with CricketStream open.
+
+---
+
 ## Unreleased — security review (2026-11-11)
 
 Fixes from an outside read of the code. None is known to have been used against a club.

@@ -202,6 +202,14 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
       <a class="btn" href="/setup?app=1" id="home_settings">Settings</a>
       <button class="btn quiet" type="button" data-open="app">Open the CricketStream folder</button>
     </div>
+    <div id="as_card" class="hidden" style="margin-top:14px">
+      <label class="tick"><input type="checkbox" id="as_on"><span>Start match day by itself
+        <select id="as_minutes" style="margin:0 4px"><option value="10">10</option><option value="20">20</option><option value="30">30</option><option value="45">45</option><option value="60">60</option></select>
+        minutes before today's match</span></label>
+      <p class="hint" style="margin:4px 0 0 30px">Uses the start time on PlayCricket. OBS opens and the pre-match
+        show goes up; nothing goes live on YouTube until someone presses Go live. This laptop has to be on with
+        CricketStream open. <span id="as_note"></span></p>
+    </div>
     <p class="hint" style="margin-top:14px">A practice can be stopped, or another started, from the control panel:
       <strong>Match day → Practice match</strong>. Don't go live during one: viewers would see the made-up match.</p>
 
@@ -484,6 +492,7 @@ function renderHome() {
   renderPrecheck();
   renderOBS();
   renderClubhouse();
+  renderAutoStart();
 }
 
 // The clubhouse screen's card: off by default; on, it shows the pairing key and whether a
@@ -549,6 +558,26 @@ function renderClubhouseRequests(c) {
     box.appendChild(d);
   });
 }
+// Start by itself before a match (autostart.go).
+var asBusy = false;
+function renderAutoStart() {
+  var s = S.auto_start;
+  $('as_card').classList.toggle('hidden', !s);
+  if (!s || asBusy) return;
+  $('as_on').checked = !!s.on;
+  $('as_minutes').value = String(s.minutes || 20);
+  txt('as_note', s.on ? (s.note || '') : '');
+}
+function setAutoStart(body) {
+  asBusy = true;
+  api('autostart', body).then(function (d) {
+    asBusy = false;
+    if (!d.ok) alertNote(d.error); else S.auto_start = d.auto_start;
+    renderAutoStart();
+  }, function () { asBusy = false; });
+}
+$('as_on').addEventListener('change', function () { setAutoStart({on: this.checked}); });
+$('as_minutes').addEventListener('change', function () { setAutoStart({minutes: parseInt(this.value, 10)}); });
 function setClubhouse(body) {
   chBusy = true;
   api('clubhouse', body).then(function (d) {

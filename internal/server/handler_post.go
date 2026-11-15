@@ -592,6 +592,11 @@ func (c *ctx) doPOST() {
 		setCommand("break_end", true)
 		c.json(M{"ok": true, "active": false})
 
+	case path == "/sync/show":
+		// A clock on the stream for a minute, to measure the camera's delay against.
+		setCommand("sync_test", true)
+		c.json(M{"ok": true})
+
 	case path == "/h2h/show":
 		setCommand("show_h2h", true)
 		c.json(M{"ok": true})

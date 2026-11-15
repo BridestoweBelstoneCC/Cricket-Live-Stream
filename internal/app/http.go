@@ -240,6 +240,28 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok(map[string]any{"clubhouse": a.clubhouseInfo()})
+	case "POST /api/autostart":
+		// The home screen's "Start by itself before a match".
+		var body struct {
+			On      *bool `json:"on"`
+			Minutes *int  `json:"minutes"`
+		}
+		if !readBody(r, &body) {
+			fail(400, "Bad request")
+			return
+		}
+		set := loadAutoStart()
+		if body.On != nil {
+			set.On = *body.On
+		}
+		if body.Minutes != nil {
+			set.Minutes = *body.Minutes
+		}
+		if err := saveAutoStart(set); err != nil {
+			fail(500, err.Error())
+			return
+		}
+		ok(map[string]any{"auto_start": a.autoStartInfo()})
 	case "POST /api/panel":
 		a.showPanel()
 		ok(nil)
