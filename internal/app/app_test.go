@@ -73,7 +73,10 @@ func newTestApp(t *testing.T) *testApp {
 	dir := t.TempDir()
 	saved := assets.Dir()
 	assets.SetDir(dir)
-	t.Cleanup(func() { assets.SetDir(saved) })
+	t.Cleanup(func() {
+		discordSends.Wait() // an alert still being sent reads config.ini from this folder
+		assets.SetDir(saved)
+	})
 	home := filepath.Join(dir, "home")
 	os.MkdirAll(home, 0o755)
 	t.Setenv("USERPROFILE", home)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"cricketstream/internal/port"
@@ -245,6 +246,14 @@ func (a *App) notify(n notice) {
 		w.Notify(n.Title, n.Text, n.Warn)
 	}
 	if !n.Local {
-		go sendDiscord(n)
+		discordSends.Add(1)
+		go func() {
+			defer discordSends.Done()
+			sendDiscord(n)
+		}()
 	}
 }
+
+// discordSends counts the alerts on their way to Discord, so the tests can wait for them:
+// each reads config.ini from the app's folder, which the next test moves.
+var discordSends sync.WaitGroup
