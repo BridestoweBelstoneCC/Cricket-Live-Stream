@@ -493,14 +493,18 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 		return d
 	}
 
-	// On a slow machine (a VM with no graphics card, an old laptop) OBS is still loading its
-	// plugins when match day says it's running: its WebSocket answers minutes later. The app
-	// waits for it (the checklist, the overlay watch); so does this.
+	// On a slow machine (a VM with no graphics card, an old laptop) OBS is still loading when
+	// match day says it's running: its WebSocket answers, but refuses with "not ready" (207)
+	// until the scene collection has loaded. The app waits for it (the checklist, the overlay
+	// watch); so does this, for the scene list itself.
 	obsWait := time.Now()
 	for {
 		c, err := obsws.Dial(target, 5*time.Second)
 		if err == nil {
-			_, err = c.Request("GetVersion", nil)
+			var r *obsws.Response
+			if r, err = c.Request("GetSceneList", nil); err == nil && !r.OK {
+				err = fmt.Errorf("OBS said %d %s", r.Code, r.Comment)
+			}
 			c.Close()
 		}
 		if err == nil {
