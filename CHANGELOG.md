@@ -4,6 +4,22 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased — the club's stats on the clubhouse screen (2026-11-15)
+
+- **Club stats on the clubhouse screen.** A new **Stats** tab, on every screen and with
+  the laptop off too: every player's record for the club from PlayCricket, as far back as
+  it goes (games, runs, average, high score, wickets, best bowling, catches). Filter by
+  club, including the clubs a merged club was formed from (before the merger), and by men's,
+  ladies' and junior cricket; rank by games, runs, wickets or catches; find yourself with
+  the screen's own letters and tap your name for your whole record. The laptop adds them
+  up from the scorecards it already keeps for the club milestones, and the screen keeps its
+  own copy, refreshed once a week when it finds match day running.
+- **The club's own tabs.** A page of the club's own (a darts scorer, a quiz) can be a tab
+  on the clubhouse screen: `extra_tabs` in the Pi's `clubhouse.ini`. It stays on the Pi and
+  is never part of CricketStream. See CLUBHOUSE_SCREEN.md.
+
+---
+
 ## Unreleased — new (2026-11-13)
 
 Five additions from the same review's ideas. All but the sound and picture warning are off

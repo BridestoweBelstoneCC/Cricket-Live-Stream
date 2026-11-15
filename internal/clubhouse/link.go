@@ -70,6 +70,8 @@ var proxyGET = map[string]bool{
 	// The Commentary tab. NOT /talk/out: that's OBS's own feed, loopback only. Nor the
 	// phone's routes: a phone goes straight to the laptop.
 	"/talk/status": true, "/talk/qr.png": true, "/talk/onair": true,
+	// The Stats tab's copy of the club's records (the screen keeps it: stats.go).
+	"/club/stats": true,
 }
 
 var proxyPOST = map[string]bool{
@@ -82,7 +84,7 @@ var proxyPOST = map[string]bool{
 // A subset of proxyGET.
 var viewGET = map[string]bool{
 	"/live/view": true, "/state": true, "/checklist": true, "/preview.jpg": true, "/youtube/live": true,
-	"/match/scorecard": true, "/league/table": true,
+	"/match/scorecard": true, "/league/table": true, "/club/stats": true,
 }
 
 // proxyGETPrefix: the club badges the scorebar uses (/logo/<club id or name>).

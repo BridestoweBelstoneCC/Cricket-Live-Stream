@@ -1026,6 +1026,12 @@ func (c *ctx) doGET() {
 		}
 		c.json(out)
 
+	case path == "/club/stats":
+		// Every player's figures for the club, by club and kind of side (clubstats.go), for
+		// the clubhouse screen's Stats tab. Open like /club/career: PlayCricket's public
+		// scorecards added up.
+		c.json(ClubStats())
+
 	case path == "/match/scorecard":
 		// The match so far for the clubhouse screen (scorecard.go). Read-only and open,
 		// like /live/view: the score is what the stream shows anyway.

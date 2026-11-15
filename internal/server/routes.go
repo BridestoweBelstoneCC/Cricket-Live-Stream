@@ -35,6 +35,7 @@ var routes = []route{
 	// Open: the overlay, the pages themselves, and what they show to anyone watching.
 	{"GET", "/", false, accOpen},
 	{"GET", "/club/career", false, accOpen},
+	{"GET", "/club/stats", false, accOpen},
 	{"GET", "/commentary/over", false, accOpen},
 	{"GET", "/control", false, accOpen},
 	{"GET", "/data/status", false, accOpen},

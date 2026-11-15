@@ -102,7 +102,7 @@ var openRoutes = []string{
 	// The score and the match, as the stream shows them.
 	"GET /live/view", "GET /state", "GET /commentary/over", "GET /match/scorecard",
 	"GET /scoring/balls", "GET /scoring/scorecard", "GET /scoring/state",
-	"GET /lineups", "GET /h2h", "GET /league/table", "GET /season/top", "GET /club/career",
+	"GET /lineups", "GET /h2h", "GET /league/table", "GET /season/top", "GET /club/career", "GET /club/stats",
 	"GET /player/stats", "GET /data/status", "GET /weather", "GET /weather/radar",
 	"GET /weather/radar/frame/*", "GET /talk/onair",
 	// Pictures the overlay and the pages draw.
