@@ -493,6 +493,23 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 		return d
 	}
 
+	// On a slow machine (a VM with no graphics card, an old laptop) OBS is still loading its
+	// plugins when match day says it's running: its WebSocket answers minutes later. The app
+	// waits for it (the checklist, the overlay watch); so does this.
+	obsWait := time.Now()
+	for {
+		if _, ok := tryOBS("GetVersion", nil); ok {
+			break
+		}
+		if time.Since(obsWait) > 10*time.Minute {
+			t.Fatal("OBS's WebSocket didn't answer within 10 minutes of match day starting")
+		}
+		time.Sleep(3 * time.Second)
+	}
+	if d := time.Since(obsWait); d > 5*time.Second {
+		t.Logf("OBS answered %s after match day started", d.Round(time.Second))
+	}
+
 	// ── Two cameras, in every scene (a looping file, since nothing here can serve RTSP) ──
 	ground := filepath.Join(app, "ground.mkv")
 	if out, err := exec.Command(ff, "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=30",
