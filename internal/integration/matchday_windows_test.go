@@ -498,11 +498,16 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 	// waits for it (the checklist, the overlay watch); so does this.
 	obsWait := time.Now()
 	for {
-		if _, ok := tryOBS("GetVersion", nil); ok {
+		c, err := obsws.Dial(target, 5*time.Second)
+		if err == nil {
+			_, err = c.Request("GetVersion", nil)
+			c.Close()
+		}
+		if err == nil {
 			break
 		}
 		if time.Since(obsWait) > 10*time.Minute {
-			t.Fatal("OBS's WebSocket didn't answer within 10 minutes of match day starting")
+			t.Fatalf("OBS's WebSocket didn't answer within 10 minutes of match day starting: %v", err)
 		}
 		time.Sleep(3 * time.Second)
 	}
