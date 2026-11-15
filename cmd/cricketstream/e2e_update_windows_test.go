@@ -148,4 +148,18 @@ func TestE2EUpdateNowReplacesTheRunningApp(t *testing.T) {
 	}
 	pg.api("POST", "close", map[string]any{})
 	waitClosed(t, port, 15*time.Second)
+	// The port closes before the process has gone, and Windows keeps a running exe's file
+	// locked: on a busy CI runner the temp folder's cleanup got there first ("Access is
+	// denied"). Wait for the file itself to be free.
+	deadline = time.Now().Add(30 * time.Second)
+	for {
+		err := os.Remove(v1)
+		if err == nil || os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the updated copy never let go of its file: %v", err)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }
