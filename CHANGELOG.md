@@ -4,6 +4,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Drag to scroll on the clubhouse screen.** The Stats tab's list (and every other long
+  page on the screen) now scrolls by dragging a finger over it, with a flick carrying on.
+  On the first real Pi the touch screen reached Chromium as a mouse, which can't scroll by
+  dragging, so the only way down the list was the scroll bar. A drag never also opens the
+  player it started on; a tap still does.
+
+---
+
 ## v3.0.0-beta.9 — club stats, junior mode, and the security review (2026-11-15)
 
 ### The club's stats on the clubhouse screen

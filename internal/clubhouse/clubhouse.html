@@ -1718,6 +1718,52 @@ document.addEventListener('pointerdown', function () {
   lastTouch = Date.now();
   if (!$('sleep').classList.contains('hidden')) show('sleep', false);
 }, true);
+// ── Drag to scroll ──
+// The Pi's Chromium can get the touch screen as a mouse, and a mouse can't scroll a page by
+// dragging: the Stats tab's long list then had no way down but the scroll bar. So a drag
+// anywhere in main scrolls it, and a flick carries on. A drag is never also a tap on the
+// row or button it started on. A real touch (pointerType "touch") is left to the browser.
+function dragScroller(el) {
+  var d = null, eat = -1e9;
+  return {
+    down: function (y, t) { d = {y: y, top: el.scrollTop, moved: false, ly: y, lt: t, v: 0}; },
+    move: function (y, t) {
+      if (!d) return;
+      if (!d.moved && Math.abs(y - d.y) < 10) return; // a tap that wobbled
+      d.moved = true;
+      el.scrollTop = d.top - (y - d.y);
+      if (t > d.lt) { d.v = 0.6 * d.v + 0.4 * (y - d.ly) / (t - d.lt); d.ly = y; d.lt = t; }
+    },
+    // up: the speed to carry on at (px/ms; 0 for none), after a drag only.
+    up: function (t) {
+      var v = 0;
+      if (d && d.moved) { eat = t; if (t - d.lt < 80) v = d.v; }
+      d = null;
+      return v;
+    },
+    // eatClick: whether the click at t comes from a drag just ended (and isn't a tap).
+    eatClick: function (t) { var e = t - eat < 400; eat = -1e9; return e; }
+  };
+}
+(function () {
+  var m = $('main'), ds = dragScroller(m), fling = 0;
+  m.addEventListener('pointerdown', function (e) {
+    cancelAnimationFrame(fling);
+    if (e.pointerType !== 'touch' && e.button === 0) ds.down(e.clientY, e.timeStamp);
+  });
+  window.addEventListener('pointermove', function (e) { ds.move(e.clientY, e.timeStamp); });
+  window.addEventListener('pointerup', function (e) {
+    var v = ds.up(e.timeStamp), last = performance.now();
+    if (Math.abs(v) < 0.1) return;
+    (function step(now) {
+      var dt = Math.min(now - last, 50); last = now;
+      m.scrollTop -= v * dt; v *= Math.pow(0.995, dt);
+      if (Math.abs(v) > 0.02) fling = requestAnimationFrame(step);
+    })(last);
+  });
+  window.addEventListener('pointercancel', function (e) { ds.up(e.timeStamp); ds.eatClick(e.timeStamp); });
+  m.addEventListener('click', function (e) { if (ds.eatClick(e.timeStamp)) { e.stopPropagation(); e.preventDefault(); } }, true);
+})();
 function checkSleep() {
   var idle = Date.now() - lastTouch > 5 * 60000;
   var quiet = S && S.paired && !S.reachable && S.waking_for == null && !pendingStart && tab.indexOf('x:') !== 0;
