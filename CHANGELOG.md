@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.10 — drag to scroll on the clubhouse screen (2026-11-15)
 
 - **Drag to scroll on the clubhouse screen.** The Stats tab's list (and every other long
   page on the screen) now scrolls by dragging a finger over it, with a flick carrying on.
