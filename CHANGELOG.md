@@ -4,7 +4,9 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased — the club's stats on the clubhouse screen (2026-11-15)
+## v3.0.0-beta.9 — club stats, junior mode, and the security review (2026-11-15)
+
+### The club's stats on the clubhouse screen
 
 - **Club stats on the clubhouse screen.** A new **Stats** tab, on every screen and with
   the laptop off too: every player's record for the club from PlayCricket, as far back as
@@ -18,9 +20,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   on the clubhouse screen: `extra_tabs` in the Pi's `clubhouse.ini`. It stays on the Pi and
   is never part of CricketStream. See CLUBHOUSE_SCREEN.md.
 
----
-
-## Unreleased — new (2026-11-13)
+### New (2026-11-13)
 
 Five additions from the same review's ideas. All but the sound and picture warning are off
 until you switch them on.
@@ -55,9 +55,7 @@ until you switch them on.
   pre-match show goes up. Nothing goes live on YouTube until someone presses Go live. The
   laptop has to be on with CricketStream open.
 
----
-
-## Unreleased — security review (2026-11-11)
+### Security review (2026-11-11)
 
 Fixes from an outside read of the code. None is known to have been used against a club.
 
