@@ -270,6 +270,11 @@ when it finds match day running and its copy is a week old (the first time ever,
 laptop takes a few minutes to read every scorecard: the tab says so). Left on Stats for
 three minutes, the screen goes back to the score.
 
+The list scrolls by dragging a finger up or down it, and a flick carries on. Many Pi touch
+screens reach the browser as a mouse rather than a touch screen, and a mouse can't scroll
+a page by dragging, so the screen does it itself; a drag never counts as a tap on the row
+it started on.
+
 ## The club's own tabs
 
 A page of the club's own can be a tab too: a darts scorer, a quiz, the bar's prices. It
