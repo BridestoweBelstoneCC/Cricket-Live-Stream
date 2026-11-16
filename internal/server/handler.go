@@ -1846,6 +1846,9 @@ func (c *ctx) health() {
 		fresh = pcsPath != "" && ageVal < 120
 	}
 	pcs := M{"source": valOr(s, "pcs_source", "local"), "fresh": fresh, "manual_scoring": manual}
+	// A practice match is its own feed: the window's "feed has gone quiet" alert must not
+	// count it as the scorer's, or every rehearsal ends with a false alarm when it stops.
+	pcs["practice"] = rehearsalMatchID() != ""
 	if agentMode {
 		pcs["folder_set"], pcs["file_found"] = nil, agentHasState
 		pcs["agent"] = AgentStatus(s)
