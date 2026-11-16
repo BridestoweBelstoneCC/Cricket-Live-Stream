@@ -4,6 +4,18 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **The clubhouse screen updates itself after being switched on at the plug.** It checked
+  for a new version once, the moment it started, and a Pi switched on at the wall starts
+  before its wifi has joined: the check found no internet, said nothing, and the screen
+  stayed on the old version (the club's Pi sat on beta 9 the morning after beta 10). It
+  now keeps asking for up to a minute and a half while GitHub can't be reached, and writes
+  what happened to `~/cricketstream/clubhouse.log` either way. A screen on beta 10 or
+  earlier picks this up the first time it starts with the wifi already joined.
+
+---
+
 ## v3.0.0-beta.10 — drag to scroll on the clubhouse screen (2026-11-15)
 
 - **Drag to scroll on the clubhouse screen.** The Stats tab's list (and every other long

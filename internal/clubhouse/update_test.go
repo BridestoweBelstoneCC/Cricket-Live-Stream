@@ -4,11 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"cricketstream/internal/assets"
 )
@@ -49,8 +52,12 @@ func fakeGitHub(t *testing.T, rels ...fakeRelease) {
 	}))
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
-	sa, sh, so, sv, sd := updReleasesAPI, updHTTP, updOS, updVersionOf, assets.Dir()
-	t.Cleanup(func() { updReleasesAPI, updHTTP, updOS, updVersionOf = sa, sh, so, sv; assets.SetDir(sd) })
+	sa, sh, so, sv, sd, sw, sr := updReleasesAPI, updHTTP, updOS, updVersionOf, assets.Dir(), updNetWait, updNetRetry
+	t.Cleanup(func() {
+		updReleasesAPI, updHTTP, updOS, updVersionOf, updNetWait, updNetRetry = sa, sh, so, sv, sw, sr
+		assets.SetDir(sd)
+	})
+	updNetWait, updNetRetry = 2*time.Second, 10*time.Millisecond
 	assets.SetDir(dir)
 	updReleasesAPI, updHTTP, updOS = srv.URL+"/releases", srv.Client().Transport, "linux"
 	// The "program" is its own version line, so running it is reading it.
@@ -85,6 +92,70 @@ func TestScreenUpdatesToANewerRelease(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(assets.Dir(), "cricketstream.new")); !os.IsNotExist(err) {
 		t.Error("the download was left behind")
+	}
+}
+
+// offline: a network that isn't there yet for the first n requests (the wifi still
+// joining after the Pi was switched on at the plug).
+type offline struct {
+	n    int
+	next http.RoundTripper
+	mu   sync.Mutex
+	seen int
+}
+
+func (o *offline) RoundTrip(r *http.Request) (*http.Response, error) {
+	o.mu.Lock()
+	o.seen++
+	down := o.seen <= o.n
+	o.mu.Unlock()
+	if down {
+		return nil, errors.New("dial tcp: lookup api.github.com: no such host")
+	}
+	return o.next.RoundTrip(r)
+}
+
+// Found on the club's Pi: switched on at the plug, it checked once before the wifi was up
+// and stayed on the old version without a word.
+func TestScreenUpdateWaitsForTheNetwork(t *testing.T) {
+	fakeGitHub(t, fakeRelease{tag: "v3.0.0-beta.4", prerelease: true, body: []byte("CricketStream v3.0.0-beta.4")})
+	off := &offline{n: 3, next: updHTTP}
+	updHTTP = off
+	if !SelfUpdate("3.0.0-beta.3", newerForTest) {
+		t.Fatal("gave up before the network came up")
+	}
+	if got := installed(t); got != "CricketStream v3.0.0-beta.4" {
+		t.Errorf("installed %q", got)
+	}
+
+	// No network at all: it gives up in the end, and the screen opens as it was.
+	fakeGitHub(t, fakeRelease{tag: "v3.0.0-beta.4", prerelease: true, body: []byte("CricketStream v3.0.0-beta.4")})
+	updNetWait = 100 * time.Millisecond
+	updHTTP = &offline{n: 1 << 30, next: updHTTP}
+	start := time.Now()
+	if SelfUpdate("3.0.0-beta.3", newerForTest) {
+		t.Error("updated with no network")
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("waited %v", time.Since(start))
+	}
+}
+
+// An answer isn't asked again: GitHub's rate limit won't lift in a minute.
+func TestScreenUpdateTakesARefusalAsTheAnswer(t *testing.T) {
+	calls := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "rate limited", http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	fakeGitHub(t)
+	updReleasesAPI, updHTTP = srv.URL+"/releases", srv.Client().Transport
+	if SelfUpdate("3.0.0-beta.3", newerForTest) {
+		t.Error("updated")
+	}
+	if calls != 1 {
+		t.Errorf("asked %d times", calls)
 	}
 }
 

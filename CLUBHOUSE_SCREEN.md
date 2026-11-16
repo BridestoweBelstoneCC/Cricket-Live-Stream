@@ -118,7 +118,9 @@ no password or account of its own — those are the ones you set in the Imager.
 **It keeps itself up to date.** Each time the Pi starts, before the screen opens, it checks
 for a newer CricketStream release and installs it: the download is checked against the
 release's published checksum and the new version is run once before it's used. It needs the
-internet for that (without it, the screen opens as it was). A beta screen follows the betas;
+internet for that: switched on at the plug, the Pi's wifi takes a moment to join, so it
+keeps trying for up to a minute and a half before opening the screen as it was. What it
+found is in `~/cricketstream/clubhouse.log`. A beta screen follows the betas;
 a release only ever moves to another release. To turn it off, add `auto_update = no` under
 `[Screen]` in `~/cricketstream/clubhouse.ini`. (Screens on 3.0 beta 3 or earlier don't have
 this yet: run the installer below once to bring them up to date, and they update themselves
