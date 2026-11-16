@@ -50,6 +50,33 @@ func TestAlertFeedQuietIgnoredWhenScoringByHand(t *testing.T) {
 	}
 }
 
+// Seen on a practice match (2026-11-16): two minutes after it ended, "the scorer's feed has
+// gone quiet" went off, because the practice's own feed had counted as the scorer's.
+func TestAlertFeedQuietNotAfterAPractice(t *testing.T) {
+	var s alertState
+	practice := map[string]any{"pcs": map[string]any{"fresh": true, "manual_scoring": false, "practice": true}}
+	for i := 0; i < 3; i++ {
+		if n := s.health(practice); len(n) != 0 {
+			t.Fatalf("during the practice: %v", n)
+		}
+	}
+	if n := s.health(feed(false)); len(n) != 0 {
+		t.Fatalf("after the practice: %v", n)
+	}
+	// The real match afterwards is watched as usual.
+	s.health(feed(true))
+	if n := s.health(feed(false)); len(n) != 1 {
+		t.Fatalf("the real feed going quiet: %v", n)
+	}
+	// And a feed that had gone quiet before a practice isn't "back" because of it.
+	var q alertState
+	q.health(feed(true))
+	q.health(feed(false))
+	if n := q.health(practice); len(n) != 0 {
+		t.Fatalf("practice read as the feed coming back: %v", n)
+	}
+}
+
 func obsEvent(t float64, what string) map[string]any {
 	ev := map[string]any{}
 	if what != "" {

@@ -3388,6 +3388,11 @@ function processPCSData(state) {
   // (otherwise the 2nd innings carries the 1st innings' over count and summaries don't trigger).
   if (parseInt(state.innings || 1) !== _lastPCSinnings) {
     _lastPCSovers = -1;
+    // Over numbers start again too: kept, the reply's overs up to the first innings' length
+    // all read as already shown, and the reply had no over summaries (nor the commentary,
+    // partnership, run rate and win predictor that come with them). Seen on a practice match.
+    _lastOverShown = -1;
+    _lastWicketOver = -1;
     _currentOverBalls = [];
     _spells = {};                       // v2.1: spells don't span innings
     _hatTrick = { bowler: '', count: 0 };   // v2.2: nor do wicket chains / five-fors

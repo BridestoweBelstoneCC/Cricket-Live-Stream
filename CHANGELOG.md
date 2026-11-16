@@ -13,6 +13,16 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   now keeps asking for up to a minute and a half while GitHub can't be reached, and writes
   what happened to `~/cricketstream/clubhouse.log` either way. A screen on beta 10 or
   earlier picks this up the first time it starts with the wifi already joined.
+- **Over summaries in the second innings.** The overlay remembered the last over it had
+  summed up and never reset it at the change of innings, so the reply's overs up to the
+  first innings' length all counted as already shown: no over summary, and none of what
+  comes with it (the AI commentary line, partnership, run rate, win predictor). In a real
+  match that's most of the chase. Found on a practice match; a new test plays a whole
+  simulated match through the overlay's own code and checks both innings.
+- **No "scorer's feed has gone quiet" after a practice match.** The practice's own feed
+  counted as the scorer's, so two minutes after a rehearsal ended the window (and Discord,
+  if it's set up) said the feed had gone quiet. A practice is now its own feed: nothing is
+  said at either end of it, and the real feed is watched as usual afterwards.
 
 ---
 
