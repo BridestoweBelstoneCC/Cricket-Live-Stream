@@ -126,6 +126,21 @@ a release only ever moves to another release. To turn it off, add `auto_update =
 this yet: run the installer below once to bring them up to date, and they update themselves
 from then on.)
 
+A screen left on doesn't have to wait for a restart:
+
+- **The laptop shows the screen's version.** The match-day screen's *Clubhouse screen* card
+  says which version the screen is on, and when it's older than the laptop (or than a newer
+  release the laptop knows of) it offers **Update the screen**. One press, and every screen
+  that's on checks within a few seconds, updates, and restarts itself; one that's off checks
+  at its next start as usual. The pre-match check shows a ⚠ for a screen that's behind.
+- **On the screen:** its settings (behind the PIN) → **Check for an update**.
+- **Every day by itself**, once it's been on for a few hours: only while match day isn't
+  running on the laptop and nobody has touched the screen for ten minutes. `auto_update = no`
+  turns this off too; the two buttons still work.
+
+(These need the screen on 3.0 beta 11 or later. A screen on an older one gets them at its
+next update.)
+
 ### Or: install it on Raspberry Pi OS yourself
 
 1. Install **Raspberry Pi OS (64-bit) with desktop** with the

@@ -632,10 +632,38 @@ $('setbtn').addEventListener('click', function () {
       });
     }));
     d.appendChild(row);
+    // Check for a newer CricketStream now (screenupdate.go): it also checks at every start
+    // and once a day when nobody's using it, but this is the one to press after a release.
+    var ur = document.createElement('div'); ur.className = 'row'; ur.style.marginTop = '14px';
+    var un = document.createElement('p'); un.className = 'muted'; un.id = 'upd_note';
+    ur.appendChild(button('Check for an update', 'btn', function () {
+      un.textContent = 'Checking…';
+      api('update', {}).then(function (r) {
+        if (r.ok === false) { un.textContent = r.error || 'It couldn\'t check.'; return; }
+        updWatch();
+      });
+    }));
+    d.appendChild(ur); d.appendChild(un);
     var r2 = document.createElement('div'); r2.className = 'row'; r2.style.marginTop = '14px';
     r2.appendChild(button('Close', 'btn small', closeDialog)); d.appendChild(r2);
   });
 });
+// What the check found, said in the settings dialog while it's open.
+var UPD_SAID = {
+  updated: 'Updated. The screen restarts in a moment.',
+  up_to_date: 'This is the newest version.',
+  cant_check: 'Couldn\'t reach GitHub to check. Is the screen on the internet?',
+  failed: 'A newer version is out, but the download didn\'t check out. It\'s carrying on with this one.',
+  not_here: 'This copy can\'t update itself (it isn\'t a release build).'
+};
+function updWatch() {
+  poll().then(function () {
+    var n = $('upd_note'), u = (S && S.update) || {};
+    if (!n) return;
+    if (u.running) { n.textContent = 'Checking…'; setTimeout(updWatch, 1000); return; }
+    n.textContent = UPD_SAID[u.state] || '';
+  });
+}
 
 // ── The laptop's questions (the same ones its own window asks) ──
 var askedID = 0;
@@ -1776,7 +1804,8 @@ function tick() {
   txt('clock', t); txt('sleep_clock', t);
 }
 function poll() {
-  return api('status').then(function (d) {
+  // How long since a touch: the daily update check waits for a quiet screen.
+  return api('status?idle=' + Math.round((Date.now() - lastTouch) / 1000)).then(function (d) {
     if (d.ok === false && !d.paired && d.error) return;
     S = d; render(); checkSleep();
   });

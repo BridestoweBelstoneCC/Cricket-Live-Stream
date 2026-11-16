@@ -501,6 +501,16 @@ problem + what to do + pause) or print and `console.Pause()`.
     reads; every start/stop/answer/power-off/woke and every POST is refused on the
     LAPTOP. Keep `viewGET` a subset of `proxyGET` with no operator reads in it. The Pi's
     `[Laptop] view_only` only decides what the page shows.
+  - **Updates while the screen runs** (`screenupdate.go` on the Pi, `linkupdate.go` on the
+    laptop). The screen sends `X-Clubhouse-Version` on every request; the link keeps it
+    (`clubhouse_screen.json`, git-ignored, read by the pre-match check). The laptop can't
+    call the Pi (its page is loopback only), so "Update the screen" is a time in the
+    status the screens poll (`update_screen`, both kinds of key: it only makes a screen
+    ask GitHub for a checked release). Installed while running, the screen exits through
+    the same path as a stop and the start script's loop runs the new copy, so only under
+    `--kiosk`. The daily check never runs during match day or within 10 minutes of a
+    touch. The boot check waits up to 90s for the network: a Pi switched on at the plug
+    starts before its wifi joins (the club's Pi sat on beta 9 after beta 10, 2026-11-16).
   - **The Pi image** (`scripts/clubhouse/build-pi-image.sh`, the `pi-image` job in
     build-executables.yml) is the official Raspberry Pi OS desktop image, SHA-256 checked,
     plus `scripts/clubhouse/image/`: everything system-wide (`/opt/cricketstream`,

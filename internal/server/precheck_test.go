@@ -506,6 +506,36 @@ func TestPrecheckClubhouse(t *testing.T) {
 	}
 }
 
+// A clubhouse screen older than the laptop is a ⚠ with the way to update it. Found
+// 2026-11-16: the club's Pi sat on beta 9 the morning after beta 10.
+func TestPrecheckScreenVersion(t *testing.T) {
+	sandbox(t, "")
+	savedV := Version
+	t.Cleanup(func() { Version = savedV })
+	Version = "3.0.0-beta.10"
+	if r := pcScreenVersion(M{}); r.Status != "skip" {
+		t.Fatalf("no screen: %+v", r)
+	}
+	os.WriteFile(ConfigFile, []byte("[Clubhouse]\nenabled = yes\nkey = K8Q27WMX\n"), 0o600)
+	if r := pcScreenVersion(M{}); r.Status != "skip" {
+		t.Fatalf("no screen has said: %+v", r)
+	}
+	file := filepath.Join(AppDir(), "clubhouse_screen.json")
+	os.WriteFile(file, []byte(`{"control":"3.0.0-beta.9","at":"2026-11-16T09:00:00Z"}`), 0o644)
+	r := pcScreenVersion(M{})
+	if r.Status != "warn" || !strings.Contains(r.Detail, "3.0.0-beta.9") || !strings.Contains(r.Fix, "Update the screen") {
+		t.Fatalf("behind: %+v", r)
+	}
+	os.WriteFile(file, []byte(`{"control":"3.0.0-beta.10","view":"3.0.0-beta.8"}`), 0o644)
+	if r := pcScreenVersion(M{}); r.Status != "warn" || !strings.Contains(r.Detail, "score-only screen is on 3.0.0-beta.8") {
+		t.Fatalf("a score-only screen behind: %+v", r)
+	}
+	os.WriteFile(file, []byte(`{"control":"3.0.0-beta.10"}`), 0o644)
+	if r := pcScreenVersion(M{}); r.Status != "ok" {
+		t.Fatalf("up to date: %+v", r)
+	}
+}
+
 // obsProfile writes an OBS profile into the sandbox's OBS folder; signedIn adds the
 // "Connect account" sign-in OBS records there.
 func obsProfile(t *testing.T, signedIn bool) {

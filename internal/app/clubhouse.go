@@ -16,6 +16,7 @@ import (
 	"cricketstream/internal/agent"
 	"cricketstream/internal/clubhouse"
 	"cricketstream/internal/ini"
+	"cricketstream/internal/server"
 	"cricketstream/internal/setup"
 )
 
@@ -159,6 +160,14 @@ func (a *App) clubhouseInfo() map[string]any {
 			out["view_seen_ago"], out["view_seen_from"] = int(time.Since(seen).Seconds()), from
 		}
 		out["requests"] = l.Requests()
+		// Which version each kind of screen says it is, and whether it's behind: behind this
+		// laptop, or behind a newer release the laptop knows of (screenupdate.go).
+		newest := a.newestVersion()
+		cv, vv := l.Versions()
+		out["version"], out["view_version"] = cv, vv
+		out["behind"] = newest != "" && cv != "" && server.VersionNewer(newest, cv)
+		out["view_behind"] = newest != "" && vv != "" && server.VersionNewer(newest, vv)
+		out["newest"] = newest
 	}
 	nics := clubhouse.LocalNICs(agent.LocalIP())
 	wired := false
@@ -180,9 +189,38 @@ type clubhouseChange struct {
 	// A screen asking to pair (clubhouse/ask.go): its id, and "control", "view" or "no".
 	Answer string `json:"answer"`
 	As     string `json:"as"`
+	// "Update the screen": the screens check for an update now.
+	UpdateScreen bool `json:"update_screen"`
+}
+
+// newestVersion is the newest CricketStream this laptop knows of: its own, or a newer
+// release its update check found. "" for a development build.
+func (a *App) newestVersion() string {
+	have := strings.TrimPrefix(a.opts.Version, "v")
+	if have == "" {
+		return ""
+	}
+	a.upd.mu.Lock()
+	latest := a.upd.latest
+	a.upd.mu.Unlock()
+	if latest != "" && server.VersionNewer(latest, have) {
+		return latest
+	}
+	return have
 }
 
 func (a *App) setClubhouse(c clubhouseChange) error {
+	if c.UpdateScreen {
+		a.mu.Lock()
+		l := a.chLink
+		a.mu.Unlock()
+		if l == nil {
+			return errors.New("The clubhouse screen isn't switched on.")
+		}
+		l.AskUpdate()
+		fmt.Println("  Asked the clubhouse screens to update — each checks within a few seconds if it's on.")
+		return nil
+	}
 	if c.Answer != "" {
 		a.mu.Lock()
 		l := a.chLink

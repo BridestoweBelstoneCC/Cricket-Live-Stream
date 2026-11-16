@@ -239,6 +239,8 @@ footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px}
           <button class="btn" type="button" data-copy="ch_key">Copy</button>
           <button class="btn quiet" type="button" id="ch_newkey" title="The old key stops working">New key</button></div>
         <p class="hint" id="ch_seen"></p>
+        <div class="note hidden" id="ch_behind"><p id="ch_behind_text" style="margin:0 0 8px"></p>
+          <button class="btn primary" type="button" id="ch_update">Update the screen</button></div>
         <label class="tick"><input type="checkbox" id="ch_poweroff"><span>The screen may switch this laptop off when match day is over
           <span class="muted">(never while it's streaming or recording)</span></span></label>
         <label class="tick hidden" id="ch_login_row"><input type="checkbox" id="ch_login"><span>Open CricketStream when Windows starts
@@ -498,7 +500,7 @@ function renderHome() {
 // The clubhouse screen's card: off by default; on, it shows the pairing key and whether a
 // screen has been in touch, and says plainly when the laptop has no network cable (a
 // wake-up almost never reaches a laptop over wifi).
-var chBusy = false;
+var chBusy = false, chUpdateAsked = 0;
 function renderClubhouse() {
   var c = S.clubhouse;
   $('ch_card').classList.toggle('hidden', !c);
@@ -509,14 +511,26 @@ function renderClubhouse() {
   $('ch_poweroff').checked = !!c.allow_power_off;
   $('ch_login_row').classList.toggle('hidden', !c.login_supported);
   $('ch_login').checked = !!c.start_at_login;
-  var seen = c.seen_ago != null ? 'A screen was in touch ' + ago(c.seen_ago) + ' (from ' + c.seen_from + ').'
+  var seen = c.seen_ago != null ? 'A screen was in touch ' + ago(c.seen_ago) + ' (from ' + c.seen_from + ')' +
+    (c.version ? ', on version ' + c.version + '.' : '.')
     : 'No screen has connected yet. This laptop is at ' + c.ip + ' if the screen asks for its address.';
   txt('ch_seen', c.enabled ? seen : '');
+  // A screen older than the newest version this laptop knows of: one press, and it checks
+  // and updates itself (screenupdate.go).
+  var behind = (c.enabled && c.behind) || (c.view_enabled && c.view_behind);
+  $('ch_behind').classList.toggle('hidden', !behind);
+  var asked = Date.now() - chUpdateAsked < 120000;
+  $('ch_update').classList.toggle('hidden', asked);
+  if (behind) txt('ch_behind_text', asked
+    ? 'Asked. A screen that\'s on checks within a few seconds, updates, and restarts; one that\'s off does at its next start.'
+    : (c.enabled && c.behind ? 'The clubhouse screen is on ' + c.version
+      : 'A score-only screen is on ' + c.view_version) + ' — version ' + c.newest + ' is out.');
   $('ch_view_enabled').checked = !!c.view_enabled;
   $('ch_view_on').classList.toggle('hidden', !c.view_enabled);
   txt('ch_view_key', c.view_key || '');
   txt('ch_view_seen', !c.view_enabled ? '' : c.view_seen_ago != null
-    ? 'A score-only screen was in touch ' + ago(c.view_seen_ago) + ' (from ' + c.view_seen_from + ').'
+    ? 'A score-only screen was in touch ' + ago(c.view_seen_ago) + ' (from ' + c.view_seen_from + ')' +
+      (c.view_version ? ', on version ' + c.view_version + '.' : '.')
     : 'No score-only screen has connected yet. This laptop is at ' + c.ip + ' if a screen asks for its address.');
   // The light is the screen that runs match day when there is one; else the score-only ones.
   var on = c.enabled || c.view_enabled, seenAgo = c.enabled ? c.seen_ago : c.view_seen_ago;
@@ -592,6 +606,10 @@ $('ch_login').addEventListener('change', function () { setClubhouse({start_at_lo
 $('ch_newkey').addEventListener('click', function () { setClubhouse({new_key: true}); });
 $('ch_view_enabled').addEventListener('change', function () { setClubhouse({view_enabled: this.checked}); });
 $('ch_newviewkey').addEventListener('click', function () { setClubhouse({new_view_key: true}); });
+$('ch_update').addEventListener('click', function () {
+  chUpdateAsked = Date.now();
+  setClubhouse({update_screen: true});
+});
 
 // OBS missing: offer to install it (Windows' own installer) or link to the download.
 function renderOBS() {

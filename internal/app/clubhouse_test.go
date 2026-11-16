@@ -331,3 +331,47 @@ func TestClubhouseCardAnswersAScreenAsking(t *testing.T) {
 		t.Fatal("answering must not change the settings")
 	}
 }
+
+// The card shows the screen's version and, when it's behind, "Update the screen", which
+// the screen gets in its next status. Found 2026-11-16: the club's Pi was on beta 9 and
+// nobody could see it from the laptop.
+func TestClubhouseCardUpdatesTheScreen(t *testing.T) {
+	ta := newTestApp(t)
+	t.Cleanup(ta.stopClubhouse)
+	ta.opts.Version = "3.0.0-beta.10"
+	port := freePort(t)
+	t.Setenv(clubhouse.PortEnv, fmt.Sprint(port))
+	if r := ta.saveSetup(M{"role": "streaming", "name": "Test Town CC", "pc_id": "4242"}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	c := ta.api("POST", "clubhouse", M{"enabled": true}).json(t)["clubhouse"].(M)
+	key := clubhouse.NormaliseKey(c["key"].(string))
+	req, _ := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/clubhouse/status", port), nil)
+	req.Header.Set(clubhouse.KeyHeader, key)
+	req.Header.Set(clubhouse.VersionHeader, "3.0.0-beta.9")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	c = ta.clubhouseInfo()
+	if c["version"] != "3.0.0-beta.9" || c["behind"] != true || c["newest"] != "3.0.0-beta.10" {
+		t.Fatalf("card: version %v behind %v newest %v", c["version"], c["behind"], c["newest"])
+	}
+	if _, s := screenCall(t, port, "GET", "/clubhouse/status", key, nil); s["update_screen"] != nil {
+		t.Fatal("asked before the button was pressed")
+	}
+	if r := ta.api("POST", "clubhouse", M{"update_screen": true}); r.status != 200 {
+		t.Fatalf("update the screen: %d %s", r.status, r.body)
+	}
+	if _, s := screenCall(t, port, "GET", "/clubhouse/status", key, nil); s["update_screen"] == nil {
+		t.Fatalf("the screen wasn't asked: %v", s)
+	}
+	// The release the laptop's own check found counts as the newest too.
+	ta.upd.mu.Lock()
+	ta.upd.latest = "3.0.0-beta.11"
+	ta.upd.mu.Unlock()
+	if c := ta.clubhouseInfo(); c["newest"] != "3.0.0-beta.11" {
+		t.Errorf("newest: %v", c["newest"])
+	}
+}

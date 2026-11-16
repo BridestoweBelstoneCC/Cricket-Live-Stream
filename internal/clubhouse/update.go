@@ -91,9 +91,28 @@ func autoUpdateOn() bool {
 // exits so the start script runs the new copy. have is this copy's version ("" for a
 // development build, which never updates); newer compares two versions.
 func SelfUpdate(have string, newer func(a, b string) bool) bool {
-	have = strings.TrimPrefix(strings.TrimSpace(have), "v")
-	if updOS != "linux" || have == "" || newer == nil || !autoUpdateOn() {
+	if !autoUpdateOn() {
 		return false
+	}
+	ok, _ := updateTo(have, newer)
+	return ok
+}
+
+// Update outcomes, for the screen's settings and the laptop's card.
+const (
+	updDone      = "updated"
+	updUpToDate  = "up_to_date"
+	updCantCheck = "cant_check"
+	updFailed    = "failed"
+	updNotHere   = "not_here" // not a Pi release build: nothing to update
+)
+
+// updateTo is SelfUpdate without the auto_update switch (a press of "Check for an update"
+// is asked for by hand): whether it installed a newer copy, and what happened.
+func updateTo(have string, newer func(a, b string) bool) (bool, string) {
+	have = strings.TrimPrefix(strings.TrimSpace(have), "v")
+	if updOS != "linux" || have == "" || newer == nil {
+		return false, updNotHere
 	}
 	// A Pi switched on at the plug starts the screen before its wifi has joined: the one
 	// try this used to make found no network, said nothing, and the screen stayed on the
@@ -111,18 +130,18 @@ func SelfUpdate(have string, newer func(a, b string) bool) bool {
 	switch {
 	case err != nil:
 		fmt.Printf("  ⚠ Couldn't check for an update (%v) — carrying on with v%s\n", err, have)
-		return false
+		return false, updCantCheck
 	case rel == "":
 		fmt.Printf("  ✓ Up to date\n")
-		return false
+		return false, updUpToDate
 	}
 	fmt.Printf("  A newer CricketStream is out (v%s) — updating the screen...\n", rel)
 	if err := installUpdate(url, digest, rel); err != nil {
 		fmt.Printf("  ⚠ The update didn't go ahead (%v) — carrying on with v%s\n", err, have)
-		return false
+		return false, updFailed
 	}
 	fmt.Printf("  ✓ Updated to v%s — restarting\n", rel)
-	return true
+	return true, updDone
 }
 
 // pickUpdate is the newest release after have with this computer's file: its version,
