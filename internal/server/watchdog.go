@@ -217,6 +217,11 @@ func watchdogTick() {
 		f, _ := scoreFeedStatus(LoadState(), t)
 		fresh = f
 	}()
+	if rehearsalMatchID() != "" {
+		// A practice's simulated feed isn't the scorer's: neither its start nor its end
+		// is news, and after it the scorer's real feed starts from "not seen yet".
+		fresh = nil
+	}
 	watchdogMu.Lock()
 	was := watchdogStatus["pcs_was_fresh"]
 	if was == true && fresh == false {
