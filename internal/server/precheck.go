@@ -606,6 +606,34 @@ func pcClubhouse(M) CheckResult {
 	return chk(clubhouse.WakeAdvice(clubhouse.CheckWake()))
 }
 
+// pcScreenVersion: is a clubhouse screen older than this laptop? It updates itself at
+// every start, but one left on for weeks, or one whose wifi was slow at boot, didn't (the
+// club's Pi sat on beta 9 the morning after beta 10). The link keeps what each screen
+// last said in clubhouse_screen.json. ⚠ at worst: the screen still works.
+func pcScreenVersion(M) CheckResult {
+	cfg, err := ini.Load(ConfigFile)
+	if err != nil || (!cfg.GetBool("Clubhouse", "enabled", false) && !cfg.GetBool("Clubhouse", "view_enabled", false)) {
+		return chk("skip", "No clubhouse screen.", "")
+	}
+	have := strings.TrimPrefix(Version, "v")
+	rec := clubhouse.LastScreenVersions()
+	if have == "" || rec == nil || (rec.Control == "" && rec.View == "") {
+		return chk("skip", "No screen has said which version it is yet.", "")
+	}
+	var behind []string
+	for _, s := range []struct{ what, v string }{{"The clubhouse screen", rec.Control}, {"A score-only screen", rec.View}} {
+		if s.v != "" && versionNewer(have, s.v) {
+			behind = append(behind, fmt.Sprintf("%s is on %s", s.what, s.v))
+		}
+	}
+	if len(behind) == 0 {
+		return chk("ok", "The clubhouse screen is up to date ("+orStr(rec.Control, rec.View)+").", "")
+	}
+	return chk("warn", strings.Join(behind, "; ")+" — this laptop is on "+have+".",
+		"On the laptop: match-day screen → Clubhouse screen → Update the screen. Or on the screen: "+
+			"its settings → Check for an update.")
+}
+
 // pcDiscord: is the alerts webhook still there? Asked without posting anything (this runs
 // every six hours). ✗ only when Discord says it's gone; offline is ⚠.
 func pcDiscord(M) CheckResult {
@@ -654,6 +682,7 @@ var Prechecks = []struct {
 	{"surnames", "Player names", pcSurnames},
 	{"update", "Software version", pcUpdate},
 	{"clubhouse", "Clubhouse screen", pcClubhouse},
+	{"clubhouse_version", "Clubhouse screen's version", pcScreenVersion},
 	{"discord", "Discord alerts", pcDiscord},
 }
 

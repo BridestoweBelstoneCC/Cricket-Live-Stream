@@ -170,6 +170,9 @@ type Screen struct {
 	askRunning  bool
 	statsBusy   bool      // asking the laptop for the club stats (stats.go)
 	statsTried  time.Time // when it last did
+	started     time.Time
+	lastTouch   time.Time    // from the page's status polls (noteIdle)
+	upd         screenUpdate // screenupdate.go
 	done        chan struct{}
 }
 
@@ -180,8 +183,10 @@ func NewScreen(o ScreenOptions) *Screen {
 	}
 	b := make([]byte, 16)
 	rand.Read(b)
+	now := time.Now()
 	return &Screen{o: o, key: hex.EncodeToString(b), cfg: loadScreenConfig(),
 		client: &http.Client{Timeout: 3 * time.Second}, slow: &http.Client{Timeout: 45 * time.Second},
+		started: now, lastTouch: now, upd: screenUpdate{restart: make(chan struct{})},
 		done: make(chan struct{})}
 }
 
@@ -211,10 +216,14 @@ func RunScreen(o ScreenOptions) int {
 	var kiosk *kioskBrowser
 	if o.Kiosk && !o.Headless {
 		kiosk = startKiosk(s.base + "/?kiosk=1")
+		go s.updateWhenQuiet()
 	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
+	select {
+	case <-sig:
+	case <-s.upd.restart: // updated while running: the start script runs the new copy
+	}
 	close(s.done)
 	if kiosk != nil {
 		kiosk.Stop()
@@ -250,6 +259,7 @@ func (s *Screen) toLaptop(c *http.Client, method, path string, body []byte) (int
 		return 0, nil, nil, err
 	}
 	req.Header.Set(KeyHeader, key)
+	req.Header.Set(VersionHeader, s.o.Version)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -321,6 +331,9 @@ func (s *Screen) pollOnce() {
 		}
 		s.reachable, s.laptop, s.lastOK, s.lastErr = true, st, time.Now(), ""
 		s.wakingSince = time.Time{}
+		if s.laptopAsked(st) {
+			go s.updateNow("the streaming laptop asked")
+		}
 		if club, _ := st["club"].(string); club != "" && club != s.cfg.Club {
 			s.cfg.Club = club
 			saveScreenConfig(s.cfg)
@@ -545,7 +558,17 @@ func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method + " " + p {
 	case "GET /status":
+		s.noteIdle(r.URL.Query().Get("idle"))
 		writeJSON(w, s.status(), 200)
+	case "POST /update":
+		if locked() {
+			return
+		}
+		if !s.updateNow("asked for on the screen") {
+			fail(409, "It's already checking.")
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true}, 200)
 	case "GET /stats":
 		s.serveStats(w) // public, and there with the laptop off: a copy kept on the screen
 	case "GET /badge":
@@ -722,7 +745,7 @@ func (s *Screen) status() map[string]any {
 		"laptop_host": c.Host, "colour": c.Colour, "has_badge": badgeErr == nil, "reachable": s.reachable,
 		"error": s.lastErr, "laptop": s.laptop, "pin_set": c.PinHash != "", "can_wake": len(c.MACs) > 0 && !c.View,
 		"view_only": c.View, "extra_tabs": parseExtraTabs(c.Extra),
-		"wake_wait": c.WakeFor, "version": s.o.Version}
+		"wake_wait": c.WakeFor, "version": s.o.Version, "update": s.updateStatus()}
 	unlocked := c.PinHash == "" || time.Now().Before(s.unlockedTil)
 	out["unlocked"] = unlocked
 	if c.PinHash != "" && unlocked {
@@ -869,6 +892,7 @@ func (s *Screen) pair(key, address string) (map[string]any, error) {
 	for _, hp := range candidates {
 		req, _ := http.NewRequest("GET", "http://"+hp+"/clubhouse/pair", nil)
 		req.Header.Set(KeyHeader, key)
+		req.Header.Set(VersionHeader, s.o.Version)
 		resp, err := s.client.Do(req)
 		if err != nil {
 			continue

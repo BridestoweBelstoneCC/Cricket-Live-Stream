@@ -145,6 +145,9 @@ type Link struct {
 	seenFrom     string
 	seenView     time.Time
 	seenViewFrom string
+	version      string    // the match-day screen's version (VersionHeader), "" if it never said
+	viewVersion  string    // the score-only screens' (the last one heard)
+	updateAsk    time.Time // "Update the screen" on the laptop: passed on in the status
 	fails        map[string]*failCount
 	lockAll      time.Time
 	allFails     []time.Time
@@ -260,11 +263,13 @@ func (l *Link) keyOK(w http.ResponseWriter, r *http.Request) (ok, view bool) {
 	typed := r.Header.Get(KeyHeader)
 	if KeyMatches(l.cfg.Key, typed) {
 		l.seen, l.seenFrom = now, ip
+		l.noteVersion(&l.version, r.Header.Get(VersionHeader), false)
 		delete(l.fails, ip)
 		return true, false
 	}
 	if KeyMatches(l.cfg.ViewKey, typed) {
 		l.seenView, l.seenViewFrom = now, ip
+		l.noteVersion(&l.viewVersion, r.Header.Get(VersionHeader), true)
 		delete(l.fails, ip)
 		return true, true
 	}
@@ -366,6 +371,9 @@ func (l *Link) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		out := map[string]any{"ok": true, "allow_power_off": l.cfg.AllowPowerOff}
 		for k, v := range l.host.Status() {
 			out[k] = v
+		}
+		if at := l.askedUpdate(); at > 0 {
+			out["update_screen"] = at
 		}
 		if at := PowerOffAt(); !at.IsZero() {
 			out["power_off_in"] = int(time.Until(at).Seconds())
@@ -481,6 +489,10 @@ func (l *Link) serveView(w http.ResponseWriter, r *http.Request) {
 			if v, ok := st[k]; ok {
 				out[k] = v
 			}
+		}
+		// Updating asks GitHub for a checked release, nothing more: score-only screens too.
+		if at := l.askedUpdate(); at > 0 {
+			out["update_screen"] = at
 		}
 		writeJSON(w, out, 200)
 	default:

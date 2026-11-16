@@ -13,6 +13,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   now keeps asking for up to a minute and a half while GitHub can't be reached, and writes
   what happened to `~/cricketstream/clubhouse.log` either way. A screen on beta 10 or
   earlier picks this up the first time it starts with the wifi already joined.
+- **See and update the clubhouse screen's version from the laptop.** The screen now tells
+  the laptop its version: the match-day screen's *Clubhouse screen* card shows it, and when
+  it's behind there's **Update the screen**, which every screen that's on picks up within a
+  few seconds (it updates and restarts itself). The pre-match check shows a ⚠ for a screen
+  older than the laptop. On the screen itself, its settings have **Check for an update**,
+  and a screen left on checks once a day by itself, only when match day isn't running and
+  nobody has touched it for ten minutes.
 
 ---
 
