@@ -2,6 +2,7 @@ package server
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,6 +15,27 @@ func quickRehearsal(t *testing.T, ballSec float64) {
 		StopRehearsal()
 		rehearsalBallSec = saved
 	})
+}
+
+// lockedBuf: say is called from the practice's own goroutine too.
+type lockedBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+// captureSay collects what the server prints from here on.
+func captureSay(t *testing.T) func() string {
+	t.Helper()
+	buf, saved := &lockedBuf{}, sayOut
+	sayOut = buf
+	t.Cleanup(func() { sayOut = saved })
+	return func() string { buf.mu.Lock(); defer buf.mu.Unlock(); return buf.b.String() }
 }
 
 func rehearsalRunning() bool { r, _ := RehearsalStatus()["running"].(bool); return r }
@@ -96,6 +118,37 @@ func TestPracticeMatchStopsEarlyAndPutsThingsBack(t *testing.T) {
 	mustEq(t, st, 200)
 	mustEq(t, d["running"], false)
 	mustEq(t, LoadState()["pcs_output_folder"], "/real")
+}
+
+// After a practice the scorer's feed starts from "not seen": /health says a practice is
+// on (the window's quiet-feed alert skips it), and the watchdog says nothing at either end.
+// Seen 2026-11-16: "has gone stale" two minutes after a practice ended.
+func TestPracticeIsNotTheScorersFeed(t *testing.T) {
+	s := newTestServer(t, "")
+	quickRehearsal(t, 5)
+	h := map[string]string{"Origin": "http://" + s.addr}
+	if st, _ := s.postJSON("/rehearsal", M{"action": "start"}, h); st != 200 {
+		t.Fatal(st)
+	}
+	pcs, _ := s.get("/health").json(t)["pcs"].(M)
+	if pcs["practice"] != true {
+		t.Errorf("/health during a practice: %v", pcs)
+	}
+	watchdogMu.Lock()
+	watchdogStatus["pcs_was_fresh"] = true // the scorer's feed was live before the practice
+	watchdogMu.Unlock()
+	said := captureSay(t)
+	watchdogTick()
+	if _, d := s.postJSON("/rehearsal", M{"action": "stop"}, h); d["running"] != false {
+		t.Fatal(d)
+	}
+	watchdogTick() // the practice's file is left behind, stale
+	if pcs, _ := s.get("/health").json(t)["pcs"].(M); pcs["practice"] != false {
+		t.Errorf("/health after: %v", pcs)
+	}
+	if out := said(); strings.Contains(out, "gone stale") || strings.Contains(out, "fresh again") {
+		t.Errorf("the watchdog took the practice for the scorer's feed:\n%s", out)
+	}
 }
 
 func TestPracticeMatchRefusedWhileLiveOrManual(t *testing.T) {

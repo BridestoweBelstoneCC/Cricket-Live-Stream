@@ -70,7 +70,11 @@ func (s *alertState) stream(m map[string]any, now time.Time) []notice {
 func (s *alertState) health(h map[string]any) []notice {
 	var out []notice
 	pcs, _ := h["pcs"].(map[string]any)
-	if pcs != nil && pcs["manual_scoring"] != true {
+	if pcs != nil && pcs["practice"] == true {
+		// A practice match feeds the score, then stops: that's not the scorer's feed going
+		// quiet (it was, after every rehearsal). Start again from "not seen yet".
+		s.feedSeen, s.feedAlerted = false, false
+	} else if pcs != nil && pcs["manual_scoring"] != true {
 		fresh, _ := pcs["fresh"].(bool)
 		switch {
 		case fresh:
