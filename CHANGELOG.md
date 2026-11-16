@@ -6,6 +6,13 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## Unreleased
 
+- **The clubhouse screen updates itself after being switched on at the plug.** It checked
+  for a new version once, the moment it started, and a Pi switched on at the wall starts
+  before its wifi has joined: the check found no internet, said nothing, and the screen
+  stayed on the old version (the club's Pi sat on beta 9 the morning after beta 10). It
+  now keeps asking for up to a minute and a half while GitHub can't be reached, and writes
+  what happened to `~/cricketstream/clubhouse.log` either way. A screen on beta 10 or
+  earlier picks this up the first time it starts with the wifi already joined.
 - **Over summaries in the second innings.** The overlay remembered the last over it had
   summed up and never reset it at the change of innings, so the reply's overs up to the
   first innings' length all counted as already shown: no over summary, and none of what
