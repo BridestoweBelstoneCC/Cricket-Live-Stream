@@ -1008,12 +1008,21 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 		return d
 	}
 	recDir := filepath.Join(app, "replays", "match-recordings")
+	// Each file's size from an open handle: a folder listing on Windows (and os.Stat, which
+	// reads the same entry) keeps the size a file had when OBS last flushed its directory
+	// entry, so a recording still being written looked as if it never grew.
 	recBytes := func() int64 {
 		var n int64
 		ents, _ := os.ReadDir(recDir)
 		for _, e := range ents {
-			if i, err := e.Info(); err == nil && !e.IsDir() {
-				n += i.Size()
+			if e.IsDir() {
+				continue
+			}
+			if f, err := os.Open(filepath.Join(recDir, e.Name())); err == nil {
+				if i, err := f.Stat(); err == nil {
+					n += i.Size()
+				}
+				f.Close()
 			}
 		}
 		return n
