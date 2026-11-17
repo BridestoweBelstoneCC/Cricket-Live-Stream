@@ -630,11 +630,15 @@ func TestBackupRecordingCheck(t *testing.T) {
 		{"advanced, its own encoder", map[string]string{"Output/Mode": "Advanced", "AdvOut/RecEncoder": "obs_x264"}, true, 200e9, "warn"},
 		{"advanced, custom output", map[string]string{"Output/Mode": "Advanced", "AdvOut/RecType": "FFmpeg"}, true, 200e9, "warn"},
 		{"short of space", nil, true, 5e9, "warn"},
+		{"OBS on another computer", map[string]string{"remote": "1"}, true, 200e9, "skip"},
 	} {
 		ini := c.ini
 		obsProfileValue = func(sec, key string) string { return ini[sec+"/"+key] }
 		free = c.free
 		st := M{"backup_recording": c.on, "replay_folder": t.TempDir()}
+		if ini["remote"] != "" {
+			st["obs_host"] = "192.168.1.50"
+		}
 		if r := pcBackupRecording(st); r.Status != c.want {
 			t.Errorf("%s: %s (%s)", c.name, r.Status, r.Detail)
 		}

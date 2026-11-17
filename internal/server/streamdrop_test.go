@@ -155,12 +155,22 @@ func TestReconnectingStreamIsRestartedOnceTheLineIsBack(t *testing.T) {
 	if n := gs(dropStatus(), "reconnect_note", ""); !strings.Contains(n, "No internet yet") {
 		t.Fatalf("note: %q", n)
 	}
+	// One answer between silences is a flicker, not the line back.
 	*r.reach = true
 	r.at(30)
+	*r.reach = false
+	r.at(35)
+	*r.reach = true
+	r.at(40)
+	if r.obs.called("StopStream") != 0 {
+		t.Fatal("restarted on a single answer: a flickering line would get a start into nothing")
+	}
+	// Twice running: back.
+	r.at(45)
 	if r.obs.called("StopStream") != 1 || r.obs.called("StartStream") != 1 {
 		t.Fatalf("calls: %v", r.obs.calls)
 	}
-	r.at(35)
+	r.at(50)
 	if gb(dropStatus(), "reconnecting", true) {
 		t.Fatal("still reported as reconnecting once back")
 	}
@@ -175,13 +185,19 @@ func TestReconnectRestartIsRateLimited(t *testing.T) {
 	r.set(true, true)
 	r.at(0)
 	r.at(20)
+	r.at(25) // the second answer running: restarted
+	if n := r.obs.called("StopStream"); n != 1 {
+		t.Fatalf("%d restarts", n)
+	}
 	r.set(true, true) // the restart didn't take: OBS is reconnecting again
-	r.at(25)
+	r.at(30)
 	r.at(70)
+	r.at(84)
 	if n := r.obs.called("StopStream"); n != 1 {
 		t.Fatalf("%d restarts inside a minute", n)
 	}
-	r.at(81)
+	r.at(86)
+	r.at(91)
 	if n := r.obs.called("StopStream"); n != 2 {
 		t.Fatalf("%d restarts after a minute", n)
 	}
@@ -316,6 +332,28 @@ func TestBackupRecordingStopsAtTheEndOfMatchDay(t *testing.T) {
 	StopBackupRecordingAtEnd()
 	if r.obs.called("StopRecord") != 1 {
 		t.Fatal("not stopped at the end of match day")
+	}
+}
+
+// OBS on another computer: the folder is this laptop's and the YouTube sign-in is read from
+// this laptop's OBS, so nothing is recorded or restarted there; only reported.
+func TestOBSOnAnotherComputerIsOnlyReported(t *testing.T) {
+	r := newDropRig(t)
+	setState(t, M{"obs_host": "192.168.1.50"})
+	r.set(true, true)
+	r.at(0)
+	r.at(60)
+	if r.obs.called("StartRecord") != 0 || r.obs.called("StopStream") != 0 || r.obs.called("SetProfileParameter") != 0 {
+		t.Fatalf("acted on another computer's OBS: %v", r.obs.calls)
+	}
+	if d := dropStatus(); d["reconnecting"] != true || !strings.Contains(gs(d, "reconnect_note", ""), "another computer") {
+		t.Fatalf("status: %v", d)
+	}
+	r.set(false, false)
+	r.obs.recording = true
+	StopBackupRecordingAtEnd()
+	if r.obs.called("StopRecord") != 0 {
+		t.Fatal("stopped another computer's recording")
 	}
 }
 

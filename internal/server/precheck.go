@@ -461,6 +461,9 @@ func pcBackupRecording(st M) CheckResult {
 	if !backupRecordingOn(st) {
 		return chk("skip", "Off — nothing is recorded on this laptop if the internet drops.", "")
 	}
+	if !obsIsLocal(st) {
+		return chk("skip", "OBS is on another computer, so CricketStream doesn't record: start a recording in OBS there if you want one.", "")
+	}
 	var warns, fixes []string
 	adv := obsProfileValue("Output", "Mode") == "Advanced"
 	sec := "SimpleOutput"

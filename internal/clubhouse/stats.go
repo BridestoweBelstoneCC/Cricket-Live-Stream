@@ -5,7 +5,7 @@ package clubhouse
 // The club stats (the Stats tab). The laptop adds up every player's record for the club
 // from PlayCricket (the server's /club/stats); the screen keeps its own copy in
 // club_stats.json and asks for a new one when it finds the laptop's server running and its
-// copy is a week old. It never asks PlayCricket itself: that would need the club's API key
+// copy is a day old. It never asks PlayCricket itself: that would need the club's API key
 // on a screen on a clubhouse wall.
 //
 // Extra tabs: [Screen] extra_tabs in clubhouse.ini adds tabs that show a page of the club's
@@ -24,11 +24,12 @@ import (
 	"cricketstream/internal/assets"
 )
 
-// statsEvery is how old the screen's copy may get before it asks for a new one; statsRetry
-// is how soon it asks again when the laptop's still adding them up (the first build ever
-// reads every scorecard the club has, and takes a few minutes).
+// statsEvery is how old the screen's copy may get before it asks for a new one (a day: it's
+// about 40 KB, and a week kept a corrected scorecard off the screen for days); statsRetry is
+// how soon it asks again when the laptop's still adding them up (the first build ever reads
+// every scorecard the club has, and takes a few minutes).
 var (
-	statsEvery = 7 * 24 * time.Hour
+	statsEvery = 24 * time.Hour
 	statsRetry = 2 * time.Minute
 )
 

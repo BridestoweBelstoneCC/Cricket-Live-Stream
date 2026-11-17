@@ -1528,15 +1528,18 @@ $('pinset_skip').addEventListener('click', function () { pinStep = false; poll()
 // The figures come from the laptop's club record (the server's /club/stats), kept on the
 // screen in club_stats.json: so they're here with the laptop off. Each player has figures
 // per club and kind of side ("29434:m", "9593:j"); the filters choose which to add up.
-var stData = null, stAt = 0, stClub = 'all', stSide = 'all', stSort = 'apps', stQ = '', stKeysOn = false;
+// stClubs: the clubs added together. The club itself to start with; a tap adds or takes away
+// one of its former clubs (Bridestowe and the merged club together, say), never the last.
+var stData = null, stAt = 0, stClubs = null, stSide = 'all', stSort = 'apps', stQ = '', stKeysOn = false;
 var ST_SIDES = [['all', 'All cricket'], ['m', 'Men'], ['l', 'Ladies'], ['j', 'Juniors']];
 var ST_SORTS = [['apps', 'Most games'], ['runs', 'Most runs'], ['wkts', 'Most wickets'], ['ct', 'Most catches']];
 function loadStats() {
   if (stData && !stData.none && Date.now() - stAt < 600000) { renderStats(); return; }
   api('stats').then(function (d) { stAt = Date.now(); stData = d; renderStats(); });
 }
-// statsRows adds up each player's figures in the chosen club and side, most first.
-function statsRows(d, club, side, sort) {
+// statsRows adds up each player's figures in the chosen clubs (a list; null is every club)
+// and side, most first.
+function statsRows(d, clubs, side, sort) {
   var F = {};
   (d.fields || []).forEach(function (f, i) { F[f] = i; });
   var sides = {m: ['m'], l: ['l', 'g'], j: ['j', 'g']}[side] || null;
@@ -1546,7 +1549,7 @@ function statsRows(d, club, side, sort) {
     var t = null;
     Object.keys(p.b || {}).forEach(function (b) {
       var part = b.split(':'), v = p.b[b];
-      if (club !== 'all' && part[0] !== club) return;
+      if (clubs && clubs.indexOf(part[0]) < 0) return;
       if (sides && sides.indexOf(part[1]) < 0) return;
       if (!t) {
         t = {hs: 0, hs_no: 0, best_w: -1, best_r: 0};
@@ -1572,12 +1575,14 @@ function oversOf(balls) { return Math.floor(balls / 6) + (balls % 6 ? '.' + ball
 function hsText(t) { return t.inn ? t.hs + (t.hs_no ? '*' : '') : '–'; }
 function bestText(t) { return t.best_w >= 0 ? t.best_w + '-' + t.best_r : '–'; }
 function stClubName(c) { return c.name || ('Club ' + c.id); }
+// stSeg draws a row of buttons; cur is the one chosen, or a list of the ones that are on.
 function stSeg(id, opts, cur, pick) {
   var seg = $(id); seg.textContent = '';
   opts.forEach(function (o) {
     var b = make('button', '', o[1]); b.type = 'button';
     if (o[2]) b.appendChild(make('small', '', o[2]));
-    b.setAttribute('aria-pressed', o[0] === cur ? 'true' : 'false');
+    var on = Array.isArray(cur) ? cur.indexOf(o[0]) >= 0 : o[0] === cur;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.addEventListener('click', function () { pick(o[0]); renderStats(); });
     seg.appendChild(b);
   });
@@ -1597,17 +1602,24 @@ function renderStats() {
   show('st_find', true);
   var when = (d.fetched || d.as_of || '').slice(0, 10);
   txt('st_asof', 'From PlayCricket: ' + d.matches + ' matches since ' + d.since + (when ? ' · updated ' + when.split('-').reverse().join('/') : ''));
-  var clubs = [['all', 'All clubs']];
-  (d.clubs || []).forEach(function (c) { clubs.push([c.id, stClubName(c), c.former ? 'before the merge' : '']); });
-  if (clubs.length < 3) clubs = clubs.slice(1, 2); // one club: nothing to choose
-  if (!clubs.some(function (c) { return c[0] === stClub; })) stClub = clubs[0] ? clubs[0][0] : 'all';
-  stSeg('st_club', clubs.length > 1 ? clubs : [], stClub, function (v) { stClub = v; });
+  var clubs = (d.clubs || []).map(function (c) { return [c.id, stClubName(c), c.former ? 'before the merge' : '']; });
+  var ids = clubs.map(function (c) { return c[0]; });
+  if (stClubs) stClubs = stClubs.filter(function (id) { return ids.indexOf(id) >= 0; });
+  if (!stClubs || !stClubs.length) {
+    stClubs = (d.clubs || []).filter(function (c) { return !c.former; }).map(function (c) { return c.id; });
+    if (!stClubs.length) stClubs = ids.slice();
+  }
+  stSeg('st_club', clubs.length > 1 ? clubs : [], stClubs, function (v) {
+    var i = stClubs.indexOf(v);
+    if (i < 0) stClubs.push(v);
+    else if (stClubs.length > 1) stClubs.splice(i, 1);
+  });
   stSeg('st_side', ST_SIDES, stSide, function (v) { stSide = v; });
   stSeg('st_sort', ST_SORTS, stSort, function (v) { stSort = v; });
   var find = $('st_find'); find.textContent = stQ ? '🔍  ' + stQ : '🔍  Find a player';
   show('st_clear', !!stQ);
   show('st_keys', stKeysOn);
-  var rows = statsRows(d, stClub, stSide, stSort), q = stQ.toLowerCase();
+  var rows = statsRows(d, clubs.length ? stClubs : null, stSide, stSort), q = stQ.toLowerCase();
   var shown = q ? rows.filter(function (r) { return r.name.toLowerCase().indexOf(q) >= 0; }) : rows;
   var cap = 100, list = shown.slice(0, cap);
   txt('st_msg', !rows.length ? 'Nobody has played in that yet.' : q && !shown.length ? 'Nobody called "' + stQ + '" here. Try the start of their surname.'
@@ -1629,7 +1641,8 @@ function renderStats() {
 function statsCard(r) {
   var t = r.t, d = openDialog();
   d.appendChild(make('h2', '', r.name));
-  var club = stClub === 'all' ? 'All clubs' : stClubName((stData.clubs || []).filter(function (c) { return c.id === stClub; })[0] || {id: stClub});
+  var club = (stData.clubs || []).filter(function (c) { return (stClubs || []).indexOf(c.id) >= 0; })
+    .map(stClubName).join(' + ') || 'All clubs';
   var side = ST_SIDES.filter(function (s) { return s[0] === stSide; })[0][1];
   d.appendChild(make('p', 'muted', club + ' · ' + side + ' · ' + t.apps + (t.apps === 1 ? ' game' : ' games')));
   if (t.inn) d.appendChild(sheet(['Batting', 'Inns', 'NO', 'Runs', 'HS', 'Avg', '50s', '100s'],

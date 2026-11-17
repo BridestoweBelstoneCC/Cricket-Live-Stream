@@ -4,6 +4,23 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## v3.0.0-beta.12 — clubs together on the Stats tab (2026-11-17)
+
+- **Clubs together on the clubhouse screen's Stats tab.** The club buttons now add clubs
+  together instead of choosing one: the club itself is on to start with, and a tap adds or
+  takes away a former club (a merged club's records with Bridestowe's, say), so a player's
+  whole record can be seen at once. One club is always on.
+- **The stream is restarted only once the line has answered twice running**, 5 seconds
+  apart, so a line that flickers up for a moment doesn't get a restart into nothing (a
+  start that fails makes OBS stop trying by itself).
+- **With OBS on another computer** (`manage_obs = no`), the internet dropping out is only
+  reported: CricketStream doesn't record there or restart its stream, since it can't see
+  that computer's folders or whether its OBS is signed in to YouTube.
+- **The backup recording is stopped first when match day stops**, before anything else
+  that could keep the server from finishing in time.
+
+---
+
 ## v3.0.0-beta.11 — when the internet drops out (2026-11-17)
 
 - **Back on air within seconds when the internet comes back.** When the line drops, OBS

@@ -274,8 +274,9 @@ Each new commentator starts at normal volume, not muted.
 not, with the laptop on or off), is every player's record for the club from PlayCricket,
 as far back as it goes: games, runs, average, high score, wickets, best bowling, catches.
 
-- **Filters:** which club (the club, and each club it was formed from, before the merge:
-  `[Club] former_ids` on the laptop), and which cricket (**Men**, **Ladies**, **Juniors**;
+- **Filters:** which clubs (the club, and each club it was formed from, before the merge:
+  `[Club] former_ids` on the laptop; the club itself is on to start with, and a tap adds or
+  takes away another, so they can be added together), and which cricket (**Men**, **Ladies**, **Juniors**;
   a girls' side counts as both ladies' and junior). A side's kind is read from its team and
   competition names on PlayCricket ("Under 13", "Women's XI").
 - **Ranked** by games for the club, or by runs, wickets or catches.
@@ -286,7 +287,7 @@ as far back as it goes: games, runs, average, high score, wickets, best bowling,
 
 The laptop adds them up from the scorecards it already keeps for the milestones; the
 screen keeps its own copy, so they're there with the laptop off. It asks for a new copy
-when it finds match day running and its copy is a week old (the first time ever, the
+when it finds match day running and its copy is a day old (the first time ever, the
 laptop takes a few minutes to read every scorecard: the tab says so). Left on Stats for
 three minutes, the screen goes back to the score.
 
