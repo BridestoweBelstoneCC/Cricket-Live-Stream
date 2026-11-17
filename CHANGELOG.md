@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.11 — the second innings, and keeping the clubhouse screen up to date (2026-11-17)
 
 - **The clubhouse screen updates itself after being switched on at the plug.** It checked
   for a new version once, the moment it started, and a Pi switched on at the wall starts
