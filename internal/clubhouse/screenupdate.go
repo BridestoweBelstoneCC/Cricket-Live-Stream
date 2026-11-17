@@ -9,13 +9,18 @@ package clubhouse
 //   - "Check for an update" in its settings (behind the PIN), or the laptop's "Update the
 //     screen" (a time in the link's status), checks now;
 //   - it checks again by itself every day, only while match day isn't on and nobody has
-//     touched it for a while.
+//     touched it for a while;
+//   - a check that couldn't reach GitHub (the boot one, with the wifi still joining) is
+//     tried again every 15 minutes, not left for the next day;
+//   - it follows the laptop: seeing the laptop on a newer version, it checks at the next
+//     quiet moment, so updating the laptop updates the screen with nobody pressing anything.
 // An update found while running is installed, then the screen exits the way a stop does
 // (Chromium closed) and the start script's loop runs the new copy.
 
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,8 +31,9 @@ const VersionHeader = "X-Clubhouse-Version"
 // Swappable for tests.
 var (
 	screenUpdateTo  = updateTo
-	updRecheckFirst = 4 * time.Hour  // the first quiet check after the one at boot
-	updRecheckEvery = 24 * time.Hour // and from then on
+	updRecheckFirst = 4 * time.Hour    // the first quiet check after the one at boot
+	updRecheckEvery = 24 * time.Hour   // and from then on
+	updRetryNoNet   = 15 * time.Minute // after a check that couldn't reach GitHub
 	updQuietFor     = 10 * time.Minute
 	updQuietTick    = 5 * time.Minute
 	updRestartDelay = 3 * time.Second // long enough for the page to say so
@@ -39,8 +45,12 @@ type screenUpdate struct {
 	at         time.Time
 	lastCheck  time.Time
 	handledAsk int64 // the laptop's last "update the screen", once dealt with
-	restart    chan struct{}
-	once       sync.Once
+	// The laptop's version when it's newer than this copy, and the one already checked
+	// for: one check per laptop version, so a release the Pi can't take isn't asked for
+	// every few minutes.
+	followWant, followDone string
+	restart                chan struct{}
+	once                   sync.Once
 }
 
 // updateNow checks for an update in the background (false if one is already running).
@@ -50,7 +60,7 @@ func (s *Screen) updateNow(why string) bool {
 		s.mu.Unlock()
 		return false
 	}
-	s.upd.running, s.upd.lastCheck = true, time.Now()
+	s.upd.running, s.upd.lastCheck, s.upd.followDone = true, time.Now(), s.upd.followWant
 	s.mu.Unlock()
 	s.background(func() {
 		fmt.Printf("  Checking for an update (%s)\n", why)
@@ -98,6 +108,19 @@ func (s *Screen) noteIdle(q string) {
 	s.mu.Unlock()
 }
 
+// noteLaptopVersion: the laptop's status says its version; newer than this copy, the screen
+// follows it at the next quiet moment. s.mu held.
+func (s *Screen) noteLaptopVersion(st map[string]any) {
+	lv, _ := st["version"].(string)
+	lv = strings.TrimPrefix(strings.TrimSpace(lv), "v")
+	have := strings.TrimPrefix(strings.TrimSpace(s.o.Version), "v")
+	if lv == "" || have == "" || s.o.Newer == nil || lv == s.upd.followWant || !s.o.Newer(lv, have) {
+		return
+	}
+	s.upd.followWant = lv
+	fmt.Printf("  The streaming laptop is on %s (this screen: %s) — updating when the screen's quiet\n", lv, have)
+}
+
 // quietForUpdate: a check is due, match day isn't on, and nobody's using the screen.
 func (s *Screen) quietForUpdate(now time.Time) bool {
 	s.mu.Lock()
@@ -107,7 +130,11 @@ func (s *Screen) quietForUpdate(now time.Time) bool {
 	}
 	due := now.Sub(s.started) >= updRecheckFirst
 	if !s.upd.lastCheck.IsZero() {
-		due = now.Sub(s.upd.lastCheck) >= updRecheckEvery
+		due = now.Sub(s.upd.lastCheck) >= updRecheckEvery ||
+			s.upd.state == updCantCheck && now.Sub(s.upd.lastCheck) >= updRetryNoNet
+	}
+	if s.upd.followWant != "" && s.upd.followWant != s.upd.followDone {
+		due = true
 	}
 	phase, _ := s.laptop["phase"].(string)
 	return due && now.Sub(s.lastTouch) >= updQuietFor && phase != "running" && phase != "starting"

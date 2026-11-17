@@ -3,6 +3,7 @@ package clubhouse
 import (
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -162,6 +163,88 @@ func TestScreenUpdateButton(t *testing.T) {
 	_, st := ts.api("GET", "status", nil)
 	if u, _ := st["update"].(M); u["state"] != updCantCheck || u["running"] != false {
 		t.Errorf("status: %v", st["update"])
+	}
+}
+
+// A check that couldn't reach GitHub (the boot one, the wifi still joining) is tried again
+// within the quarter hour, not the next day; still only when quiet, never in match day.
+func TestScreenRetriesSoonAfterNoInternet(t *testing.T) {
+	ts := newTestScreen(t)
+	start := ts.started
+	ts.mu.Lock()
+	ts.upd.state, ts.upd.lastCheck = updCantCheck, start
+	ts.mu.Unlock()
+	at := func(d, idleFor time.Duration, phase string) bool {
+		ts.mu.Lock()
+		now := start.Add(d)
+		ts.lastTouch = now.Add(-idleFor)
+		ts.laptop = M{"phase": phase}
+		ts.mu.Unlock()
+		return ts.quietForUpdate(now)
+	}
+	if at(10*time.Minute, time.Hour, "home") {
+		t.Error("tried again straight away")
+	}
+	if !at(16*time.Minute, time.Hour, "home") {
+		t.Error("not tried again after a quarter of an hour")
+	}
+	if at(16*time.Minute, time.Minute, "home") || at(16*time.Minute, time.Hour, "running") {
+		t.Error("tried while in use or during match day")
+	}
+	// Reached GitHub this time: back to once a day.
+	ts.mu.Lock()
+	ts.upd.state = updUpToDate
+	ts.mu.Unlock()
+	if at(30*time.Minute, time.Hour, "home") {
+		t.Error("kept checking every quarter hour once GitHub had answered")
+	}
+}
+
+// The laptop on a newer version: the screen follows it at the next quiet moment, once per
+// laptop version, and not for one that's the same or older.
+func TestScreenFollowsTheLaptopsVersion(t *testing.T) {
+	ts := newTestScreen(t)
+	ts.o.Version, ts.o.Newer = "3.0.0-beta.3", newerForTest
+	start := ts.started
+	quiet := func(d time.Duration, phase string) bool {
+		ts.mu.Lock()
+		now := start.Add(d)
+		ts.lastTouch = now.Add(-time.Hour)
+		ts.laptop = M{"phase": phase}
+		ts.mu.Unlock()
+		return ts.quietForUpdate(now)
+	}
+	see := func(v string) {
+		ts.mu.Lock()
+		ts.noteLaptopVersion(M{"version": v})
+		ts.mu.Unlock()
+	}
+	for _, v := range []string{"3.0.0-beta.3", "v3.0.0-beta.3", "", "dev"} {
+		see(v)
+		if quiet(time.Minute, "home") {
+			t.Fatalf("checked for laptop version %q", v)
+		}
+	}
+	see("v3.0.0-beta.4")
+	if quiet(time.Minute, "running") {
+		t.Error("followed the laptop during match day")
+	}
+	if !quiet(time.Minute, "home") {
+		t.Fatal("didn't follow the laptop's newer version")
+	}
+	var checks atomic.Int32
+	saved := screenUpdateTo
+	t.Cleanup(func() { screenUpdateTo = saved })
+	screenUpdateTo = func(string, func(a, b string) bool) (bool, string) { checks.Add(1); return false, updUpToDate }
+	ts.updateNow("following the laptop")
+	ts.bg.Wait()
+	see("3.0.0-beta.4") // seen again on every poll
+	if quiet(2*time.Minute, "home") || checks.Load() != 1 {
+		t.Errorf("asked again for the same laptop version (%d checks)", checks.Load())
+	}
+	see("3.0.0") // the laptop moves on again
+	if !quiet(3*time.Minute, "home") {
+		t.Error("didn't follow the laptop's next version")
 	}
 }
 

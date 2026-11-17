@@ -137,12 +137,18 @@ A screen left on doesn't have to wait for a restart:
   that's on checks within a few seconds, updates, and restarts itself; one that's off checks
   at its next start as usual. The pre-match check shows a ⚠ for a screen that's behind.
 - **On the screen:** its settings (behind the PIN) → **Check for an update**.
-- **Every day by itself**, once it's been on for a few hours: only while match day isn't
-  running on the laptop and nobody has touched the screen for ten minutes. `auto_update = no`
-  turns this off too; the two buttons still work.
+- **It follows the laptop.** When the screen sees the laptop on a newer version, it updates
+  itself at the next quiet moment: update the laptop, and the screen comes along with nobody
+  pressing anything.
+- **Every day by itself**, once it's been on for a few hours. If a check couldn't reach the
+  internet (at start-up, with the wifi still joining), it tries again every 15 minutes
+  instead of waiting a day.
 
-(These need the screen on 3.0 beta 11 or later. A screen on an older one gets them at its
-next update.)
+The last two only happen while match day isn't running on the laptop and nobody has touched
+the screen for ten minutes. `auto_update = no` turns them off; the two buttons still work.
+
+(These need the screen on 3.0 beta 11 or later, and following the laptop beta 13 or later.
+A screen on an older one gets them at its next update.)
 
 ### Or: install it on Raspberry Pi OS yourself
 
