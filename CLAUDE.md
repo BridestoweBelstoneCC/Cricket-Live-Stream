@@ -211,6 +211,22 @@ problem + what to do + pause) or print and `console.Pause()`.
   events a second). Its format is checked on a real OBS by
   `internal/integration/meters_windows_test.go` (opt-in); non-zero levels from a real
   microphone are still unseen.
+- **The internet dropping out** (`streamdrop.go`, `/stream/monitor`'s `dropout`). OBS's
+  reconnect waits grow ×1.5 per try to a 15-minute cap (libobs `RECONNECT_RETRY_*`, not a
+  setting), so after a long outage it sat minutes past the line's return. The dropout watch
+  restarts the stream once OBS has reconnected for 20s AND a TCP connect to the host in
+  OBS's stream settings succeeds — never on a guess (a StartStream on a dead line fails, OBS
+  shows an error box and stops trying) and never with OBS signed in to YouTube (a stop ends
+  the broadcast). A reconnecting stream is still `outputActive`: that's why "the stream has
+  stopped" never fired for an outage. The fault test's line must REFUSE connections while
+  cut (it used to accept-and-close, which a TCP probe reads as up).
+- **The backup recording never goes in the replay folder** (`backup_recording`, on by
+  default): every video there is a replay (the newest is played, the oldest deleted), so it
+  records into `<replay folder>/match-recordings`. OBS has one folder for recordings and
+  replays, so it's switched for the start and put back only once `GetRecordStatus` says
+  it's running: OBS's StartRecord answers first and reads the folder on its own thread.
+  The quality ladder stops it with the stream (it shares the encoder) and the watch starts
+  a new file; with the setting off, a recording still makes the ladder refuse.
 - **The scheduled start never goes live and starts once a day** (`internal/app/autostart.go`).
   Match day started or stopped by anyone today means it has nothing to do. `[App]
   auto_start`, `auto_start_minutes`.

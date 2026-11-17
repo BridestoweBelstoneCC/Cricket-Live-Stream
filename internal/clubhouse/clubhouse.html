@@ -382,6 +382,16 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     </section>
 
     <section id="v-get" class="view tab hidden">
+      <!-- Players off: for when the scorer's feed didn't start the break by itself. -->
+      <div id="brk" class="hidden">
+        <h2>Players off the field</h2>
+        <p class="muted">For when the break hasn't started by itself. The stream shows the stats and the best replays (and the rain radar for rain) until the next ball, or tap again to end it.</p>
+        <div class="row">
+          <button class="btn" id="brk_rain" type="button">Off for rain</button>
+          <button class="btn" id="brk_drinks" type="button">Drinks</button>
+        </div>
+        <p class="say" id="brk_say"></p>
+      </div>
       <h2>Get ready to go live</h2>
       <ul class="list" id="get_list"></ul>
       <div class="row">
@@ -952,7 +962,7 @@ function tabButton(b) {
 function opTab(t) { return t !== 'score' && t !== 'stats' && t.indexOf('x:') !== 0; }
 function loadTab() {
   if (tab === 'stats') loadStats();
-  if (tab === 'get') loadChecklist();
+  if (tab === 'get') { loadChecklist(); loadBreak(); }
   if (tab === 'yt') loadYouTube();
   if (tab === 'cam') loadCameras();
   if (tab === 'talk') loadTalk();
@@ -1102,6 +1112,39 @@ function loadChecklist() {
   }
   return api('server/checklist').then(function (d) { if (d.items) { checklist = d; renderChecklist(); } });
 }
+
+// Players off: rain or drinks, when the scorer's feed didn't start the break. The same
+// button ends it; the overlay ends it by itself at the next ball. /break is a watched read
+// (the poll doesn't keep the screen unlocked).
+var brk = null, BREAK_BUTTONS = [['brk_rain', 'rain', 'Off for rain', 'Rain delay on — tap to end it'],
+  ['brk_drinks', 'drinks', 'Drinks', 'Drinks on — tap to end it']];
+function loadBreak() {
+  if (!S || !S.unlocked) return;
+  api('server/break').then(function (d) { if (d.active !== undefined) { brk = d; renderBreak(); } });
+}
+function renderBreak() {
+  show('brk', !!brk);
+  if (!brk) return;
+  BREAK_BUTTONS.forEach(function (b) {
+    var on = brk.active && brk.kind === b[1];
+    $(b[0]).textContent = on ? b[3] : b[2];
+    $(b[0]).classList.toggle('go', on);
+  });
+}
+function toggleBreak(kind) {
+  var on = brk && brk.active && brk.kind === kind;
+  BREAK_BUTTONS.forEach(function (b) { $(b[0]).disabled = true; });
+  api(on ? 'server/break/end' : 'server/break/start', on ? {} : {kind: kind}).then(function (d) {
+    BREAK_BUTTONS.forEach(function (b) { $(b[0]).disabled = false; });
+    if (d.ok === false) { say('brk_say', d.error || 'That didn\'t work.', 'bad'); return; }
+    say('brk_say', on ? 'Break over — back to the cricket.'
+      : (d.label || 'Break') + ' on: the stats' + (kind === 'rain' ? ', the rain radar' : '') + ' and the best replays until the next ball.', 'good');
+    loadBreak();
+  });
+}
+BREAK_BUTTONS.forEach(function (b) {
+  $(b[0]).addEventListener('click', function () { needUnlock(function () { toggleBreak(b[1]); }); });
+});
 
 // ── Commentary from a phone ──
 // The switch, the QR code while it's on, and a yes or no for each person asking. Nobody's
@@ -1822,6 +1865,7 @@ setInterval(function () {
   loadScore(); loadChecklist(); // the checklist also says whether it's on air
   if (tab === 'score') loadSV(false);
   if (tab === 'health') loadHealth(false);
+  if (tab === 'get') loadBreak();
   loadTalkBadge();
 }, 3000);
 // Quick while it's showing: a yes or no shouldn't wait, and the meter is live.

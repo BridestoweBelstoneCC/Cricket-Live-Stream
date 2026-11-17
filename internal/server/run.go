@@ -41,6 +41,7 @@ func Start() {
 	loadSessionEpoch()
 	StartWatchdog()
 	StartStreamMonitor()
+	StartDropWatch()
 	StartViewerSampler()
 	StartPrecheckLoop()
 	StartCameraSpotter()
@@ -164,6 +165,10 @@ func Run(opts Options) error {
 	StopSideCam()
 	TalkOff()
 	if errors.Is(err, http.ErrServerClosed) {
+		// After the port's closed, never before: a copy of the app opened straight after
+		// this one was killed found this server still answering while it asked OBS, and
+		// took it for another copy running match day (fault test, phase 12).
+		StopBackupRecordingAtEnd()
 		return nil
 	}
 	return err

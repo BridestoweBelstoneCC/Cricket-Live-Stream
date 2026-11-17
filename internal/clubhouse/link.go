@@ -72,11 +72,15 @@ var proxyGET = map[string]bool{
 	"/talk/status": true, "/talk/qr.png": true, "/talk/onair": true,
 	// The Stats tab's copy of the club's records (the screen keeps it: stats.go).
 	"/club/stats": true,
+	// Off for rain / drinks on the Get ready tab: which break is on, if any.
+	"/break": true,
 }
 
 var proxyPOST = map[string]bool{
 	"/checklist/action": true, "/precheck": true, "/cameras/use": true, "/obs/add_camera": true,
 	"/camera/scene": true, "/youtube/update": true, "/talk/control": true,
+	// A break the scorer's feed didn't start (rain, drinks), and ending it.
+	"/break/start": true, "/break/end": true,
 }
 
 // viewGET: what a score-only screen may read — the score, the scorecard and table, the

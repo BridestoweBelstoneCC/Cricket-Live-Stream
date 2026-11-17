@@ -183,6 +183,9 @@ type sentReq struct {
 func runShift(t *testing.T, responses [][]map[string]any, step int, reason, mode string) (bool, string, [][]sentReq) {
 	t.Helper()
 	sandbox(t, "")
+	if runShiftState != nil {
+		setState(t, runShiftState)
+	}
 	resetStreamMon(t, M{"streaming": true, "reachable": true, "baseline_kbps": 4000, "step": 0,
 		"current_kbps": 4000, "dynamic_bitrate": true, "simple_mode": true})
 	var calls [][]sentReq
@@ -567,7 +570,14 @@ func TestShiftStopsAndRestartsTheReplayBuffer(t *testing.T) {
 		{"GetVideoSettings"}, {"StartStream"}, {"GetStreamStatus"}, {"StartReplayBuffer"}, {"GetReplayBufferStatus"}})
 }
 
+// runShiftState is set in the state of the next runShift (after its sandbox).
+var runShiftState M
+
+// A recording of someone's own: the backup recording is split instead
+// (TestQualityStepSplitsTheBackupRecording).
 func TestShiftRefusedWhileRecording(t *testing.T) {
+	runShiftState = M{"backup_recording": false}
+	t.Cleanup(func() { runShiftState = nil })
 	ok, msg, calls := runShift(t, [][]map[string]any{
 		{{"outputActive": true}, {"parameterValue": "Simple"}, {"outputActive": true}, {"outputActive": true}},
 	}, 1, "test", "auto")

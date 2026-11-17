@@ -6,6 +6,34 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ## v3.0.0-beta.11 — the second innings, and keeping the clubhouse screen up to date (2026-11-17)
 
+- **Back on air within seconds when the internet comes back.** When the line drops, OBS
+  keeps trying to reconnect, but it waits half as long again after each try (up to 15
+  minutes between tries), so after a ten-minute outage it could sit for another four or five
+  minutes with the internet long since back. Now, once OBS has been reconnecting for 20
+  seconds, CricketStream knocks on the stream's server every few seconds and restarts the
+  stream the moment it answers. Never before: a restart with the line still down makes OBS
+  give up. Not when OBS is signed in to YouTube ("Connect account"), where stopping the
+  stream ends the broadcast: OBS is left to reconnect by itself there.
+- **A backup recording of the whole match, on by default.** OBS now records the match on the
+  streaming laptop as well as streaming it, so if the internet drops, nothing is lost: upload
+  the missing part afterwards. It starts with the stream and stops two minutes after the
+  stream's stopped (or when match day stops), into `match-recordings` inside the replay
+  folder. In OBS's usual settings it shares the stream's encoding, so it costs disk space
+  (1-3 GB an hour), not processing power. When the drive gets low (under 20 GB free), the
+  oldest recordings go, never today's. Switch it off in **Match day → Stream quality**. The
+  pre-match check has a new line for it: room in hours, and a ⚠ if OBS would record with an
+  encoder of its own or as plain MP4 (lost whole if OBS crashes). Auto quality scaling
+  carries on with it running: a step starts a new file.
+- **The window says when the internet has dropped**, after 30 seconds, and when it's back;
+  the control panel's stream card shows how long OBS has been reconnecting.
+- **Off for rain and Drinks on the clubhouse screen.** The Get ready tab (behind the PIN)
+  has two buttons for when the break didn't start by itself: the stream shows the break
+  card, the scorecard, the season's stats and the best replays so far (and the rain radar
+  for rain) until the next ball, or until the same button is pressed again. The control
+  panel's Breaks card has a **Drinks** button too.
+- **The fault test now drops the line for ten minutes, and flickers it** (5 seconds down,
+  20 up, six times), and checks the backup recording grows throughout and never lands among
+  the replays. Its line now refuses connections while it's down, as a dead line does.
 - **The clubhouse screen updates itself after being switched on at the plug.** It checked
   for a new version once, the moment it started, and a Pi switched on at the wall starts
   before its wifi has joined: the check found no internet, said nothing, and the screen

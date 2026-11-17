@@ -35,6 +35,7 @@ type alertState struct {
 	streamSeen   bool      // the stream has been on air this match day
 	streamOff    time.Time // when it went off (zero while it's on)
 	streamSaid   bool      // "stream stopped" said, waiting for it to come back
+	reconnSaid   bool      // "the internet has dropped" said, waiting for it to come back
 	silentSaid   bool      // "no sound" said, waiting for it to come back
 	frozenSaid   map[string]bool
 }
@@ -47,6 +48,33 @@ const streamGrace = 90 * time.Second
 // at the end of the match too, which is when the club channel wants to know anyway.
 func (s *alertState) stream(m map[string]any, now time.Time) []notice {
 	on, _ := m["streaming"].(bool)
+	// OBS reconnecting is still "streaming" to OBS, so the internet dropping out is its own
+	// news, from the dropout watch (the server's streamdrop.go).
+	var out []notice
+	d, _ := m["dropout"].(map[string]any)
+	reconn, _ := d["reconnecting"].(bool)
+	secs, _ := d["reconnecting_secs"].(float64)
+	switch {
+	case reconn && !s.reconnSaid && secs >= reconnectGrace.Seconds():
+		s.reconnSaid = true
+		text := "OBS is trying to reconnect, and the stream restarts as soon as the line's back."
+		if rec, _ := d["recording"].(bool); rec {
+			text += " The backup recording on this laptop carries on, so nothing's lost."
+		}
+		out = append(out, notice{Title: "The internet has dropped", Warn: true, Text: text})
+	case !reconn && s.reconnSaid:
+		s.reconnSaid = false
+		if on {
+			out = append(out, notice{Title: "Back on air", Text: "The internet's back and so is the stream."})
+		}
+	}
+	return append(out, s.streamOnOff(on, now)...)
+}
+
+// reconnectGrace: a blip OBS rides out by itself isn't news.
+const reconnectGrace = 30 * time.Second
+
+func (s *alertState) streamOnOff(on bool, now time.Time) []notice {
 	switch {
 	case on:
 		var out []notice
