@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.12 — clubs together on the Stats tab (2026-11-17)
 
 - **Clubs together on the clubhouse screen's Stats tab.** The club buttons now add clubs
   together instead of choosing one: the club itself is on to start with, and a tap adds or
