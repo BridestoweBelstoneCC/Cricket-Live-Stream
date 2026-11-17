@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.11 — when the internet drops out (2026-11-17)
 
 - **Back on air within seconds when the internet comes back.** When the line drops, OBS
   keeps trying to reconnect, but it waits half as long again after each try (up to 15
