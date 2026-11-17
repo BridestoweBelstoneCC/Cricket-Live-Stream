@@ -418,5 +418,6 @@ func streamMonitorStatus() M {
 		"verdict": streamMon["last_reason"], "shifts": append([]any{}, shifts...), "auto": auto,
 		"dynamic_bitrate": streamMon["dynamic_bitrate"], "simple_mode": streamMon["simple_mode"],
 		"upshift": streamMon["upshift_note"], "sent_kbps": streamMon["sent_kbps"],
-		"bitrate_warning": streamMon["bitrate_warning"]}
+		"bitrate_warning": streamMon["bitrate_warning"], "dropout": dropStatus(),
+		"backup_recording": gb(LoadState(), "backup_recording", true)}
 }

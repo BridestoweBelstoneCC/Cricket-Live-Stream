@@ -527,11 +527,26 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	// day, so restarting the stream alone changed nothing — measured on a real OBS 33: set
 	// to 2000 or 4000, it went on sending the 6000 it started with. Every step, down or
 	// up, restarted the stream for no change at all. So the buffer stops for the step too
-	// (its last few seconds are lost; a replay in that moment is skipped). A recording
-	// would have to be split in two, so that's left to the operator.
+	// (its last few seconds are lost; a replay in that moment is skipped). A recording of
+	// someone's own is left to them; the backup recording is split in two (the dropout
+	// watch starts a new one once the stream's back, with the step's few seconds missing).
+	recNote := ""
 	if len(status) > 3 && gb(status[3], "outputActive", false) {
-		return false, "OBS is recording — it only takes a new bitrate with the recording stopped, " +
-			"so no quality change made. Stop the recording to let the quality ladder work."
+		if !backupRecordingOn(st) {
+			return false, "OBS is recording — it only takes a new bitrate with the recording stopped, " +
+				"so no quality change made. Stop the recording to let the quality ladder work."
+		}
+		obsCall(st, []obsws.Req{{Type: "StopRecord"}}, 10*time.Second)
+		stopped := false
+		for i := 0; i < 20 && !stopped; i++ {
+			shiftSleep(500 * time.Millisecond)
+			s := obsCall(st, []obsws.Req{{Type: "GetRecordStatus"}}, 5*time.Second)
+			stopped = s != nil && s[0] != nil && !gb(s[0], "outputActive", false)
+		}
+		if !stopped {
+			return false, "The backup recording wouldn't stop, and OBS only takes a new bitrate with it stopped — no quality change made"
+		}
+		recNote = " (the backup recording carries on in a new file)"
 	}
 	// No answer about the buffer is "maybe running": skipping the stop on a guess left the
 	// step reporting success with the encoder still at the old bitrate (stress test).
@@ -650,7 +665,7 @@ func applyQualityStepLocked(newStep int, reason, mode string) (ok bool, msg stri
 	if wasLive {
 		tail = " — stream restarted"
 	}
-	msg = fmt.Sprintf("Stream bitrate %s to %d kbps (%d%% of baseline)%s%s", verb, target, int(StreamLadder[newStep]*100), resNote, tail)
+	msg = fmt.Sprintf("Stream bitrate %s to %d kbps (%d%% of baseline)%s%s%s", verb, target, int(StreamLadder[newStep]*100), resNote, tail, recNote)
 	say("  📶  %s [%s: %s]", msg, mode, reason)
 	return true, msg
 }

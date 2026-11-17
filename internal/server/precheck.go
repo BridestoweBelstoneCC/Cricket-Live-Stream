@@ -444,6 +444,74 @@ func obsSignedInToYouTube() bool {
 	return strings.Contains(strings.ToLower(v), "youtube")
 }
 
+// obsProfileValue reads the active OBS profile's basic.ini (a test seam).
+var obsProfileValue = func(section, key string) string {
+	p := obs.ActiveProfileINI(obs.ConfigDir())
+	if p == "" {
+		return ""
+	}
+	v, _ := obs.ReadINIValue(p, section, key)
+	return strings.TrimSpace(v)
+}
+
+// pcBackupRecording: the recording of the whole match (streamdrop.go). It's meant to cost
+// disk only, which holds while it shares the stream's encoder; and a recording OBS can't
+// finish (plain MP4, when OBS crashes) is lost whole. ⚠ at worst: none of it stops a match.
+func pcBackupRecording(st M) CheckResult {
+	if !backupRecordingOn(st) {
+		return chk("skip", "Off — nothing is recorded on this laptop if the internet drops.", "")
+	}
+	var warns, fixes []string
+	adv := obsProfileValue("Output", "Mode") == "Advanced"
+	sec := "SimpleOutput"
+	if adv {
+		sec = "AdvOut"
+		if t := obsProfileValue("AdvOut", "RecType"); t != "" && t != "Standard" {
+			warns = append(warns, "OBS's recording is a custom output, so it won't be started.")
+			fixes = append(fixes, "OBS Settings → Output → Recording → Type: Standard.")
+		}
+		if e := obsProfileValue("AdvOut", "RecEncoder"); e != "" && e != "none" {
+			warns = append(warns, "OBS records with an encoder of its own, which doubles the encoding work.")
+			fixes = append(fixes, "OBS Settings → Output → Recording → Video Encoder: (Use stream encoder).")
+		}
+	} else if q := obsProfileValue("SimpleOutput", "RecQuality"); q != "" && q != "Stream" {
+		warns = append(warns, "OBS records at a quality of its own, which doubles the encoding work.")
+		fixes = append(fixes, "OBS Settings → Output → Recording Quality: Same as stream.")
+	}
+	if f := strings.ToLower(obsProfileValue(sec, "RecFormat2")); f == "mp4" || f == "mov" {
+		warns = append(warns, "Recordings are plain "+strings.ToUpper(f)+": if OBS crashes, the whole recording is lost.")
+		fixes = append(fixes, "OBS Settings → Output → Recording Format: Hybrid MP4 (or MKV).")
+	}
+	dir := backupRecordingDir(st)
+	probe := dir
+	for probe != "" && !isDir(probe) {
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			break
+		}
+		probe = parent
+	}
+	kbps, _ := targetBitrate(st)
+	if kbps <= 0 {
+		kbps = 6000
+	}
+	gbHour := float64(kbps) * 1000 * 3600 / 8 / 1e9
+	hours := ""
+	if free, err := precheckDiskFree(probe); err == nil {
+		h := float64(free) / 1e9 / gbHour
+		hours = fmt.Sprintf(" Room for about %s hours.", pyfmt.Fixed(h, 0))
+		if h < 6 {
+			warns = append(warns, fmt.Sprintf("Only room for about %s hours of recording.", pyfmt.Fixed(h, 1)))
+			fixes = append(fixes, "Free up space on that drive (old recordings in "+dir+" can go once they're on YouTube).")
+		}
+	}
+	if len(warns) > 0 {
+		return chk("warn", strings.Join(warns, " "), strings.Join(fixes, " "))
+	}
+	return chk("ok", fmt.Sprintf("On — the whole match is recorded in %s too (about %s GB an hour).%s",
+		dir, pyfmt.Fixed(gbHour, 1), hours), "")
+}
+
 // pcAutoQuality: auto quality scaling is off by default, because a quality step stops
 // and restarts the stream, and with OBS signed in to YouTube ("Connect account") that
 // ENDS the broadcast. So rather than switching it on for everyone, this says when a club
@@ -676,6 +744,7 @@ var Prechecks = []struct {
 	{"obs_bitrate", "Stream bitrate", pcOBSBitrate},
 	{"upload", "Upload speed", pcUpload},
 	{"auto_quality", "Auto quality", pcAutoQuality},
+	{"backup_recording", "Backup recording", pcBackupRecording},
 	{"cameras", "Cameras", pcCameras},
 	{"fixture", "Today's fixture", pcFixture},
 	{"badge", "Opposition badge", pcBadge},

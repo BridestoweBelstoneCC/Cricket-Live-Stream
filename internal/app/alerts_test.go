@@ -281,3 +281,35 @@ func s0update() notice {
 	var s alertState
 	return s.update("3.1.0")[0]
 }
+
+// The internet dropping out leaves OBS "streaming" (it's reconnecting): said once it's
+// lasted past a blip, with the backup recording mentioned when it's running, and once
+// more when it's back. Not as "the stream has stopped".
+func TestAlertInternetDropped(t *testing.T) {
+	var s alertState
+	t0 := time.Date(2026, 6, 6, 14, 0, 0, 0, time.UTC)
+	m := func(reconn bool, secs float64, rec bool) map[string]any {
+		return map[string]any{"streaming": true, "dropout": map[string]any{
+			"reconnecting": reconn, "reconnecting_secs": secs, "recording": rec}}
+	}
+	s.stream(m(false, 0, true), t0)
+	if n := s.stream(m(true, 10, true), t0.Add(10*time.Second)); len(n) != 0 {
+		t.Fatalf("a blip: %v", n)
+	}
+	n := s.stream(m(true, 30, true), t0.Add(30*time.Second))
+	if len(n) != 1 || !n[0].Warn || !strings.Contains(n[0].Title, "internet") || !strings.Contains(n[0].Text, "backup recording") {
+		t.Fatalf("dropped: %v", n)
+	}
+	if n := s.stream(m(true, 300, true), t0.Add(5*time.Minute)); len(n) != 0 {
+		t.Fatalf("said again: %v", n)
+	}
+	n = s.stream(m(false, 0, true), t0.Add(6*time.Minute))
+	if len(n) != 1 || n[0].Warn || !strings.Contains(n[0].Title, "Back on air") {
+		t.Fatalf("back: %v", n)
+	}
+	s = alertState{}
+	s.stream(m(false, 0, false), t0)
+	if n := s.stream(m(true, 40, false), t0.Add(40*time.Second)); len(n) != 1 || strings.Contains(n[0].Text, "backup") {
+		t.Fatalf("no recording to mention: %v", n)
+	}
+}
