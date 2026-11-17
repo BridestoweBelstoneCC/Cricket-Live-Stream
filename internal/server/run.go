@@ -41,6 +41,7 @@ func Start() {
 	loadSessionEpoch()
 	StartWatchdog()
 	StartStreamMonitor()
+	StartDropWatch()
 	StartViewerSampler()
 	StartPrecheckLoop()
 	StartCameraSpotter()
@@ -154,6 +155,7 @@ func Run(opts Options) error {
 		case <-opts.Stop:
 		}
 		StopRehearsal() // puts the score source back
+		StopBackupRecordingAtEnd()
 		say("\n  Server stopped.")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

@@ -53,27 +53,46 @@ type mdLine struct {
 	mu    sync.Mutex
 	open  map[net.Conn]bool
 	sink  int
+	port  int
+	ln    net.Listener
 }
 
 func (l *mdLine) listen(t *testing.T, port int, stop <-chan struct{}) {
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
+	l.port = port
+	if err := l.accept(); err != nil {
 		t.Fatal(err)
 	}
-	go func() { <-stop; ln.Close() }()
+	go func() {
+		<-stop
+		l.mu.Lock()
+		if l.ln != nil {
+			l.ln.Close()
+		}
+		l.mu.Unlock()
+	}()
+}
+
+// accept listens again: a line that's down isn't listening at all, so a connection is
+// refused, as on a dead line (accepting and closing would look like a line that's back to
+// anything that knocks first, like the server's dropout watch).
+func (l *mdLine) accept() error {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", l.port))
+	if err != nil {
+		return err
+	}
+	l.mu.Lock()
+	l.ln = ln
+	l.mu.Unlock()
 	go func() {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			if l.down.Load() {
-				c.Close()
-				continue
-			}
 			go l.relay(c.(*net.TCPConn))
 		}
 	}()
+	return nil
 }
 
 func (l *mdLine) relay(in *net.TCPConn) {
@@ -119,10 +138,26 @@ func (l *mdLine) relay(in *net.TCPConn) {
 func (l *mdLine) cut() {
 	l.down.Store(true)
 	l.mu.Lock()
+	if l.ln != nil {
+		l.ln.Close()
+		l.ln = nil
+	}
 	for c := range l.open {
 		c.Close()
 	}
 	l.mu.Unlock()
+}
+
+// restore brings the line back.
+func (l *mdLine) restore(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		if err := l.accept(); err == nil {
+			l.down.Store(false)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Errorf("FAILED: couldn't bring the line back (port %d)", l.port)
 }
 
 // mdPhone is someone on air: the page's requests, over the real HTTPS port.
@@ -951,7 +986,7 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 	// ── 6. The line drops for 30 seconds, and comes back ──
 	line.cut()
 	time.Sleep(30 * time.Second)
-	line.down.Store(false)
+	line.restore(t)
 	cutAt := time.Now()
 	until("the stream's back on the line", 3*time.Minute, lineMoving)
 	t.Logf("  back %.0fs after the line was", time.Since(cutAt).Seconds())
@@ -960,6 +995,93 @@ func TestMatchDayWithEverythingOn(t *testing.T) {
 		t.Errorf("FAILED: not streaming after the line came back")
 	}
 	report("6 line down 30s")
+
+	// ── 6b. The line drops for 10 minutes ──
+	// OBS's own waits between tries grow by half each time (to 15 minutes), so by now its
+	// next try is minutes away: the server's dropout watch must restart the stream within
+	// seconds of the line coming back. The backup recording carries on throughout.
+	dropout := func() map[string]any {
+		_, b := do("GET", base+"/stream/monitor", nil, nil)
+		var m map[string]any
+		json.Unmarshal(b, &m)
+		d, _ := m["dropout"].(map[string]any)
+		return d
+	}
+	recDir := filepath.Join(app, "replays", "match-recordings")
+	recBytes := func() int64 {
+		var n int64
+		ents, _ := os.ReadDir(recDir)
+		for _, e := range ents {
+			if i, err := e.Info(); err == nil && !e.IsDir() {
+				n += i.Size()
+			}
+		}
+		return n
+	}
+	if !until("the backup recording's running", 30*time.Second, func() bool { return dropout()["recording"] == true }) {
+		t.Logf("  dropout watch: %v", dropout())
+	}
+	restartsBefore := strings.Count(log.String(), "restarting the stream now")
+	line.cut()
+	if !until("the window's told the internet has dropped", 90*time.Second, func() bool { return dropout()["reconnecting"] == true }) {
+		t.Logf("  dropout watch: %v", dropout())
+	}
+	recAt := recBytes()
+	time.Sleep(10 * time.Minute)
+	if d := dropout(); d["reconnecting"] != true || d["recording"] != true {
+		t.Errorf("FAILED: ten minutes down, the dropout watch says %v", d)
+	}
+	if strings.Count(log.String(), "restarting the stream now") != restartsBefore {
+		t.Errorf("FAILED: the stream was restarted with the line still down (OBS shows an error and stops trying)")
+	}
+	if recBytes() <= recAt {
+		t.Errorf("FAILED: the backup recording didn't grow while the line was down (%d bytes in %s)", recBytes(), recDir)
+	}
+	line.restore(t)
+	cutAt = time.Now()
+	if until("the stream's back after ten minutes down", 90*time.Second, lineMoving) {
+		t.Logf("  back %.0fs after the line was", time.Since(cutAt).Seconds())
+	}
+	if strings.Count(log.String(), "restarting the stream now") == restartsBefore {
+		t.Logf("  (OBS reconnected by itself before the dropout watch did)")
+	}
+	time.Sleep(30 * time.Second)
+	if !streaming() {
+		t.Errorf("FAILED: not streaming after ten minutes down")
+	}
+	report("6b line down 10 minutes")
+
+	// ── 6c. A line that keeps dropping: 5s down, 20s up, six times ──
+	for i := 0; i < 6; i++ {
+		line.cut()
+		time.Sleep(5 * time.Second)
+		line.restore(t)
+		time.Sleep(20 * time.Second)
+	}
+	cutAt = time.Now()
+	if until("the stream's steady after a flickering line", 3*time.Minute, func() bool { return streaming() && lineMoving() }) {
+		t.Logf("  steady %.0fs after the last drop", time.Since(cutAt).Seconds())
+	}
+	time.Sleep(30 * time.Second)
+	if !lineMoving() {
+		t.Errorf("FAILED: the stream stopped moving after a flickering line")
+	}
+	// The recording never lands in the replay folder itself (every video there is a
+	// replay), and replays still do.
+	ents, _ := os.ReadDir(filepath.Join(app, "replays"))
+	replays := 0
+	for _, e := range ents {
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if e.IsDir() || (ext != ".mkv" && ext != ".mp4" && ext != ".flv" && ext != ".mov") {
+			continue
+		}
+		if !strings.HasPrefix(e.Name(), "Replay") {
+			t.Errorf("FAILED: %s in the replay folder isn't a replay", e.Name())
+		}
+		replays++
+	}
+	t.Logf("  replay folder: %d replays; backup recording: %d MB in %s", replays, recBytes()>>20, recDir)
+	report("6c line flickering")
 
 	// ── 7. A slow line (auto quality on), then a good one ──
 	line.kbps.Store(1500)

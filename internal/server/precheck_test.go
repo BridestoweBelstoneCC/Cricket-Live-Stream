@@ -605,3 +605,38 @@ func TestPrecheckDiscord(t *testing.T) {
 		t.Fatal("not in the pre-match check's list")
 	}
 }
+
+// The backup recording costs disk only while it shares the stream's encoder; a plain MP4
+// is lost whole if OBS crashes; and a short disk is said in hours.
+func TestBackupRecordingCheck(t *testing.T) {
+	sandbox(t, "")
+	savedVal, savedFree := obsProfileValue, precheckDiskFree
+	t.Cleanup(func() { obsProfileValue, precheckDiskFree = savedVal, savedFree })
+	free := uint64(200e9)
+	precheckDiskFree = func(string) (uint64, error) { return free, nil }
+	for _, c := range []struct {
+		name string
+		ini  map[string]string
+		on   bool
+		free uint64
+		want string
+	}{
+		{"off", nil, false, 200e9, "skip"},
+		{"OBS's defaults", nil, true, 200e9, "ok"},
+		{"same as stream, hybrid MP4", map[string]string{"SimpleOutput/RecQuality": "Stream", "SimpleOutput/RecFormat2": "hybrid_mp4"}, true, 200e9, "ok"},
+		{"its own quality: a second encode", map[string]string{"SimpleOutput/RecQuality": "Small"}, true, 200e9, "warn"},
+		{"plain MP4: lost in a crash", map[string]string{"SimpleOutput/RecFormat2": "mp4"}, true, 200e9, "warn"},
+		{"advanced, stream encoder", map[string]string{"Output/Mode": "Advanced", "AdvOut/RecEncoder": "none"}, true, 200e9, "ok"},
+		{"advanced, its own encoder", map[string]string{"Output/Mode": "Advanced", "AdvOut/RecEncoder": "obs_x264"}, true, 200e9, "warn"},
+		{"advanced, custom output", map[string]string{"Output/Mode": "Advanced", "AdvOut/RecType": "FFmpeg"}, true, 200e9, "warn"},
+		{"short of space", nil, true, 5e9, "warn"},
+	} {
+		ini := c.ini
+		obsProfileValue = func(sec, key string) string { return ini[sec+"/"+key] }
+		free = c.free
+		st := M{"backup_recording": c.on, "replay_folder": t.TempDir()}
+		if r := pcBackupRecording(st); r.Status != c.want {
+			t.Errorf("%s: %s (%s)", c.name, r.Status, r.Detail)
+		}
+	}
+}
