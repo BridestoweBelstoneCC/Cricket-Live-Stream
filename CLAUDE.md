@@ -215,9 +215,10 @@ problem + what to do + pause) or print and `console.Pause()`.
   reconnect waits grow ×1.5 per try to a 15-minute cap (libobs `RECONNECT_RETRY_*`, not a
   setting), so after a long outage it sat minutes past the line's return. The dropout watch
   restarts the stream once OBS has reconnected for 20s AND a TCP connect to the host in
-  OBS's stream settings succeeds — never on a guess (a StartStream on a dead line fails, OBS
-  shows an error box and stops trying) and never with OBS signed in to YouTube (a stop ends
-  the broadcast). A reconnecting stream is still `outputActive`: that's why "the stream has
+  OBS's stream settings succeeds twice running — never on a guess (a StartStream on a dead
+  line fails, OBS shows an error box and stops trying), never with OBS signed in to YouTube
+  (a stop ends the broadcast), and never with OBS on another computer (`obsIsLocal`: the
+  sign-in is read from this laptop's OBS; the recording folder is this laptop's too). A reconnecting stream is still `outputActive`: that's why "the stream has
   stopped" never fired for an outage. The fault test's line must REFUSE connections while
   cut (it used to accept-and-close, which a TCP probe reads as up).
 - **The backup recording never goes in the replay folder** (`backup_recording`, on by

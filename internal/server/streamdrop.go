@@ -59,6 +59,7 @@ type dropState struct {
 	recordingNote string  // why the backup recording isn't running, for the panel
 	recSaid       string  // the last recordingNote said in the log
 	nextRecTry    float64 // after a start that failed, not again before this
+	reachStreak   int     // stream server answered on this many knocks running
 }
 
 var (
@@ -106,7 +107,7 @@ func dropWatchTick() {
 	switch {
 	case live && reconn:
 		if drop.reconnSince == 0 {
-			drop.reconnSince, drop.kicks, drop.kickNote = t, 0, ""
+			drop.reconnSince, drop.kicks, drop.kickNote, drop.reachStreak = t, 0, "", 0
 			say("  📶  The stream has lost its connection — OBS is reconnecting%s", recordingSafe(st, recording))
 		}
 		kick = t-drop.reconnSince >= reconnectKickAfter && t-drop.lastKick >= reconnectKickEvery
@@ -129,6 +130,16 @@ func dropWatchTick() {
 	}
 	dropMu.Unlock()
 
+	// OBS on another computer (manage_obs = no): only reported. The recording folder is a
+	// path on this laptop, and whether OBS is signed in to YouTube is read from this
+	// laptop's OBS settings, so neither can be trusted for that computer's OBS.
+	if !obsIsLocal(st) {
+		if kick {
+			setKickNote("OBS is on another computer — it keeps trying by itself")
+		}
+		setRecordingNote("")
+		return
+	}
 	if kick {
 		kickReconnect(st, t)
 	}
@@ -215,7 +226,17 @@ func kickReconnect(st M, t float64) {
 		setKickNote("OBS's stream server isn't one this can check — OBS keeps trying by itself")
 		return
 	}
-	if !dialStreamServer(addr) {
+	// Twice running (a tick apart): a line that flickers up for one knock would otherwise
+	// get a restart into a dead line, and OBS stops trying after a start that fails.
+	dropMu.Lock()
+	if dialStreamServer(addr) {
+		drop.reachStreak++
+	} else {
+		drop.reachStreak = 0
+	}
+	streak := drop.reachStreak
+	dropMu.Unlock()
+	if streak < 2 {
 		setKickNote("No internet yet — OBS keeps trying, and the stream restarts the moment the line's back")
 		return
 	}
@@ -227,7 +248,7 @@ func kickReconnect(st M, t float64) {
 	shifting.Store(true)
 	defer shifting.Store(false)
 	dropMu.Lock()
-	drop.lastKick = t
+	drop.lastKick, drop.reachStreak = t, 0
 	drop.kicks++
 	dropMu.Unlock()
 	say("  📶  The internet's back but OBS is still waiting to reconnect — restarting the stream now")
@@ -352,7 +373,7 @@ func stopBackupRecording(st M, why string) {
 func StopBackupRecordingAtEnd() {
 	defer func() { recover() }()
 	st := LoadState()
-	if !backupRecordingOn(st) {
+	if !backupRecordingOn(st) || !obsIsLocal(st) {
 		return
 	}
 	r := obsCall(st, []obsws.Req{{Type: "GetStreamStatus"}, {Type: "GetRecordStatus"}}, 3*time.Second)

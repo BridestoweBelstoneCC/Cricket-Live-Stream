@@ -161,14 +161,18 @@ func Run(opts Options) error {
 		srv.Shutdown(ctx)
 	}()
 	err = srv.Serve(ln)
+	stopped := errors.Is(err, http.ErrServerClosed)
+	if stopped {
+		// After the port's closed, never before: a copy of the app opened straight after
+		// this one was killed found this server still answering while it asked OBS, and
+		// took it for another copy running match day (fault test, phase 12). And first of
+		// the rest: the launcher kills a server that isn't gone 5s after it asked.
+		StopBackupRecordingAtEnd()
+	}
 	stopCloudflareTunnel()
 	StopSideCam()
 	TalkOff()
-	if errors.Is(err, http.ErrServerClosed) {
-		// After the port's closed, never before: a copy of the app opened straight after
-		// this one was killed found this server still answering while it asked OBS, and
-		// took it for another copy running match day (fault test, phase 12).
-		StopBackupRecordingAtEnd()
+	if stopped {
 		return nil
 	}
 	return err

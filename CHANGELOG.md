@@ -10,6 +10,14 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   together instead of choosing one: the club itself is on to start with, and a tap adds or
   takes away a former club (a merged club's records with Bridestowe's, say), so a player's
   whole record can be seen at once. One club is always on.
+- **The stream is restarted only once the line has answered twice running**, 5 seconds
+  apart, so a line that flickers up for a moment doesn't get a restart into nothing (a
+  start that fails makes OBS stop trying by itself).
+- **With OBS on another computer** (`manage_obs = no`), the internet dropping out is only
+  reported: CricketStream doesn't record there or restart its stream, since it can't see
+  that computer's folders or whether its OBS is signed in to YouTube.
+- **The backup recording is stopped first when match day stops**, before anything else
+  that could keep the server from finishing in time.
 
 ---
 
