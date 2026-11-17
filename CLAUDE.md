@@ -544,7 +544,7 @@ problem + what to do + pause) or print and `console.Pause()`.
   - **The Stats tab** (`clubstats.go` on the server, `stats.go` on the Pi): the club record's
     build (`career.go`) also tallies each player by club and kind of side (`sideKind`: men,
     ladies, junior, girls), and `/club/stats` serves it; full names, juniors too (the club's
-    choice). The Pi keeps `club_stats.json` and asks again only when it's a week old: never
+    choice). The Pi keeps `club_stats.json` and asks again only when it's a day old: never
     let the Pi ask PlayCricket itself (the API key would be on a public screen). `/club/stats`
     is on `proxyGET` and `viewGET`; the Pi's `/api/stats` is public on both kinds of screen.
   - **The club's own tabs** (`[Screen] extra_tabs` on the Pi): the Pi serves ONLY files named

@@ -4,6 +4,15 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **Clubs together on the clubhouse screen's Stats tab.** The club buttons now add clubs
+  together instead of choosing one: the club itself is on to start with, and a tap adds or
+  takes away a former club (a merged club's records with Bridestowe's, say), so a player's
+  whole record can be seen at once. One club is always on.
+
+---
+
 ## v3.0.0-beta.11 — when the internet drops out (2026-11-17)
 
 - **Back on air within seconds when the internet comes back.** When the line drops, OBS

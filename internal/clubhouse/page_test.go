@@ -351,23 +351,27 @@ var d = {fields: F, players: [
   {name: "Sam Lee", b: {"29434:l": v({apps: 2, inn: 1, runs: 4, hs: 4, best_w: -1})}}
 ]};
 function eq(a, b, what) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(what + ": " + JSON.stringify(a) + " want " + JSON.stringify(b)); }
-var all = statsRows(d, 'all', 'all', 'apps');
+var all = statsRows(d, null,'all', 'apps');
 eq(all.map(function (r) { return r.name; }), ["Karl Jones", "Amy Young", "Sam Lee"], "most games first");
 var k = all[0].t;
 eq([k.apps, k.runs, k.inn, k.no, hsText(k), batAvg(k), bestText(k), oversOf(k.balls), bowlAvg(k), k.ct + k.st], [30, 800, 29, 1, "101", "28.57", "3-20", "70", "19.33", 6], "Karl, every club");
 // One club: only its figures.
-var now = statsRows(d, '29434', 'all', 'apps');
+var now = statsRows(d, ['29434'], 'all', 'apps');
 eq(now.map(function (r) { return r.name + " " + r.t.apps; }), ["Karl Jones 10", "Amy Young 8", "Sam Lee 2"], "the merged club");
 eq(hsText(now[0].t) + " " + bestText(now[0].t), "80* 3-25", "a not out high score");
+// Two clubs together: both clubs' figures added, the best of either.
+var both = statsRows(d, ['29434', '9593'], 'all', 'apps')[0].t;
+eq([both.apps, both.runs, hsText(both), bestText(both)], [30, 800, "101", "3-20"], "the merged club and a former one together");
+eq(statsRows(d, ['9593'], 'all', 'apps').map(function (r) { return r.name; }), ["Karl Jones"], "a former club alone");
 // Juniors include girls' sides; ladies include them too.
-eq(statsRows(d, 'all', 'j', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 8"], "juniors");
-eq(statsRows(d, 'all', 'l', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 3", "Sam Lee 2"], "ladies");
-eq(statsRows(d, 'all', 'm', 'apps').map(function (r) { return r.name; }), ["Karl Jones"], "men");
+eq(statsRows(d, null,'j', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 8"], "juniors");
+eq(statsRows(d, null,'l', 'apps').map(function (r) { return r.name + " " + r.t.apps; }), ["Amy Young 3", "Sam Lee 2"], "ladies");
+eq(statsRows(d, null,'m', 'apps').map(function (r) { return r.name; }), ["Karl Jones"], "men");
 // Most runs; and no innings, no wickets read as dashes.
-eq(statsRows(d, 'all', 'all', 'runs')[1].name, "Amy Young", "most runs");
-var sam = statsRows(d, 'all', 'l', 'apps')[1].t;
+eq(statsRows(d, null,'all', 'runs')[1].name, "Amy Young", "most runs");
+var sam = statsRows(d, null,'l', 'apps')[1].t;
 eq([batAvg(sam), bestText(sam), bowlAvg(sam)], ["4.00", "–", "–"], "dashes");
-eq(statsRows(d, '1059', 'all', 'apps'), [], "a club nobody's in");
+eq(statsRows(d, ['1059'], 'all', 'apps'), [], "a club nobody's in");
 console.log("ok");
 `
 	f := filepath.Join(t.TempDir(), "stats.js")

@@ -68,7 +68,7 @@ func TestScreenKeepsItsOwnCopyOfTheClubStats(t *testing.T) {
 	if code != 200 || out["fetched"] == nil || len(out["players"].([]any)) != 1 {
 		t.Fatalf("after: %d %v", code, out)
 	}
-	// Fresh: not asked for again this week, however often the laptop's seen.
+	// Fresh: not asked for again today, however often the laptop's seen.
 	ts.mu.Lock()
 	ts.statsTried = time.Time{}
 	ts.mu.Unlock()
@@ -77,13 +77,13 @@ func TestScreenKeepsItsOwnCopyOfTheClubStats(t *testing.T) {
 	if asked.Load() != 2 {
 		t.Fatalf("asked for a fresh table again (%d)", asked.Load())
 	}
-	// A week old: asked for again.
+	// A day old: asked for again.
 	old := time.Now().Add(-statsEvery - time.Hour)
 	os.Chtimes(statsFile(), old, old)
 	ts.pollOnce()
 	ts.bg.Wait()
 	if asked.Load() != 3 {
-		t.Fatalf("a week-old table wasn't refreshed (%d)", asked.Load())
+		t.Fatalf("a day-old table wasn't refreshed (%d)", asked.Load())
 	}
 	// The laptop off: the screen still has them, without the PIN.
 	l.Stop()
