@@ -6,6 +6,9 @@ An **optional** touch screen in the clubhouse that runs the stream for you:
   ready — nobody has to find the laptop, sign in or click anything on it.
 - **Get ready** shows the match-day checklist (OBS, camera, replays, today's match, the
   scorer's feed) with the buttons to fix each one, the pre-match check, and **Go live**.
+  Once match day's running it also has **Off for rain** and **Drinks**, for when the
+  break didn't start by itself: the stream shows the stats and the best replays (and the
+  rain radar for rain) until the next ball, or until the same button is pressed again.
 - **YouTube** sets the stream's title, description and who can watch.
 - **Cameras** finds IP cameras on the network and adds one, and cuts between the wide and
   bowler's-end cameras if you have two.

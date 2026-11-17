@@ -28,7 +28,8 @@ func TestViewAllowlist(t *testing.T) {
 	refused := [][2]string{{"POST", "/checklist/action"}, {"POST", "/precheck"}, {"POST", "/cameras/use"},
 		{"POST", "/obs/add_camera"}, {"POST", "/camera/scene"}, {"POST", "/youtube/update"},
 		{"GET", "/precheck/last"}, {"GET", "/cameras/discover"}, {"GET", "/health"}, {"GET", "/stream/monitor"},
-		{"GET", "/live"}, {"GET", "/commands"}, {"GET", "/logo/"}, {"GET", "/logo/../state"}, {"POST", "/live/view"}}
+		{"GET", "/live"}, {"GET", "/commands"}, {"GET", "/logo/"}, {"GET", "/logo/../state"}, {"POST", "/live/view"},
+		{"GET", "/break"}, {"POST", "/break/start"}, {"POST", "/break/end"}}
 	for _, c := range refused {
 		if ViewAllowed(c[0], c[1]) {
 			t.Errorf("%s %s must be refused to a score-only screen", c[0], c[1])

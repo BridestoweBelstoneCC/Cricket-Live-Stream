@@ -26,6 +26,11 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
   carries on with it running: a step starts a new file.
 - **The window says when the internet has dropped**, after 30 seconds, and when it's back;
   the control panel's stream card shows how long OBS has been reconnecting.
+- **Off for rain and Drinks on the clubhouse screen.** The Get ready tab (behind the PIN)
+  has two buttons for when the break didn't start by itself: the stream shows the break
+  card, the scorecard, the season's stats and the best replays so far (and the rain radar
+  for rain) until the next ball, or until the same button is pressed again. The control
+  panel's Breaks card has a **Drinks** button too.
 - **The fault test now drops the line for ten minutes, and flickers it** (5 seconds down,
   20 up, six times), and checks the backup recording grows throughout and never lands among
   the replays. Its line now refuses connections while it's down, as a dead line does.

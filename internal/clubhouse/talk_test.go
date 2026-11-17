@@ -100,6 +100,62 @@ func TestTalkTabNeedsTheUnlockAndDoesntRenewIt(t *testing.T) {
 	}
 }
 
+// Off for rain / drinks: behind the PIN, both ways through to the laptop once unlocked, and
+// the Get ready tab's poll of /break never keeps the screen unlocked.
+func TestBreakButtonsNeedTheUnlockAndThePollDoesntRenewIt(t *testing.T) {
+	var proxied []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied = append(proxied, r.Method+" "+r.URL.Path)
+		w.Write([]byte(`{"active":false}`))
+	}))
+	defer srv.Close()
+	l := startTestLink(t, &fakeHost{server: srv.URL}, true)
+	ts := newTestScreen(t)
+	if code, out := ts.api("POST", "pair", M{"key": testKey, "address": l.Addr().String()}); code != 200 {
+		t.Fatalf("pair: %d %v", code, out)
+	}
+	if code, _ := ts.api("POST", "pin", M{"pin": "1234"}); code != 200 {
+		t.Fatal("set PIN")
+	}
+	ts.api("POST", "lock", M{})
+	if code, _ := ts.api("GET", "server/break", nil); code != 401 {
+		t.Errorf("locked: GET /break: %d", code)
+	}
+	for _, p := range []string{"server/break/start", "server/break/end"} {
+		if code, _ := ts.api("POST", p, M{"kind": "rain"}); code != 401 {
+			t.Errorf("locked: POST %s: %d", p, code)
+		}
+	}
+	if len(proxied) != 0 {
+		t.Fatalf("reached the laptop while locked: %v", proxied)
+	}
+	if code, _ := ts.api("POST", "unlock", M{"pin": "1234"}); code != 200 {
+		t.Fatalf("unlock: %d", code)
+	}
+	soon := time.Now().Add(time.Minute)
+	ts.mu.Lock()
+	ts.unlockedTil = soon
+	ts.mu.Unlock()
+	if code, _ := ts.api("GET", "server/break", nil); code != 200 {
+		t.Fatalf("unlocked: /break: %d", code)
+	}
+	ts.mu.Lock()
+	got := ts.unlockedTil
+	ts.mu.Unlock()
+	if !got.Equal(soon) {
+		t.Errorf("the poll renewed the unlock: %v -> %v", soon, got)
+	}
+	for _, p := range []string{"server/break/start", "server/break/end"} {
+		if code, _ := ts.api("POST", p, M{"kind": "rain"}); code != 200 {
+			t.Errorf("unlocked: POST %s: %d", p, code)
+		}
+	}
+	want := []string{"GET /break", "POST /break/start", "POST /break/end"}
+	if strings.Join(proxied, ",") != strings.Join(want, ",") {
+		t.Fatalf("proxied %v, want %v", proxied, want)
+	}
+}
+
 // "auto_update = no" is set by hand: the screen rewriting its settings must keep it.
 func TestSavingSettingsKeepsAutoUpdateOff(t *testing.T) {
 	ts := newTestScreen(t)
