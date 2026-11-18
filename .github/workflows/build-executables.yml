@@ -177,10 +177,15 @@ jobs:
 
       - name: Merge, verify and package
         run: |
-          lipo="$(command -v llvm-lipo || ls /usr/bin/llvm-lipo-* 2>/dev/null | sort -V | tail -1 || true)"
+          # LLVM's lipo, plain or versioned (llvm-lipo-18), whichever the runner has.
+          find_lipo() {
+            command -v llvm-lipo && return
+            find /usr/bin -maxdepth 1 -name 'llvm-lipo-*' | sort -V | tail -1
+          }
+          lipo="$(find_lipo || true)"
           if [ -z "$lipo" ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq llvm >/dev/null
-            lipo="$(command -v llvm-lipo || ls /usr/bin/llvm-lipo-* | sort -V | tail -1)"
+            lipo="$(find_lipo)"
           fi
           echo "using $lipo"
           mkdir dist
