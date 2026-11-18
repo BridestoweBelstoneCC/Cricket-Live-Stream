@@ -4,6 +4,19 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **The clubhouse screen follows the laptop.** When the screen sees the streaming laptop on a
+  newer version, it updates itself at the next quiet moment (match day not running, nobody
+  touching it), so updating the laptop brings the screen along with nobody pressing
+  anything. **Update the screen** on the laptop and **Check for an update** on the screen
+  still do it straight away.
+- **A screen that couldn't reach the internet when it checked tries again every 15 minutes**,
+  instead of the next day. That's usually the check at start-up, when a Pi switched on at the
+  plug is still joining the wifi.
+
+---
+
 ## v3.0.0-beta.12 — clubs together on the Stats tab (2026-11-17)
 
 - **Clubs together on the clubhouse screen's Stats tab.** The club buttons now add clubs

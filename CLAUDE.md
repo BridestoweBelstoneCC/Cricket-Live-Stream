@@ -528,6 +528,10 @@ problem + what to do + pause) or print and `console.Pause()`.
     `--kiosk`. The daily check never runs during match day or within 10 minutes of a
     touch. The boot check waits up to 90s for the network: a Pi switched on at the plug
     starts before its wifi joins (the club's Pi sat on beta 9 after beta 10, 2026-11-16).
+    A check that still found no internet (`updCantCheck`) is tried again every 15 minutes
+    when quiet, and a laptop status `version` newer than the screen's makes it check at the
+    next quiet moment (once per laptop version: `followWant`/`followDone`). Before beta 11
+    none of this existed: an old screen only updates at a start with the network already up.
   - **The Pi image** (`scripts/clubhouse/build-pi-image.sh`, the `pi-image` job in
     build-executables.yml) is the official Raspberry Pi OS desktop image, SHA-256 checked,
     plus `scripts/clubhouse/image/`: everything system-wide (`/opt/cricketstream`,

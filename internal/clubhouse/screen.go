@@ -193,10 +193,23 @@ func NewScreen(o ScreenOptions) *Screen {
 // RunScreen is `cricketstream clubhouse`. It returns the exit code.
 func RunScreen(o ScreenOptions) int {
 	// Started at boot (the start script's loop runs it again): update first, then open.
-	if o.Kiosk && !o.Headless && SelfUpdate(o.Version, o.Newer) {
-		return 0
+	boot := ""
+	if o.Kiosk && !o.Headless && autoUpdateOn() {
+		ok, state := updateTo(o.Version, o.Newer)
+		if ok {
+			return 0
+		}
+		boot = state
 	}
 	s := NewScreen(o)
+	if boot != "" {
+		s.upd.state, s.upd.at = boot, time.Now()
+		if boot == updCantCheck {
+			// No internet at boot (the wifi slower than updNetWait): tried again every
+			// updRetryNoNet while the screen's quiet, not left for the next day.
+			s.upd.lastCheck = time.Now()
+		}
+	}
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(s.o.Port)))
 	if err != nil {
 		console.Die(fmt.Sprintf("The clubhouse screen couldn't open port %d", s.o.Port), err.Error(), "",
@@ -334,6 +347,7 @@ func (s *Screen) pollOnce() {
 		if s.laptopAsked(st) {
 			go s.updateNow("the streaming laptop asked")
 		}
+		s.noteLaptopVersion(st)
 		if club, _ := st["club"].(string); club != "" && club != s.cfg.Club {
 			s.cfg.Club = club
 			saveScreenConfig(s.cfg)
