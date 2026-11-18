@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.13 — the clubhouse screen follows the laptop (2026-11-18)
 
 - **The clubhouse screen follows the laptop.** When the screen sees the streaming laptop on a
   newer version, it updates itself at the next quiet moment (match day not running, nobody
