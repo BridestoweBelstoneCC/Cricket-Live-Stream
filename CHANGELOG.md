@@ -4,7 +4,7 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
-## Unreleased
+## v3.0.0-beta.14 — the cameras on the clubhouse screen (2026-11-18)
 
 - **The clubhouse screen lights the camera that's on air.** The Cameras tab's cut buttons
   show which camera is live, whoever cut to it: the screen, the control panel on a laptop or
