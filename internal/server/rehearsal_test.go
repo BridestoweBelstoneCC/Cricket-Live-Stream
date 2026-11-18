@@ -53,7 +53,12 @@ func countRows(t *testing.T, mid string) int {
 // match id, then puts the score source back and leaves no trace in the ball database.
 func TestPracticeMatchPlaysThenCleansUp(t *testing.T) {
 	s := newTestServer(t, "")
-	quickRehearsal(t, 0.01)
+	// At 0.01s a ball the whole practice took ~0.45s, and a cold server's first /live
+	// ~0.25s here: on a slow Windows CI runner the first poll outlasted the practice and
+	// saw nothing (2026-11-18). So the server is warmed up first and the practice is paced
+	// to ~2s, its first run ~0.4s in.
+	quickRehearsal(t, 0.05)
+	s.get("/live")
 	setState(t, M{"pcs_output_folder": `C:\real\scorer\Output`, "pcs_source": "agent", "pcs_bridge_url": "http://100.1.2.3:5050",
 		"demo_mode": true})
 	h := map[string]string{"Origin": "http://" + s.addr}
