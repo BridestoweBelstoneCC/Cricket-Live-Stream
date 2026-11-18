@@ -505,8 +505,10 @@ var publicReads = map[string]bool{"/live/view": true, "/state": true, "/preview.
 // watchedReads need the screen unlocked, but aren't a person at work: the Commentary tab
 // polls its status, and an unlock that this renewed would never run out on a public screen
 // left showing that tab, with Start and Finish a touch away.
-// The Get ready tab's break buttons poll /break the same way.
-var watchedReads = map[string]bool{"/talk/status": true, "/talk/qr.png": true, "/break": true}
+// The Get ready tab's break buttons poll /break the same way, and the Cameras tab
+// /camera/live.
+var watchedReads = map[string]bool{"/talk/status": true, "/talk/qr.png": true, "/break": true,
+	"/camera/live": true}
 
 func (s *Screen) api(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/api")

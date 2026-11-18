@@ -56,6 +56,30 @@ func ProgramPreview() []byte {
 	return jpeg
 }
 
+var sceneCache struct {
+	sync.Mutex
+	at    time.Time
+	scene string
+	ok    bool
+}
+
+// ProgramScene is the scene on air in OBS, and false when OBS can't be reached. Cached
+// like the picture: every screen showing its Cameras tab asks every couple of seconds.
+func ProgramScene() (string, bool) {
+	sceneCache.Lock()
+	defer sceneCache.Unlock()
+	if time.Since(sceneCache.at) < previewTTL {
+		return sceneCache.scene, sceneCache.ok
+	}
+	scene, ok := "", false
+	if r := obsCall(LoadState(), []obsws.Req{{Type: "GetCurrentProgramScene"}}, 3*time.Second); len(r) > 0 && r[0] != nil {
+		scene = gsOr(r[0], "currentProgramSceneName", gs(r[0], "sceneName", ""))
+		ok = scene != ""
+	}
+	sceneCache.scene, sceneCache.ok, sceneCache.at = scene, ok, time.Now()
+	return scene, ok
+}
+
 const liveVideoTTL = 90 * time.Second
 
 var liveVideoCache struct {

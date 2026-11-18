@@ -1037,6 +1037,15 @@ func (c *ctx) doGET() {
 		// like /live/view: the score is what the stream shows anyway.
 		c.json(MatchScorecard())
 
+	case path == "/camera/live":
+		// Which scene is on air, for the clubhouse screen's cut buttons: they show the
+		// camera that's really live, whoever cut to it (the panel, a phone, the auto-cut).
+		if !c.checkToken() {
+			return
+		}
+		scene, ok := ProgramScene()
+		c.json(M{"ok": ok, "scene": scene})
+
 	case path == "/break":
 		// The break show (breakshow.go), for the panel.
 		if !c.checkToken() {

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"cricketstream/internal/onvif"
 )
@@ -56,6 +57,26 @@ func CamerasDiscover() M {
 			"on in its own settings (often under Network → Advanced). Or type its RTSP address below."
 	}
 	return r
+}
+
+// cameraLabelMax: room for "Pavilion end" and the like on one button.
+const cameraLabelMax = 24
+
+// CamerasLabel is POST /cameras/label: what the clubhouse screen's cut buttons call camera
+// 1 or 2. Blank puts back "Wide" / "Bowler's end". Only a label, never OBS's source name.
+func CamerasLabel(d M) (M, int) {
+	key := map[string]string{"1": "camera_label", "2": "camera2_label"}[str(d, "slot", "")]
+	if key == "" {
+		return M{"ok": false, "error": "Which camera? (1 or 2)"}, 400
+	}
+	label := strings.Join(strings.FieldsFunc(str(d, "label", ""), func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	}), " ")
+	if r := []rune(label); len(r) > cameraLabelMax {
+		label = strings.TrimSpace(string(r[:cameraLabelMax]))
+	}
+	UpdateState(func(st M) { st[key] = label })
+	return M{"ok": true, "slot": str(d, "slot", ""), "label": label}, 200
 }
 
 // CamerasUse is POST /cameras/use: the stream address for one found camera, from its own

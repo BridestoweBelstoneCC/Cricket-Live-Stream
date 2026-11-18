@@ -11,7 +11,8 @@ An **optional** touch screen in the clubhouse that runs the stream for you:
   rain radar for rain) until the next ball, or until the same button is pressed again.
 - **YouTube** sets the stream's title, description and who can watch.
 - **Cameras** finds IP cameras on the network and adds one, and cuts between the wide and
-  bowler's-end cameras if you have two.
+  bowler's-end cameras if you have two. The camera on air is lit, whoever cut to it, and
+  **Rename the cameras** gives the buttons the club's own names ("Pavilion end").
 - **The score** — big enough to read across the bar — and a small picture of the stream in
   the corner. Tap it and the stream fills the screen (YouTube's own player, with sound).
   Beside it, **Scorecard** (both innings: batters, bowlers, fall of wickets — the scorer's

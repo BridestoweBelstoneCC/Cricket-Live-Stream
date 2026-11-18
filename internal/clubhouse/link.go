@@ -74,11 +74,13 @@ var proxyGET = map[string]bool{
 	"/club/stats": true,
 	// Off for rain / drinks on the Get ready tab: which break is on, if any.
 	"/break": true,
+	// The Cameras tab: which camera is on air, to light its button.
+	"/camera/live": true,
 }
 
 var proxyPOST = map[string]bool{
 	"/checklist/action": true, "/precheck": true, "/cameras/use": true, "/obs/add_camera": true,
-	"/camera/scene": true, "/youtube/update": true, "/talk/control": true,
+	"/camera/scene": true, "/cameras/label": true, "/youtube/update": true, "/talk/control": true,
 	// A break the scorer's feed didn't start (rain, drinks), and ending it.
 	"/break/start": true, "/break/end": true,
 }

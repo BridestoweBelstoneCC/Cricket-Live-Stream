@@ -4,6 +4,17 @@ All notable changes to CricketStream Overlay are documented here, most recent fi
 
 ---
 
+## Unreleased
+
+- **The clubhouse screen lights the camera that's on air.** The Cameras tab's cut buttons
+  show which camera is live, whoever cut to it: the screen, the control panel on a laptop or
+  phone, or the automatic cut at the end of an over.
+- **The cameras can be given their own names** ("Pavilion end"), with the screen's
+  keyboard: when a found camera is added, or with **Rename the cameras** on the Cameras
+  tab. Only the buttons change; OBS's own names for the cameras stay as they are.
+
+---
+
 ## v3.0.0-beta.13 — the clubhouse screen follows the laptop (2026-11-18)
 
 - **The clubhouse screen follows the laptop.** When the screen sees the streaming laptop on a
