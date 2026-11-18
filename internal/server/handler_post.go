@@ -352,6 +352,10 @@ func (c *ctx) doPOST() {
 		out["ok"] = true
 		c.json(out)
 
+	case path == "/cameras/label":
+		out, status := CamerasLabel(jsonObject(body))
+		c.json(out, status)
+
 	case path == "/cameras/use":
 		out, status := CamerasUse(jsonObject(body))
 		c.json(out, status)

@@ -156,7 +156,8 @@ func TestProxyAllowlist(t *testing.T) {
 	allowed := [][2]string{{"GET", "/live/view"}, {"GET", "/state"}, {"GET", "/preview.jpg"},
 		{"GET", "/logo/29434"}, {"POST", "/checklist/action"}, {"POST", "/youtube/update"},
 		{"GET", "/match/scorecard"}, {"GET", "/league/table"},
-		{"GET", "/break"}, {"POST", "/break/start"}, {"POST", "/break/end"}}
+		{"GET", "/break"}, {"POST", "/break/start"}, {"POST", "/break/end"},
+		{"GET", "/camera/live"}, {"POST", "/camera/scene"}, {"POST", "/cameras/label"}}
 	for _, c := range allowed {
 		if !ProxyAllowed(c[0], c[1]) {
 			t.Errorf("%s %s should be allowed", c[0], c[1])

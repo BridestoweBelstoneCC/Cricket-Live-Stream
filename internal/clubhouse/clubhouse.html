@@ -52,6 +52,11 @@ p{margin:0 0 14px;max-width:62ch}
 .btn.huge{font-size:34px;padding:22px 42px;min-height:96px;border-radius:18px}
 .btn.stop{border-color:var(--live);color:#fff;background:#5b1f19}
 .btn.small{font-size:20px;min-height:52px;padding:10px 18px}
+/* The camera that's on air: lit, whoever cut to it. */
+.btn.cam{min-width:240px}
+.btn.cam small{display:block;font:700 15px system-ui,sans-serif;letter-spacing:.08em;visibility:hidden;margin-top:2px}
+.btn.cam[aria-pressed=true]{background:var(--club);border-color:var(--club);color:var(--on-club)}
+.btn.cam[aria-pressed=true] small{visibility:visible}
 .btn:disabled{opacity:.45}
 .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
 .choice{display:flex;gap:14px;margin:6px 0 22px;flex-wrap:wrap}
@@ -415,9 +420,16 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
     <section id="v-cam" class="view tab hidden">
       <div id="cut" class="hidden">
         <h2>Camera</h2>
-        <div class="row" style="margin-bottom:24px">
-          <button class="btn" id="cut_wide" type="button">Wide</button>
-          <button class="btn" id="cut_bowler" type="button">Bowler's end</button>
+        <div class="row" style="margin-bottom:12px">
+          <button class="btn cam" id="cut_wide" type="button" aria-pressed="false"><span id="cut_wide_t">Wide</span><small>ON AIR</small></button>
+          <button class="btn cam" id="cut_bowler" type="button" aria-pressed="false"><span id="cut_bowler_t">Bowler's end</span><small>ON AIR</small></button>
+        </div>
+        <p class="muted" id="cut_note" style="margin-bottom:12px"></p>
+        <button class="btn small" id="cam_rename" type="button" style="margin-bottom:24px">Rename the cameras</button>
+        <div id="cam_names" class="hidden" style="margin-bottom:24px">
+          <label class="field"><span>Camera 1</span><input id="cam_label1" data-osk="text" maxlength="24" inputmode="none" placeholder="Wide"></label>
+          <label class="field"><span>Camera 2</span><input id="cam_label2" data-osk="text" maxlength="24" inputmode="none" placeholder="Bowler's end"></label>
+          <button class="btn go" id="cam_names_save" type="button">Save the names</button>
         </div>
       </div>
       <h2>Find cameras on the network</h2>
@@ -429,6 +441,7 @@ body.pv main{padding-right:calc(min(30vw,384px) + 46px)}
         <label class="field"><span>Camera username</span><input id="cam_user" data-osk="text" value="admin" inputmode="none"></label>
         <label class="field"><span>Camera password</span><input id="cam_pass" data-osk="text" type="password" inputmode="none"></label>
         <div class="choice" id="cam_slot"></div>
+        <label class="field"><span>Name on its button</span><input id="cam_label" data-osk="text" maxlength="24" inputmode="none"></label>
         <button class="btn go" id="cam_use" type="button">Use this camera</button>
       </div>
       <p class="say" id="cam_say"></p>
@@ -1436,16 +1449,65 @@ $('yt_go').addEventListener('click', function () {
   });
 });
 
-// Cameras: the cut buttons (two cameras), and finding a new one.
-var camPicked = null, camSlot = '1';
+// Cameras: the cut buttons (two cameras), with the one on air lit and the club's own names
+// for them, and finding a new one. The names are only labels: OBS's sources keep theirs.
+var camPicked = null, camSlot = '1', camLive = null;
+function camLabel(n) {
+  var st = stateCache || {};
+  return (n === '1' ? st.camera_label : st.camera2_label) || (n === '1' ? 'Wide' : 'Bowler\'s end');
+}
+function camScene(n) {
+  var st = stateCache || {};
+  return n === '1' ? (st.obs_main_scene || 'Main') : (st.obs_bowler_scene || 'Main-Bowler');
+}
 function loadCameras() {
   loadState().then(function (st) {
     show('cut', !!(st && st.camera2_configured));
+    renderCut(); loadCamLive();
   });
 }
-function cut(scene) { api('server/camera/scene', {scene: scene}).then(function (d) { say('cam_say', d.ok ? d.message : (d.message || d.error), d.ok ? 'good' : 'bad'); }); }
-$('cut_wide').addEventListener('click', function () { cut((stateCache && stateCache.obs_main_scene) || 'Main'); });
-$('cut_bowler').addEventListener('click', function () { cut((stateCache && stateCache.obs_bowler_scene) || 'Main-Bowler'); });
+// The scene really on air, so a cut from the panel, a phone or the auto-cut shows here too.
+function loadCamLive() {
+  if (!S || !S.unlocked) return;
+  api('server/camera/live').then(function (d) {
+    if (d._status !== 200) return;
+    camLive = d.ok ? d.scene : null; renderCut();
+  });
+}
+function renderCut() {
+  [['1', 'cut_wide'], ['2', 'cut_bowler']].forEach(function (c) {
+    txt(c[1] + '_t', camLabel(c[0]));
+    $(c[1]).setAttribute('aria-pressed', camLive !== null && camLive === camScene(c[0]) ? 'true' : 'false');
+  });
+  var other = camLive && camLive !== camScene('1') && camLive !== camScene('2');
+  txt('cut_note', other ? 'On air now: ' + camLive : '');
+}
+function cut(n) {
+  camLive = camScene(n); renderCut(); // lit straight away; the next read puts it right
+  api('server/camera/scene', {scene: camScene(n)}).then(function (d) {
+    say('cam_say', d.ok ? '' : (d.message || d.error), d.ok ? '' : 'bad');
+    loadCamLive();
+  });
+}
+$('cut_wide').addEventListener('click', function () { cut('1'); });
+$('cut_bowler').addEventListener('click', function () { cut('2'); });
+function saveCamLabel(n, label) { return api('server/cameras/label', {slot: n, label: label}); }
+$('cam_rename').addEventListener('click', function () {
+  var st = stateCache || {};
+  $('cam_label1').value = st.camera_label || ''; $('cam_label2').value = st.camera2_label || '';
+  show('cam_names', true); show('cam_rename', false);
+});
+$('cam_names_save').addEventListener('click', function () {
+  hideOSK(); $('cam_names_save').disabled = true;
+  saveCamLabel('1', $('cam_label1').value).then(function (d) {
+    return d.ok ? saveCamLabel('2', $('cam_label2').value) : d;
+  }).then(function (d) {
+    $('cam_names_save').disabled = false;
+    if (!d.ok) { say('cam_say', d.error, 'bad'); return; }
+    say('cam_say', 'Names saved.', 'good'); show('cam_names', false); show('cam_rename', true);
+    loadState().then(renderCut);
+  });
+});
 $('cam_find').addEventListener('click', function () {
   $('cam_find').disabled = true; say('cam_say', 'Looking…'); show('cam_form', false);
   api('server/cameras/discover').then(function (d) {
@@ -1458,7 +1520,10 @@ $('cam_find').addEventListener('click', function () {
       var b = document.createElement('b'); b.textContent = c.name || c.make || 'Camera';
       var s = document.createElement('span'); s.textContent = c.address + (c.make ? ', ' + c.make : '');
       t.appendChild(b); t.appendChild(s); li.appendChild(t);
-      li.appendChild(button('Use', 'btn small', function () { camPicked = c; txt('cam_name', b.textContent + ' (' + c.address + ')'); renderSlot(); show('cam_form', true); }));
+      li.appendChild(button('Use', 'btn small', function () {
+        camPicked = c; txt('cam_name', b.textContent + ' (' + c.address + ')'); renderSlot(); show('cam_form', true);
+        $('cam_label').value = (stateCache || {})[camSlot === '1' ? 'camera_label' : 'camera2_label'] || '';
+      }));
       ul.appendChild(li);
     });
   });
@@ -1467,7 +1532,8 @@ function renderSlot() {
   var c = $('cam_slot');
   if (!c.childNodes.length) {
     [['1', 'Wide camera'], ['2', 'Bowler\'s end camera']].forEach(function (o) {
-      var b = button(o[1], 'btn', function () { camSlot = o[0]; renderSlot(); }); b.dataset.v = o[0]; c.appendChild(b);
+      var b = button(o[1], 'btn', function () { camSlot = o[0]; renderSlot(); $('cam_label').value = (stateCache || {})[camSlot === '1' ? 'camera_label' : 'camera2_label'] || ''; });
+      b.dataset.v = o[0]; c.appendChild(b);
     });
   }
   c.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === camSlot ? 'true' : 'false'); });
@@ -1479,10 +1545,13 @@ $('cam_use').addEventListener('click', function () {
   api('server/cameras/use', body).then(function (d) {
     if (!d.ok) { $('cam_use').disabled = false; say('cam_say', d.error, 'bad'); return; }
     say('cam_say', 'Adding it to OBS…');
-    return api('server/obs/add_camera', {which: camSlot}).then(function (d2) {
+    return saveCamLabel(camSlot, $('cam_label').value).then(function () {
+      return api('server/obs/add_camera', {which: camSlot});
+    }).then(function (d2) {
       $('cam_use').disabled = false; $('cam_pass').value = '';
       say('cam_say', d2.message || (d2.ok ? 'Camera added.' : 'Saved, but OBS didn\'t take it — try Get ready → Add to OBS.'), d2.ok ? 'good' : 'bad');
       if (d2.ok) show('cam_form', false);
+      loadCameras();
     });
   });
 });
@@ -1879,6 +1948,7 @@ setInterval(function () {
   if (tab === 'score') loadSV(false);
   if (tab === 'health') loadHealth(false);
   if (tab === 'get') loadBreak();
+  if (tab === 'cam') loadCamLive();
   loadTalkBadge();
 }, 3000);
 // Quick while it's showing: a yes or no shouldn't wait, and the meter is live.

@@ -81,6 +81,11 @@ func DefaultState() M {
 		"camera2_rtsp_url": "",
 		"obs_camera2_name": "Bowler End Camera",
 		"obs_bowler_scene": "Main-Bowler",
+		// What the clubhouse screen's cut buttons call each camera ("Pavilion end"). Blank
+		// is "Wide" / "Bowler's end". Only a label: OBS's source names stay as they are,
+		// since the scenes, the replay cut and the commentary ducking all find them by name.
+		"camera_label":  "",
+		"camera2_label": "",
 		// Automatic over-boundary cut to obs_bowler_scene and back ~8s later. Opt-in: a
 		// camera cut is a real, visible on-air action.
 		"graphics_camera_auto_cut": false,

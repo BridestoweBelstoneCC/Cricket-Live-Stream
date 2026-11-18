@@ -132,3 +132,61 @@ func TestChecklistStopStream(t *testing.T) {
 		t.Fatalf("unreachable: %v", out)
 	}
 }
+
+func resetSceneCache(t *testing.T) {
+	sceneCache.Lock()
+	sceneCache.at = time.Time{}
+	sceneCache.Unlock()
+	t.Cleanup(func() {
+		sceneCache.Lock()
+		sceneCache.at = time.Time{}
+		sceneCache.Unlock()
+	})
+}
+
+// The Cameras tab lights the camera really on air, whoever cut to it.
+func TestCameraLiveNeedsLoginAndSaysTheScene(t *testing.T) {
+	s := newTestServer(t, "secret")
+	fakePreviewOBS(t, "Main-Bowler", nil)
+	resetSceneCache(t)
+	if r := s.get("/camera/live"); r.status != 401 {
+		t.Fatalf("no login: %d, want 401", r.status)
+	}
+	status, body := s.getJSON("/camera/live", s.bearer("secret"))
+	if status != 200 || body["ok"] != true || body["scene"] != "Main-Bowler" {
+		t.Fatalf("camera/live: %d %v", status, body)
+	}
+}
+
+func TestCameraLiveWithoutOBS(t *testing.T) {
+	s := newTestServer(t, "")
+	fakePreviewOBS(t, "", nil)
+	resetSceneCache(t)
+	status, body := s.getJSON("/camera/live")
+	if status != 200 || body["ok"] != false || body["scene"] != "" {
+		t.Fatalf("OBS unreachable: %d %v", status, body)
+	}
+}
+
+// A camera's name is only a label: tidied, cut to fit a button, and never OBS's source name.
+func TestCamerasLabel(t *testing.T) {
+	s := newTestServer(t, "secret")
+	if r := s.post("/cameras/label", M{"slot": "1", "label": "x"}); r.status != 401 {
+		t.Fatalf("no login: %d, want 401", r.status)
+	}
+	auth := s.bearer("secret")
+	if status, _ := s.postJSON("/cameras/label", M{"slot": "3", "label": "x"}, auth); status != 400 {
+		t.Fatalf("slot 3: %d, want 400", status)
+	}
+	status, body := s.postJSON("/cameras/label", M{"slot": "2", "label": "  Pavilion\t end\n"}, auth)
+	if status != 200 || body["label"] != "Pavilion end" {
+		t.Fatalf("label: %d %v", status, body)
+	}
+	s.postJSON("/cameras/label", M{"slot": "1", "label": "A camera name far too long for one button"}, auth)
+	st := LoadState()
+	mustEq(t, gs(st, "camera2_label", ""), "Pavilion end")
+	mustEq(t, gs(st, "camera_label", ""), "A camera name far too lo")
+	mustEq(t, gs(st, "obs_camera2_name", ""), "Bowler End Camera", "OBS's source name")
+	s.postJSON("/cameras/label", M{"slot": "2", "label": ""}, auth)
+	mustEq(t, gs(LoadState(), "camera2_label", "unset"), "", "blank puts the default back")
+}
