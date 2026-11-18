@@ -38,11 +38,15 @@ jobs:
             goos: windows
             goarch: arm64
             out: CricketStream-arm64.exe
-          - os: macos-latest
+          # The Mac builds are cross-compiled (no cgo; Go's linker ad-hoc signs the arm64
+          # one itself): GitHub's macOS arm64 runners are often short, and a job that
+          # waits 15 minutes for one is cancelled. That held up beta 11 and beta 13.
+          # macos-smoke still runs the result on a real Mac.
+          - os: ubuntu-latest
             goos: darwin
             goarch: arm64
             out: CricketStream-darwin-arm64
-          - os: macos-latest
+          - os: ubuntu-latest
             goos: darwin
             goarch: amd64
             out: CricketStream-darwin-amd64
@@ -120,8 +124,9 @@ jobs:
       # copies, and the NV Play template must be inside the binary. A broken build fails
       # here rather than on a club's match morning.
       - name: Smoke-test the binary
-        # Native builds only (the Windows and macOS runners can't run every architecture).
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64' || matrix.goos == 'windows' && matrix.goarch == 'amd64' || matrix.goos == 'darwin' && matrix.goarch == 'arm64'
+        # Native builds only (the Windows runner can't run every architecture; the Mac
+        # build is run by macos-smoke).
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64' || matrix.goos == 'windows' && matrix.goarch == 'amd64'
         shell: bash
         env:
           CRICKETSTREAM_NO_PAUSE: '1'
@@ -159,11 +164,12 @@ jobs:
           name: ${{ matrix.out }}
           path: dist/${{ matrix.out }}
 
-  # One universal macOS binary. Go builds each architecture natively, so lipo can simply
+  # One universal macOS binary. Go builds each architecture whole, so lipo can simply
   # merge them (unlike a PyInstaller onefile build, whose appended archive broke this).
+  # LLVM's lipo, on Linux, for the same reason as the cross-compile above.
   macos-universal:
     needs: build
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -171,15 +177,21 @@ jobs:
 
       - name: Merge, verify and package
         run: |
+          lipo="$(command -v llvm-lipo || ls /usr/bin/llvm-lipo-* 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$lipo" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq llvm >/dev/null
+            lipo="$(command -v llvm-lipo || ls /usr/bin/llvm-lipo-* | sort -V | tail -1)"
+          fi
+          echo "using $lipo"
           mkdir dist
-          lipo -create -output dist/CricketStream \
+          "$lipo" -create -output dist/CricketStream \
             artifacts/CricketStream-darwin-arm64/CricketStream-darwin-arm64 \
             artifacts/CricketStream-darwin-amd64/CricketStream-darwin-amd64
           # -info alone only prints; -verify_arch fails unless both are there.
-          lipo -info dist/CricketStream
-          lipo dist/CricketStream -verify_arch x86_64 arm64
+          "$lipo" -info dist/CricketStream
+          "$lipo" dist/CricketStream -verify_arch x86_64 arm64
+          file dist/CricketStream
           chmod +x dist/CricketStream
-          dist/CricketStream help | head -3
           # A raw binary double-clicked in Finder runs with no visible window. A .command
           # file is what Finder opens in Terminal.app automatically.
           cd dist
@@ -192,6 +204,49 @@ jobs:
         with:
           name: CricketStream-mac
           path: dist/CricketStream-mac.zip
+
+  # The universal binary run on a real Mac: help, the version, and the app's page coming
+  # up from the built-in copies. The release doesn't wait for it: when GitHub has no Mac
+  # to give, this waits (or is cancelled) and the release goes out anyway, with this job
+  # showing on the run. Re-run it then, and pull the release if it fails.
+  macos-smoke:
+    needs: [build, macos-universal]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      CRICKETSTREAM_NO_PAUSE: '1'
+      CRICKETSTREAM_NO_BROWSER: '1'
+      CRICKETSTREAM_NO_WINDOW: '1'
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: CricketStream-mac
+          path: mac
+
+      - name: Run it
+        shell: bash
+        run: |
+          set -e
+          cd mac
+          unzip -q CricketStream-mac.zip
+          lipo CricketStream -verify_arch x86_64 arm64
+          codesign -dv CricketStream 2>&1 || true # ad-hoc signed by Go's linker; shown, not required
+          ./CricketStream help | grep -q "cricketstream setup"
+          ./CricketStream version | tee version.txt
+          [[ "$GITHUB_REF_TYPE" != tag ]] || grep -qF "${{ needs.build.outputs.version }}" version.txt
+          ./CricketStream agent --check-template | grep -q "bundled: yes"
+          ./CricketStream > run.log 2>&1 &
+          pid=$!
+          ok=""
+          for _ in $(seq 1 30); do
+            base="$(grep -oE 'app page http://127\.0\.0\.1:[0-9]+' run.log | head -1 | cut -d' ' -f3 || true)"
+            if [ -n "$base" ] && curl -fsS "$base/" -o app.html; then ok=1; break; fi
+            sleep 1
+          done
+          kill $pid 2>/dev/null || true
+          cat run.log
+          [ -n "$ok" ] || { echo "the app's page never came up"; exit 1; }
+          grep -q "which computer is this" app.html
 
   # Code signing for the Windows builds, by SignPath Foundation (free for open-source
   # projects; see "Code signing policy" in the README). Every signing request waits for a
